@@ -227,10 +227,12 @@ TV_TUNER=AUTO
     d'anneaux de dégradés et de corriger automatiquement la luminosité de votre
     film. Par défaut, le Post-Processing est désactivé, pour éviter de saccader
     sur de petites configurations matérielles. Il vous est possible de
-    l'activer très simplement en éditant le fichier /etc/tvout :
+    l'activer très simplement en éditant le fichier /etc/mplayer/mplayer.conf :
 
-    # Set Post Processing (consume CPU power, disable for low configs)
-    POSTPROCESS=no
+    # Set Post Processing (h deblock, v deblock, dering, auto luminance)
+    # Consumes CPU power, disabled for low configs, uncomment to enable it.
+    #vf=pp=hb:a/vb:a/dr:a/al:a
+
 
 * DXR3/Hollywood+ cards :
     Les utilisateurs de ce type de cartes de décompression n'ont pas besoin

@@ -221,10 +221,11 @@ text files.
     filters, GeeXboX lets you make h/v deblocking, deringing and auto
     luminance to enhance your image. By default, post-processing is disabled
     to avoid lagging on small configurations. You can enable it simply by
-    editing the /etc/tvout :
+    editing the /etc/mplayer/mplayer.conf file :
 
-    # Set Post Processing (consume CPU power, disable for low configs)
-    POSTPROCESS=no
+    # Set Post Processing (h deblock, v deblock, dering, auto luminance)
+    # Consumes CPU power, disabled for low configs, uncomment to enable it.
+    #vf=pp=hb:a/vb:a/dr:a/al:a
 
 * DXR3/Hollywood+ cards :
     Users with this kind of hardware decompression card does NOT even need
