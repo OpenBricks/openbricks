@@ -402,7 +402,6 @@ Install "Allegro NFS server" and fill in the boxes following these settings :
 Exports tab : 
         * Add a "new name" : and call it "/tftpboot/GEEXBOX"
         * In "path" just below : choose "C:\tftp32\GEEXBOX" folder
-        * "Set mode bits (octal)" : 777
         * In "allowed host list" , choose "all"
 	* "Read write", and "read only user list", choose "root" and "everyone"
           (if you want some log just check all in the last tab)

@@ -411,7 +411,6 @@ Installez "Allegro NFS Server" et configurez le comme suit :
 	* faites un "new name" : et nommez le "/tftpboot/GEEXBOX"
 	* dans "path", juste en dessous : selectionnez le
           répertoire "C:\tftp32\GEEXBOX"
-	* "Set mode bits (octal)" : 777
 	* dans "allowed host list", selectionnez "all".
 	* "Read write" , et "read only user list", selectionnez "root"
           et "everyone" (pour avoir un log, il suffit de tout cocher
