@@ -219,7 +219,7 @@ else
   cd di/GEEXBOX/boot
   cp vmlinuz initrd.gz ../../
   cd ../../../
-  rm -rf di/boot
+  rm -rf di/GEEXBOX/boot
 fi
 
 grubprefix=/boot/grub
