@@ -120,6 +120,68 @@ textes.
     la GeeXboX ne peut se connecter que sur des partages anonymes).
     Vous pouvez aussi déclarer des montages NFS dans GEEXBOX/etc/nfs.
 
+* wifi :
+    Par defaut, le système tente de détecter automatiquement votre
+    configuration réseau. Si vous disposez à la fois d'une carte réseau
+    Ethernet classique et d'une carte WiFi, seule cette dernière sera
+    configurée. Vous pourrez avoir à modifier le fichier /etc/network afin
+    d'y configurer vos paramètres réseaux. Dans ce dernier, 4 lignes sont
+    relatives aux cartes sans-fils :
+
+    PHY_TYPE="auto"      # Network physical type (auto|ethernet|wifi)
+    WIFI_MODE="managed"  # Wifi working mode (managed|ad-hoc)
+    WIFI_WEP=""          # Wifi WEP key
+    WIFI_ESSID="any"     # Wifi SSID
+
+    Vous pouvez soit conserver la détection automatique, soit forcer
+    l'activation du controleur Ethernet ou WiFi. De la même façon, ceci vous
+    permettra de choisir entre le mode managed et le mode de communication dit
+    ad-hoc et de définir à la fois votre clé WEP et le SSID de votre réseau.
+
+* passerelle :
+    La GeeXboX supporte l'accès à Internet. Définissez simplement l'adresse IP
+    de la passerelle dans le fichier /etc/network
+
+    GATEWAY=""     # Gateway IP ("" for DHCP or no internet connection)
+
+* configuration TV :
+    La GeeXboX supporte les entrées et tuners de cartes TV. Le système essaie
+    avec peine de détecter automatiquement le type de carte et de tuners
+    utilisés. Vous pouvez forcer les paramètres et ainsi éviter la tentative
+    de détection automatique. Veuillez modifier le fichier /etc/tvsettings
+    tel qu'il suit :
+
+# TV CARD/TUNER Model (AUTO for autodetection or look at the following urls)
+# http://www.linuxhq.com/kernel/v2.6/2/Documentation/video4linux/CARDLIST.bttv
+# http://www.linuxhq.com/kernel/v2.6/2/Documentation/video4linux/CARDLIST.tuner
+TV_CARD=AUTO
+TV_TUNER=AUTO
+
+    Laissez le paramètre AUTO si vous souahitez conserver la détection
+    automatique, ou remplacez le par le numéro de la carte et du tuner,
+    comme décrit dans les URL précédentes. Soyez attentifs : pour forcer les
+    types de cartes et de tuners, vous devez connaître les REFERENCES EXACTES
+    de votre matériel.
+
+    Une fois cela fait, vous devriez être en mesure d'utiliser les entrées TV
+    (Composite et S-VHS) de votre carte TV. De la même manière, vous pouvez
+    utiliser le tuner pour regarder la TV. Pour cela, vous devrez définir
+    votre région ainsi que les fréquences des chaînes que vous souhaitez
+    visionner. Editez simplement le fichier /etc/tvsettings :
+
+    # TV Channels
+    # Syntax : CHAN="Channel Title":"Channel Frequency"
+    # Example :
+    # CHAN="France 2":"26"
+    # CHAN="Canal +":"K08"
+    # TV Channels List
+    # Available : france, europe-east, europe-west, us-bcast, us-cable
+    CHANLIST=france
+
+    Faites attention lors de l'édition des canaux TV et veillez à utiliser
+    la même syntaxe que décrit ci-dessus et les canaux TV devraient
+    apparaître dans le menu principal.
+
 
 | GENERATION DE L'ISO
 | ~~~~~~~~~~~~~~~~~~~
