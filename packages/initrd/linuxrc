@@ -23,40 +23,17 @@ BOOT=cdrom
 /bin/busybox test -n "`/bin/busybox grep 'installator' /proc/cmdline`" && INSTALLATOR=yes
 /bin/busybox test -n "`/bin/busybox grep debugging /proc/cmdline`" && DEBUG=yes
 
-/bin/busybox echo "52 tweaking ide drives" > /proc/progress
+/bin/busybox echo "52 scanning scsi bus" > /proc/progress
+/sbin/rescan-scsi-bus
 
+/bin/busybox echo "54 tweaking ide drives" > /proc/progress
 for i in /proc/ide/hd*; do
   /bin/busybox echo io_32bit:1 > $i/settings
   /bin/busybox echo using_dma:1 > $i/settings
   /bin/busybox echo file_readahead:2000000 > $i/settings
 done
 
-/bin/busybox echo "54 scanning scsi bus" > /proc/progress
-/sbin/rescan-scsi-bus
-
-if /bin/busybox test "$INSTALLATOR" != yes; then
-  /bin/busybox echo "55 mounting harddisks" > /proc/progress
-  DISK_NAME=
-  DISK=0
-  for DEV in `/bin/busybox cat /proc/partitions | /bin/busybox sed -n "s/\ *[0-9][0-9]*\ *[0-9][0-9]*\ *[0-9][0-9][0-9]*\ \([a-z]*[0-9][0-9]*\)/\1/p"`; do
-    NAME=`/bin/busybox echo $DEV | /bin/busybox sed 's/\([a-z]\{3\}\).*/\1/'`
-    if /bin/busybox test "$NAME" != "$DISK_NAME"; then
-      DISK_NAME="$NAME"
-      DISK=$(($DISK+1))
-      PART=0
-      /bin/busybox hdparm -S 24 /dev/$NAME
-    fi
-    PART=$(($PART+1))
-    DIR="/mnt/ramfs/mnt/disk $DISK part $PART"
-    /bin/busybox mkdir "$DIR"
-    /bin/busybox mount -o ro /dev/$DEV "$DIR" >/dev/null 2>&1 || /bin/busybox rmdir "$DIR"
-    if /bin/busybox test "$BOOT" = hdd -a -z "$GEEXBOX" -a -d "$DIR/GEEXBOX/sbin" -a -f "$DIR/syslinux.cfg"; then
-      GEEXBOX="$DIR/GEEXBOX"
-    fi
-  done
-fi
-
-/bin/busybox echo "60 searching cdrom drives" > /proc/progress
+/bin/busybox echo "55 searching cdrom drives" > /proc/progress
 COUNT=`/bin/busybox cat /proc/scsi/sg/devices | /bin/busybox cut -f 5 | /bin/busybox grep -c 5`
 for DEV in /dev/scd*; do
   NUM=`/bin/busybox echo $DEV | /bin/busybox sed 's%/dev/scd\(.*\)%\1%'`
@@ -81,6 +58,29 @@ done
 if /bin/busybox test -e /mnt/ramfs/usr/bin/autolaunchparam; then
   /bin/busybox echo -n "/usr/bin/autoplay" | /bin/busybox cat - /mnt/ramfs/usr/bin/autolaunchparam > /mnt/ramfs/usr/bin/autolaunch
   /bin/busybox rm /mnt/ramfs/usr/bin/autolaunchparam
+fi
+
+if /bin/busybox test "$INSTALLATOR" != yes; then
+  /bin/busybox sleep 3
+  /bin/busybox echo "65 mounting harddisks" > /proc/progress
+  DISK_NAME=
+  DISK=0
+  for DEV in `/bin/busybox cat /proc/partitions | /bin/busybox sed -n "s/\ *[0-9][0-9]*\ *[0-9][0-9]*\ *[0-9][0-9][0-9]*\ \([a-z]*[0-9][0-9]*\)/\1/p"`; do
+    NAME=`/bin/busybox echo $DEV | /bin/busybox sed 's/\([a-z]\{3\}\).*/\1/'`
+    if /bin/busybox test "$NAME" != "$DISK_NAME"; then
+      DISK_NAME="$NAME"
+      DISK=$(($DISK+1))
+      PART=0
+      /bin/busybox hdparm -S 24 /dev/$NAME
+    fi
+    PART=$(($PART+1))
+    DIR="/mnt/ramfs/mnt/disk $DISK part $PART"
+    /bin/busybox mkdir "$DIR"
+    /bin/busybox mount -o ro /dev/$DEV "$DIR" >/dev/null 2>&1 || /bin/busybox rmdir "$DIR"
+    if /bin/busybox test "$BOOT" = hdd -a -z "$GEEXBOX" -a -d "$DIR/GEEXBOX/sbin" -a -f "$DIR/syslinux.cfg"; then
+      GEEXBOX="$DIR/GEEXBOX"
+    fi
+  done
 fi
 
 if /bin/busybox test -n "$GEEXBOX" ; then
