@@ -80,6 +80,39 @@ convert () {
   fi
 }
 
+# Configure network interface and parameters before installing GeeXboX to disk.
+setup_network () {
+  local title phy_type wifi_mode wep essid host_ip gw_ip
+  
+  title="$BACKTITLE : Network Configuration"
+
+  # Get type of physical interface
+  phy_type=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "Network Physical Interface" --menu "\nGeeXboX can only use one network physical interface at a time. If you have more than one NIC, GeeXboX will use the first one. If you have both a traditional Ethernet adapter and a Wireless card, GeeXboX will use the wireless card by default. It is recommended to keep physical interface auto-detection but you may also want to force the use of one kind of interface.\n" 0 0 0 auto "Auto detection (recommanded)" ethernet "Force using Ethernet card" wifi "Force using Wireless card"` || exit 1
+
+  # Get wireless settings only if required
+  if [ $phy_type = "auto" -o $phy_type = "wifi" ]; then
+    wifi_mode=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "Configuring WiFi Mode" --menu "\nAs you seem to be using your wireless adapter to connect this computer to your network, you will have to setup the networking mode.\n Are you connected to an access point (recommanded) or directly to another computer ?\n" 0 0 0 managed "Connected to an access point (recommanded)" ad-hoc "Direct Connection"` || exit 1
+
+    wep=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "Configuring WEP key" --inputbox "\nAs you seem to be using your wireless adapter to connect this computer to your network, you may be using a WEP key. If so, please fill in the following input box with your access point WEP key or let it blank if you do not have one (open network).\n" 0 0 ""` || exit 1
+
+    essid=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "Configuring WiFi ESSID" --inputbox "\nAs you seem to be using your wireless adapter to connect this computer to your network, you probably are using an SSID. If so, please fill in the following input box with your SSID indentifier or let it blank if you do not have one (open network).\n" 0 0 "any"` || exit 1
+  fi
+
+  host_ip=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "GeeXboX IP" --inputbox "\nGeeXboX needs to be allocated an IP address to be present on your network. Please fill in the following input box or leave it as it for using DHCP autoconfiguration\n" 0 0 ""` || exit 1
+
+  # do not get more settings if DHCP
+  if [ ! -z $host_ip ]; then
+    gw_ip=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "GeeXboX GateWay" --inputbox "\nYou may want to connect GeeXboX to the Internet. Please fill in the following input box with your gateway IP address or let it blank if you do not want to set a gateway for this computer.\n" 0 0 ""` || exit 1
+  fi
+
+  sed -i "s%^PHY_TYPE=\".*\"\(.*\)%PHY_TYPE=\"$phy_type\"\1%" $1/etc/network
+  sed -i "s%^WIFI_MODE=\".*\"\(.*\)%WIFI_MODE=\"$wifi_mode\"\1%" $1/etc/network
+  sed -i "s%^WIFI_WEP=\".*\"\(.*\)%WIFI_WEP=\"$wep\"\1%" $1/etc/network
+  sed -i "s%^WIFI_ESSID=\".*\"\(.*\)%WIFI_ESSID=\"$essid\"\1%" $1/etc/network
+  sed -i "s%^HOST=.*%HOST=\"$host_ip\"%" $1/etc/network
+  sed -i "s%^GATEWAY=.*%GATEWAY=\"$gw_ip\"%" $1/etc/network
+}
+
 /bin/busybox mount -t proc none /proc
 /bin/busybox mount -t sysfs none /sys
 /bin/busybox --install -s
@@ -303,6 +336,11 @@ else
   mv vmlinuz initrd.gz isolinux.cfg boot.msg help.msg splash.rle ../../
   cd ../../../
   rm -rf di/GEEXBOX/boot
+fi
+
+# Setup network is only available when booting from GeeXboX.
+if [ "$1" = geexbox ]; then
+  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Configure Network ?" --yesno "\nDo you want to configure your network parameters before installing GeeXboX to disk ?\n" 0 0 && setup_network "di/GEEXBOX"
 fi
 
 grubprefix=/boot/grub
