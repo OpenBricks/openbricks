@@ -29,7 +29,7 @@ To install the GeeXboX, you will need :
   - a GNU/Linux system with syslinux.
 
 To build the GeeXboX, you will need some classic tools :
-  - a working GNU/Linux system.
+  - a working GNU/Linux system (MAC OS X can do it too).
   - the gcc C compiler.
   - GNU make
   - the patch command.
