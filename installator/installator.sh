@@ -62,7 +62,9 @@ if [ -n "$DIALOG" ]; then
       [ $DISK != refresh ] && break
     fi
   done
-  $CFDISK /dev/$DISK || exit 1
+  if [ -n "$CFDISK" ]; then
+    $CFDISK /dev/$DISK || exit 1
+  fi
 else
   echo ""
   echo "You are going to install GeeXboX. For this you will need a PRIMARY"
