@@ -23,13 +23,14 @@ This archive contain the needed scripts to rebuild an iso image of the GeeXboX.
 
 To generate a GeeXboX iso, you will need either :
   - a GNU/Linux system with mkisofs and mkzftree.
+  - a MAC OS X system with mkisofs and mkzftree.
   - a windows system.
 
 To install the GeeXboX, you will need :
   - a GNU/Linux system with syslinux.
 
 To build the GeeXboX, you will need some classic tools :
-  - a working GNU/Linux system (MAC OS X can do it too).
+  - a working GNU/Linux system.
   - the gcc C compiler.
   - GNU make
   - the patch command.

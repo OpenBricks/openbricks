@@ -26,13 +26,14 @@ zu erstellen.
 
 Um ein GeeXboX ISO zu erstellen, benötigen Sie eines der folgenden Systeme:
   - ein GNU/Linux System mit mkisofs und mkzftree.
+  - ein MAC OS X System mit mkisofs und mkzftree.
   - ein Windows System.
 
 Um GeeXboX zu installieren benötigen Sie:
   - ein GNU/Linux System mit syslinux.
 
 Um Ihre eigene GeeXboX zu erstellen benötigen Sie einige klassische Werkzeuge:
-  - ein laufendes GNU/Linux System (MAC OS X kann auch benutzt werden).
+  - ein laufendes GNU/Linux System.
   - denn gcc C Compiler.
   - GNU make
   - das Kommando patch.
