@@ -7,7 +7,7 @@ REM For ru, you will need to replace the ttf file in
 REM iso/GEEXBOX/usr/share/mplayer/font by a KOI8R ttf font.
 set LANG=en
 
-REM Remote to Use (pctv/logitech/hauppauge/realmagic/leadtek)
+REM Remote to Use (pctv/logitech/hauppauge/realmagic/leadtek/RM-S6)
 set REMOTE=pctv
 
 
