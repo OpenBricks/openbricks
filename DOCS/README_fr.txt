@@ -25,7 +25,7 @@ iso personnalisée de la GeeXboX
 | PREREQUIS
 | ~~~~~~~~~
 
-Pour générer une iso GeexBoX vous devez posséder l'un des sytémes suivants:
+Pour générer une iso GeeXboX vous devez posséder l'un des sytémes suivants:
   - GNU/Linux avec mkisofs et mkzftree.
   - Windows.
 
@@ -115,34 +115,3 @@ respectives. Tous ces logiciels sont libres et, pour la plupart, protégés par
 une licence GPL (License Publique Générale)
 La GeeXboX elle-même, c'est à dire tous les scripts utilisé et le système
 de compilation, est couvert par la licence GNU-GPL.
-
-
-| AUTEUR
-| ~~~~~~
-
-Aurelien Jacobs  <aurel@geexbox.org>
-
-
-| REMERCIMENTS PARTICULIERS
-| ~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Benjamin Zores  <ben@geexbox.org>           pour les patches, les tests
-                                            et le site web
-
-
-| REMERCIMENTS
-| ~~~~~~~~~~~~
-
-Serial Cleaner   <serial.cleaner@gmx.net>   pour les patches
-                                            et la télécommande hauppauge
-
-Hervé Urbain     <dersie.urbain@wanadoo.fr> pour la télécommande logitech.
-David Legrand    <david@pcinpact.com>       pour la télécommande ATI Remote Wonder.
-Mickaël Beugnier <Mitch@no-log.org>         pour les logo et bootlogo de la GeeXboX.
-Andrighetto Riccardo  <geexbox@truzzone.it> pour la traduction Italienne.
-Plom             <tbb.plom@libertysurf.fr>  pour la télécommande leadtek.
-Eva Mikulcikova  <evmi@seznam.cz>           pour les traduction tchéque et slovaque.
-Nicolas Forgeard <nicephore17@yahoo.fr>     pour la version française du LISEZMOI
-
-La communauté du Libre et principalement l'équipe de MPlayer
-
