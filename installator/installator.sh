@@ -210,9 +210,9 @@ mkdir di
 # Try to guess current partition type.
 MKFS_TYPE=
 for type in vfat ext3 ext2 auto; do
-  tmp=`mount -v -t $type "$DEV" di && umount di`
-  if [ -n "$tmp" ]; then
-    MKFS_TYPE=`echo $tmp | grep $DEV | grep di | sed "s/.*type \(.*\) .*/\1/"`
+  if mount -o ro -t $type "$DEV" di; then
+    MKFS_TYPE=`grep "^$DEV " /proc/mounts | cut -d " " -f 3`
+    umount di
     break
   fi
 done
