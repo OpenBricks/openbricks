@@ -4,9 +4,14 @@ busybox mount -t proc none /proc
 busybox --install -s
 echo geexbox > /proc/sys/kernel/hostname
 
-test -f /proc/progress && PROGRESS=/proc/progress || PROGRESS=/dev/null
+progress() {
+  if test -f /proc/splash; then
+    echo "show $1" > /proc/splash
+    fbtruetype -x 300 -y 545 -s 18 -t 0x080808 "$2"
+  fi
+}
 
-echo "52 scanning scsi bus" > $PROGRESS
+progress 8000 "scanning scsi bus"
 rescan-scsi-bus
 
 mount -t ramfs none /mnt/ramfs
@@ -37,7 +42,7 @@ test -n "`grep 'installator' /proc/cmdline`" && INSTALLATOR=yes
 test -n "`grep debugging /proc/cmdline`" && DEBUG=yes
 BOOT=`sed 's/.*boot=\([^\ ]*\).*/\1/' /proc/cmdline`
 
-echo "54 tweaking ide drives" > $PROGRESS
+progress 10000 "tweaking ide drives"
 for i in /proc/ide/hd*; do
   echo io_32bit:1 > $i/settings
   echo using_dma:1 > $i/settings
@@ -45,7 +50,7 @@ for i in /proc/ide/hd*; do
 done
 
 if test "$BOOT" = nfs; then
-  echo "55 getting nfs tree" > $PROGRESS
+  progress 11000 "getting nfs tree"
   NFS=`sed 's/.*nfsroot=\([^\ ]*\).*/\1/' /proc/cmdline`
   if test "$INSTALLATOR" = yes; then
     GEEXBOX=/mnt/ramfs/mnt/nfs
@@ -57,7 +62,7 @@ if test "$BOOT" = nfs; then
   mount -t nfs -o ro,nolock,nfsvers=2 $NFS $GEEXBOX
 fi
 
-echo "56 searching cdrom drives" > $PROGRESS
+progress 12000 "searching cdrom drives"
 echo -n 0 > /etc/last_cdrom
 COUNT=`cut -f 5 /proc/scsi/sg/devices | grep -c 5`
 for DEV in /dev/scd*; do
@@ -87,14 +92,14 @@ if test -e /mnt/ramfs/tmp/autolaunchparam; then
 fi
 
 if test "$BOOT" != cdrom -a "$BOOT" != nfs; then
-  echo "63 boot device detection" > $PROGRESS
+  progress 17000 "boot device detection"
   while test -z "`grep $BOOT /proc/partitions`"; do
     sleep 1
   done
 fi
 
 if test "$INSTALLATOR" != yes; then
-  echo "65 mounting harddisks" > $PROGRESS
+  progress 20000 "mounting harddisks"
   DISK_NAME=
   DISK=0
   for DEV in `sed -n "s/\ *[0-9][0-9]*\ *[0-9][0-9]*\ *[0-9][0-9][0-9]*\ \([a-z]*[0-9][0-9]*\)/\1/p" /proc/partitions`; do
@@ -120,20 +125,20 @@ else
 fi
 
 if test -n "$GEEXBOX" ; then
-  echo "70 copying system into ram" > $PROGRESS
+  progress 25000 "copying system into ram"
   cp -a "$GEEXBOX/sbin" /mnt/ramfs/
-  echo "71 copying system into ram" > $PROGRESS
+  progress 27000 "copying system into ram"
   cp -a "$GEEXBOX/etc" /mnt/ramfs/
-  echo "73 copying system into ram" > $PROGRESS
+  progress 29000 "copying system into ram"
   cp -a "$GEEXBOX/usr" /mnt/ramfs/
-  echo "76 copying system into ram" > $PROGRESS
+  progress 31000 "copying system into ram"
   tar xjf "$GEEXBOX/bin.tar.bz2" -C /mnt/ramfs/
-  echo "82 copying system into ram" > $PROGRESS
+  progress 42000 "copying system into ram"
   mkdir -p /mnt/ramfs/codecs/
   for i in "$GEEXBOX/codecs/"*; do
     fixcodec "$i" "/mnt/ramfs/codecs/${i##*/}"
   done
-  echo "85 cleaning ram disk" > $PROGRESS
+  progress 45000 "copying system into ram"
   test -n "$DEVICE" && ln -s "$DEVICE" /mnt/ramfs/dev/cdrom;
   test -n "$DVD_DEVICE" && ln -s "$DVD_DEVICE" /mnt/ramfs/dev/dvd;
   INIT=/sbin/init
@@ -141,7 +146,7 @@ if test -n "$GEEXBOX" ; then
 else
   cp /sbin/nosystem /mnt/ramfs/sbin
   INIT=/sbin/nosystem
-  echo "100 cleaning ram disk" > $PROGRESS
+  progress 65535 "cleaning ram disk"
 fi
 
 if test "$BOOT" = nfs; then
