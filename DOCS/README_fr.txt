@@ -46,7 +46,7 @@ Pour construire votre propre GeeXboX, vous nécessiterez les outils classiques :
   - mkzftree pour compresser les fichiers de l'image ISO.
   - cdrecord (pour graver l'image).
 
-Et environ 500 Mo d'espace disque disponible.
+Et environ 1.2 Go d'espace disque disponible.
 
 
 | PERSONALISATION
@@ -104,6 +104,9 @@ textes.
     configuration de ces programmes se fait dans iso/GEEXBOX/etc/tvout.
     Vous pouvez y choisir le standard que vous utilisez (pal, secam...) et y
     modifier les options spécifiques de nvtv.
+
+    # TV Output Standard (ntsc/pal/secam)
+    TVOUT_STANDARD=pal
 
     Vous pouvez également définir le rapport d'image de sortie (mode 4:3 ou
     16:9) via la ligne :
@@ -215,6 +218,20 @@ TV_TUNER=AUTO
     (SPDIF), si vous souhaitez relier votre carte son à un amplificateur hifi
     externe pour décoder des flux AC3/DTS (en utilisant le mode passthrough).
 
+* Post-Processing vidéo :
+    Le Post-Processing est un moyen logiciel pour affiner une image, en la
+    rendant plus nette et plus précise. Cela a par contre l'inconvénient de
+    consommer une partie du temps processeur afin de rendre l'image plus belle.
+    Via l'utilisation des filtres internes à MPlayer, la GeeXboX vous permet de
+    minimiser les effets de blocs horizontaux et verticaux, les effets
+    d'anneaux de dégradés et de corriger automatiquement la luminosité de votre
+    film. Par défaut, le Post-Processing est désactivé, pour éviter de saccader
+    sur de petites configurations matérielles. Il vous est possible de
+    l'activer très simplement en éditant le fichier /etc/tvout :
+
+    # Set Post Processing (consume CPU power, disable for low configs)
+    POSTPROCESS=no
+
 * DXR3/Hollywood+ cards :
     Les utilisateurs de ce type de cartes de décompression n'ont pas besoin
     d'avoir une carte vidéo ou une carte son dans leur ordinateur. Parmi les
@@ -283,7 +300,8 @@ polices asiatiques en particulier).
 | INSTALLATION
 | ~~~~~~~~~~~~
 
-Avant tout, vous devez créer une partition PRIMAIRE FAT16 d'environ 16 Mo.
+Avant tout, vous devez créer une partition de type FAT16/32 ou EXT2/3 d'une
+taille d'environ 16 Mo minimum.
 
 Puis, vous pouvez installer la GeeXboX depuis Linux en lançant simplement
   ./installator.sh
@@ -291,6 +309,8 @@ Puis, vous pouvez installer la GeeXboX depuis Linux en lançant simplement
 Répondez ensuite à toutes les questions. Lisez les questions avec attention
 et stoppez l'installation si vous ne comprenez pas ce que vous faites.
 
+Mais le plus simple reste encore de démarrer la GeeXboX depuis le CD est de
+taper "install" au prompt de démarrage.
 
 | BOOT PXE
 | ~~~~~~~~
@@ -359,14 +379,15 @@ ou en effectant un nettoyage complet, éliminant même les sources téléchargées :
 
 Il existe également des commandes plus avancées si vous désirez effectuer
 des modifications en profondeur au niveau de la GeeXboX :
-  scripts/get package        # télécharge le paquetage
-  scripts/unpack package     # prépare le paquetage
-  scripts/build package      # compile le paquetage
-  scripts/install package    # installe le paquetage dans $INSTALL
-  scripts/clean package      # nettoie l'arborescence du paquetage
-  make exec                  # lance la GeeXboX dans une cellule
-                             # ATTENTION: ceci est une fonction expérimentale
-                             # Utilisez là à vos propres risques.
+  scripts/get package          # télécharge le paquetage
+  scripts/unpack package       # prépare le paquetage
+  scripts/build package        # compile le paquetage
+  scripts/install package      # installe le paquetage dans $INSTALL
+  scripts/clean package        # nettoie l'arborescence du paquetage
+  scripts/clean --full package # nettoie les sources du paquetage
+  make exec                    # lance la GeeXboX dans une cellule
+                               # ATTENTION: ceci est une fonction expérimentale
+                               # Utilisez là à vos propres risques.
 
 Si vous avez effectué une version modifiée de la GeeXboX, vous pouvez :
 construire une archive réduite tar.bz2 via :
@@ -387,10 +408,7 @@ ou enfin une arborescence PXE :
 * Options Globales :
     C'est la première chose dont vous aurez à vous soucier avant d'essayer de
     compiler la GeeXboX. Elles sont contenues dans le fichier config/options, 
-    et devraient être suffisamment explicites. Vous pouvez y choisir la famille
-    du CPU cible, votre thème, si vous désirez utiliser des polices TrueType
-    ou non etc ... Vous pourrez également y modifier les propriétés de votre
-    graveur afin de graver directement l'image ISO.
+    et devraient être suffisamment explicites.
 
 * Linux :
     Il s'agit d'une configuration Linux classique (packages/linux/linux.conf).
