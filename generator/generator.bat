@@ -28,6 +28,7 @@ echo "######################################################################"
 echo ""
 
 set MENU_FONT=
+if %LANG%==no set MENU_FONT=iso-8859-1
 if %LANG%==hu set MENU_FONT=iso-8859-2
 if %LANG%==he set MENU_FONT=iso-8859-8
 if %LANG%==sr set MENU_FONT=cp1250
