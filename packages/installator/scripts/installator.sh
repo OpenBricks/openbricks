@@ -82,7 +82,7 @@ convert () {
 
 # Configure network interface and parameters before installing GeeXboX to disk.
 setup_network () {
-  local title phy_type wifi_mode wep essid host_ip gw_ip smb_user smb_pwd val f
+  local title phy_type wifi_mode wep essid host_ip gw_ip dns_ip smb_user smb_pwd val f
 
   title="$BACKTITLE : Network Configuration"
   f="$1/etc/network"
@@ -109,6 +109,9 @@ setup_network () {
   if [ ! -z $host_ip ]; then
     val=`grep GATEWAY $f | cut -d'"' -f2`
     gw_ip=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "GeeXboX GateWay" --inputbox "\nYou may want to connect GeeXboX to the Internet. Please fill in the following input box with your gateway IP address or let it blank if you do not want to set a gateway for this computer.\n" 0 0 "$val"` || exit 1
+
+    val=`grep DNS_SERVER $f | cut -d'"' -f2`
+    dns_ip=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "GeeXboX DNS Server" --inputbox "\nYou may want to connect GeeXboX to the Internet. Please fill in the following input box with your DNS Server IP address used for name resolving or let it blank if you do not want to resolve names with this computer.\n" 0 0 "$val"` || exit 1
   fi
 
   # get samba user name
@@ -125,6 +128,7 @@ setup_network () {
   sed -i "s%^WIFI_ESSID=\".*\"\(.*\)%WIFI_ESSID=\"$essid\"\1%" $f
   sed -i "s%^HOST=.*%HOST=\"$host_ip\"%" $f
   sed -i "s%^GATEWAY=.*%GATEWAY=\"$gw_ip\"%" $f
+  sed -i "s%^DNS_SERVER=.*%DNS_SERVER=\"$gw_ip\"%" $f
   sed -i "s%^SMB_USER=.*%SMB_USER=\"$smb_user\"%" $f
   sed -i "s%^SMB_PWD=.*%SMB_PWD=\"$smb_pwd\"%" $f
 }
