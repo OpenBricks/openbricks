@@ -525,8 +525,18 @@ Voici une liste de scripts que vous aurez à créer :
  - install : l'ensemble des étapes nécessaires à l'installation du programme.
              Le préfixe d'installation devrait être $INSTALL.
 
-Lorsqu'un fichier de la liste d'URLS est nommé patch-nom_du_programme-..., il
-est automatiquement appliqué aux sources du programme.
+De plus, le répertoire décrivant un paquetage peut contenir de nombreux
+sous-répertoires additionnels :
+ - config : c'est là que sont situés tous les fichiers de configuration. Ces
+            derniers peuvent être, soit utilisés par le script build pour
+            compiler le paquetage, soit par le script install pour être copiés
+            dans le répertoire /etc de destination.
+ - scripts : ce sous-répertoire peut contenir des scripts d'initialisation lié
+             au paquetage courant et qui seront installés par le script install
+ - patches : ce sous-répertoire peut contenir des patchs destinés à être
+             appliqués aux sources du paquetage, au moment du script unpack.
+ - sources : si des fichiers sont présents dans ce sous-répertoire, ils seront
+             automatiquement copiés dans l'arbre de compilation du paquetage.
 
 Vous devez avoir à l'esprit que les applications qui tournent sous le système
 GeeXboX doivent avoir été compilé avec la librairie uClibc.

@@ -509,8 +509,16 @@ Here is a list of the scripts you may create :
  - install : all the steps needed to install the program. The installation
              prefix should be $INSTALL.
 
-When a file from the urls is named patch-program_name-... it is automatically
-applied to the unpacked sources of the program.
+In addition, the package main directory may contain extra subdirs :
+ - config : where all config files belong. These files may be used either
+            by the build script to compile the package or by the install
+            script to be put to the system's /etc directory.
+ - scripts : this subdir may contain runtime initialization scripts related
+             to the current package which should be installed by install script
+ - patches : this subdir may contain patches to be applied to the sources
+             of the package, at unpack time.
+ - sources : if files are present here, they will be automatically copied
+             into the package's build tree.
 
 You also have to remember that software which run on the GeeXboX have to
 be compiled with the uClibc gcc wrapper.
