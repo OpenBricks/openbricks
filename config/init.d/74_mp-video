@@ -1,0 +1,35 @@
+#!/bin/sh
+#
+# configure MPlayer's video settings
+
+echo "### Configuring MPlayer's video settings ###"
+
+# include tvout configuration file
+. /etc/tvout
+
+# set double to no for nvidia, sis and Kyro cards, VMWare, and some ATI cards
+for i in 'Class 0300:.*10de:' 'Class 0300:.*1039:' 'Class 0300:.*104a:0010' 'Class 0300:.*15ad:' 'Class 0300:.*1002:4c59'; do
+  if grep "$i" /proc/pci >/dev/null 2>&1; then
+    # except if we want to try nvidia vidix
+    if [ "$i" = 'Class 0300:.*10de:' -a ! -f /etc/mplayer/no_nvidia_vidix ]; then
+      if [ -n "`grep '^vf=' /etc/mplayer/mplayer.conf`" ]; then
+        sed -i 's/^\(vf=.*\)/\1,format=yuy2/' /etc/mplayer/mplayer.conf
+      else
+        echo 'vf=format=yuy2' >> /etc/mplayer/mplayer.conf
+      fi
+    else
+      sed -i 's/^vo=.*/vo=vesa/' /etc/mplayer/mplayer.conf
+      sed -i 's/^double=.*/double=no/' /etc/mplayer/mplayer.conf
+      if [ -n "`grep '^vf=' /etc/mplayer/mplayer.conf`" ]; then
+        sed -i 's/^\(vf=.*\)/\1,expand=-1:-1:-1:-1:1/' /etc/mplayer/mplayer.conf
+      else
+        echo 'vf=expand=-1:-1:-1:-1:1' >> /etc/mplayer/mplayer.conf
+      fi
+    fi
+  fi
+done
+
+# set the tvout aspect
+echo "monitoraspect=$TVOUT_ASPECT" >> /etc/mplayer/mplayer.conf
+
+exit 0
