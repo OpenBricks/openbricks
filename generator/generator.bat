@@ -64,7 +64,7 @@ md iso\GEEXBOX\usr\share\mplayer\font\%SUB_FONT%
 copy font\%SUB_FONT%\* iso\GEEXBOX\usr\share\mplayer\font\%SUB_FONT% >nul
 
 if "X%MENU_FONT%"=="X" set MENU_FONT=%SUB_FONT%
-if not %MENU_FONT%==%SUB_FONT% goto samefont
+if %MENU_FONT%==%SUB_FONT% goto samefont
 md iso\GEEXBOX\usr\share\mplayer\font\%MENU_FONT%
 copy font\%MENU_FONT%\* iso\GEEXBOX\usr\share\mplayer\font\%MENU_FONT% >nul
 :samefont
