@@ -66,12 +66,25 @@ E' possibile inoltre modificare molte opzioni. Questo è possibile modificando
 semplicemente qualche file di testo.
 
 * Linguaggio :
-    E' possibile selezionare il linguaggio di menu preferito modificando il
-    file GEEXBOX/etc/lang. Questo non ha effetto sulla lingua dei DVD
-    (riferirsi alla sezione MPlayer). Se la tua lingua non è avviabile,
-    puoi tradurre il menu nella tua lingua. Questo comporta la creazione di
-    GEEXBOX/etc/mplayer/menu_LANG.conf e
-    GEEXBOX/usr/share/mplayer/help_LANG.txt.
+    E' possibile selezionare il linguaggio di menu preferito seguendo la
+    seguente procedura:
+
+    - Utenti GNU/Linux:
+    Modificare lo script generator.sh prima di eseguirlo, cambiando la linea 
+    verso l'inizio del file: "LANG=en" con il linguaggio preferito.
+    Esempio: se sei italiano, cambia la linea in "LANG=it".
+
+    - Utenti Microsoft Windows:
+    Quando viene eseguito, generator.exe permette di selezionare la lingua
+    preferita tramite una lista a tendina.
+
+    NB : Questa modifica non ha effetti sul linguaggio del DVD (leggere la
+    sezione MPlayer section).
+
+    Per la lista dei linguaggi disponibili sfogliare la directory "language".
+    Se la tua lingua non è disponibile, puoi tradurre il menù nella tua lingua.
+    Questo comporta la creazione dei file language/menu_LANG.conf e
+    language/help_LANG.txt.
 
 * MPlayer :
     In questa sezione è possibile effettuare la maggior parte della
@@ -99,11 +112,27 @@ semplicemente qualche file di testo.
     In questo file è possibile scegliere lo standard TV (pal, ntsc...) ed è
     inoltre possibile modificare le opzioni specifiche per nvtv.
 
+    Si può definire l'aspetto (4:3 o 16:9) in questo file alla linea:
+
+    TVOUT_ASPECT="4:3"
+
+    Questo parametro verrà utilizzato sia per il TVOut che per i monitor.
+    E' possibile specificare anche l'altezza/larghezza dello schermo e le 
+    frequenze orizzontale e verticale, in caso di schermi non standard, come
+    WideScreens or videoproiettori. Questo può essere fatto modificando il file
+    /etc/mplayer/mplayer.conf. I parametri predefiniti sono indicati di seguito 
+    (decommentare le linee relative alle frequenze se si vogliono utilizzare):
+
+    screenw=800
+    screenh=600
+    #monitor-hfreq=31.5k-50k
+    #monitor-vfreq=50-90
+
 * Lirc :
     E' possibile scegliere uno dei telecomandi supportati modificando il file
-    GEEXBOX/etc/remote. ATI Remote Wonder non è gestito da lirc ed è sempre
-    attivato, quindi non occorre modificare nulla. Se si vuole modificare la
-    configurazione dei tasti del proprio telecomando, controllare il file
+    GEEXBOX/etc/remote. Fare attenzione a scegliere anche il corrispondente
+    ricevitore ir nello stesso file di configurazione. Se si vuole modificare la
+    configurazione dei tasti del proprio telecomando, modificare il file
     GEEXBOX/etc/lirc/lircrc_TELECOMANDO.
 
 * rete :
@@ -145,19 +174,21 @@ semplicemente qualche file di testo.
     GeeXboX supporta le entrate e i sintonizzatori TV. Il sistema cercherà di
     rilevare automaticamente la scheda e il sintonizzatore. E' possibile
     forzare le impostazioni e saltare i tentativi di rilevamento. Modificare il
-    file  /etc/tvcard come descritto :
+    file /etc/tvcard come descritto :
 
  #TV CARD/TUNER Model (AUTO for autodetection or look at the following urls)
  #http://www.linuxhq.com/kernel/v2.6/2/Documentation/video4linux/CARDLIST.bttv
  #http://www.linuxhq.com/kernel/v2.6/2/Documentation/video4linux/CARDLIST.tuner
- TV_CARD=AUTO
- TV_TUNER=AUTO
+ 
+    TV_CARD=AUTO
+    TV_TUNER=AUTO
+    TVIN_STANDARD=pal
 
     Lasciare il parametro AUTO se si vuole mantenere il rilevazione automatica,
     oppure sostiruirlo con il numero del tipo di scheda e sintonizzatore in
     possesso, in base alle informazioni dei precedenti URL. Prestare molta
     attenzione: per forzare il tipo si scheda e sintonizzatore occorre
-    conoscere l' ESATTO MODELLOP del proprio hardware.
+    conoscere l' ESATTO MODELLO del proprio hardware.
 
     Successivamente, dovrebbe essere possibile utilizzare l'input TV (Composito
     e S-VHS) della propria scheda TV. Allo stesso modo, sarà possibile usare il
@@ -177,6 +208,24 @@ semplicemente qualche file di testo.
     Prestare attenzione nell'usare la stessa sintassi descritta sopra, affinchè
     i canali TV siano presenti nel menu principale.
 
+* configurazione audio :
+    GeeXboX supporta sia l'ourput audio analogico che digitale attraverso i
+    connettori jack o RCA SPDIF. L'uscia predefinita è quella analogica.
+    E' possibile cambiare tale impostaizone modificando il file /etc/audio :
+
+    # Output using SPDIF (yes/no), otherwise ANALOG output
+    SPDIF=no
+
+    Ricorda che è necessario impostare l'uscita su SPDIF se si vuole collegare
+    la scheda audio ad un amplificatore esterno per decodificare gli stream
+    AC3/DTS (utilizzando il passthrough mode).
+
+* Scheda DXR3/Hollywood+ :
+    Gli utenti con questo tipo di scheda di decompressione hardware NON hanno
+    bisogno di una scheda video o audio per utilizzare GeeXboX. Per contro, è
+    possibile utilizzare solo l'uscita TV con le schede DXR3 (niente monitor).
+    E' necessario specificare il corretto stadard (PAL/NTSC) nel file /etc/tvout
+    e il tipo di uscita audio da utilizzare (Analogica o SPDIF) in /etc/audio.
 
 | CREAZIONE
 | ~~~~~~~~~
@@ -199,7 +248,7 @@ E' possibile installare GeeXboX sotto linux lanciando
   ./installator.sh
 E rispondendo alle domande poste dal programma. Ponete molta attenzione durante
 questi passaggi.
-Leggere due volte ogni domanda e uscire dall'instalalzione se non si capisce
+Leggere due volte ogni domanda e uscire dall'installazione se non si capisce
 una domanda.
 
 | PXE BOOT
@@ -343,7 +392,7 @@ Di seguito la lista degli script da cerare :
  - need_build : chiamato quando il pacchetto è già compilato, per essere sicuri
                 che non necessita di ricompilazione. Dovrebbe eliminare il file
                 .stamps/"nome pacchetto"/build se il pacchetto necessita di
-                ricompilazioneif.
+                ricompilazione.
  - build : tutti i passaggi necessari per compilare il programma.
  - install : tutti i passaggi necessari per installare il programma. Il
              prefisso di installazione deve essere $INSTALL.
