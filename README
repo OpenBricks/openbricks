@@ -94,6 +94,23 @@ text files.
     is done in config/tvout. There you can choose the TV standard you
     want (pal, ntsc...) and you can also modify specific options for nvtv.
 
+    Please note that you can also define the output aspect (say 4:3 or 16:9
+    display) in this file through the line :
+
+    TVOUT_ASPECT="4:3"
+
+    This parameter will be used both for TVOut and regular (CRT/TFT) display.
+    You can also specify the desired height/width values and your display's
+    horizontal and vertical frequencies in case you have unusual screen like
+    WideScreens or videoprojector. This can be done, editing the
+    /etc/mplayer/mplayer.conf file. Default parameters are shown below (please
+    uncomment lines related to frequency if you want to use them) :
+
+    screenw=800
+    screenh=600
+    #monitor-hfreq=31.5k-50k
+    #monitor-vfreq=50-90
+
 * Lirc :
     You can choose one of the supported remote controller by editing the file
     GEEXBOX/etc/remote. Also take care to chose the corresponding ir receiver
@@ -136,13 +153,15 @@ text files.
 * tv configuration :
     GeeXboX supports TV inputs and tuners. The system hardly tries to
     autodetect the card and the tuner. You can force the settings and skip
-    the autodetection try. Please modify the /etc/tvout as described :
+    the autodetection try. Please modify the /etc/tvcard as described :
 
  #TV CARD/TUNER Model (AUTO for autodetection or look at the following urls)
  #http://www.linuxhq.com/kernel/v2.6/2/Documentation/video4linux/CARDLIST.bttv
  #http://www.linuxhq.com/kernel/v2.6/2/Documentation/video4linux/CARDLIST.tuner
- TV_CARD=AUTO
- TV_TUNER=AUTO
+ 
+    TV_CARD=AUTO
+    TV_TUNER=AUTO
+    TVIN_STANDARD=pal
 
     Please let the AUTO parameter whether you want to keep autodetection,
     or replace it by the number of your card and tuner types, according to
@@ -153,7 +172,7 @@ text files.
     of your TV card. In the same way, you can use the tuner to watch TV.
     For that, you will have to define the region you belongs to and the
     frequency of the TV channels you want to watch.
-    Once again, simply edit the /etc/tvout file :
+    Once again, simply edit the /etc/tvcard file :
 
     # TV Channels
     # Syntax : CHAN="Channel Title":"Channel Frequency"
@@ -167,6 +186,25 @@ text files.
     Please be careful when editing channels and simply use the same syntax
     as described above and TV channels should be present in the main menu.
 
+* audio configuration :
+    GeeXboX supports both analog and digital audio output through regular JACK
+    connectors or RCA SPDIF one. By default, output is set to analog. You can
+    change this, by editing the /etc/audio file :
+
+    # Output using SPDIF (yes/no), otherwise ANALOG output
+    SPDIF=no
+
+    Remember that you will need to set your output to SPDIF if you want
+    to connect your soundcard to an external amplifier for decoding AC3/DTS
+    streams (using passthrough mode).
+
+* DXR3/Hollywood+ cards :
+    Users with this kind of hardware decompression card does NOT even need
+    to have a video board and sound card to use GeeXboX. On the drawbacks,
+    only the tvout connector can be used with DXR3 cards (no CRT display).
+    You may have to set the required image norm (PAL/NTSC) in the /etc/tvout
+    file and the kind of audio output you want to use (Analog or SPDIF)
+    in /etc/audio.
 
 | GENERATION
 | ~~~~~~~~~~

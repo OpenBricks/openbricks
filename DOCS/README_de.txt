@@ -150,7 +150,7 @@ einige Text-Dateien editieren:
 * TV-Konfiguration:
     GeeXboX unterstützt TV-Input und Tuner und versucht die Karte wie den Tuner
     automatisch zu erkennen. Sie können die Autoerkennung auch umgehen und
-    selbst die richtigen Einstellungen in der Datei /etc/tvout wie folgend
+    selbst die richtigen Einstellungen in der Datei /etc/tvcard wie folgend
     beschrieben vornehmen:
 
 #TV CARD/TUNER Model (AUTO für automatische Erkennung, weitere Infos
@@ -170,7 +170,7 @@ in den Links)
     Wenn das erledigt ist, sollte es ihnen möglich sein den TV-Eingang
     (Composite und S-VHS) ihrer Karte zu nutzen. Auf dieselbe Art und Weise
     können sie den TV-Tuner benutzen. Dafür müssen sie ihre Region und die
-    Frequenzen der TV Kanäle in der Datei /etc/tvout eintragen:
+    Frequenzen der TV Kanäle in der Datei /etc/tvcard eintragen:
 
     # TV Channels
     # Syntax : CHAN="Channel Title":"Channel Frequency"

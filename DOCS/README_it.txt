@@ -14,7 +14,7 @@
 GeeXboX è una sorta di software per "divx box". Infatti, è un boot CD 
 stand-alone che permette di vedere film o ascoltare musica. Supporta molti
 formati, come avi, mpeg, divx, ogm, rm, mp3, ogg, dvd, vcd e cdda.
-Supporta inoltre qualche telecomando IR e il TV-Out per qualche scheda grafica. 
+Supporta inoltre qualche telecomando IR e il TV-Out per qualche scheda grafica.
 Questo archivio contiene gli script che servono per creare un'immagine iso di
 GeeXboX.
 
@@ -145,7 +145,7 @@ semplicemente qualche file di testo.
     GeeXboX supporta le entrate e i sintonizzatori TV. Il sistema cercherà di
     rilevare automaticamente la scheda e il sintonizzatore. E' possibile
     forzare le impostazioni e saltare i tentativi di rilevamento. Modificare il
-    file  /etc/tvout come descritto :
+    file  /etc/tvcard come descritto :
 
  #TV CARD/TUNER Model (AUTO for autodetection or look at the following urls)
  #http://www.linuxhq.com/kernel/v2.6/2/Documentation/video4linux/CARDLIST.bttv
@@ -163,7 +163,7 @@ semplicemente qualche file di testo.
     e S-VHS) della propria scheda TV. Allo stesso modo, sarà possibile usare il
     sintonizzatore per guardare la TV. Per fare ciò, è necessario specificare
     la regione di appartenenza e la frequenza dei canali TV che si vogliono
-    visualizzare. Anche questa volta basta modificare il file /etc/tvout :
+    visualizzare. Anche questa volta basta modificare il file /etc/tvcard :
 
     # TV Channels
     # Syntax : CHAN="Channel Title":"Channel Frequency"

@@ -103,7 +103,27 @@ textes.
     nVidia (ce qui peut aussi marcher abec les cartes i810 et 3dfx). La
     configuration de ces programmes se fait dans iso/GEEXBOX/etc/tvout.
     Vous pouvez y choisir le standard que vous utilisez (pal, secam...) et y
-    modifier les options spécifiques du nvtv.
+    modifier les options spécifiques de nvtv.
+
+    Vous pouvez également définir le rapport d'image de sortie (mode 4:3 ou
+    16:9) via la ligne :
+
+    TVOUT_ASPECT="4:3"
+
+    Ce paramètre est utilisé à la fois pour la sortie TV et pour l'affichage
+    classique sur moniteurs CRT ou TFT. Vous pouvez également définir les
+    valeurs de hauteur et largeur (en pixels) pour l'affichage, ainsi que les
+    fréquences de rafraichissement horizontal et vertical, dans le cas où vous
+    utiliseriez un écran panoramique ou encore un rétro-projecteur. Ceci peut
+    etre fait en modifiant le contenu du fichier /etc/mplayer/mplayer.conf.
+    Les paramètres suivants sont donnés par défaut (veuillez décommenter les
+    lignes liées à la fréquence de refraichissement si vous souhaiter les
+    utiliser ) :
+
+    screenw=800
+    screenh=600
+    #monitor-hfreq=31.5k-50k
+    #monitor-vfreq=50-90
 
 * Lirc :
     Choisissez la télécommande supporté en éditant le fichier generator.sh ou
@@ -148,7 +168,7 @@ textes.
     La GeeXboX supporte les entrées et tuners de cartes TV. Le système essaie
     avec peine de détecter automatiquement le type de carte et de tuners
     utilisés. Vous pouvez forcer les paramètres et ainsi éviter la tentative
-    de détection automatique. Veuillez modifier le fichier /etc/tvout
+    de détection automatique. Veuillez modifier le fichier /etc/tvcard
     tel qu'il suit :
 
 # TV CARD/TUNER Model (AUTO for autodetection or look at the following urls)
@@ -167,7 +187,7 @@ TV_TUNER=AUTO
     (Composite et S-VHS) de votre carte TV. De la même manière, vous pouvez
     utiliser le tuner pour regarder la TV. Pour cela, vous devrez définir
     votre région ainsi que les fréquences des chaînes que vous souhaitez
-    visionner. Editez simplement le fichier /etc/tvout :
+    visionner. Editez simplement le fichier /etc/tvcard :
 
     # TV Channels
     # Syntax : CHAN="Channel Title":"Channel Frequency"
@@ -181,6 +201,28 @@ TV_TUNER=AUTO
     Faites attention lors de l'édition des canaux TV et veillez à utiliser
     la même syntaxe que décrit ci-dessus et les canaux TV devraient
     apparaître dans le menu principal.
+
+* configuration audio :
+    La GeeXboX supporte à la fois la restitution audio via la sortie analogique
+    ou numérique, en utilisant les connecteurs classiques JACK ou RCA SPDIF.
+    Par défaut, la sortie est gérée de manière analogique. Ceci peut etre
+    changé en modifiant le fichier /etc/audio :
+
+    # Output using SPDIF (yes/no), otherwise ANALOG output
+    SPDIF=no
+
+    Souvenez vous qu'il est nécessaire de régler la sortie en mode numérique
+    (SPDIF), si vous souhaitez relier votre carte son à un amplificateur hifi
+    externe pour décoder des flux AC3/DTS (en utilisant le mode passthrough).
+
+* DXR3/Hollywood+ cards :
+    Les utilisateurs de ce type de cartes de décompression n'ont pas besoin
+    d'avoir une carte vidéo ou une carte son dans leur ordinateur. Parmi les
+    inconvénients, on notera néanmoins que seule la sortie TV peut etre
+    utilisée avec ce type de carte (pas d'affichage sur moniteur).
+    Vous pouvez etre amené à définir la norme d'image souhaitée (PAL/NTSC)
+    via le fichier /etc/tvout ainsi que le type de sortie audio à utiliser
+    (Analogique ou SPDIF) via le fichier /etc/audio.
 
 
 | GENERATION DE L'ISO
