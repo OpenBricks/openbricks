@@ -142,6 +142,53 @@ Répondez ensuite à toutes les questions. Lisez les questions avec attention
 et stoppez l'installation si vous ne comprenez pas ce que vous faites.
 
 
+| BOOT PXE
+| ~~~~~~~~
+
+Oui, la GeeXboX est capable de booter depuis le réseau sur une machine
+sans disque ! Pour obtenir cela il vous faudra :
+ - un serveur DHCP
+ - un serveur TFTP
+ - un serveur NFS
+ - une machine supportant le PXE :-)
+Il faut tout d'abord configurer le server DHCP pour qu'il envoie les info de
+boot PXE. Voilà un exemple de configuration avec isc dhcp :
+
+allow booting;
+allow bootp;
+
+subnet 192.168.0.0 netmask 255.255.255.0 {
+  range 192.168.0.128 192.168.0.192;
+  option subnet-mask 255.255.255.0;
+  option broadcast-address 192.168.0.255;
+  next-server 192.168.0.1;
+  filename "/tftpboot/GEEXBOX/boot/pxelinux.0";
+}
+
+L'option next-server est l'adresse du server TFTP.
+Ensuite il faut configurer votre serveur TFTP (tel que atftpd) pour qu'il
+serve le répertoire /tftpboot et copier une arborescence GEEXBOX complète
+dans ce répertoire. Par exemple il est possible de copier le contenu d'un
+CD de GeeXboX depuis un linux AVEC L'OPTION CDROM TRANSPARENT DECOMPRESSION
+ACTIVE !! (pour vérifier cela, il suffit de regarder si le fichier sbin/init
+de l'arborescence GeeXboX ne contient pas de caractères totalement incohérents)
+
+Ensuite il faut éditer le fichier /tftpboot/GEEXBOX/boot/pxelinux.cfg/default
+pour faire correspondre le nfsroot au bon chemin NFS vers l'arborescence
+GeeXboX.
+
+Enfin il reste a configurer NFS pour qu'il exporte l'arborescence GEEXBOX
+avec un fichier /etc/exports ressemblant à ceci :
+
+/tftpboot/GEEXBOX (ro)
+
+et un /etc/hosts.allow ressemblant à :
+
+ALL: ALL
+
+Ca devrait être bon. Reste a booter la machine PXE et a voir ce qu'il se passe.
+
+
 | COMPILATION
 | ~~~~~~~~~~~
 

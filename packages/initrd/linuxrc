@@ -59,7 +59,16 @@ for i in /proc/ide/hd*; do
   echo file_readahead:2000000 > $i/settings
 done
 
-echo "55 searching cdrom drives" > /proc/progress
+if test "$BOOT" = nfs; then
+  echo "55 getting nfs tree" > /proc/progress
+  NFS=`sed 's/.*nfsroot=\([^\ ]*\).*/\1/' /proc/cmdline`
+  udhcpc -H geexbox -n
+  mkdir -p /mnt/nfs
+  mount -t nfs $NFS /mnt/nfs
+  GEEXBOX=/mnt/nfs
+fi
+
+echo "56 searching cdrom drives" > /proc/progress
 echo -n 0 > /etc/last_cdrom
 COUNT=`cut -f 5 /proc/scsi/sg/devices | grep -c 5`
 for DEV in /dev/scd*; do
@@ -88,7 +97,7 @@ if test -e /mnt/ramfs/tmp/autolaunchparam; then
   rm /mnt/ramfs/tmp/autolaunchparam
 fi
 
-if test "$BOOT" != cdrom; then
+if test "$BOOT" != cdrom -a "$BOOT" != nfs; then
   echo "63 boot device detection" > /proc/progress
   while test -z `grep "$BOOT" /proc/partitions`; do
     sleep 1
@@ -141,6 +150,10 @@ else
   cp /sbin/nosystem /mnt/ramfs/sbin
   INIT=/sbin/nosystem
   echo "100 cleaning ram disk" > /proc/progress
+fi
+
+if test "$BOOT" = nfs; then
+  umount /mnt/nfs
 fi
 
 if test "$BOOT" = cdrom; then

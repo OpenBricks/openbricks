@@ -132,6 +132,51 @@ Read twice each question and stop installing if you don't understand one
 of the question.
 
 
+| PXE BOOT
+| ~~~~~~~~
+
+Yes, the GeeXboX is able to boot from the network on a diskless station !
+To achieve this you will need :
+ - a DHCP server
+ - a TFTP server
+ - a NFS server
+ - a PXE capable station :-)
+First configure your dhcp server to send PXE boot info. Here is an exemple
+with isc dhcp :
+
+allow booting;
+allow bootp;
+
+subnet 192.168.0.0 netmask 255.255.255.0 {
+  range 192.168.0.128 192.168.0.192;
+  option subnet-mask 255.255.255.0;
+  option broadcast-address 192.168.0.255;
+  next-server 192.168.0.1;
+  filename "/tftpboot/GEEXBOX/boot/pxelinux.0";
+}
+
+The next-server option is the address of the TFTP server.
+Then configure your TFTP server (such as atftpd) to server the /tftpboot
+directory and copy a full GEEXBOX tree in this directory. For exemple
+you can copy the content of a GeeXboX CD from a linux WITH THE CDROM
+TRANSPARENT DECOMPRESSION ENABLED !! (to verify this, look at the sbin/init
+file in the GeeXboX tree and verify that it do not contain garbage)
+
+Then you should edit the file /tftpboot/GEEXBOX/boot/pxelinux.cfg/default
+to set nfsroot to the right NFS path to the GEEXBOX tree.
+
+Finaly set up your NFS to export the GEEXBOX tree with a /etc/exports
+containing something like this :
+
+/tftpboot/GEEXBOX (ro)
+
+and a /etc/hosts.allow containing something like :
+
+ALL: ALL
+
+That should do the trick. Boot your PXE station and see what happen.
+
+
 | BUILDING
 | ~~~~~~~~
 
