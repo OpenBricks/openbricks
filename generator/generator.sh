@@ -87,6 +87,7 @@ done
 
 MENU_FONT=`lang2menufont $LANG`
 SUB_FONT=`subfont2font $SUB_FONT`
+[ -z "$SUB_FONT" ] && exit 1
 
 for font in $MENU_FONT $SUB_FONT; do
   if [ ! -f $GEEXBOX_DIR/font/$font/font.desc ]; then
