@@ -112,10 +112,10 @@ if [ "$UID" != "0" ]; then
 fi
 
 if [ -z "$SFDISK" -o -z "$GRUB" -o -z "$DIALOG" ]; then
-    echo ""
-    echo "**** You need to have sfdisk, grub and dialog installed to install GeeXboX ****"
-    echo ""
-    exit 1
+  echo ""
+  echo "**** You need to have sfdisk, grub and dialog installed to install GeeXboX ****"
+  echo ""
+  exit 1
 fi
 
 if [ ! -d "/sys/block" ]; then
@@ -126,18 +126,18 @@ if [ ! -d "/sys/block" ]; then
 fi
 
 while true; do
-    if [ -e /dev/.devfsd ]; then
-      DISKS=`cat /proc/partitions | sed -n "s/\ *[0-9][0-9]*\ *[0-9][0-9]*\ *\([0-9][0-9]*\)\ \([a-z0-9/]*disc\).*$/\2 (\1_blocks)/p"`
-    else
-      DISKS=`cat /proc/partitions | sed -n "s/\ *[0-9][0-9]*\ *[0-9][0-9]*\ *\([0-9][0-9]*\)\ \([a-z]*\)$/\2 (\1_blocks)/p"`
-    fi
-    if [ -z "$DISKS" ]; then
-      $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --yesno "\nNo disks found on this system.\nCheck again?" 0 0 || exit 1
-    else
-      DISKS="$DISKS refresh list"
-      DISK=`$DIALOG --stdout --backtitle "$BACKTITLE" --title "Installation device" --menu "\nYou are going to install GeeXboX. For this you will need an empty partition with about 8 MB of free space.\nBe careful to choose the right disk! We won't take responsibility for any data loss." 0 0 0 $DISKS` || exit 1
-      [ $DISK != refresh ] && break
-    fi
+  if [ -e /dev/.devfsd ]; then
+    DISKS=`cat /proc/partitions | sed -n "s/\ *[0-9][0-9]*\ *[0-9][0-9]*\ *\([0-9][0-9]*\)\ \([a-z0-9/]*disc\).*$/\2 (\1_blocks)/p"`
+  else
+    DISKS=`cat /proc/partitions | sed -n "s/\ *[0-9][0-9]*\ *[0-9][0-9]*\ *\([0-9][0-9]*\)\ \([a-z]*\)$/\2 (\1_blocks)/p"`
+  fi
+  if [ -z "$DISKS" ]; then
+    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --yesno "\nNo disks found on this system.\nCheck again?" 0 0 || exit 1
+  else
+    DISKS="$DISKS refresh list"
+    DISK=`$DIALOG --stdout --backtitle "$BACKTITLE" --title "Installation device" --menu "\nYou are going to install GeeXboX. For this you will need an empty partition with about 8 MB of free space.\nBe careful to choose the right disk! We won't take responsibility for any data loss." 0 0 0 $DISKS` || exit 1
+    [ $DISK != refresh ] && break
+  fi
 done
 
 if [ "`cat /sys/block/$DISK/removable`" = 1 ]; then
@@ -162,34 +162,34 @@ fi
 $DIALOG --stdout --backtitle "$BACKTITLE" --title "Installation device" --msgbox "$CFDISK_MSG" 0 0 || exit 1
 
 if [ -n "$CFDISK" ]; then
-    $CFDISK /dev/$DISK || exit 1
+  $CFDISK /dev/$DISK || exit 1
 fi
 
 while [ ! -b "$DEV" ]; do
-    DISKS=""
-    for i in `$SFDISK -l /dev/$DISK | grep ${DISK%disc} | cut -f1 -d' '`; do
-      case `$SFDISK --print-id ${i%%[0-9]*} ${i#${i%%[0-9]*}}` in
-        1|11|6|e|16|1e) #FAT12/16 are supported both in syslinux and grub.
+  DISKS=""
+  for i in `$SFDISK -l /dev/$DISK | grep ${DISK%disc} | cut -f1 -d' '`; do
+    case `$SFDISK --print-id ${i%%[0-9]*} ${i#${i%%[0-9]*}}` in
+      1|11|6|e|16|1e) #FAT12/16 are supported both in syslinux and grub.
+        S=`$SFDISK -s "$i" | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
+        DISKS="$DISKS $i ${S}MB"
+        ;;
+      b|c|1b|1c|83) #FAT32 and Linux are supported only in grub.
+        if [ $BOOTLOADER = grub ]; then
           S=`$SFDISK -s "$i" | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
           DISKS="$DISKS $i ${S}MB"
-          ;;
-        b|c|1b|1c|83) #FAT32 and Linux are supported only in grub.
-          if [ $BOOTLOADER = grub ]; then
-            S=`$SFDISK -s "$i" | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
-            DISKS="$DISKS $i ${S}MB"
-          fi
-          ;;	  
-      esac
-    done
-    if [ -z "$DISKS" ]; then
-      $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\nYou don't have any $PART_MSG partition on your system. Please create a partition first using for example cfdisk.\n" 0 0
-      exit 1
-    else
-      DEV=`$DIALOG --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Installation device" --menu "Where do you want to install GeeXboX?" 0 0 0 $DISKS` || exit 1
-    fi
-    if [ ! -b "$DEV" ]; then
-      $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\n'$DEV' is not a valid block device.\n" 0 0
-    fi
+        fi
+        ;;	  
+    esac
+  done
+  if [ -z "$DISKS" ]; then
+    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\nYou don't have any $PART_MSG partition on your system. Please create a partition first using for example cfdisk.\n" 0 0
+    exit 1
+  else
+    DEV=`$DIALOG --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Installation device" --menu "Where do you want to install GeeXboX?" 0 0 0 $DISKS` || exit 1
+  fi
+  if [ ! -b "$DEV" ]; then
+    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\n'$DEV' is not a valid block device.\n" 0 0
+  fi
 done
 
 DEVNAME="${DEV#/dev/}"
@@ -207,28 +207,28 @@ case `$SFDISK --print-id ${DEV%%[0-9]*} ${DEV#${DEV%%[0-9]*}}` in
     MKFS_TYPE=vfat
     MKFS_TYPENAME="FAT"
     ;;
-   83) # Linux
-     MKFS_TYPE=`$DIALOG --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Linux partition type" --menu "Which type of Linux partition you want ?" 0 0 0 ext2 "Linux ext2" ext3 "Linux ext3"` || exit 1
+  83) # Linux
+    MKFS_TYPE=`$DIALOG --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Linux partition type" --menu "Which type of Linux partition you want ?" 0 0 0 ext2 "Linux ext2" ext3 "Linux ext3"` || exit 1
 
-     case $MKFS_TYPE in
-       ext2)
-         MKFS=$MKE2FS
-         MKFS_OPT="-L GEEXBOX"
-         MKFS_TYPENAME="Linux ext2"
-         ;;
-       ext3)
-         MKFS=$MKE2FS
-         MKFS_OPT="-L GEEXBOX -j"
-         MKFS_TYPENAME="Linux ext3"
-         ;;
-     esac
-     ;;
+    case $MKFS_TYPE in
+      ext2)
+        MKFS=$MKE2FS
+        MKFS_OPT="-L GEEXBOX"
+        MKFS_TYPENAME="Linux ext2"
+        ;;
+      ext3)
+        MKFS=$MKE2FS
+        MKFS_OPT="-L GEEXBOX -j"
+        MKFS_TYPENAME="Linux ext3"
+        ;;
+    esac
+    ;;
 esac
 
 if [ -z "$MKFS" ]; then
-    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Warning" --msgbox "\n'$DEV' needs to be a $MKFS_TYPENAME partition. As you don't have formatting tool installed, I won't be able to format the partition. Hopefully it is already formatted.\n" 0 0
+  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Warning" --msgbox "\n'$DEV' needs to be a $MKFS_TYPENAME partition. As you don't have formatting tool installed, I won't be able to format the partition. Hopefully it is already formatted.\n" 0 0
 else
-    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Formatting" --defaultno --yesno "\nDo you want to format '$DEV' ?\n" 0 0 && FORMAT=yes
+  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Formatting" --defaultno --yesno "\nDo you want to format '$DEV' ?\n" 0 0 && FORMAT=yes
 fi
 echo ""
 
