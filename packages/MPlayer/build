@@ -23,26 +23,17 @@ fi
 if [ "$DXR3" = "yes" ]; then
   $SCRIPTS/build em8300 || exit 1
   DXR3_CONFIG="--enable-qtx --enable-dxr3 --enable-ossaudio"
-  DXR3_INC="-I`ls -d $ROOT/$BUILD/em8300*/include`"
-  DXR3_LIBS="-L`ls -d $ROOT/$BUILD/em8300*/libdxr3/.libs`"
 else
   DXR3_CONFIG="--disable-qtx --disable-dxr3 --disable-ossaudio"
-  DXR3_INC=""
-  DXR3_LIBS=""
 fi
 
 if [ $DEBUG = "yes" ]; then
   OPTS="--enable-debug=3"
 fi
 
-FT_CONFIG="`ls -d $ROOT/$BUILD/freetype*/build/bin/freetype-config`"
-TT_CONFIG="--enable-iconv --enable-freetype --with-freetype-config=$FT_CONFIG"
-TT_LIBS=`$FT_CONFIG --libtool | sed s/libfreetype\\.la/libfreetype.a/`
-
-FBC_CONFIG="`ls -d $ROOT/$BUILD/fribidi*/build/bin/fribidi-config`"
-FB_CONFIG="--enable-fribidi --with-fribidi-config=$FBC_CONFIG"
-
 MPLAYER_TARGET_NAME=`echo $TARGET_NAME | sed "s/\(.*\)-.*-\(.*\)-.*\|-$/\1-\2/"`
+
+CFLAGS="$CFLAGS -mcpu=pentium -march=pentium -pipe -ffast-math -fomit-frame-pointer -DFIXED_POINT -D__USE_EXTERN_INLINES"
 
 CWD=`pwd`
 
@@ -50,6 +41,8 @@ cd $BUILD/MPlayer* && \
 ./configure $OPTS \
             --prefix=/usr \
             --confdir=/etc/mplayer \
+            --with-extralibdir="$LIB_PREFIX/lib" \
+            --with-extraincdir="$LIB_PREFIX/include" \
             $DXR3_CONFIG \
             --disable-mencoder \
             --disable-gui \
@@ -70,12 +63,15 @@ cd $BUILD/MPlayer* && \
             --disable-dvdread \
             --enable-mpdvdkit \
             --enable-cdparanoia \
-            $TT_CONFIG \
+            --enable-iconv \
+            --enable-freetype \
+            --with-freetype-config="$LIB_PREFIX/bin/freetype-config" \
             --disable-fontconfig \
+            --enable-fribidi \
+            --with-fribidi-config="$LIB_PREFIX/bin/fribidi-config" \
             --enable-unrarlib \
             --enable-menu \
             --disable-sortsub \
-            $FB_CONFIG \
             --disable-macosx \
             --disable-inet6 \
             --disable-gethostbyname2 \
@@ -147,20 +143,13 @@ cd $BUILD/MPlayer* && \
             --language=en \
             --disable-i18n \
             --disable-dynamic-plugins \
-            --disable-additional-filters \
-            --with-dtsincdir="`ls -d $ROOT/$BUILD/libdts*/include`" \
-            --with-dtslibdir="`ls -d $ROOT/$BUILD/libdts*/libdts`" \
-            --with-cdparanoiaincdir="`ls -d $ROOT/$BUILD/cdparanoia*/paranoia`" \
-            --with-cdparanoialibdir="`ls -d $ROOT/$BUILD/cdparanoia*/paranoia`" \
-            --with-extraincdir="`ls -d $ROOT/$BUILD/lirc*` -I`ls -d $ROOT/$BUILD/libogg*/include` -I`ls -d $ROOT/$BUILD/libvorbis*/include` -I`ls -d $ROOT/$BUILD/libtheora*/include` -I`ls -d $ROOT/$BUILD/zlib*` -I`ls -d $ROOT/$BUILD/alsa-lib*/include` $DXR3_INC" \
-            --with-extralibdir="`ls -d $ROOT/$BUILD/lirc*/lirc/.libs` -L`ls -d $ROOT/$BUILD/libogg*/src/.libs` -L`ls -d $ROOT/$BUILD/libvorbis*/lib/.libs` -L`ls -d $ROOT/$BUILD/libtheora*/lib/.libs` -L`ls -d $ROOT/$BUILD/zlib*` -L`ls -d $ROOT/$BUILD/alsa-lib*/src/.libs`  $DXR3_LIBS $TT_LIBS" && \
+            --disable-additional-filters && \
 sed -i s/-lnsl// config.mak && \
 sed -i 's/.*HAVE_VSSCANF.*/#define HAVE_VSSCANF 1/' config.h && \
 sed -i 's/.*HAVE_LRINTF.*/#define HAVE_LRINTF 1/' config.h && \
 make version.h && \
 $HOST_CC -O4 -Iloader -I. codec-cfg.c mp_msg.c -o codec-cfg -DCODECS2HTML && \
-export LD="$LD --dynamic-linker /lib/ld-uClibc.so.0" && \
-make OPTFLAGS="-Os -mcpu=pentium -march=pentium -DHAVE_MPLAYER -pipe -ffast-math -fomit-frame-pointer -D_REENTRANT -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64 -D__USE_EXTERN_INLINES -DFIXED_POINT" && \
+make && \
 ([ $DEBUG = "yes" ] || $STRIP mplayer libdha/libdha.so vidix/drivers/*.so) && \
 cd "$CWD" && \
 exit 0
