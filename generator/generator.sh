@@ -25,14 +25,16 @@ mkdir -p ziso
 echo $LANG > iso/GEEXBOX/etc/lang
 cp language/help_$LANG.txt iso/GEEXBOX/usr/share/mplayer/
 cp language/menu_$LANG.conf iso/GEEXBOX/etc/mplayer/
-if [ $LANG = cz -o $LANG = hu -o $LANG = pl -o $LANG = sk ]; then
-  cp font/iso-8859-2/* iso/GEEXBOX/usr/share/mplayer/font
-elif [ $LANG = ru ]; then
-  cp font/koi8r/* iso/GEEXBOX/usr/share/mplayer/font
+if [ $LANG = cz -o $LANG = hu -o $LANG = sk ]; then
+  cp -r font/iso-8859-2 iso/GEEXBOX/usr/share/mplayer/font/
+elif [ $LANG = pl ]; then
+  cp -r font/cp1250 iso/GEEXBOX/usr/share/mplayer/font/
 elif [ $LANG = bg ]; then
-  cp font/windows-1251/* iso/GEEXBOX/usr/share/mplayer/font
+  cp -r font/cp1251 iso/GEEXBOX/usr/share/mplayer/font/
+elif [ $LANG = ru ]; then
+  cp -r font/koi8r iso/GEEXBOX/usr/share/mplayer/font/
 else
-  cp font/iso-8859-1/* iso/GEEXBOX/usr/share/mplayer/font
+  cp -r font/iso-8859-1 iso/GEEXBOX/usr/share/mplayer/font/
 fi
 cp lirc/lircrc_$REMOTE iso/GEEXBOX/etc/lircrc
 cp lirc/lircd_$REMOTE iso/GEEXBOX/etc/lircd
