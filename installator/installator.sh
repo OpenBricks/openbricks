@@ -148,7 +148,7 @@ umount di
 rmdir di
 
 if [ -n "$DIALOG" ]; then
-  `$DIALOG --backtitle "$BACKTITLE" --title "Bootloader" --defaultno --yesno "\n'$DEV' is now a bootable partition. To boot from it, you will need to install a bootloader. If you don't have any other operating systems on this hard disk, I can install a bootloader for you. Else, you will need to configure yourself a boot loader, such as LILO or GRUB.\n\nDo you want to install a single system bootloader?\n" 0 0` && MBR=yes
+  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Bootloader" --defaultno --yesno "\n'$DEV' is now a bootable partition. To boot from it, you will need to install a bootloader. If you don't have any other operating systems on this hard disk, I can install a bootloader for you. Else, you will need to configure yourself a boot loader, such as LILO or GRUB.\n\nDo you want to install a single system bootloader?\n" 0 0 && MBR=yes
 else
   echo ""
   echo "'$DEV' is now a bootable partition. To boot from it, you will need to"
