@@ -129,11 +129,11 @@ else
   cp -a "$CDROM/GEEXBOX" di
   mv di/GEEXBOX/boot/* di
   rm di/isolinux.bin
-  sed 's/TIMEOUT.*//' di/isolinux.cfg > di/syslinux.cfg
-  sed 's/PROMPT.*//' di/syslinux.cfg > di/isolinux.cfg
-  sed "s/boot=cdrom/boot=${DEV#/dev/}/" di/isolinux.cfg > di/syslinux.cfg
-  rm di/isolinux.cfg
 fi
+sed 's/TIMEOUT.*//' di/isolinux.cfg > di/syslinux.cfg
+sed 's/PROMPT.*//' di/syslinux.cfg > di/isolinux.cfg
+sed "s/boot=cdrom/boot=${DEV#/dev/}/" di/isolinux.cfg > di/syslinux.cfg
+rm di/isolinux.cfg
 umount di
 rmdir di
 syslinux "$DEV"
@@ -151,7 +151,11 @@ else
 fi
 
 if [ "$MBR" = yes ]; then
-  dd if=mbr.bin of="/dev/$DISK"
+  if [ -f mbr.bin ]; then
+    dd if=mbr.bin of="/dev/$DISK"
+  elif [ -f /usr/share/syslinux/mbr.bin ]; then
+    dd if=/usr/share/syslinux/mbr.bin of="/dev/$DISK"
+  fi
   PART="${DEV#${DEV%%[0-9]*}}"
   echo ",,,*" | $SFDISK "/dev/$DISK" -N$PART
 else
