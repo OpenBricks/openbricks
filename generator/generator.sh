@@ -91,6 +91,8 @@ cp $GEEXBOX_DIR/language/help_$LANG.txt $TMPDIR/iso/GEEXBOX/usr/share/mplayer/
 cp $GEEXBOX_DIR/language/menu_$LANG.conf $TMPDIR/iso/GEEXBOX/etc/mplayer/
 if [ $LANG = cz -o $LANG = hu -o $LANG = pl -o $LANG = ro -o $LANG = sk ]; then
   cp -r $GEEXBOX_DIR/font/iso-8859-2 $TMPDIR/iso/GEEXBOX/usr/share/mplayer/font/
+elif [ $LANG = he ]; then
+  cp -r $GEEXBOX_DIR/font/iso-8859-8 $TMPDIR/iso/GEEXBOX/usr/share/mplayer/font/
 elif [ $LANG = bg ]; then
   cp -r $GEEXBOX_DIR/font/cp1251 $TMPDIR/iso/GEEXBOX/usr/share/mplayer/font/
 elif [ $LANG = ru ]; then

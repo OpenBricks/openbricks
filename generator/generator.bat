@@ -40,6 +40,7 @@ if %LANG%==hu set FONT=iso-8859-2
 if %LANG%==pl set FONT=iso-8859-2
 if %LANG%==ro set FONT=iso-8859-2
 if %LANG%==sk set FONT=iso-8859-2
+if %LANG%==he set FONT=iso-8859-8
 if %LANG%==bg set FONT=cp1251
 if %LANG%==ru set FONT=koi8r
 md iso\GEEXBOX\usr\share\mplayer\font\%FONT%
