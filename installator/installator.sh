@@ -158,16 +158,31 @@ done
 
 DEVNAME="${DEV#/dev/}"
 
-if [ -z "$MKDOSFS" ]; then
-    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Warning" --msgbox "\n'$DEV' needs to be a FAT partition. As you don't have mkdosfs installed, I won't be able to format the partition. Hopefully it is already formatted.\n" 0 0
+case `$SFDISK --print-id ${DEV%%[0-9]*} ${DEV#${DEV%%[0-9]*}}` in
+  1|11|6|e|16|1e|14) # FAT12 and FAT16
+    MKFS=$MKDOSFS
+    MKFS_OPT="-n GEEXBOX"
+    MKFS_TYPE=vfat
+    MKFS_TYPENAME="FAT"
+    ;;
+  b|c|1b|1c) # FAT32
+    MKFS=$MKDOSFS
+    MKFS_OPT="-n GEEXBOX -F 32"
+    MKFS_TYPE=vfat
+    MKFS_TYPENAME="FAT"
+    ;;
+esac
+
+if [ -z "$MKFS" ]; then
+    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Warning" --msgbox "\n'$DEV' needs to be a $MKFS_TYPENAME partition. As you don't have formatting tool installed, I won't be able to format the partition. Hopefully it is already formatted.\n" 0 0
 else
-    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Formatting" --defaultno --yesno "\nDo you want to format '$DEV' in FAT32?\n" 0 0 && FORMAT=yes
+    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Formatting" --defaultno --yesno "\nDo you want to format '$DEV' ?\n" 0 0 && FORMAT=yes
 fi
 echo ""
 
-[ "$FORMAT" = yes ] && $MKDOSFS -n GEEXBOX "$DEV"
+[ "$FORMAT" = yes ] && $MKFS $MKFS_OPT "$DEV"
 mkdir di
-mount -t vfat "$DEV" di
+mount -t $MKFS_TYPE "$DEV" di
 if [ -d disk ]; then
   cp -a disk/* di 2>/dev/null
 else
