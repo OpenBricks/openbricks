@@ -2,19 +2,25 @@
 
 . config/path
 
-$SCRIPTS/build termcap || exit 1
+$SCRIPTS/build ncurses || exit 1
 
+NCURSES="`ls -d $ROOT/$BUILD/ncurses*`"
 export UCLIBC_GCC_DLOPT="-Wl,--dynamic-linker,/lib/ld-uClibc.so.0"
+export bash_cv_have_mbstate_t=set
+export CFLAGS="-I$NCURSES/include -L$NCURSES/lib"
 CWD=`pwd`
-TERMCAP_DIR=`ls -d $ROOT/$BUILD/termcap-*`
 
-cd "`ls -d $BUILD/gdb*`" && \
-CC="`ls $ROOT/$BUILD/uClibc-*/build/usr/bin/gcc`" ./configure --disable-nls &&\
-mv gdb/Makefile gdb/Makefile.old && \
-cat gdb/Makefile.old | sed "s%TERMCAP =.*%TERMCAP = -L$TERMCAP_DIR -ltermcap%" > gdb/Makefile && \
-make && \
-cd "$CWD" && \
-exit 0
+PARTS="libiberty bfd readline opcodes gdb"
 
+cd $BUILD/gdb*
+for i in $PARTS; do
+  cd $i && \
+  CC="`ls $ROOT/$BUILD/uClibc-*/build/usr/bin/gcc`" ./configure --disable-nls --host=i386-linux-gnu && \
+  make && \
+  cd .. && \
+  continue
+  cd "$CWD"
+  exit 1
+done
 cd "$CWD"
-exit 1
+exit 0
