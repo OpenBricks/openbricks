@@ -16,6 +16,7 @@ TOOLCHAIN=$BUILD/toolchain
 SYSROOT_PREFIX=$ROOT/$TOOLCHAIN/$TARGET_NAME/sysroot
 LIB_PREFIX=$SYSROOT_PREFIX/usr/local
 TARGET_PREFIX=$ROOT/$TOOLCHAIN/bin/$TARGET_NAME-
+
 TARGET_CC=${TARGET_PREFIX}gcc
 TARGET_LD=${TARGET_PREFIX}ld
 TARGET_AS=${TARGET_PREFIX}as
@@ -23,7 +24,29 @@ TARGET_AR=${TARGET_PREFIX}ar
 TARGET_NM=${TARGET_PREFIX}nm
 TARGET_RANLIB=${TARGET_PREFIX}ranlib
 TARGET_STRIP=${TARGET_PREFIX}strip
+TARGET_CPPFLAGS="-I$LIB_PREFIX/include"
+TARGET_CFLAGS="-I$LIB_PREFIX/include -Os -Wall -pipe"
+TARGET_LDFLAGS="-L$LIB_PREFIX/lib"
+
+if [ "$DEBUG" = yes ]; then
+  TARGET_CFLAGS="$CFLAGS -g3"
+  TARGET_STRIP=touch
+else
+  TARGET_CFLAGS="$CFLAGS -s -fomit-frame-pointer"
+  TARGET_LDFLAGS="$LDFLAGS -s"
+fi
+
 HOST_CC=$ROOT/$TOOLCHAIN/bin/host-gcc
+HOST_LD=ld
+HOST_AS=as
+HOST_AR=ar
+HOST_NM=nm
+HOST_RANLIB=ranlib
+HOST_STRIP=strip
+HOST_CPPFLAGS=""
+HOST_CFLAGS="-O2 -Wall -pipe"
+HOST_LDFLAGS=""
+
 export CCACHE_DIR=$ROOT/$BUILD/.ccache
 
 if [ -z $PATH -o $PATH = ${PATH#$ROOT/$TOOLCHAIN/bin:} ]; then
@@ -44,37 +67,24 @@ setup_toolchain() {
     export NM=$TARGET_NM
     export RANLIB=$TARGET_RANLIB
     export STRIP=$TARGET_STRIP
-    export CPPFLAGS="-I$LIB_PREFIX/include"
-    export CFLAGS="-I$LIB_PREFIX/include -Os"
-    export LDFLAGS="-L$LIB_PREFIX/lib"
+    export CPPFLAGS="$TARGET_CPPFLAGS"
+    export CFLAGS="$TARGET_CFLAGS"
+    export LDFLAGS="$TARGET_LDFLAGS"
     if [ "$OPTIMIZE" = yes ]; then
       CFLAGS="$CFLAGS -march=$TARGET_CPU"
     fi
   elif [ "$1" = host ]; then
     export CC=$HOST_CC
-    export LD=ld
-    export AS=as
-    export AR=ar
-    export NM=nm
-    export RANLIB=ranlib
-    export STRIP=strip
-    export CPPFLAGS=""
-    export CFLAGS="-O2"
-    export LDFLAGS=""
+    export LD=$HOST_LD
+    export AS=$HOST_AS
+    export AR=$HOST_AR
+    export NM=$HOST_NM
+    export RANLIB=$HOST_RANLIB
+    export STRIP=$HOST_STRIP
+    export CPPFLAGS="$HOST_CPPFLAGS"
+    export CFLAGS="$HOST_CFLAGS"
+    export LDFLAGS="$HOST_LDFLAGS"
   fi
-
-  if [ "$DEBUG" = yes ]; then
-    CFLAGS="$CFLAGS -g3"
-    STRIP=touch
-  else
-    CFLAGS="$CFLAGS -s"
-    LDFLAGS="$LDFLAGS -s"
-    if [ "$1" = target ]; then
-      CFLAGS="$CFLAGS -fomit-frame-pointer"
-    fi
-  fi
-
-  CFLAGS="$CFLAGS -Wall -pipe"
 }
 setup_toolchain target
 
