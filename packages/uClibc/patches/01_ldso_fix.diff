@@ -1,0 +1,45 @@
+* revert some changes made in uClibc svn version 10044 :
+* http://uclibc.org/cgi-bin/viewcvs.cgi/trunk/uClibc/ldso/ldso/ldso.c?rev=10044&r1=10037&r2=10044
+* this makes MPlayer alsa ao working again
+
+diff -Naur uClibc.orig/ldso/ldso/ldso.c uClibc/ldso/ldso/ldso.c
+--- uClibc.orig/ldso/ldso/ldso.c	2005-04-06 23:46:11.000000000 +0200
++++ uClibc/ldso/ldso/ldso.c	2005-04-06 23:48:08.000000000 +0200
+@@ -120,6 +120,7 @@
+ 	struct elf_resolve *app_tpnt = &app_tpnt_tmp;
+ 	struct r_debug *debug_addr;
+ 	unsigned long *lpnt;
++	int (*_dl_atexit) (void *);
+ 	unsigned long *_dl_envp;		/* The environment address */
+ 	ElfW(Addr) relro_addr = 0;
+ 	size_t relro_size = 0;
+@@ -797,6 +798,9 @@
+ 
+ 	}
+ #endif
++
++	_dl_atexit = (int (*)(void *)) (intptr_t) _dl_find_hash("atexit", _dl_symbol_tables, NULL, ELF_RTYPE_CLASS_PLT);
++
+ 	/* Notify the debugger we have added some objects. */
+ 	_dl_debug_addr->r_state = RT_ADD;
+ 	_dl_debug_state();
+@@ -821,6 +825,19 @@
+ 
+ 			(*dl_elf_func) ();
+ 		}
++		tpnt->init_flag |= FINI_FUNCS_CALLED;
++		if (_dl_atexit && tpnt->dynamic_info[DT_FINI]) {
++			void (*dl_elf_func) (void);
++
++			dl_elf_func = (void (*)(void)) (intptr_t) (tpnt->loadaddr + tpnt->dynamic_info[DT_FINI]);
++			(*_dl_atexit) (dl_elf_func);
++		}
++#if defined (__SUPPORT_LD_DEBUG__)
++		else {
++			if (!_dl_atexit)
++				_dl_dprintf(_dl_debug_file, "%s: The address of atexit () is 0x0.\n", tpnt->libname);
++		}
++#endif
+ 	}
+ #ifndef _DL_DO_FINI_IN_LIBC
+ /* arches that has moved their ldso FINI handling should ship this part */
