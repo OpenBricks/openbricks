@@ -230,6 +230,44 @@ or under windows by launching
   generator.exe
 
 
+| EXTRA SUBTITLE FONTS
+| ~~~~~~~~~~~~~~~~~~~~
+
+First make sure you font is not included in offical GeeXboX package,
+by using the generator and looking up your font in the section above.
+
+Most fonts are already included in offical package, some are supported
+but not included because of their size (Chinese fonts for example).
+
+* General support:
+
+  To add support for new fonts you should extract your font into font directory
+  and add your font name to language/lang.conf FONTS variable.
+
+* Chinese support:
+
+  To include Chinese fonts in your generated geexbox iso you should get
+  either the big5 or the gb2312 font from MPlayer contributed fonts:
+
+    http://www1.mplayerhq.hu/MPlayer/contrib/fonts/chinesefonts/
+
+  and unpack and copy into generator ./font/big5 or ./font/gb2312
+  the directory which ends with `24` (font size 24)
+
+  For example if you wish to use the 'gb2312 kai' font:
+
+  - GNU/Linux users:
+  wget http://www1.mplayerhq.hu/MPlayer/contrib/fonts/chinesefonts/gb2312-kai.tar.bz2
+  tar -jxf gb2312-kai.tar.bz2
+  mv gb2312-kai/gkai00mp24 ../path/to/generator/font/gb2312
+
+  - Windows users:
+  Download http://www1.mplayerhq.hu/MPlayer/contrib/fonts/chinesefonts/gb2312-kai.tar.bz2
+  Open it up with WinZip
+  And extract gb2312-kai\gkai00mp24 directory from the archive
+  into ..\path\to\generator\font\gb2312
+
+
 | INSTALLATION
 | ~~~~~~~~~~~~
 
