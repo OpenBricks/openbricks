@@ -193,10 +193,10 @@ TV_TUNER=AUTO
     visionner. Editez simplement le fichier /etc/tvcard :
 
     # TV Channels
-    # Syntax : CHAN="Channel Title":"Channel Frequency"
+    # Syntax : CHAN="Channel Frequency:Channel Title"
     # Example :
-    # CHAN="France 2":"26"
-    # CHAN="Canal +":"K08"
+    # CHAN="29:France 2"
+    # CHAN="K08:Canal +"
     # TV Channels List
     # Available : france, europe-east, europe-west, us-bcast, us-cable
     CHANLIST=france

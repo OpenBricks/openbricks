@@ -156,10 +156,10 @@ tv конфигурация:
    Еще раз, просто отредактируйте файл /etc/tvcard:
 
    # tv каналы
-   # синтакс: CHAN="название канала":"частота канала"
+   # синтакс: CHAN="частота канала:название канала"
    # пример:
-   # CHAN="France 2":"26"
-   # CHAN="Canal +":"K08"
+   # CHAN="29:France 2"
+   # CHAN="K08:Canal +"
    # список tv каналов 
    # доступные: france, europe-east, europe-west, us-bcast, us-cable
    CHANLIST=france

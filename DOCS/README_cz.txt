@@ -186,10 +186,10 @@ Dále upravit velké množství nastavení editací textových konfiguraèních  souborù.
     To lze provést v souboru  /etc/tvcard  :
 
     # TV programy
-    # Syntaxe : CHAN="Název programu":"Frekvence"
+    # Syntaxe : CHAN="Frekvence:Název programu"
     # Ukázka :
-    # CHAN="France 2":"26"
-    # CHAN="Canal +":"K08"
+    # CHAN="29:France 2"
+    # CHAN="K08:Canal +"
     # TV Channels List
     # Available : france, europe-east, europe-west, us-bcast, us-cable
     CHANLIST=france
