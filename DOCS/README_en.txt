@@ -56,7 +56,7 @@ them in the GEEXBOX/codecs directory. You can find those codecs in the
 package on http://www.mplayerhq.hu/MPlayer/releases/codecs/ .
 
 Useful files in it are :
-  * Real codecs (used to play rv9 for exemple) : atrc.so.6.0, cook.so.6.0,
+  * Real codecs (used to play rv9 for example) : atrc.so.6.0, cook.so.6.0,
       sipr.so.6.0, drv3.so.6.0, drv4.so.6.0.
   * Windows Media codecs (wmv9/wma9) : wma9dmod.dll and wmv9dmod.dll.
 
@@ -136,7 +136,7 @@ text files.
 * network :
     You can configure the network in the file GEEXBOX/etc/network.
     There you can chose the IP address used by the GeeXboX (default is to
-    use DHCP and if it don't work, fall back to 192.168.0.54.
+    use DHCP and if it don't work, fall back to 192.168.0.54).
     You can also specify a login and a password which will be used to connect
     to windows shares (default will only connect to anonymous shares).
     You can also declare some NFS mounts in GEEXBOX/etc/nfs.
@@ -338,7 +338,7 @@ subnet 192.168.0.0 netmask 255.255.255.0 {
 
 The next-server option is the address of the TFTP server.
 Then configure your TFTP server (such as atftpd) to server the /tftpboot
-directory and copy a full GEEXBOX tree in this directory. For exemple
+directory and copy a full GEEXBOX tree in this directory. For example
 you can copy the content of a GeeXboX CD from a linux WITH THE CDROM
 TRANSPARENT DECOMPRESSION ENABLED !! (to verify this, look at the sbin/init
 file in the GeeXboX tree and verify that it do not contain garbage)
