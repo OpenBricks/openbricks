@@ -11,59 +11,58 @@ $SCRIPTS/get $1
 
 mkdir -p $BUILD
 
+[ ! -d $SOURCES/$1 -a ! -d $PACKAGES/$1/sources ] && exit 0
+
+[ -f .stamps/$1/unpack -a -f $PACKAGES/$1/need_unpack ] && $PACKAGES/$1/need_unpack $@
+[ -f .stamps/$1/unpack ] && exit 0
+
+printf "%${INDENT}c UNPACK   $1\n" >&$SILENT_OUT
+export INDENT=$((${INDENT:-1}+$INDENT_SIZE))
+
+rm -rf $BUILD/$1*
+
 if [ -d $SOURCES/$1 ]; then
-  if [ -f .stamps/$1/unpack -a -f $PACKAGES/$1/need_unpack ]; then
-    $PACKAGES/$1/need_unpack $@
-  fi
-  [ -f .stamps/$1/unpack ] && exit 0
-
-  printf "%${INDENT}c UNPACK   $1\n" >&$SILENT_OUT
-  export INDENT=$((${INDENT:-1}+$INDENT_SIZE))
-
-  rm -rf $BUILD/$1*
-
   if [ -f $SOURCES/$1/$1*.tar.bz2 ]; then
-    rm -rf $BUILD/$1*
     tar xjf $SOURCES/$1/$1*.tar.bz2 -C $BUILD
   elif [ -f $SOURCES/$1/$1*.tar.gz ]; then
-    rm -rf $BUILD/$1*
     tar xzf $SOURCES/$1/$1*.tar.gz -C $BUILD
   elif [ -f $SOURCES/$1/$1*.tgz ]; then
-    rm -rf $BUILD/$1*
     tar xzf $SOURCES/$1/$1*.tgz -C $BUILD
   else
     echo "$0: unknown package type $1"
     exit 3
   fi
-
-  for i in $PACKAGES/$1/patches/*; do
-    if [ -f $i ]; then
-      cat $i | patch -d $BUILD/$1* -p1 >&$VERBOSE_OUT
-    fi
-  done
-
-  for i in $SOURCES/$1/patch-*.bz2; do
-    if [ -f $i ]; then
-      bzcat $i | patch -d $BUILD/$1* -p1 >&$VERBOSE_OUT
-    fi
-  done
-  for i in $SOURCES/$1/patch-*.gz; do
-    if [ -f $i ]; then
-      zcat $i | patch -d $BUILD/$1* -p1 >&$VERBOSE_OUT
-    fi
-  done
-
-  if [ -f $PACKAGES/$1/unpack ]; then
-    $PACKAGES/$1/unpack $@ >&$VERBOSE_OUT
-  fi
-
-  $SCRIPTS/fixconfigtools $BUILD/$1*
-
-  rm -f .stamps/$1/build
-  rm -f .stamps/$1/install
-  . $CONFIG/options
-  for i in `sed -n "s/^\(.*\)=.*$/\1/p" $CONFIG/options`; do
-    eval val=\$$i
-    echo STAMP_$i=$val >> .stamps/$1/unpack
-  done
 fi
+
+if [ -d $PACKAGES/$1/sources ]; then
+  [ ! -d $BUILD/$1* ] && mkdir -p $BUILD/$1
+  cp -PRf $PACKAGES/$1/sources/ $BUILD/$1*/
+fi
+
+for i in $PACKAGES/$1/patches/*; do
+  if [ -f $i ]; then
+    cat $i | patch -d $BUILD/$1* -p1 >&$VERBOSE_OUT
+  fi
+done
+for i in $SOURCES/$1/patch-*.bz2; do
+  if [ -f $i ]; then
+    bzcat $i | patch -d $BUILD/$1* -p1 >&$VERBOSE_OUT
+  fi
+done
+for i in $SOURCES/$1/patch-*.gz; do
+  if [ -f $i ]; then
+    zcat $i | patch -d $BUILD/$1* -p1 >&$VERBOSE_OUT
+  fi
+done
+
+$SCRIPTS/fixconfigtools $BUILD/$1*
+
+[ -f $PACKAGES/$1/unpack ] && $PACKAGES/$1/unpack $@ >&$VERBOSE_OUT
+
+rm -f .stamps/$1/build
+rm -f .stamps/$1/install
+. $CONFIG/options
+for i in `sed -n "s/^\(.*\)=.*$/\1/p" $CONFIG/options`; do
+  eval val=\$$i
+  echo STAMP_$i=$val >> .stamps/$1/unpack
+done
