@@ -20,14 +20,22 @@ fi
 mkdir -p .stamps/$1
 
 if [ -f $PACKAGES/$1/url ]; then
-  [ -f .stamps/$1/get -a ! .stamps/$1/get -ot $PACKAGES/$1/url ] && exit 0
+  if [ -f .stamps/$1/get ]; then
+    [ ! .stamps/$1/get -ot $PACKAGES/$1/url -o $AUTOUPDATE = no ] && exit 0
+    if [ $AUTOUPDATE = ask ]; then
+      echo "Package $1 is not up to date."
+      echo -n "Do you want to download an up to date version ? (y/n) "
+      read UPDATE
+      [ "$UPDATE" != y ] && exit 0
+    fi
+  fi
+
+  $SCRIPTS/checkdeps get
 
   rm -f .stamps/$1/get
   for i in `ls $SOURCES/$1`; do
     grep -q "/$i\$" $PACKAGES/$1/url || rm -f $SOURCES/$1/$i
   done
-
-  $SCRIPTS/checkdeps get
 
   printf "%${INDENT}c GET      $1\n" >&$SILENT_OUT
   export INDENT=$((${INDENT:-1}+$INDENT_SIZE))
