@@ -1,0 +1,59 @@
+#!/bin/sh
+#
+# setup tv cards
+
+. /etc/tvcard
+
+if test -z "`grep 'Class 0400:.*109e:' /proc/pci`" \
+     -a -z "`grep 'Class 0480:.*1131:' /proc/pci`"; then
+  # No supported TV card found
+  sed -i 's/.*ok="set_menu tv_settings".*//' /etc/mplayer/menu.conf
+  exit 1
+fi
+
+insmod btcx-risc >/dev/null 2>&1
+insmod videodev >/dev/null 2>&1
+insmod video-buf >/dev/null 2>&1
+insmod v4l2-common >/dev/null 2>&1
+
+CARD=
+test "$TV_CARD" != "AUTO" && CARD="card=$TV_CARD"
+TUNER=
+test "$TV_TUNER" != "AUTO" && TUNER="tuner=$TV_TUNER"
+
+if test -n "`grep 'Class 0400:.*109e:' /proc/pci`"; then
+  # BT8x8 Card
+  insmod bttv $CARD $TUNER >/dev/null 2>&1
+
+  if test "$TV_CARD" = "AUTO" \
+       -a -z "`dmesg | grep 'bttv0: detected'`"; then
+    # Not autodetected
+    test -z "$TUNER" && TUNER="tuner=3"
+    rmmod bttv
+    insmod bttv card=1 $TUNER >/dev/null 2>&1 
+  fi
+
+  # set mplayer TV options
+  echo "tv=driver=v4l2:norm=$TVIN_STANDARD:chanlist=$CHANLIST:width=768:height=576" >> /etc/mplayer/mplayer.conf
+elif test -n "`grep 'Class 0480:.*1131:' /proc/pci`"; then
+  # SAA7134 Card
+  insmod ir-common >/dev/null 2>&1
+  insmod saa7134 $CARD $TUNER >/dev/null 2>&1
+
+  # set mplayer TV options
+  echo "tv=driver=v4l2:norm=$TVIN_STANDARD:chanlist=$CHANLIST" >> /etc/mplayer/mplayer.conf
+fi
+
+insmod tuner >/dev/null 2>&1
+insmod tvaudio >/dev/null 2>&1
+insmod msp3400 >/dev/null 2>&1
+insmod tda7432 >/dev/null 2>&1
+insmod tda9875 >/dev/null 2>&1
+insmod tda9887 >/dev/null 2>&1
+
+# set mplayer TV channels list
+echo "<cmdlist name=\"tv_chan\" title=\"TV Channels\" ptr=\"<>\" >" >> /etc/mplayer/menu.conf
+grep '^CHAN' /etc/tvcard | sed 's/^CHAN="\([^:]*\):\(.*\)"/<e name=\"\2\" ok=\"loadfile tv:\/\/\1\"\/>/' >> /etc/mplayer/menu.conf
+echo "</cmdlist>" >> /etc/mplayer/menu.conf
+
+exit 0
