@@ -21,8 +21,9 @@ if not exist %windir%\command\deltree.exe rmdir /q /s ziso >nul
 :nothingtoremove
 
 echo "Applying settings..."
-copy language\help_%LANG%.txt iso\GEEXBOX\usr\share\mplayer\help.txt >nul
-copy language\menu_%LANG%.conf iso\GEEXBOX\etc\mplayer\menu.conf >nul
+echo %LANG% > iso\GEEXBOX\etc\lang
+copy language\help_%LANG%.txt iso\GEEXBOX\usr\share\mplayer\ >nul
+copy language\menu_%LANG%.conf iso\GEEXBOX\etc\mplayer\ >nul
 set FONT=iso-8859-1
 if %LANG%==cz set FONT=iso-8859-2
 if %LANG%==hu set FONT=iso-8859-2

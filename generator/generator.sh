@@ -22,8 +22,9 @@ fi
 
 rm -rf ziso
 mkdir -p ziso
-cp language/help_$LANG.txt iso/GEEXBOX/usr/share/mplayer/help.txt
-cp language/menu_$LANG.conf iso/GEEXBOX/etc/mplayer/menu.conf
+echo $LANG > iso/GEEXBOX/etc/lang
+cp language/help_$LANG.txt iso/GEEXBOX/usr/share/mplayer/
+cp language/menu_$LANG.conf iso/GEEXBOX/etc/mplayer/
 if [ $LANG = cz -o $LANG = hu -o $LANG = pl -o $LANG = sk ]; then
   cp font/iso-8859-2/* iso/GEEXBOX/usr/share/mplayer/font
 elif [ $LANG = ru ]; then
