@@ -1,0 +1,51 @@
+#!/bin/sh
+#
+# configure and launch mplayer
+
+
+# default directory
+cd /mnt
+
+# remove DVD from the menu if no dvd drive available
+test -e /dev/dvd || ( sed 's/.*DVD.*//' /etc/mplayer/menu.conf > /etc/mplayer/menu.conf.new && mv /etc/mplayer/menu.conf.new /etc/mplayer/menu.conf )
+
+# set double to no for nvidia, sis and Kyro cards and VMWare
+for i in 'Class 0300:.*10de:' 'Class 0300:.*1039:' 'Class 0300:.*104a:0010' 'Class 0300:.*15ad:'; do
+  grep "$i" /proc/pci >/dev/null 2>&1 && sed 's/double=.*/double=no/' /etc/mplayer/mplayer.conf > /etc/mplayer/mplayer.conf.new && sed 's/^\(vf=.*\)/\1,expand=-1:-1:-1:-1:1/' /etc/mplayer/mplayer.conf.new > /etc/mplayer/mplayer.conf
+done
+
+# set vo to directfb for 3dfx cards
+grep 'Class 0300:.*121a:' /proc/pci >/dev/null 2>&1 && sed 's/^vo=.*/vo=directfb/' /etc/mplayer/mplayer.conf > /etc/mplayer/mplayer.conf.new && mv /etc/mplayer/mplayer.conf.new /etc/mplayer/mplayer.conf
+
+# set ao, vo and vf for DXR3/Hollywood+ cards and upload microcode.
+grep 'Class 0480:.*1105:8300' /proc/pci >/dev/null 2>&1 && sed 's/^vo=.*/vo=dxr3:overlay:sync:norm=1/' /etc/mplayer/mplayer.conf  > /etc/mplayer/mplayer.conf.new && sed 's/^ao=.*/ao=oss:\/dev\/em8300_ma-0/' /etc/mplayer/mplayer.conf.new > /etc/mplayer/mplayer.conf && sed 's/^\(vf=.*\)/\1,expand=-1:-1:-1:-1:1/' /etc/mplayer/mplayer.conf > /etc/mplayer/mplayer.conf.new && mv /etc/mplayer/mplayer.conf.new /etc/mplayer/mplayer.conf && em8300setup -p -a -o -f /usr/share/em8300.uc >/dev/null 2>&1
+
+# start the autolaunching script
+if test -e /usr/bin/autolaunch; then
+  mkfifo /var/mp_control
+  sh /usr/bin/autolaunch > /var/mp_control &
+fi
+
+# start the file copy daemon
+/usr/bin/cpd &
+
+# give a shell in debug mode
+if test "$DEBUG" = yes; then
+  sed 's%ok=\"halt\"/>%ok=\"halt\"/>  <e name=\"Console\" ok=\"set_menu console\"/>%' "/etc/mplayer/menu.conf" > /etc/mplayer/menu.conf.new
+  mv /etc/mplayer/menu.conf.new /etc/mplayer/menu.conf
+  /bin/sh
+fi
+
+# start mplayer with gdb when built with debugging options
+if test -x /usr/bin/gdb; then
+  echo "r /usr/share/mplayer/background.avi -loop 0" > /gdb_cmd
+  gdb -x /gdb_cmd /usr/bin/mplayer
+else
+# start mplayer and keep it launched
+  while true; do
+    mplayer -menu-disp /usr/share/mplayer/background.avi -loop 0 >/dev/null 2>&1
+    test $? -eq 166 && break
+  done
+fi
+
+exit 0

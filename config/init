@@ -2,185 +2,31 @@
 
 /bin/busybox test ! -e /proc/cpuinfo && /bin/busybox mount -t proc none /proc
 /bin/busybox test ! -e /bin/cp && /bin/busybox --install -s
-IFS_ORIG=$IFS
 
-if test -n "$CDROM"; then
-  for i in `cat /etc/file_ext`; do
-    if [ -z "$EXTS" ]; then
-        EXTS="$i"
-    else
-        EXTS="$EXTS\|$i"
-    fi
-  done
-  for i in `cat /etc/list_ext`; do EXTS="$EXTS\|$i"; done
-  if test -z "`find "$CDROM" | grep -v /GEEXBOX/ | grep -i "\.\($EXTS\)\$"`"; then
-    test -f /proc/progress && echo "86 ejecting GeeXboX CD" > /proc/progress
-    test -e /dev/cdrom -a ! -f /EXEC && eject &
-  fi
-fi
+/bin/sh /etc/init.d/eject
 
 test -f /proc/progress && echo "87 launching modules" > /proc/progress
-IFS='
-'
-for module in `cat /etc/modules`; do
-  IFS=$IFS_ORIG
-  insmod $module >/dev/null 2>&1
-  IFS='
-'
-done
-IFS=$IFS_ORIG
+/bin/sh /etc/init.d/modules
 
 test -f /proc/progress && echo "93 setting tv-out" > /proc/progress
-tvauto
+/bin/sh /etc/init.d/tvout
 
 test -f /proc/progress && echo "95 setting volume" > /proc/progress
-echo "" > /etc/asound.conf
-amixer sset Master 90% on >/dev/null 2>&1
-amixer sset PCM 90% on >/dev/null 2>&1
-amixer sset Surround 90% on >/dev/null 2>&1
-amixer sset 'Surround Digital' 90% on >/dev/null 2>&1
-amixer sset 'Wave Surround' 90% on >/dev/null 2>&1
-amixer sset 'Duplicate Front' on >/dev/null 2>&1
-amixer sset 'Sigmatel 4-Speaker Stereo' 90% on >/dev/null 2>&1
-amixer sset 'Headphone' 90% on >/dev/null 2>&1
-# avoid setting IEC958 Output with CMI8738
-if test -z "`grep 'Class 0401:.*10b9:0111' /proc/pci`" \
-     -a -z "`grep 'Class 0401:.*13f6:0111' /proc/pci`" \
-     -a -z "`grep 'Class 0401:.*13f6:0211' /proc/pci`"; then
-  amixer sset 'IEC958 Output' 90% on >/dev/null 2>&1
-fi
-# output in 48KHz for VIA VT8233 or SiS 7012
-if test -n "`grep 'Class 0401:.*1106:3059' /proc/pci`" \
-     -o -n "`grep 'Class 0401:.*1039:7012' /proc/pci`"; then
-  echo "srate=48000" >> /etc/mplayer.conf
-fi
+/bin/sh /etc/init.d/alsa
 
 test -f /proc/progress && echo "96 launching lirc daemon" > /proc/progress
-if test -f /etc/remote; then
-  . /etc/remote
-  cp -f /etc/lirc/lircrc_$REMOTE /etc/lircrc
-  cp -f /etc/lirc/lircd_$REMOTE /etc/lircd
-  cp -f /etc/lirc/lircd_$REMOTE.conf /etc/lircd.conf
-fi
-. /etc/lircd
-IFS='|'
-for module in $LIRC_MODULES; do
-  insmod $module >/dev/null 2>&1
-done
-IFS=$IFS_ORIG
-lircd --driver=$LIRC_DRIVER --device=$LIRC_DEVICE
+/bin/sh /etc/init.d/lirc
+
+test -f /proc/progress && echo "98 setting up networking" > /proc/progress
+/bin/sh /etc/init.d/networking &
+
+test -f /proc/progress && echo "99 setting cdrom speed" > /proc/progress
+/bin/sh /etc/init.d/cdspeed
 
 test "$DEBUG" = yes || rm -rf /lib/modules
 
-if test -f /etc/network; then 
-  echo "98 setting up networking" > /proc/progress
-  (
-    . /etc/network
-    test -z "$HOST" && HOST=0.0.0.0
-    if ifconfig eth0 $HOST >/dev/null 2>&1; then
-      if test $HOST = 0.0.0.0; then
-        udhcpc -H geexbox -n >/dev/null 2>&1 && NET=yes
-        test "$NET" = yes || ifconfig eth0 192.168.0.54 && NET=yes
-      else
-        NET=yes
-      fi
-      if test "$NET" = yes; then
-        if test -f /etc/bftpd.conf; then
-          bftpd -d -c /etc/bftpd.conf
-        fi
-        if test -f /etc/nfs; then
-          IFS='
-'
-          for MOUNTS in `grep -v "^#" /etc/nfs | grep -v "^$"`; do
-            SRV=`echo $MOUNTS | sed 's/[ ]*\([^ ]*\)[ ]*.*/\1/'`
-            DIR=`echo $MOUNTS | sed 's/[ ]*[^ ]*[ ]*\([^ ]*\)/\1/'`
-            mkdir -p /mnt/nfs/$DIR
-            mount -t nfs -o nfsvers=2 $SRV /mnt/nfs/$DIR >/dev/null 2>&1
-          done
-          IFS=$IFS_ORIG
-        fi
-        if test -x /usr/bin/smbmount; then
-          IFS='
-'
-          for i in `smbtree -N | sed -n 's/.*\\\\\\\\\(.*\)\\\\\([^$]*\)\ .*/\1\/\2/p' | sed 's/\ *$//'`; do
-            mkdir -p "/mnt/shares/$i"
-            smbmount "//$i" "/mnt/shares/$i" -o ro,username=$USER,passwd=$PWD >/dev/null 2>&1 || rmdir -p "/mnt/shares/$i" >/dev/null 2>&1
-          done
-        fi
-      fi
-    fi
-  ) &
-fi
-
-test -f /proc/progress && echo "99 setting cdrom speed" > /proc/progress
-for DEV in /dev/scd*; do
-  setcd -x 8 $DEV >/dev/null 2>&1 &
-done
-
 test -f /proc/progress && echo "100 launching mplayer" > /proc/progress
-cd /mnt
-if test -f /etc/lang; then
-  LANG=`cat /etc/lang | sed 's/^\([a-z]*\).*/\1/'`
-  cp -f /etc/mplayer/menu_$LANG.conf /etc/mplayer/menu.conf
-  cp -f /usr/share/mplayer/help_$LANG.txt /usr/share/mplayer/help.txt
-  if test $LANG = cz -o $LANG = hu -o $LANG = sk; then
-    mv /usr/share/mplayer/font/iso-8859-2/* /usr/share/mplayer/font
-  elif test $LANG = pl; then
-    mv /usr/share/mplayer/font/cp1250/* /usr/share/mplayer/font
-  elif test $LANG = bg; then
-    mv /usr/share/mplayer/font/cp1251/* /usr/share/mplayer/font
-  elif test $LANG = ru; then
-    mv /usr/share/mplayer/font/koi8r/* /usr/share/mplayer/font
-  else
-    mv /usr/share/mplayer/font/iso-8859-1/* /usr/share/mplayer/font
-  fi
-  if test $LANG = hu; then
-    sed 's/.*font.*//' /etc/mplayer/mplayer.conf >/etc/mplayer/mplayer.conf.new
-    mv /etc/mplayer/mplayer.conf.new /etc/mplayer/mplayer.conf
-  fi
-fi
+/bin/sh /etc/init.d/fonts
+/bin/sh /etc/init.d/mplayer
 
-grep iso-8859 /usr/share/mplayer/font/font.desc >/dev/null 2>&1 || (sed 's/.*font.*//' /etc/mplayer/mplayer.conf > /etc/mplayer/mplayer.conf.new; mv /etc/mplayer/mplayer.conf.new /etc/mplayer/mplayer.conf)
-
-test -e /dev/dvd || ( sed 's/.*DVD.*//' /etc/mplayer/menu.conf > /etc/mplayer/menu.conf.new && mv /etc/mplayer/menu.conf.new /etc/mplayer/menu.conf )
-
-# set double to no for nvidia, sis and Kyro cards and VMWare
-for i in 'Class 0300:.*10de:' 'Class 0300:.*1039:' 'Class 0300:.*104a:0010' 'Class 0300:.*15ad:'; do
-  grep "$i" /proc/pci >/dev/null 2>&1 && sed 's/double=.*/double=no/' /etc/mplayer/mplayer.conf > /etc/mplayer/mplayer.conf.new && sed 's/^\(vf=.*\)/\1,expand=-1:-1:-1:-1:1/' /etc/mplayer/mplayer.conf.new > /etc/mplayer/mplayer.conf
-done
-
-# set vo to directfb for 3dfx cards
-grep 'Class 0300:.*121a:' /proc/pci >/dev/null 2>&1 && sed 's/^vo=.*/vo=directfb/' /etc/mplayer/mplayer.conf > /etc/mplayer/mplayer.conf.new && mv /etc/mplayer/mplayer.conf.new /etc/mplayer/mplayer.conf
-
-# set ao, vo and vf for DXR3/Hollywood+ cards and upload microcode.
-grep 'Class 0480:.*1105:8300' /proc/pci >/dev/null 2>&1 && sed 's/^vo=.*/vo=dxr3:overlay:sync:norm=1/' /etc/mplayer/mplayer.conf  > /etc/mplayer/mplayer.conf.new && sed 's/^ao=.*/ao=oss:\/dev\/em8300_ma-0/' /etc/mplayer/mplayer.conf.new > /etc/mplayer/mplayer.conf && sed 's/^\(vf=.*\)/\1,expand=-1:-1:-1:-1:1/' /etc/mplayer/mplayer.conf > /etc/mplayer/mplayer.conf.new && mv /etc/mplayer/mplayer.conf.new /etc/mplayer/mplayer.conf && em8300setup -p -a -o -f /usr/share/em8300.uc >/dev/null 2>&1
-
-if test -e /usr/bin/autolaunch; then
-  mkfifo /var/mp_control
-  sh /usr/bin/autolaunch > /var/mp_control &
-fi
-/usr/bin/cpd &
-if test "$DEBUG" = yes; then
-  sed 's%ok=\"halt\"/>%ok=\"halt\"/>  <e name=\"Console\" ok=\"set_menu console\"/>%' "/etc/mplayer/menu.conf" > /etc/mplayer/menu.conf.new
-  mv /etc/mplayer/menu.conf.new /etc/mplayer/menu.conf
-  /bin/sh
-fi
-if test -x /usr/bin/gdb; then
-  echo "r /usr/share/mplayer/background.avi -loop 0" > /gdb_cmd
-  gdb -x /gdb_cmd /usr/bin/mplayer
-else
-  while true; do
-    mplayer -menu-disp /usr/share/mplayer/background.avi -loop 0 >/dev/null 2>&1
-    test $? -eq 166 && break
-  done
-fi
-
-for DIR in /mnt/share/*/*; do
-  test -d "$DIR" && umount "$DIR" >/dev/null 2>&1 && rmdir -p "$DIR"
-done
-if test -f /EXEC; then
-  for DIR in /mnt/*; do
-    test -d "$DIR" && umount "$DIR" >/dev/null 2>&1
-  done
-  umount /proc
-fi
+/bin/sh /etc/init.d/umount
