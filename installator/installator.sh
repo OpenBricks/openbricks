@@ -53,14 +53,14 @@ if [ -n "$DIALOG" ]; then
     else
       CFDISK_MSG="You can now edit your partition table to create this FAT16 partition (type=06). Be carefull to choose the right disk ! We wont be responsible for any data loss."
     fi
-    DISK=`$DIALOG --stdout --backtitle "$BACKTITLE" --title "Installation device" --menu "\nYou are going to install the GeeXboX. For this you will need a FAT16 partition with about 8 MB of free space. It WONT work with FAT32 or ext2 partitions.\n$CFDISK_MSG" 0 0 0 $DISKS` || exit 1
+    DISK=`$DIALOG --stdout --backtitle "$BACKTITLE" --title "Installation device" --menu "\nYou are going to install the GeeXboX. For this you will need a PRIMARY FAT16 partition (hdX1 to hdX4) with about 8 MB of free space (max. 1 GB). It WONT work with FAT32 or ext2 partitions.\n$CFDISK_MSG" 0 0 0 $DISKS` || exit 1
   fi
   $CFDISK /dev/$DISK || exit 1
 else
   echo ""
-  echo "You are going to install the GeeXboX. For this you will need a FAT16"
-  echo "partition with about 8 MB of free space. It WONT work with FAT32 or"
-  echo "ext2 partitions."
+  echo "You are going to install the GeeXboX. For this you will need a PRIMARY"
+  echo "FAT16 partition (hdX1 to hdX4) with about 8 MB of free space (max 1 GB)"
+  echo "It WONT work with FAT32 or ext2 partitions."
   echo "This installator wont create the partition. You have to do it yourself"
   echo "before installing. And be carefull when you choose the partition"
   echo "where to install ! We wont be responsible for any data loss."
