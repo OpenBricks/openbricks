@@ -1,6 +1,6 @@
 @echo off
 
-REM Menu langage (bg/br/cat/cz/de/en/es/fi/fr/it/nl/pl/ro/ru/se/sk)
+REM Menu langage (bg/br/cat/cz/de/en/es/fi/fr/hu/it/nl/pl/ro/ru/se/sk)
 REM This have no effect on DVD language.
 REM See iso/GEEXBOX/etc/mplayer/mplayer.conf
 REM For ru, you will need to replace the ttf file in
@@ -25,6 +25,7 @@ copy language\help_%LANG%.txt iso\GEEXBOX\usr\share\mplayer\help.txt >nul
 copy language\menu_%LANG%.conf iso\GEEXBOX\etc\mplayer\menu.conf >nul
 set FONT=iso-8859-1
 if %LANG%==cz set FONT=iso-8859-2
+if %LANG%==hu set FONT=iso-8859-2
 if %LANG%==pl set FONT=iso-8859-2
 if %LANG%==sk set FONT=iso-8859-2
 if %LANG%==ru set FONT=koi8r
