@@ -93,6 +93,7 @@ for font in $MENU_FONT $SUB_FONT; do
   if [ ! -f $GEEXBOX_DIR/font/$font/font.desc ]; then
     echo ""
     echo "**** $font font is missing ****"
+    echo "**** Please visit the README - EXTRA SUBTITLE FONTS section ****"
     echo ""
     exit 1
   fi
