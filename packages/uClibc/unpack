@@ -9,42 +9,19 @@ $SCRIPTS/build linux || exit 1
 DPREFIX=`ls -d $ROOT/$BUILD/uClibc*`/build
 KSRC=`ls -d $ROOT/$BUILD/linux-*`
 
-cat $BUILD/uClibc*/extra/Configs/Config.in \
-    | sed s%/usr/\$\(TARGET_ARCH\)-linux-uclibc%$DPREFIX% \
-    > `ls -d $BUILD/uClibc*`/extra/Configs/Config.in.new
-mv $BUILD/uClibc*/extra/Configs/Config.in.new $BUILD/uClibc*/extra/Configs/Config.in
-cat $BUILD/uClibc*/extra/Configs/Config.in.arch \
-    | sed s%/usr/src/linux%$KSRC% \
-    > `ls -d $BUILD/uClibc*`/extra/Configs/Config.in.arch.new
-mv $BUILD/uClibc*/extra/Configs/Config.in.arch.new $BUILD/uClibc*/extra/Configs/Config.in.arch
-
-cat $BUILD/uClibc*/extra/Configs/Config.i386.default \
-    | sed s%.*CONFIG_GENERIC_386.*%CONFIG_GENERIC_386=n% \
-    | sed s%.*DO_C99_MATH.*%DO_C99_MATH=y% \
-    | sed s%^DEVEL_PREFIX.*%DEVEL_PREFIX=$DPREFIX% \
-    | sed s%^KERNEL_SOURCE.*%KERNEL_SOURCE=$KSRC% \
-    | sed s%.*UCLIBC_HAS_WCHAR.*%UCLIBC_HAS_WCHAR=y% \
-    | sed s%.*USE_OLD_VFPRINTF.*%UCLIBC_HAS_LOCALE=y% \
-    > `ls -d $BUILD/uClibc*`/extra/Configs/Config.i386.default.new
-
-mv $BUILD/uClibc*/extra/Configs/Config.i386.default.new $BUILD/uClibc*/extra/Configs/Config.i386.default
+sed -e "s%^KERNEL_SOURCE=.*%KERNEL_SOURCE=\"$KSRC\"%" \
+    -e "s%^RUNTIME_PREFIX=.*%RUNTIME_PREFIX=\"$DPREFIX\"%" \
+    -e "s%^DEVEL_PREFIX=.*%DEVEL_PREFIX=\"$DPREFIX\"%"  \
+    -e "s%^SYSTEM_DEVEL_PREFIX=.*%SYSTEM_DEVEL_PREFIX=\"$DPREFIX\"%" \
+    -e "s%^DEVEL_TOOL_PREFIX=.*%DEVEL_TOOL_PREFIX=\"$DPREFIX\/usr\"%" \
+    -e "s%^SHARED_LIB_LOADER_PATH=.*%SHARED_LIB_LOADER_PATH=\"\/lib\"%" \
+    $PACKAGES/uClibc/uClibc.conf > `ls -d $BUILD/uClibc-*`/.config
 
 if [ "$CPU" == "C3" ]; then
-  cat $BUILD/uClibc*/extra/Configs/Config.i386.default \
-      | sed s%.*CONFIG_CYRIXIII.*%CONFIG_CYRIXIII=y% \
-      > `ls -d $BUILD/uClibc*`/extra/Configs/Config.i386.default.new
-else
-  cat $BUILD/uClibc*/extra/Configs/Config.i386.default \
-      | sed s%.*CONFIG_586MMX.*%CONFIG_586MMX=y% \
-      > `ls -d $BUILD/uClibc*`/extra/Configs/Config.i386.default.new
+  sed -i s%.*CONFIG_CYRIXIII.*%CONFIG_CYRIXIII=y% $BUILD/uClibc*/.config
+  sed -i s%.*CONFIG_586.*%CONFIG_586=n% $BUILD/uClibc*/.config
 fi
 
-mv $BUILD/uClibc*/extra/Configs/Config.i386.default.new $BUILD/uClibc*/extra/Configs/Config.i386.default
+tar xjf $SOURCES/uClibc/locale-uClibc-*.tar.bz2 -C $BUILD/uClibc*/extra/locale
 
-yes "" | make oldconfig -C "`ls -d $BUILD/uClibc*`"
-
-cp $PACKAGES/uClibc/codesets.txt $BUILD/uClibc*/extra/locale
-cp $PACKAGES/uClibc/locales.txt $BUILD/uClibc*/extra/locale
-
-tar xjf $SOURCES/uClibc/locale.tar.bz2 -C $BUILD/uClibc*/extra/locale
-touch -d "2010/01/01" `ls -d $BUILD/uClibc*/extra/locale`/{c8tables.h,wctables.h}
+yes n | make oldconfig -C "`ls -d $BUILD/uClibc*`"
