@@ -10,18 +10,18 @@
 
 | O produktu
 | ~~~~~
-GeeXboX je druh "divx box" softwaru. Jedná se o bootovací CD umoòující 
-sledování filmù nebo poslouchání hudby. Podporuje celou øadu formátù jako 
-avi, mpeg, divx, ogm, rm, mp3, ogg, dvd, vcd , cdda. Obsahuje také podporu 
+GeeXboX je druh "divx box" softwaru. Jedná se o bootovací CD umoòující
+sledování filmù nebo poslouchání hudby. Podporuje celou øadu formátù jako
+avi, mpeg, divx, ogm, rm, mp3, ogg, dvd, vcd , cdda. Obsahuje také podporu
 IR dálkovıch ovladaèù a TV vıstup na urèitıch typech grafickıch karet.
 Tato distribuce obsahuje nástroje potøebné k  vytvoøení vlastního GeexboX iso souboru.
 
 
 
 GeeXboX is a kind of "divx box" software. In fact, it is a stand-alone boot
-CD which allows you to watch movies or listen to music. It supports many 
-formats, such as avi, mpeg, divx, ogm, rm, mp3, ogg, dvd, vcd and cdda. 
-It also supports some IR remote controllers and TV-Out for some graphic cards. 
+CD which allows you to watch movies or listen to music. It supports many
+formats, such as avi, mpeg, divx, ogm, rm, mp3, ogg, dvd, vcd and cdda.
+It also supports some IR remote controllers and TV-Out for some graphic cards.
 This archive contain the needed scripts to rebuild an iso image of the GeeXboX.
 
 
@@ -54,7 +54,7 @@ A také pøiblinì 500 MB volného diskového prosoru.
 | Vlastní nastavení
 | ~~~~~~~~~~~~~~~
 
-Pokud je GeeXboX nainstalován na pevnı disk nebo generován 
+Pokud je GeeXboX nainstalován na pevnı disk nebo generován
 je velice jednoduché vytvoøit osobní nastavení.
 
 
@@ -72,41 +72,41 @@ Dále upravit velké mnoství nastavení editací textovıch konfiguraèních  souborù.
 
 * Jazyky:
     Mùete zvolit preferovanı jazyk nabídky následujícími zpùsoby:
-    
 
-    - uivatelé GNU/Linux: 
-    Pøed spuštìním editujte øádek "LANG=en" skriptu generator.sh  
+
+    - uivatelé GNU/Linux:
+    Pøed spuštìním editujte øádek "LANG=en" skriptu generator.sh
     na váš preferovanı jazyk napø "LANG=cz"
-    
+
 
     - Uivatelé Microsoft Windows :
     Pøi spuštìní generátoru vyberte v rozbalovací nabídce poadovanı jazyk.
-    
+
 
     Poznámka : Toto nemá vliv na volbu jazyka v DVD (více v sekci o MPlayeru ).
 
     Pro seznam podporovanıch jazykù nahlédnìte do adresáøe "language".
-    Pokud není Váš jazyk v nabídce mùete jej vytvoøit pøeloením ji existujících souborù menu 
+    Pokud není Váš jazyk v nabídce mùete jej vytvoøit pøeloením ji existujících souborù menu
     language/menu_LANG.conf a language/help_LANG.txt,
     a pøidáním LANG do language/lang.conf.
 
 * MPlayer :
     Zde mùete provádìt nejvíce nastavení a customizací.
-    Nastavení se provádìjí pomocí souboru packages/MPlayer/mplayer.conf. 
+    Nastavení se provádìjí pomocí souboru packages/MPlayer/mplayer.conf.
     Pravdìpodobnì budete chtít zmìnit hodnoty jako napø. velikost OSD fontu.
     Mùete pøidat další parametry jako napø. vıchozí jazyk pro DVD (eg: alang=cz,en).
     Nejlepším místem pro získání parametrù je manuál MPlayeru.
-    Uivatelé linuxu (man -l build/MPlayer-*/DOCS/mplayer.1). Mùete také nahlédnout na dokumentaci 
+    Uivatelé linuxu (man -l build/MPlayer-*/DOCS/mplayer.1). Mùete také nahlédnout na dokumentaci
     ( build/MPlayer-*/DOCS nebo na    http://mplayerhq.hu/DOCS/).
-    Dalším souborem kde je dobré provádìt úpravy je packages/MPlayer/menu.conf. 
+    Dalším souborem kde je dobré provádìt úpravy je packages/MPlayer/menu.conf.
     Mùete odebrat volby, které nepotøebujete nebo jej pøeloit do vašeho jazyka.
     Posledním souborem doporuèenım k editaci je  packages/MPlayer/build kterı obsahuje
     vıbìr moností MPlayeru.
 
 * tv vıstup :
-    TV vıstu je dosaen s pomocí drobnıch aplikací uršenıch pro dané typy grafickıch karet 
-    V souèasné dobì pouíváme  atitvout pro karty ATI, s3switch pro  karty S3  a nvtv pro karty nVidia 
-    (moná i karty intel i810 a karty 3dfx cards). Nastavení tìchto pomocnıch programù je provedeno 
+    TV vıstu je dosaen s pomocí drobnıch aplikací uršenıch pro dané typy grafickıch karet
+    V souèasné dobì pouíváme  atitvout pro karty ATI, s3switch pro  karty S3  a nvtv pro karty nVidia
+    (moná i karty intel i810 a karty 3dfx cards). Nastavení tìchto pomocnıch programù je provedeno
     v config/tvout. Tam mùete nastavi Váš TV standard (pal, ntsc...) a nastavit specielní volby pro nvtv.
 
 
@@ -115,9 +115,9 @@ Dále upravit velké mnoství nastavení editací textovıch konfiguraèních  souborù.
     TVOUT_ASPECT="4:3"
 
     Tento parametr bude pouit pro oba (TVOut i klasickı  (CRT/TFT)) vıstupy.
-    V pøípadì e máte nestandardní monitor (Wide screen nebo videoprojektor) ùete nastavit 
+    V pøípadì e máte nestandardní monitor (Wide screen nebo videoprojektor) ùete nastavit
     poadovanou vıšku/šíøku stejnì jako obnovovací frekvenci.
-    Parametry nastavujeme v souboru     /etc/mplayer/mplayer.conf . 
+    Parametry nastavujeme v souboru     /etc/mplayer/mplayer.conf .
     Vıchozí hodnoty jsou uvedeny níe (odkomentujte øádky u frekvencí pokud je chcete pouít) :
 
     screenw=800
@@ -126,7 +126,7 @@ Dále upravit velké mnoství nastavení editací textovıch konfiguraèních  souborù.
     #monitor-vfreq=50-90
 
 * Lirc :
-     Mùete vybrat jeden z podporovanıch typù dálkovıch ovladaèù  editací souboru  
+     Mùete vybrat jeden z podporovanıch typù dálkovıch ovladaèù  editací souboru
     GEEXBOX/etc/remote. Dbejte na sprıvnı vıbìr pøijímacího zaøízení v tomté souboru
     Pokud chcete zbìnit pøiøazení tlaèítek Vašeho ovladaèe podívejte se do souboru
     GEEXBOX/etc/lirc/lircrc_REMOTE.
@@ -143,7 +143,7 @@ Dále upravit velké mnoství nastavení editací textovıch konfiguraèních  souborù.
     GeeXboX se pokusí automaticky zjistit síové nastavení.
     Pokud máte v systému klasickou NIC a WiFi kartu pouze  poslední v øadì bude nastavena.
     Pro pøesné nastavení vyhovující Vašemu prostøedí musíte upravit soubor  /etc/network.
-  
+
 
     Následující øádky se tıkají konfigurace WiFi :
     * PHY_TYPE="auto"      # Network physical type (auto|ethernet|wifi)
@@ -151,8 +151,8 @@ Dále upravit velké mnoství nastavení editací textovıch konfiguraèních  souborù.
     * WIFI_WEP=""          # Wifi WEP key
     * WIFI_ESSID="any"     # Wifi SSID
 
-    Toto by mìlo postaèovat pro nastavení. Mùete zvolit autodetekci nebo dokonce zvolit pouívání 
-    pouze WiFi nebo ethernetu.     
+    Toto by mìlo postaèovat pro nastavení. Mùete zvolit autodetekci nebo dokonce zvolit pouívání
+    pouze WiFi nebo ethernetu.
     Stejnım zpùsobem lze vybrat typ WiFi módu mezi  managed a  ad-hocvèetnì nastavení WEP klíèe a SSID.
 
 * gateway :
@@ -164,20 +164,20 @@ Dále upravit velké mnoství nastavení editací textovıch konfiguraèních  souborù.
 
 * nastavení TV :
     GeeXboX umoòuje pouití TV tunerù. Systém se snaí rozpoznat jakı televizní tuner máte.
-    Mùete pøeskoèit autodetekci vepsáním parametrù Vašeho tuneru v  /etc/tvcard 
+    Mùete pøeskoèit autodetekci vepsáním parametrù Vašeho tuneru v  /etc/tvcard
     následujícím zpùsobem :
 
  #TV CARD/TUNER Model (AUTO pro autodetekci nebo zadejte hodnoty z následujících odkazù)
  #http://www.linuxhq.com/kernel/v2.6/2/Documentation/video4linux/CARDLIST.bttv
  #http://www.linuxhq.com/kernel/v2.6/2/Documentation/video4linux/CARDLIST.tuner
- 
+
     TV_CARD=AUTO
     TV_TUNER=AUTO
     TVIN_STANDARD=pal
 
-    
+
     Nechte parametr AUTO pokud si pøejete aby se systém pokusil rozpoznat Vaši kartu,
-    nebo jej nahraïte èíslem Vaší karty v souladu z odkaz uvedenımi vıše. 
+    nebo jej nahraïte èíslem Vaší karty v souladu z odkaz uvedenımi vıše.
     Pozor v pøípadì e nepouijete parametr AUTO musíte znát pøesnı typ Vaší karty!.
 
     Pokud máte nastaveno mìli by jste bıt schopni pøijímat TV signáls (Composite a S-VHS)
@@ -198,7 +198,7 @@ Dále upravit velké mnoství nastavení editací textovıch konfiguraèních  souborù.
 
 * audio nastavení :
     GeeXboX podporuje analogovı  i  digitální  audio vıstup pøes klasickı JACK
-    nebo   RCA SPDIF.  Vıchozí vıstup je nastavenı analogovı. Tuto hodnotu mùete zmìnit editací 
+    nebo   RCA SPDIF.  Vıchozí vıstup je nastavenı analogovı. Tuto hodnotu mùete zmìnit editací
     souboru /etc/audio :
 
     # Output using SPDIF (yes/no), otherwise ANALOG output
@@ -206,11 +206,11 @@ Dále upravit velké mnoství nastavení editací textovıch konfiguraèních  souborù.
 
     Pamatujte, e musíte nastavit SPDIF pokud chcete zvukovou kartu pøipojit
     k externímu zesilovaèi pro dekódování AC3/DTS stop.
-   
+
 
 * DXR3/Hollywood+ karty :
     Uivatelé s tímto druhem hardware ani nemusí mít video a zvukovou kartu k pouívání GeeXboXu.
-    Ve reálu lze pouít pouze TV out s tìmito kartami.    
+    Ve reálu lze pouít pouze TV out s tìmito kartami.
     Moná bude zapotøebí nastavit poadovanou normu  (PAL/NTSC) v souboru  /etc/tvout
     fstejnì jako audio vıstup  (Analog nebo SPDIF) v  /etc/audio.
 
@@ -259,11 +259,11 @@ subnet 192.168.0.0 netmask 255.255.255.0 {
   filename "/tftpboot/GEEXBOX/boot/pxelinux.0";
 }
 Další nastavení je adresa TFTP serveru.
-Nakonfigurujte TFTP server na adresáø /tftpboot a nakopírujte všechny GeeXboX 
-soubory do tohoto adresáøe. 
-Napøíklad mùete nakopírovat obsah GeeXboX CD z linuxu  v módu TRANSPARENT DECOMPRESSION ! 
+Nakonfigurujte TFTP server na adresáø /tftpboot a nakopírujte všechny GeeXboX
+soubory do tohoto adresáøe.
+Napøíklad mùete nakopírovat obsah GeeXboX CD z linuxu  v módu TRANSPARENT DECOMPRESSION !
 pro ovìøení nahlédnìte do souboru sbin/init a zkontrolujte e je struktura normální.
-Pokud jste vytvoøili GeeXboX ze zrdrojovıch souborù mùete strukturu GeeXboXu vygenerovat pomocí 
+Pokud jste vytvoøili GeeXboX ze zrdrojovıch souborù mùete strukturu GeeXboXu vygenerovat pomocí
 If you've built the GeeXboX yourself from sources, you can also generate
 make pxe.
 
@@ -326,7 +326,7 @@ nebo   pxe strukturu pomocí :
 | ~~~~~~~~~~~~~
 
 * Globální nastavení :
-    
+
     Je nejdùleitìjším krokem pøed samotnım vytváøením GeeXboXu.
     Je uloeno v souboru  config/options, a jeho syntaxe je srozumitelná.
     Mùete zvolit typ Vašeho procesoru, téma, a zda chcete pouívat True Type fonty nebo ne.
@@ -344,7 +344,7 @@ nebo   pxe strukturu pomocí :
     pøidejte jej do packages/lirc/install. Potom vyberte zaøízení (vıchozí je  /dev/ttyS0 (COM1))
     a ovladaè lirc a ulote jej do souboru packages/lirc/lircd_$REMOTE. Poté zvolte nastavení tlaèítek
     v souboru packages/lirc/lircrc_$REMOTE. Pro kadé pøiøazení tlaèítka musíte vybrat jeho jméno ze souboru
-    a zasociovat ho k urèité akci. Tou mùe bıt nìkterá z akcí MPlayeru (ty naleznete v souboru 
+    a zasociovat ho k urèité akci. Tou mùe bıt nìkterá z akcí MPlayeru (ty naleznete v souboru
     build/MPlayer-*/DOCS/documentation.html#commands).
 
 
@@ -353,7 +353,7 @@ nebo   pxe strukturu pomocí :
 
 Jako první je dobré podívat se na inicializaèní skript.
 Ve skuteènosti se jedná o skripty dva. První je v packages/initrd/linuxrc
-ale ten pravdìpodobnì nebudete chtít upravovat. Druhı je  config/init a v nìm se dá 
+ale ten pravdìpodobnì nebudete chtít upravovat. Druhı je  config/init a v nìm se dá
 upravit nìkolik moností nastavení.
 
 Další co by Vás mohlo zajímat je vytvoøení nového balíèku.
@@ -366,14 +366,14 @@ Zde je seznam skriptù které mùete vytvoøit :
             netıká se aplikací záplat.
  - need_build : pouití pokud balíèek ji byl sestaven, a pro ujištìní e nepotøebuje reebuilt.
                 Dojde k odstranìní souboru .stamps/"package name"/build v pøípadì e rebuild není nutnı.
- 
+
  - build :   všechny nezbytné kroky k vytvoøení programu.
  - install : všechny nezbytné kroky k instalaci  programu. Zaèátek instalace by mìl bıt $INSTALL.
 
 Kdy je soubor z url adresy pojmenován záplata-program_name-...je automaticky záplata aplikována
 na rozbalené zdrojové soubory programu.
 
-Mìli by jste pamatovat e software na kterém GeeXboX bìí musí bıt zkompilován s 
+Mìli by jste pamatovat e software na kterém GeeXboX bìí musí bıt zkompilován s
 uClibc gcc wrapper.
 
 Nakonec, nejlepší cesta k vytvoøení balíèku je podívat s edo ji hotovıch.
@@ -386,4 +386,3 @@ Nakonec, nejlepší cesta k vytvoøení balíèku je podívat s edo ji hotovıch.
 Všechny programy pouité v GeeXboXu jsou chránìny jejich licencí.
 Všechny jsou volnì šiøitelné a vìtšina z nich podléhá GNU licencování.
 GeeXboX jako takovı. myšleno skripty pouité pro jeho vytvoøení spadají pod GNU.
-

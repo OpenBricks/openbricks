@@ -33,7 +33,7 @@ detect_os () {
       if mount -o ro $partition tmpmnt >/dev/null 2>&1; then
         type=$(grep "^$partition " /proc/mounts | cut -d " " -f 3)
         detect_os_microsoft $partition tmpmnt $type
-	
+
         umount $partition >/dev/null 2>&1
       fi
     else
@@ -83,7 +83,7 @@ convert () {
 # Configure network interface and parameters before installing GeeXboX to disk.
 setup_network () {
   local title phy_type wifi_mode wep essid host_ip gw_ip smb_user smb_pwd val f
-  
+
   title="$BACKTITLE : Network Configuration"
   f="$1/etc/network"
 
@@ -201,7 +201,7 @@ if [ $BOOTLOADER = syslinux ]; then
   PART_MSG="FAT partition (type=06)"
 elif [ $BOOTLOADER = grub ]; then
   PART_MSG="FAT partition (type=0B) or Linux ext2/3 partition (type=83)"
-fi 
+fi
 
 if [ -z "$CFDISK" ]; then
   CFDISK_MSG="As you don't have cfdisk installed, the installator won't be able to create the partition for you. You'll have to create it yourself before installing."
@@ -227,7 +227,7 @@ while [ ! -b "$DEV" ]; do
           S=`$SFDISK -s "$i" | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
           DISKS="$DISKS $i ${S}MB"
         fi
-        ;;	  
+        ;;
     esac
   done
   if [ -z "$DISKS" ]; then
@@ -363,7 +363,7 @@ grubprefix=/boot/grub
 grubdir=di$grubprefix
 device_map=$grubdir/device.map
 
-rm -rf $grubdir	
+rm -rf $grubdir
 mkdir -p $grubdir
 tar xjf "di/GEEXBOX/usr/share/grub-i386-pc.tar.bz2" -C $grubdir
 
@@ -455,7 +455,7 @@ if [ $TYPE = HDD ]; then
       fi
   done
   IFS=$saveifs
-  
+
   if [ -n "$supported_os_list" ]; then
     $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Bootloader" --defaultno --yesno "\n'$DEV' is now a GeeXboX partition. To boot from it, you will need to install a bootloader. I can install one for you. If you have any other operating system on your computer, I will also install a multiboot for you. If you do not want me to install a new bootloader, you will need to configure yours alone.\nI have found: $supported_os_list\nDo you want to install me to install the boot loader (GRUB) for you ?\n" 0 0 && MBR=yes
   else
@@ -486,11 +486,11 @@ EOF
   for os in $oslist; do
     partition=$(echo "$os" | cut -d: -f1)
     grubpartition=$(convert $partition)
-    
+
     if [ -z "$grubpartition" ]; then
 	continue
     fi
-    
+
     grubdisk=${grubpartition%,*}
     grubdisk="(${grubdisk#(})"
     title=$(echo "$os" | cut -d: -f2)
@@ -505,7 +505,7 @@ EOF
 map (hd0) $grubdisk
 map $grubdisk (hd0)
 EOF
-      fi 
+      fi
 
       cat >> $grubdir/menu.lst <<EOF
 rootnoverify $grubpartition

@@ -11,7 +11,7 @@
 | INFORMAZIONI
 | ~~~~~~~~~~~~
 
-GeeXboX è una sorta di software per "divx box". Infatti, è un boot CD 
+GeeXboX è una sorta di software per "divx box". Infatti, è un boot CD
 stand-alone che permette di vedere film o ascoltare musica. Supporta molti
 formati, come avi, mpeg, divx, ogm, rm, mp3, ogg, dvd, vcd e cdda.
 Supporta inoltre qualche telecomando IR e il TV-Out per qualche scheda grafica.
@@ -49,7 +49,7 @@ E anche 500 MB di spazio libero su disco.
 | PERSONALIZZAZIONE
 | ~~~~~~~~~~~~~~~~~
 
-Quando GeeXboX è installato su disco o generato, 
+Quando GeeXboX è installato su disco o generato,
 è facile da personalizzare.
 
 E' possibile aggiugnere alcuni codecs proprietari come rv9 o wmv9,
@@ -70,7 +70,7 @@ semplicemente qualche file di testo.
     seguente procedura:
 
     - Utenti GNU/Linux:
-    Modificare lo script generator.sh prima di eseguirlo, cambiando la linea 
+    Modificare lo script generator.sh prima di eseguirlo, cambiando la linea
     verso l'inizio del file: "LANG=en" con il linguaggio preferito.
     Esempio: se sei italiano, cambia la linea in "LANG=it".
 
@@ -117,10 +117,10 @@ semplicemente qualche file di testo.
     TVOUT_ASPECT="4:3"
 
     Questo parametro verrà utilizzato sia per il TVOut che per i monitor.
-    E' possibile specificare anche l'altezza/larghezza dello schermo e le 
+    E' possibile specificare anche l'altezza/larghezza dello schermo e le
     frequenze orizzontale e verticale, in caso di schermi non standard, come
     WideScreens or videoproiettori. Questo può essere fatto modificando il file
-    /etc/mplayer/mplayer.conf. I parametri predefiniti sono indicati di seguito 
+    /etc/mplayer/mplayer.conf. I parametri predefiniti sono indicati di seguito
     (decommentare le linee relative alle frequenze se si vogliono utilizzare):
 
     screenw=800
@@ -179,7 +179,7 @@ semplicemente qualche file di testo.
  #TV CARD/TUNER Model (AUTO for autodetection or look at the following urls)
  #http://www.linuxhq.com/kernel/v2.6/2/Documentation/video4linux/CARDLIST.bttv
  #http://www.linuxhq.com/kernel/v2.6/2/Documentation/video4linux/CARDLIST.tuner
- 
+
     TV_CARD=AUTO
     TV_TUNER=AUTO
     TVIN_STANDARD=pal
@@ -322,7 +322,7 @@ Ci sono anche comandi più avanzati, se si vuole fare un po' di hack di GeeXboX:
   scripts/install package    # installa il pacchetto con il prefisso $INSTALL
   scripts/clean package      # pulisce la directory dei sorgenti del pacchetto
   make exec                  # lancia direttamente GeeXboX in una [prigione]
-                             # ATTENZIONE: funzione sperimentale, 
+                             # ATTENZIONE: funzione sperimentale,
                              # usare a proprio rischio.
 
 
@@ -415,4 +415,3 @@ Sono tutti software liberi e molti di questi sono regolati dalla GNU General
 Public License.
 GeeXboX per sè, intesa come tutti gli script utilizzati nel processo di
 compilazione, sono regolati dalla GNU General Public License.
-

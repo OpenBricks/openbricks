@@ -6,7 +6,7 @@
        "o     oM   M    o  M    o   oM  Mo   M    oM M    M   oM  Mo
         "MoooM"M   "MooM"  "MooM"  M"    "M  M"ooo"  "MooM"  M"    "M
 
-                             
+
 
 | ACERCA DE...
 | ~~~~~~~~~~~~
@@ -52,37 +52,37 @@ Y también 500 megas de espacio libre en disco.
 Cuando GeeXboX está instalado en un disco duro o es generado, resulta muy
 fácil personalizarlo.
 
-Puedes añadir algunos códecs propietarios como rv9 o wmv9, copiándolos 
-en el directorio iso/GEEXBOX/codecs. Puedes encontrar estos códecs en el 
+Puedes añadir algunos códecs propietarios como rv9 o wmv9, copiándolos
+en el directorio iso/GEEXBOX/codecs. Puedes encontrar estos códecs en el
 paquete http://www.mplayerhq.hu/MPlayer/releases/codecs/ .
 
-Ficheros útiles en el paquete de códecs:  
+Ficheros útiles en el paquete de códecs:
   * Códecs de Real (usados para reroducir ficheros rv9 por ejemplo) : atrc.so.6.0,
-     cook.so.6.0, sipr.so.6.0, drv3.so.6.0, drv4.so.6.0.  
+     cook.so.6.0, sipr.so.6.0, drv3.so.6.0, drv4.so.6.0.
   * Códecs de Windows Media (wmv9/wma9) : wma9dmod.dll y wmv9dmod.dll.
 
-También puedes modificar muchas opcionesa través de la edición de algunos 
+También puedes modificar muchas opcionesa través de la edición de algunos
 ficheros de texto.
 
 * Idioma :
     Puedes seleccionar fácilmente tu idioma de menú favorito editando
-    el fichero GEEXBOX/etc/lang. Esto no tiene efecto en el lenguaje del DVD 
-    (mira en la sección de MPlayer). Si tu idioma no está disponible, puedes 
+    el fichero GEEXBOX/etc/lang. Esto no tiene efecto en el lenguaje del DVD
+    (mira en la sección de MPlayer). Si tu idioma no está disponible, puedes
     traducir el menú a tu propio idioma, lo que conlleva la creación de los
-    archivos GEEXBOX/etc/mplayer/menu_LANG.conf y 
+    archivos GEEXBOX/etc/mplayer/menu_LANG.conf y
     GEEXBOX/usr/share/mplayer/help_LANG.txt.
 
 * MPlayer :
     Aquí es donde puedes hacer la mayor parte de las configuraciones y ajustes.
     Las opciones se encuentran en el fichero packages/MPlayer/mplayer.conf.
-    Quizás quieras modificar opciones como tamaño de fuente del OSD 
-    (subfont-text-scale). También puedes añadir muchas opciones como idioma 
-    por defecto para DVD (ej: alang=es,en). El mejor sitio para encontrar 
-    estas opciones es en la pagina man de MPlayer, para usuarios de linux 
-    (man -l build/MPlayer-*/DOCS/mplayer.1). Tambien deberias echar un vistazo 
+    Quizás quieras modificar opciones como tamaño de fuente del OSD
+    (subfont-text-scale). También puedes añadir muchas opciones como idioma
+    por defecto para DVD (ej: alang=es,en). El mejor sitio para encontrar
+    estas opciones es en la pagina man de MPlayer, para usuarios de linux
+    (man -l build/MPlayer-*/DOCS/mplayer.1). Tambien deberias echar un vistazo
     a la documentación de MPlayer (http://mplayerhq.hu/DOCS/).
     Otro archivo que quizá quieras modificar es packages/MPlayer/menu.conf.
-    Puedes quitar elementos del menú que no necesites, o, por ejemplo, 
+    Puedes quitar elementos del menú que no necesites, o, por ejemplo,
     traducirlos a tu propio idioma.
     El ultimo archivo que puedes mirar es packages/MPlayer/build, que contiene
     la selección de opciones que están compiladas en MPlayer.
@@ -90,28 +90,28 @@ ficheros de texto.
 * Salida de TV :
     La activación de la salida de TV se consigue con la ayuda de múltiples
     programas dedicados a las diferentes marcas de tarjetas.
-    Actualmente usamos atitvout para las tarjetas Ati, s3switch para las 
-    tarjetas S3 y nvtv para las tarjetas Nvidia (y posiblemente las intel 
-    i810 y las 3dfx). La configuracion de estos programas se realiza en    
-    config/tvout. Ahí puedes seleccionar el estandar de TV que quieras 
-    (pal para España, ntsc en Iberoamérica...) y modificar otras opciones 
+    Actualmente usamos atitvout para las tarjetas Ati, s3switch para las
+    tarjetas S3 y nvtv para las tarjetas Nvidia (y posiblemente las intel
+    i810 y las 3dfx). La configuracion de estos programas se realiza en
+    config/tvout. Ahí puedes seleccionar el estandar de TV que quieras
+    (pal para España, ntsc en Iberoamérica...) y modificar otras opciones
     específicas de nvtv.
 
 * Lirc :
     Puedes elegir uno de los controladores soportados editando el archivo
     GEEXBOX/etc/remote. Lirc no puede controlar ATI Rempote Wonder y está
-    siempre activado, asi que no tienes que modificar nada para usarlo. 
+    siempre activado, asi que no tienes que modificar nada para usarlo.
     Si quieres cambiar la asignación de teclas para el mando a distancia,
     mira en el fichero GEEXBOX/etc/lirc/lircrc_REMOTE.
 
 * Red :
     Puedes configurar la red en el archivo GEEXBOX/etc/network.
     Ahí puedes escoger la dirección IP usada por GeeXboX (por defecto
-    se usa DHCP, y si no funciona, la IP cambia a 192.168.0.54.). También 
-    puedes establecer un usuario y contraseña para conectarse a recursos 
+    se usa DHCP, y si no funciona, la IP cambia a 192.168.0.54.). También
+    puedes establecer un usuario y contraseña para conectarse a recursos
     compartidos en máquinas windows (por defecto se conecta únicamente a los
     recursos que permitan conexiones anónimas).
-    
+
 
 | GENERACIÓN
 | ~~~~~~~~~~
@@ -121,7 +121,7 @@ Primero hecha un vistazo a la sección de personalización detallada más arriba.
 Para generar la iso únicamente tienes que ejecutar en Linux
    ./generator.sh
 
-o 
+o
   generator.bat
 bajo windows.
 
@@ -154,7 +154,7 @@ de compilación:
 o haciendo una limpieza total, incluso borrando las fuentes descargadas:
   make distclean
 
-Existen también otros comandos más avanzados si quieres enredar en las tripas 
+Existen también otros comandos más avanzados si quieres enredar en las tripas
 de GeeXboX:
   scripts/get package        # descargar el paquete
   scripts/unpack package     # desempaqueta y prepara el paquete
@@ -174,8 +174,8 @@ o un generador geexbox con:
   make generator
 o un instalador geexbox con:
   make installator
-  
-  
+
+
 | CONFIGURACIÓN
 | ~~~~~~~~~~~~~
 
@@ -190,24 +190,24 @@ o un instalador geexbox con:
 * Linux:
     El archivo packages/linux/linux.conf es una configuración clásica de Linux.
     Puedes editarlo a mano, o también puedes ejecutar scripts/unpack linux
-    y hacer make menuconfig -C build/linux-* (o utilizar el método que 
+    y hacer make menuconfig -C build/linux-* (o utilizar el método que
     prefieras en vez de menuconfig). Es conveniente que hagas una copia de
     seguridad de build/linux-*/.config en packages/linux/linux.conf.
-    Lo más "difícil" que puede ocurrir es mantener tamaño del kernel lo 
+    Lo más "difícil" que puede ocurrir es mantener tamaño del kernel lo
     suficientemente reducido como para que quepa en una imagen de un disquete
     de arranque.
 
 * Lirc:
-    Lirc te permite controlar GeeXboX a través de un mando a distancia. Lo 
-    primero que debes hacer es escoger el archivo que describe tu mando en 
-    concreto en build/lirc-*/remotes (despues de hacer scripts/unpack lirc) y 
+    Lirc te permite controlar GeeXboX a través de un mando a distancia. Lo
+    primero que debes hacer es escoger el archivo que describe tu mando en
+    concreto en build/lirc-*/remotes (despues de hacer scripts/unpack lirc) y
     añadirlo a packages/lirc/install. A partir de aquí, escoge un dispositivo
-    (por defecto es /dev/ttyS0, o COM1) y el driver lirc y colócalos en un 
+    (por defecto es /dev/ttyS0, o COM1) y el driver lirc y colócalos en un
     archivo con el nombre packages/lirc/lircd_$REMOTE. Entonces podrás escoger
     la asignación de teclas en packages/lirc/lircrc_$REMOTE. En cada asignación
     tienes que seleccionar un botón (coge los nombres del archivo de definición
-    del mando a distancia) y asociarle una acción. Esta acción pertenece a 
-    MPlayer, y puedes encontrar un listado en 
+    del mando a distancia) y asociarle una acción. Esta acción pertenece a
+    MPlayer, y puedes encontrar un listado en
     build/MPlayer-*/DOCS/documentation.html#commands.
 
 
@@ -225,7 +225,7 @@ reglas. Todos los scripts deben funcionar sobre un directorio llamado como
 el programa que quieres empaquetar, dentro del directorio packages.
 Una lista de scripts que puedes crear:
  - url: sólo una lista de urls para conseguir los fuentes del programa.
- - unpack: qué hacer después de desempaquetar los fuentes. Por ejemplo, 
+ - unpack: qué hacer después de desempaquetar los fuentes. Por ejemplo,
             puedes modificar algunos ficheros de configuración. Ésto no
             incluye aplicar parches.
  - need_build: es llamado cuando el paquete ha terminado de compilarse, con

@@ -12,9 +12,9 @@
 | ~~~~~
 
 GeeXboX is a kind of "divx box" software. In fact, it is a stand-alone boot
-CD which allows you to watch movies or listen to music. It supports many 
-formats, such as avi, mpeg, divx, ogm, rm, mp3, ogg, dvd, vcd and cdda. 
-It also supports some IR remote controllers and TV-Out for some graphic cards. 
+CD which allows you to watch movies or listen to music. It supports many
+formats, such as avi, mpeg, divx, ogm, rm, mp3, ogg, dvd, vcd and cdda.
+It also supports some IR remote controllers and TV-Out for some graphic cards.
 This archive contain the needed scripts to rebuild an iso image of the GeeXboX.
 
 
@@ -48,7 +48,7 @@ And also 1.2 GB of hard disk free space.
 | PERSONALIZATION
 | ~~~~~~~~~~~~~~~
 
-When the GeeXboX is installed on a hard drive or generated, 
+When the GeeXboX is installed on a hard drive or generated,
 it is quite easy to personalize it.
 
 You can add some proprietary codecs such a rv9 or wmv9, simply by adding
@@ -153,7 +153,7 @@ text files.
     * WIFI_WEP=""          # Wifi WEP key
     * WIFI_ESSID="any"     # Wifi SSID
 
-    These lines let you configure most of the settings. You can let 
+    These lines let you configure most of the settings. You can let
     autodetection enable or even force the use of ethernet or WiFi adapters.
     In the same way, this let you choose between the managed and the ad-hoc
     mode and let you define your WEP key and SSID.
@@ -174,7 +174,7 @@ text files.
  #TV CARD/TUNER Model (AUTO for autodetection or look at the following urls)
  #http://www.linuxhq.com/kernel/v2.6/2/Documentation/video4linux/CARDLIST.bttv
  #http://www.linuxhq.com/kernel/v2.6/2/Documentation/video4linux/CARDLIST.tuner
- 
+
     TV_CARD=AUTO
     TV_TUNER=AUTO
     TVIN_STANDARD=pal
@@ -369,7 +369,7 @@ you'll need the following software :
   (for example "tftpd32", available at http://tftpd32.jounin.net/)
 * An NFS Server (for example "Allegro NFS server",
   available at http://opensource.franz.com/nfs/)
-* A computer supporting PXE boot mode. 
+* A computer supporting PXE boot mode.
 
 Download and uncompress (No need to install) the tftpd32 folder
 somewhere on your disk. In this example, lets assume it is : C:\tftpd32
@@ -399,7 +399,7 @@ After a while it'll freeze because your NFS server is not set yet.
 
 Install "Allegro NFS server" and fill in the boxes following these settings :
 
-Exports tab : 
+Exports tab :
         * Add a "new name" : and call it "/tftpboot/GEEXBOX"
         * In "path" just below : choose "C:\tftp32\GEEXBOX" folder
         * In "allowed host list" , choose "all"
@@ -408,7 +408,7 @@ Exports tab :
 
 Apply settings.
 
-Don't forget to modify the file : C:\tftp32\GEEXBOX\boot\pxelinux.cfg\default 
+Don't forget to modify the file : C:\tftp32\GEEXBOX\boot\pxelinux.cfg\default
 and change the IP address "192.168.0.2" to "192.168.0.1" (or the one you've
 previously setup).
 

@@ -40,7 +40,7 @@ Pour construire votre propre GeeXboX, vous nécessiterez les outils classiques :
   - L'assembleur nasm.
   - bzip2 et gzip.
   - mkfs.ext2 et mkfs.vfat
-  - L'outil de téléchargement wget (non nécessaire pour le paquetage 
+  - L'outil de téléchargement wget (non nécessaire pour le paquetage
   GeeXboX complet).
   - mkisofs et mkzftree pour construire l'image ISO.
   - mkzftree pour compresser les fichiers de l'image ISO.
@@ -90,9 +90,9 @@ textes.
     au MAN de MPlayer (man -l build/MPlayer-*/DOCS/mplayer.1). D'autres
     informations sont aussi disponibles sur la documentation officielle
     (http://mplayerhq.hu/DOCS/).
-    Il peut également être intéressant de modifier le fichier 
-    packages/MPlayer/menu.conf. Vous pouvez les menus qui vous semblent 
-    inutiles, ou les traduire dans d'autres langues par exemple. Enfin, le 
+    Il peut également être intéressant de modifier le fichier
+    packages/MPlayer/menu.conf. Vous pouvez les menus qui vous semblent
+    inutiles, ou les traduire dans d'autres langues par exemple. Enfin, le
     dernier intéressant est packages/MPlayer/build, qui contient la sélection
     d'options de compilation de MPlayer.
 
@@ -376,7 +376,7 @@ les logiciels suivants :
   il est disponible à l'adresse http://tftpd32.jounin.net/).
 * Un serveur NFS (comme par exemple "Allegro NFS server", disponible à
   l'adresse http://opensource.franz.com/nfs/).
-* Une machine supportant le boot en mode PXE. 
+* Une machine supportant le boot en mode PXE.
 
 Téléchargez et décompressez (aucune installation n'est requise) le dossier
 tftpd32 quelque part sur votre disque, par exemple C:\tftpd32
@@ -407,7 +407,7 @@ n'a pas encore été configuré.
 
 Installez "Allegro NFS Server" et configurez le comme suit :
 
-- Onglet Exports : 
+- Onglet Exports :
 	* faites un "new name" : et nommez le "/tftpboot/GEEXBOX"
 	* dans "path", juste en dessous : selectionnez le
           répertoire "C:\tftp32\GEEXBOX"
@@ -431,12 +431,12 @@ par le réseau.
 
 Tout d'abord, regardez la partie de configuration ci-dessous.
 
-Typiquement, la compilation s'effectue simplement au moyen de : 
+Typiquement, la compilation s'effectue simplement au moyen de :
   make
-Ou vous pouvez directement compiler et graver l'ISO via : 
+Ou vous pouvez directement compiler et graver l'ISO via :
   make burn
 
-Une fois cela fait, vous pouvez regagner de l'espace disque en effaçant 
+Une fois cela fait, vous pouvez regagner de l'espace disque en effaçant
 l'arborescence de compilation via :
   make clean
 ou en effectant un nettoyage complet, éliminant même les sources téléchargées :
@@ -461,7 +461,7 @@ ou une archive complète (avec l'intégralité des sources) au moyen de :
   make fulldist
 ou construire le générateur d'ISO :
   make generator
-ou encore l'installateur : 
+ou encore l'installateur :
   make installator
 ou enfin une arborescence PXE :
   make pxe
@@ -472,13 +472,13 @@ ou enfin une arborescence PXE :
 
 * Options Globales :
     C'est la première chose dont vous aurez à vous soucier avant d'essayer de
-    compiler la GeeXboX. Elles sont contenues dans le fichier config/options, 
+    compiler la GeeXboX. Elles sont contenues dans le fichier config/options,
     et devraient être suffisamment explicites.
 
 * Linux :
     Il s'agit d'une configuration Linux classique (packages/linux/linux.conf).
     Vous pouvez éditer le fichier à la main, ou via scripts/unpack linux
-    suivi de make menuconfig -C build/linux-* (ou utiliser votre méthode 
+    suivi de make menuconfig -C build/linux-* (ou utiliser votre méthode
     préférée en lieu et place de menuconfig). Puis, vous devrez sauvegarder
     votre fichier build/linux-*/.config dans packages/linux/linux.conf.
 
@@ -488,8 +488,8 @@ ou enfin une arborescence PXE :
     télécommande dans build/lirc-*/remotes (après avoir effectué scripts/unpack
     lirc) et l'ajouterez à packages/lirc/install. Puis, choisissez votre
     périphérique (par défaut, il s'agit de /dev/ttyS0 (COM1)) et le pilote
-    lirc et mettez le tout dans un fichier nommé packages/lirc/lircd_$REMOTE. 
-    Vous pourrez ensuite choisir l'affectation des touches dans le fichier 
+    lirc et mettez le tout dans un fichier nommé packages/lirc/lircd_$REMOTE.
+    Vous pourrez ensuite choisir l'affectation des touches dans le fichier
     packages/lirc/lircrc_$REMOTE. Pour chaque affectation, vous aurez à chosir
     un bouton (choisissez leurs noms dans le fichier de définitions de la
     télécommande) et associez lui une action. L'action sera une de celle
@@ -500,8 +500,8 @@ ou enfin une arborescence PXE :
 | MODIFICATION
 | ~~~~~~~~~~~~
 
-La première chose dont vous aurez àvous soucier concerne le script 
-d'initialisation. En fait, ils sont 2. Le premier est dans 
+La première chose dont vous aurez àvous soucier concerne le script
+d'initialisation. En fait, ils sont 2. Le premier est dans
 packages/initrd/linuxrc mais vous ne devriez pas avoir besoin de le modifier.
 Le second est config/init et c'est dans ce dernier que vous aurez de
 probables modifications à effectuer.
@@ -531,7 +531,7 @@ est automatiquement appliqué aux sources du programme.
 Vous devez avoir à l'esprit que les applications qui tournent sous le système
 GeeXboX doivent avoir été compilé avec la librairie uClibc.
 
-Enfin, la meilleure manière d'ajouter un paquetage est de s'inspirer de la 
+Enfin, la meilleure manière d'ajouter un paquetage est de s'inspirer de la
 façon dont les actuels sont faits.
 
 
