@@ -25,7 +25,7 @@ mkdir -p ziso
 echo $LANG > iso/GEEXBOX/etc/lang
 cp language/help_$LANG.txt iso/GEEXBOX/usr/share/mplayer/
 cp language/menu_$LANG.conf iso/GEEXBOX/etc/mplayer/
-if [ $LANG = cz -o $LANG = hu -o $LANG = sk ]; then
+if [ $LANG = cz -o $LANG = hu -o $LANG = ro -o $LANG = sk ]; then
   cp -r font/iso-8859-2 iso/GEEXBOX/usr/share/mplayer/font/
 elif [ $LANG = pl ]; then
   cp -r font/cp1250 iso/GEEXBOX/usr/share/mplayer/font/
