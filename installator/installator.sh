@@ -295,16 +295,22 @@ if [ -z "$rootdev" ]; then
   exit 1
 fi
 
-[ $TYPE = HDD ]       && rootdev_single="$rootdev"
-[ $TYPE = REMOVABLE ] && rootdev_single="(fd0)"
 
 if [ $BOOTLOADER = syslinux ]; then
   umount di
   $SYSLINUX "$DEV"
   mount -t $MKFS_TYPE "$DEV" di
 elif [ $BOOTLOADER = grub ]; then
-  $GRUB --batch --no-floppy --device-map=/dev/null <<EOF
-device $rootdev_single $DEV
+  if [ $TYPE = HDD ]; then
+    rootdev_single=$rootdev
+    fake_device=
+  elif [ $TYPE = REMOVABLE ]; then
+    rootdev_single="(fd0)"
+    fake_device="device $rootdev_single $DEV"
+  fi
+
+  $GRUB --batch --no-floppy --device-map=$device_map <<EOF
+$fake_device
 root $rootdev_single
 install --stage2=$grubdir/stage2_single $grubprefix/stage1 $rootdev_single $grubprefix/stage2_single p $grubprefix/single.lst
 EOF
