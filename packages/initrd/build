@@ -4,24 +4,15 @@
 
 RAMDISK_SIZE=1024
 
-export INSTALL=$BUILD/initrd/mnt
+$SCRIPTS/build uClibc || exit 1
+$SCRIPTS/build busybox || exit 1
+$SCRIPTS/build genext2fs || exit 1
 
+export INSTALL=$BUILD/initrd/mnt
 
 mkdir -p $INSTALL
 rm -f $BUILD/initrd/initrd $BUILD/initrd/initrd.gz
 
-
-$SCRIPTS/build uClibc || exit 1
-$SCRIPTS/build busybox || exit 1
-
-
-dd if=/dev/zero of=$BUILD/initrd/initrd bs=1k count=$RAMDISK_SIZE
-mke2fs -vFm0 -N512 $BUILD/initrd/initrd $RAMDISK_SIZE
-tune2fs -c0 -i0 $BUILD/initrd/initrd
-
-mount -o loop $BUILD/initrd/initrd $INSTALL
-
-rmdir $INSTALL/lost+found
 mkdir $INSTALL/bin
 mkdir $INSTALL/mnt
 mkdir $INSTALL/mnt/ramfs
@@ -31,9 +22,6 @@ mkdir $INSTALL/sbin
 mkdir $INSTALL/usr
 mkdir $INSTALL/usr/bin
 mkdir $INSTALL/usr/sbin
-
-mkdir -p $INSTALL/dev
-$PACKAGES/initrd/makedev $INSTALL/dev || exit 1
 
 $SCRIPTS/install uClibc || exit 1
 $SCRIPTS/install busybox || exit 1
@@ -45,5 +33,7 @@ cp $PACKAGES/initrd/console $INSTALL/sbin
 cp $PACKAGES/initrd/rescan-scsi-bus $INSTALL/sbin
 cp $PACKAGES/initrd/nosystem $INSTALL/sbin
 
-umount $INSTALL
+$BUILD/genext2fs*/genext2fs -d $INSTALL -f $PACKAGES/initrd/dev -b 1024 -i 512 $BUILD/initrd/initrd
+rm -rf $INSTALL/*
+
 gzip -9 $BUILD/initrd/initrd
