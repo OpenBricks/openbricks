@@ -17,6 +17,8 @@ REMOTE=atiusb
 #                         homemade/irman/leadtek/logitech/pctv/realmagic)
 RECEIVER=atiusb
 
+# Theme
+THEME=
 
 # You should not have to modify the rest of this file
 
@@ -86,6 +88,18 @@ while [ $# -ne 0 ]; do
   shift || true
 done
 
+[ -z "$THEME" ] && THEME=`cat themes/default`
+if [ ! -f "themes/$THEME/config" ]; then
+  OTHEME=$THEME
+  THEME="theme-$THEME"
+  if [ ! -f "themes/$THEME/config" ]; then
+    echo ""
+    echo "**** GeeXboX theme '$OTHEME' not found. ****"
+    echo ""
+    exit 1
+  fi
+fi
+
 MENU_FONT=`lang2font "$LANG" menu`
 SUB_CHARSET=`lang2charset "$SUB_CHARSET"`
 SUB_FONT=`lang2font "$SUB_CHARSET" sub`
@@ -129,6 +143,11 @@ if [ -n "$MENU_FONT" -a "$MENU_FONT" != "$SUB_FONT" ]; then
   cp -r $GEEXBOX_DIR/font/$MENU_FONT $TMPDIR/iso/GEEXBOX/usr/share/mplayer/font/
 fi
 
+cp $GEEXBOX_DIR/themes/$THEME/*.ttf $TMPDIR/iso/GEEXBOX/usr/share/fonts/themefont.ttf
+cp $GEEXBOX_DIR/themes/$THEME/background.avi $TMPDIR/iso/GEEXBOX/usr/share/mplayer/
+[ -f $GEEXBOX_DIR/themes/$THEME/background-audio.avi ] && cp $GEEXBOX_DIR/themes/$THEME/background-audio.avi $TMPDIR/iso/GEEXBOX/usr/share/mplayer/
+[ -f $GEEXBOX_DIR/themes/$THEME/grub-splash.xpm.gz ] && cp $GEEXBOX_DIR/themes/$THEME/grub-splash.xpm.gz $TMPDIR/iso/GEEXBOX/usr/share/
+
 cp $GEEXBOX_DIR/lirc/lircrc_$REMOTE $TMPDIR/iso/GEEXBOX/etc/lircrc
 cp $GEEXBOX_DIR/lirc/lircd_$RECEIVER $TMPDIR/iso/GEEXBOX/etc/lircd
 cp $GEEXBOX_DIR/lirc/lircd_$REMOTE.conf $TMPDIR/iso/GEEXBOX/etc/lircd.conf
@@ -139,9 +158,16 @@ rm -f $TMPDIR/iso/GEEXBOX/etc/mplayer/menu.conf
 for i in $TMPDIR/iso/GEEXBOX/usr/share/mplayer/font/*/; do
   [ -d $i ] && rm -rf $i
 done
+rm -rf $TMPDIR/iso/GEEXBOX/usr/share/fonts/*
+rm -f $TMPDIR/iso/GEEXBOX/usr/share/mplayer/background.avi
+rm -f $TMPDIR/iso/GEEXBOX/usr/share/mplayer/background-audio.avi
+rm -f $TMPDIR/iso/GEEXBOX/usr/share/grub-splash.xpm.gz
 rm -f $TMPDIR/iso/GEEXBOX/etc/lirc*
 
 cp -rf $TMPDIR/iso/GEEXBOX/boot/* $TMPDIR/ziso/GEEXBOX/boot
+[ -f $GEEXBOX_DIR/themes/$THEME/bootsplash.dat ] && cat $GEEXBOX_DIR/themes/$THEME/bootsplash.dat >> $TMPDIR/ziso/GEEXBOX/boot/initrd.gz
+[ -f $GEEXBOX_DIR/themes/$THEME/splash-isolinux.rle ] && cp $GEEXBOX_DIR/themes/$THEME/splash-isolinux.rle $TMPDIR/ziso/GEEXBOX/boot/splash.rle
+
 for i in $TMPDIR/iso/*; do
   [ "$i" != $TMPDIR/iso/GEEXBOX ] && ln -s "../$i" $TMPDIR/ziso
 done
