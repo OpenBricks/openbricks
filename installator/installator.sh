@@ -88,14 +88,12 @@ if [ "$1" = geexbox ]; then
   CFDISK=/usr/bin/cfdisk
   SFDISK=/usr/bin/sfdisk
   MKDOSFS=/usr/bin/mkdosfs
-  MKE2FS=/usr/bin/mke2fs
   GRUB=/usr/bin/grub
 else
   DIALOG=`which dialog`
   CFDISK=`which cfdisk`
   SFDISK=`which sfdisk`
   MKDOSFS=`which mkdosfs`
-  MKE2FS=`which mke2fs`
   GRUB=`which grub`
 fi
 VERSION=`cat VERSION`
@@ -127,9 +125,9 @@ while true; do
       if [ -z "$CFDISK" ]; then
         CFDISK_MSG="As you don't have cfdisk installed, the installator won't be able to create the partition for you. You'll have to create it yourself before installing."
       else
-        CFDISK_MSG="You can now edit your partition table to create a FAT partition (type=0B) or Linux ext2/3 partition (type=83). Be careful to choose the right disk! We won't take responsibility for any data loss."
+        CFDISK_MSG="You can now edit your partition table to create a FAT partition (type=0B). Be careful to choose the right disk! We won't take responsibility for any data loss."
       fi
-      DISK=`$DIALOG --stdout --backtitle "$BACKTITLE" --title "Installation device" --menu "\nYou are going to install GeeXboX. For this you will need an empty FAT or Linux ext2/3 partition with about 8 MB of free space.\n$CFDISK_MSG" 0 0 0 $DISKS` || exit 1
+      DISK=`$DIALOG --stdout --backtitle "$BACKTITLE" --title "Installation device" --menu "\nYou are going to install GeeXboX. For this you will need an empty FAT partition with about 8 MB of free space.\n$CFDISK_MSG" 0 0 0 $DISKS` || exit 1
       [ $DISK != refresh ] && break
     fi
 done
@@ -139,16 +137,12 @@ fi
 
 while [ ! -b "$DEV" ]; do
     DISKS=""
-    for i in `$SFDISK -l /dev/$DISK | grep ${DISK%disc} | cut -f1 -d' '`; do
-      case `$SFDISK --print-id $DISK ${i#${i%%[0-9]*}}` in
-        1|11|6|e|16|1e|14|b|c|1b|1c|83)
-          S=`$SFDISK -s "$i" | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
-          DISKS="$DISKS $i ${S}MB"
-          ;;
-      esac
+    for i in `$SFDISK -l /dev/$DISK | grep FAT16 | grep ${DISK%disc} | cut -f1 -d' '`; do
+      S=`$SFDISK -s "$i" | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
+      DISKS="$DISKS $i ${S}MB"
     done
     if [ -z "$DISKS" ]; then
-      $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\nYou don't have any FAT or Linux ext2/3 partition on your system. Please create a FAT or Linux ext2/3 partition first using for example cfdisk.\n" 0 0
+      $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\nYou don't have any FAT partition on your system. Please create a FAT partition first using for example cfdisk.\n" 0 0
       exit 1
     else
       DEV=`$DIALOG --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Installation device" --menu "Where do you want to install GeeXboX?" 0 0 0 $DISKS` || exit 1
@@ -160,52 +154,16 @@ done
 
 DEVNAME="${DEV#/dev/}"
 
-case `$SFDISK --print-id ${DEV%%[0-9]*} ${DEV#${DEV%%[0-9]*}}` in
-  1|11|6|e|16|1e|14) # FAT12 and FAT16
-    MKFS=$MKDOSFS
-    MKFS_OPT="-n GEEXBOX"
-    MKFS_TYPE=vfat
-    MKFS_TYPENAME="FAT"
-    ;;
-  b|c|1b|1c) # FAT32
-    MKFS=$MKDOSFS
-    MKFS_OPT="-n GEEXBOX -F 32"
-    MKFS_TYPE=vfat
-    MKFS_TYPENAME="FAT"
-    ;;
-   83) # Linux
-     MKFS_TYPE=`$DIALOG --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Linux partition type" --menu "Which type of Linux partition you want ?" 0 0 0 ext2 "Linux ext2" ext3 "Linux ext3"` || exit 1
-
-     case $MKFS_TYPE in
-       ext2)
-         MKFS=$MKE2FS
-         MKFS_OPT="-L GEEXBOX"
-         MKFS_TYPENAME="Linux ext2"
-         ;;
-       ext3)
-         MKFS=$MKE2FS
-         MKFS_OPT="-L GEEXBOX -j"
-         MKFS_TYPENAME="Linux ext3"
-         ;;
-     esac
-     ;;
-esac
-
-if [ -z "$MKFS" ]; then
-    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Warning" --msgbox "\n'$DEV' needs to be a $MKFS_TYPENAME partition. As you don't have formatting tool installed, I won't be able to format the partition. Hopefully it is already formatted.\n" 0 0
+if [ -z "$MKDOSFS" ]; then
+    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Warning" --msgbox "\n'$DEV' needs to be a FAT partition. As you don't have mkdosfs installed, I won't be able to format the partition. Hopefully it is already formatted.\n" 0 0
 else
-    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Formatting" --defaultno --yesno "\nDo you want to format '$DEV' ?\n" 0 0 && FORMAT=yes
+    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Formatting" --defaultno --yesno "\nDo you want to format '$DEV' in FAT32?\n" 0 0 && FORMAT=yes
 fi
 echo ""
 
-[ "$FORMAT" = yes ] && $MKFS $MKFS_OPT "$DEV"
+[ "$FORMAT" = yes ] && $MKDOSFS -n GEEXBOX "$DEV"
 mkdir di
-mount -t $MKFS_TYPE "$DEV" di
-if [ $? -ne 0 ]; then
-  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\nFailed to mount '$DEV' as $MKFS_TYPENAME partition.\n" 0 0
-  exit 1
-fi
-
+mount -t vfat "$DEV" di
 if [ -d disk ]; then
   cp -a disk/* di 2>/dev/null
 else
@@ -225,7 +183,7 @@ device_map=$grubdir/device.map
 
 rm -rf $grubdir	
 mkdir -p $grubdir
-tar xjf "di/GEEXBOX/usr/share/grub-i386-pc.tar.bz2" -C $grubdir
+tar xjf "di/geexbox/usr/share/grub-i386-pc.tar.bz2" -C $grubdir
 
 cp $grubdir/stage2 $grubdir/stage2_single
 
@@ -262,8 +220,8 @@ for os in $oslist; do
 done
 IFS=$saveifs
 
-if [ -f "di/GEEXBOX/usr/share/grub-splash.xpm.gz" ]; then
-  splashimage="splashimage=$rootdev/GEEXBOX/usr/share/grub-splash.xpm.gz"
+if [ -f "di/geexbox/usr/share/grub-splash.xpm.gz" ]; then
+  splashimage="splashimage=$rootdev/geexbox/usr/share/grub-splash.xpm.gz"
 else
   splashimage=""
 fi

@@ -81,8 +81,7 @@ text files.
     For the list of available languages please see the "language" directory.
     If your language is not available, you can translate the menu
     in your own language. This simply involves the creation of
-    language/menu_LANG.conf and language/help_LANG.txt,
-    and adding LANG to language/lang.conf.
+    language/menu_LANG.conf and language/help_LANG.txt.
 
 * MPlayer :
     This is where you can do most of the configuration and tweaking.
