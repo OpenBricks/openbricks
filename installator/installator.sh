@@ -36,7 +36,7 @@ if [ -z "$SFDISK" -o -z "$SYSLINUX" ]; then
     $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\nYou need to have syslinux and sfdisk installed to install GeeXboX\n" 0 0
   else
     echo ""
-    echo "**** You need to have syslinux installed to install GeeXboX ****"
+    echo "**** You need to have syslinux and sfdisk installed to install GeeXboX ****"
     echo ""
   fi
   exit 1
@@ -54,11 +54,11 @@ if [ -n "$DIALOG" ]; then
     else
       DISKS="$DISKS refresh list"
       if [ -z "$CFDISK" ]; then
-        CFDISK_MSG="As you don't have cfdisk installed, the installator wont be able to create the partition for you. You'll have to create it yourself before installing."
+        CFDISK_MSG="As you don't have cfdisk installed, the installator won't be able to create the partition for you. You'll have to create it yourself before installing."
       else
         CFDISK_MSG="You can now edit your partition table to create a FAT16 partition (type=06). Be careful to choose the right disk! We won't take responsibility for any data loss."
       fi
-      DISK=`$DIALOG --stdout --backtitle "$BACKTITLE" --title "Installation device" --menu "\nYou are going to install GeeXboX. For this you will need a PRIMARY FAT16 partition (hdX1 to hdX4) with about 8 MB of free space (max. 1 GB). It WONT work with FAT32 or ext2 partitions.\n$CFDISK_MSG" 0 0 0 $DISKS` || exit 1
+      DISK=`$DIALOG --stdout --backtitle "$BACKTITLE" --title "Installation device" --menu "\nYou are going to install GeeXboX. For this you will need a PRIMARY FAT16 partition (hdX1 to hdX4) with about 8 MB of free space (max. 1 GB). It WON'T work with FAT32 or ext2 partitions.\n$CFDISK_MSG" 0 0 0 $DISKS` || exit 1
       [ $DISK != refresh ] && break
     fi
   done
@@ -68,7 +68,7 @@ else
   echo "You are going to install GeeXboX. For this you will need a PRIMARY"
   echo "FAT16 partition (hdX1 to hdX4) with about 8 MB of free space (max 1 GB)"
   echo "It WON'T work with FAT32 or ext2 partitions."
-  echo "This installator wont create the partition. You'll have to create it"
+  echo "This installator won't create the partition. You'll have to create it"
   echo "yourself before installing. Be careful when choosing the partition"
   echo "where to install! We won't take responsibility for any data loss."
   echo ""
@@ -82,7 +82,7 @@ while [ ! -b "$DEV" ]; do
       DISKS="$DISKS $i ${S}MB"
     done
     if [ -z "$DISKS" ]; then
-      $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\nYou don't have any FAT16 partition on your system. Please create a FAT16 partition first using for example cfdisk.\n" 0 0
+      $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\nYou don't have any FAT16 partitions on your system. Please create a FAT16 partition first using for example cfdisk.\n" 0 0
       exit 1
     else
       DEV=`$DIALOG --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Installation device" --menu "Where do you want to install GeeXboX?" 0 0 0 $DISKS` || exit 1
@@ -113,7 +113,7 @@ if [ -z "$MKDOSFS" ]; then
   fi
 else
   if [ -n "$DIALOG" ]; then
-    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Formating" --defaultno --yesno "\nDo you want to format '$DEV' in FAT16?\n" 0 0 && FORMAT=yes
+    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Formatting" --defaultno --yesno "\nDo you want to format '$DEV' in FAT16?\n" 0 0 && FORMAT=yes
   else
     read -p "Do you want to format '$DEV' in FAT16? (yes/no) " FORMAT
   fi
@@ -146,11 +146,11 @@ umount di
 rmdir di
 
 if [ -n "$DIALOG" ]; then
-  `$DIALOG --backtitle "$BACKTITLE" --title "Bootloader" --defaultno --yesno "\n'$DEV' is now a bootable partition. To boot from it, you will need to install a bootloader. If you don't have any other operating system on this hard disk, I can install a bootloader for you. Else, you will need to configure yourself a boot loader, such as LILO or GRUB.\n\nDo you want to install a single system bootloader?\n" 0 0` && MBR=yes
+  `$DIALOG --backtitle "$BACKTITLE" --title "Bootloader" --defaultno --yesno "\n'$DEV' is now a bootable partition. To boot from it, you will need to install a bootloader. If you don't have any other operating systems on this hard disk, I can install a bootloader for you. Else, you will need to configure yourself a boot loader, such as LILO or GRUB.\n\nDo you want to install a single system bootloader?\n" 0 0` && MBR=yes
 else
   echo ""
   echo "'$DEV' is now a bootable partition. To boot from it, you will need to"
-  echo "install a bootloader. If you don't have any other operating system on"
+  echo "install a bootloader. If you don't have any other operating systems on"
   echo "this hard disk, I can install a bootloader for you. Else, you will"
   echo "need to configure yourself a boot loader, such as LILO or GRUB."
   echo ""
@@ -201,7 +201,7 @@ fi
 [ -n "$CDROM" ] && eject &
 
 if [ -n "$DIALOG" ]; then
-  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Have Fun" --msgbox "\nThe GeeXboX is now installed on '$DEV'\n" 0 0
+  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Have Fun!" --msgbox "\nGeeXboX is now installed on '$DEV'\n" 0 0
 else
   echo ""
   echo "**** GeeXboX is now installed on '$DEV'. Have fun! ****"
