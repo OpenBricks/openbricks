@@ -26,7 +26,7 @@ if [ "$UID" != "0" ]; then
   exit 1
 fi
 
-if [ -z "$SFDISK" -o -z "$SYSLINUX"]; then
+if [ -z "$SFDISK" -o -z "$SYSLINUX" -o -z "$DIALOG" ]; then
     echo ""
     echo "**** You need to have syslinux, sfdisk and dialog installed to install GeeXboX ****"
     echo ""
