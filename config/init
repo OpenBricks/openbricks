@@ -56,30 +56,33 @@ lircd --driver=$LIRC_DRIVER --device=$LIRC_DEVICE
 
 rm -rf /lib/modules
 
-if test -f /etc/network -a -x /usr/bin/smbmount; then
+if test -f /etc/network; then 
   . /etc/network
-  test -z "$HOST" && HOST=0.0.0.0
-  if ifconfig eth0 $HOST >/dev/null 2>&1; then
-    if test $HOST = 0.0.0.0; then
-      echo "96 sending dhcp request" > /proc/progress
-      udhcpc -H geexbox -n >/dev/null 2>&1 && NET=yes
-      test "$NET" = yes || ifconfig eth0 192.168.0.54 && NET=yes
-    else
-      NET=yes
-    fi
-    if test "$NET" = yes; then
-      echo "97 mouting network shares" > /proc/progress
-      ( IFS='
+  if test -x /usr/bin/smbmount; then
+    test -z "$HOST" && HOST=0.0.0.0
+    if ifconfig eth0 $HOST >/dev/null 2>&1; then
+      if test $HOST = 0.0.0.0; then
+        echo "96 sending dhcp request" > /proc/progress
+        udhcpc -H geexbox -n >/dev/null 2>&1 && NET=yes
+        test "$NET" = yes || ifconfig eth0 192.168.0.54 && NET=yes
+      else
+        NET=yes
+      fi
+      if test "$NET" = yes; then
+        echo "97 mouting network shares" > /proc/progress
+        ( IFS='
 '
-      for i in `smbtree -N | sed -n 's/.*\\\\\\\\\(.*\)\\\\\([^\ $]*\)\ .*/\1\/\2/p'`; do
-        mkdir -p "/mnt/shares/$i"
-        smbmount "//$i" "/mnt/shares/$i" -o ro,username=$USER,passwd=$PWD >/dev/null 2>&1 || rmdir -p "/mnt/shares/$i" >/dev/null 2>&1
-      done ) &
+        for i in `smbtree -N | sed -n 's/.*\\\\\\\\\(.*\)\\\\\([^\ $]*\)\ .*/\1\/\2/p'`; do
+          mkdir -p "/mnt/shares/$i"
+          smbmount "//$i" "/mnt/shares/$i" -o ro,username=$USER,passwd=$PWD >/dev/null 2>&1 || rmdir -p "/mnt/shares/$i" >/dev/null 2>&1
+        done ) &
+      fi
     fi
   fi
+  if test -f /etc/bftpd.conf; then
+    bftpd -d -c /etc/bftpd.conf 2>&1
+  fi
 fi
-
-test -f /etc/passwd && oftpd root / 2>&1
 
 test -f /proc/progress && echo "98 setting cdrom speed" > /proc/progress
 for DEV in /dev/scd*; do
