@@ -22,6 +22,9 @@ pxe:
 exec: iso
 	scripts/exec
 
+md5sum: iso generator dist fulldist
+	scripts/md5sum
+
 clean:
 	scripts/clean
 
