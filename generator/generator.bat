@@ -65,6 +65,7 @@ if %SUB_FONT%==zh_CN set SUBFONT=gb2312
 if %SUB_FONT%==big5 set SUBFONT=big5
 if %SUB_FONT%==zh_TW set SUBFONT=big5
 set SUB_FONT=%SUBFONT%
+if "X%MENU_FONT%"=="X" set MENU_FONT=%SUB_FONT%
 
 set TEST_FONT=%SUB_FONT%
 if not exist font\%TEST_FONT%\font.desc goto missingfont
@@ -105,7 +106,6 @@ echo %SUB_FONT% > iso\GEEXBOX\etc\subfont
 md iso\GEEXBOX\usr\share\mplayer\font\%SUB_FONT%
 copy font\%SUB_FONT%\* iso\GEEXBOX\usr\share\mplayer\font\%SUB_FONT% >nul
 
-if "X%MENU_FONT%"=="X" set MENU_FONT=%SUB_FONT%
 if %MENU_FONT%==%SUB_FONT% goto samefont
 md iso\GEEXBOX\usr\share\mplayer\font\%MENU_FONT%
 copy font\%MENU_FONT%\* iso\GEEXBOX\usr\share\mplayer\font\%MENU_FONT% >nul
