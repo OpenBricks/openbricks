@@ -1,5 +1,85 @@
 #!/bin/sh
 
+# Detect whether partition ($1) mounted at ($2) with type ($3) is microsoft.
+detect_os_microsoft () {
+  local longname
+
+  if [ "$3" != ntfs -a "$3" != vfat -a "$3" != msdos ]; then
+    return
+  fi
+
+  if [ -e "$2/ntldr" -a -e "$2/NTDETECT.COM" ]; then
+    longname="Windows NT/2000/XP"
+  elif [ -e "$2/windows/win.com" ]; then
+    longname="Windows 95/98/Me"
+  elif [ -d "$2/dos" ]; then
+    longname="MS-DOS 5.x/6.x/Win3.1"
+  else
+    return
+  fi
+
+  echo "$1:$longname:chain"
+}
+
+detect_os () {
+  local partname partition type mpoint
+
+  mkdir -p tmpmnt
+
+  for partname in `sed -n "s/\ *[0-9][0-9]*\ *[0-9][0-9]*\ *[0-9][0-9][0-9]*\ \([a-z]*[0-9][0-9]*\)/\1/p" /proc/partitions`; do
+    partition="/dev/$partname"
+
+    if ! grep -q "^$partition " /proc/mounts; then
+      if mount -o ro $partition tmpmnt >/dev/null 2>&1; then
+        type=$(grep "^$partition " /proc/mounts | cut -d " " -f 3)
+        detect_os_microsoft $partition tmpmnt $type
+	
+        umount $partition >/dev/null 2>&1
+      fi
+    else
+      mpoint=$(grep "^$partition " /proc/mounts | cut -d " " -f 2)
+      type=$(grep "^$partition " /proc/mounts | cut -d " " -f 3)
+
+      detect_os_microsoft $partition $mpoint $type
+    fi
+  done
+
+  rm -r tmpmnt
+}
+
+# Usage: convert os_device
+# Convert an OS device to the corresponding GRUB drive.
+# This part is OS-specific.
+# -- taken from `grub-install`
+convert () {
+  local tmp_drive tmp_disk tmp_part
+
+  if test ! -e "$1"; then
+    echo "$1: Not found or not a block device." 1>&2
+    exit 1
+  fi
+
+  tmp_disk=`echo "$1" | sed -e 's%\([sh]d[a-z]\)[0-9]*$%\1%'`
+  tmp_part=`echo "$1" | sed -e 's%.*/[sh]d[a-z]\([0-9]*\)$%\1%'`
+
+  tmp_drive=`grep -v '^#' $device_map | grep "$tmp_disk *$" \
+			| sed 's%.*\(([hf]d[0-9][a-g0-9,]*)\).*%\1%'`
+
+  if [ -z "$tmp_drive" ]; then
+    echo "$1 does not have any corresponding BIOS drive." 1>&2
+    exit 1
+  fi
+
+  if [ -n "$tmp_part" ]; then
+    # If a partition is specified, we need to translate it into the
+    # GRUB's syntax.
+    echo "$tmp_drive" | sed "s%)$%,$(($tmp_part-1)))%"
+  else
+    # If no partition is specified, just print the drive name.
+    echo "$tmp_drive"
+  fi
+}
+
 /bin/busybox mount -t proc none /proc
 /bin/busybox --install -s
 
@@ -8,13 +88,13 @@ if [ "$1" = geexbox ]; then
   CFDISK=/usr/bin/cfdisk
   SFDISK=/usr/bin/sfdisk
   MKDOSFS=/usr/bin/mkdosfs
-  SYSLINUX=/usr/bin/syslinux
+  GRUB=/usr/bin/grub
 else
   DIALOG=`which dialog`
   CFDISK=`which cfdisk`
   SFDISK=`which sfdisk`
   MKDOSFS=`which mkdosfs`
-  SYSLINUX=`which syslinux`
+  GRUB=`which grub`
 fi
 VERSION=`cat VERSION`
 BACKTITLE="GeeXboX $VERSION installator"
@@ -26,9 +106,9 @@ if [ "$UID" != "0" ]; then
   exit 1
 fi
 
-if [ -z "$SFDISK" -o -z "$SYSLINUX" -o -z "$DIALOG" ]; then
+if [ -z "$SFDISK" -o -z "$GRUB" -o -z "$DIALOG" ]; then
     echo ""
-    echo "**** You need to have syslinux, sfdisk and dialog installed to install GeeXboX ****"
+    echo "**** You need to have syslinux, grub and dialog installed to install GeeXboX ****"
     echo ""
 fi
 
@@ -72,6 +152,8 @@ while [ ! -b "$DEV" ]; do
     fi
 done
 
+DEVNAME="${DEV#/dev/}"
+
 if [ -z "$MKDOSFS" ]; then
     $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Warning" --msgbox "\n'$DEV' needs to be a FAT16 partition. As you don't have mkdosfs installed, I won't be able to format the partition. Hopefully it is already formatted.\n" 0 0
 else
@@ -92,35 +174,155 @@ else
   fi
   cp -a "$GEEXBOX" di/GEEXBOX 2>/dev/null
   mv di/GEEXBOX/boot/* di
-  rm di/isolinux.bin
+  rm -f di/isolinux.bin di/isolinux.cfg di/boot.catalog
 fi
-sed "s/boot=cdrom/boot=${DEV#/dev/}/" di/isolinux.cfg > di/syslinux.cfg
-rm di/isolinux.cfg
-umount di
-$SYSLINUX "$DEV"
 
-mount -t vfat "$DEV" di
-dd if="$DEV" of=di/geexbox.lnx count=1 bs=512
-umount di
-rmdir di
+grubprefix=/boot/grub
+grubdir=di$grubprefix
+device_map=$grubdir/device.map
 
-$DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Bootloader" --defaultno --yesno "\n'$DEV' is now a bootable partition. To boot from it, you will need to install a bootloader. If you don't have any other operating systems on this hard disk, I can install a bootloader for you. Else, you will need to configure yourself a boot loader, such as LILO or GRUB.\n\nDo you want to install a single system bootloader?\n" 0 0 && MBR=yes
+rm -rf $grubdir	
+mkdir -p $grubdir
+tar xjf "di/geexbox/usr/share/grub-i386-pc.tar.bz2" -C $grubdir
 
-PART="${DEV#${DEV%%[0-9]*}}"
-if [ "$MBR" = yes ]; then
-  if [ -f mbr.bin ]; then
-    dd if=mbr.bin of="/dev/$DISK"
-  elif [ -f /usr/share/syslinux/mbr.bin ]; then
-    dd if=/usr/share/syslinux/mbr.bin of="/dev/$DISK"
-  fi
-  echo ",,,*" | $SFDISK "/dev/$DISK" -N$PART
+cp $grubdir/stage2 $grubdir/stage2_single
+
+# Detect BIOS devices
+$GRUB --batch --no-floppy --device-map=$device_map <<EOF
+quit
+EOF
+
+rootdev=$(convert $DEV)
+
+if [ -z "$rootdev" ]; then
+  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\nCouldn't find my GRUB partition represation\n" 0 0
+  exit 1
+fi
+
+$GRUB --batch --no-floppy --device-map=$device_map <<EOF
+root $rootdev
+install --stage2=$grubdir/stage2_single $grubprefix/stage1 $rootdev $grubprefix/stage2_single p /boot/grub/single.lst
+EOF
+
+oslist=$(detect_os)
+
+supported_os_list=""
+saveifs=$IFS
+IFS='
+'
+for os in $oslist; do
+    title=$(echo "$os" | cut -d: -f2)
+    if [ -n "$supported_os_list" ]; then
+	supported_os_list="$supported_os_list, $title"
+    else
+	supported_os_list="$title"
+    fi
+done
+IFS=$saveifs
+
+if [ -f "di/geexbox/usr/share/grub-splash.xpm.gz" ]; then
+  splashimage="splashimage=$rootdev/geexbox/usr/share/grub-splash.xpm.gz"
 else
-  GRUBDISK=`echo $DISK | sed 's/.*\(.\)$/\1/ ; y/abcdefghij/0123456789/'`
-  GRUBPART=`echo $PART | sed 'y/12345678/01234567/'`
-  GRUBDEV="(hd$GRUBDISK,$GRUBPART)"
-
-  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Bootloader" --msgbox "\nYou can configure LILO to boot GeeXboX simply by adding these lines at the end of your /etc/lilo.conf :\n    other=$DEV\n          label=GeeXboX\nDon't forget to execute lilo after doing this modification.\n\nOr if you use GRUB, add something along these lines to your /boot/grub/menu.lst:\n    title GeeXboX\n        rootnoverify $GRUBDEV\n        chainloader /geexbox.lnx\n\nWindows users must copy geexbox.lnx to their C:\ drive and add the\nfollowing line to the boot.ini file to use with the NT Loader.\n    c:\geexbox.lnx=\"GeeXboX\"\n\nOr you can have a look at a separate boot loader such as XOSL (http://www.ranish.com/part/xosl.htm)." 0 0
+  splashimage=""
 fi
+
+if [ -n "$supported_os_list" ]; then
+  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Bootloader" --defaultno --yesno "\n'$DEV' is now a GeeXboX partition. To boot from it, you will need to install a bootloader. If you don't have any other operating systems on this hard disk, I can install a bootloader for you. Else, you will need to configure yourself a boot loader, such as LILO or GRUB.\nI have found: $supported_os_list\nDo you want to install me to install the boot loader for you?\n" 0 0 && MBR=yes
+else
+  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Bootloader" --defaultno --yesno "\n'$DEV' is now a GeeXboX partition. I didn't recognize any other OS on your system, want me to install boot loader on your MBR?\n" 0 0 && MBR=yes
+fi
+
+if [ "$MBR" = "yes" ]; then
+  $GRUB --batch --no-floppy --device-map=$device_map <<EOF
+root $rootdev
+setup --stage2=$grubdir/stage2 --prefix=$grubprefix (hd0)
+EOF
+
+  cat > $grubdir/menu.lst <<EOF
+default  0
+timeout  5
+color cyan/blue white/blue
+$splashimage
+
+EOF
+
+  saveifs=$IFS
+  IFS='
+'
+  for os in $oslist; do
+    partition=$(echo "$os" | cut -d: -f1)
+    grubpartition=$(convert $partition)
+    
+    if [ -z "$grubpartition" ]; then
+	continue
+    fi
+    
+    grubdisk=${grubpartition%,*}
+    grubdisk="(${grubdisk#(})"
+    title=$(echo "$os" | cut -d: -f2)
+    type=$(echo "$os" | cut -d: -f3)
+
+    if [ "$type" == chain ]; then
+      cat >> $grubdir/menu.lst <<EOF
+title	$title
+EOF
+      if [ $grubdisk != "(hd0)" ]; then
+        cat >> $grubdir/menu.lst <<EOF
+map (hd0) $grubdisk
+map $grubdisk (hd0)
+EOF
+      fi 
+
+      cat >> $grubdir/menu.lst <<EOF
+rootnoverify $grubpartition
+makeactive
+chainloader +1
+boot
+
+EOF
+    fi
+  done
+  IFS=$saveifs
+
+  cat >> $grubdir/menu.lst <<EOF
+title	GeeXboX
+root	$rootdev
+kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME splash=silent vga=0x315 video=vesafb:ywrap,mtrr
+initrd  /initrd.gz
+boot
+
+title	GeeXboX (debug)
+root	$rootdev
+kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME debugging
+initrd  /initrd.gz
+boot
+EOF
+
+else
+  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Bootloader" --msgbox "\nYou should install boot loader to boot geexbox\n" 0 0
+fi
+
+cat > $grubdir/single.lst <<EOF
+default  0
+timeout  2
+color cyan/blue white/blue
+$splashimage
+
+title	GeeXboX
+root	$rootdev
+kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME splash=silent vga=0x315 video=vesafb:ywrap,mtrr
+initrd  /initrd.gz
+boot
+
+title	GeeXboX (debug)
+root	$rootdev
+kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME debugging
+initrd  /initrd.gz
+boot
+EOF
+
+umount di
+rm -r di
 
 [ -n "$CDROM" ] && eject &
 
