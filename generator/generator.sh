@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# Menu langage (bg/br/cat/cz/de/en/es/fi/fr/hu/it/nl/pl/ro/ru/se/sk)
+# Menu language (bg/br/cat/cz/de/en/es/fi/fr/he/hu/it/nl/pl/ro/ru/se/sk)
 # This have no effect on DVD language. See iso/GEEXBOX/etc/mplayer/mplayer.conf
 # For ru, you will need to replace the ttf file in
 # iso/GEEXBOX/usr/share/mplayer/font by a KOI8R ttf font.
