@@ -264,7 +264,12 @@ rm -rf $grubdir
 mkdir -p $grubdir
 tar xjf "di/GEEXBOX/usr/share/grub-i386-pc.tar.bz2" -C $grubdir
 
-cp -f "di/GEEXBOX/usr/share/grub-splash.xpm.gz" $grubdir
+if [ -f "di/GEEXBOX/usr/share/grub-splash.xpm.gz" ]; then
+  cp -f "di/GEEXBOX/usr/share/grub-splash.xpm.gz" $grubdir || exit 1
+  disable_splashimage=
+else
+  disable_splashimage="#"
+fi
 splashimage="$grubprefix/grub-splash.xpm.gz"
 
 if [ $BOOTLOADER = syslinux ]; then
@@ -308,7 +313,7 @@ EOF
 default  0
 timeout  2
 color cyan/blue white/blue
-splashimage=$rootdev_single$splashimage
+${disable_splashimage}splashimage=$rootdev_single$splashimage
 
 title	GeeXboX
 root	$rootdev_single
@@ -361,7 +366,7 @@ EOF
 default  0
 timeout  5
 color cyan/blue white/blue
-splashimage=$rootdev$splashimage
+${disable_splashimage}splashimage=$rootdev$splashimage
 
 EOF
 
