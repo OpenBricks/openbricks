@@ -95,7 +95,7 @@ semplicemente qualche file di testo.
     applicazioni dedicate alle varie marche di schede video. Attualmente viene
     utilizzato atitvout per le schede ATI, s3switch per le schede S3 e nvtv per
     le schede nVidia cards (e, ove possibile, schede intel i810 e 3dfx).
-    La configurazione di questi programmi è effettuata in config/tvsettings.
+    La configurazione di questi programmi è effettuata in config/tvout.
     In questo file è possibile scegliere lo standard TV (pal, ntsc...) ed è
     inoltre possibile modificare le opzioni specifiche per nvtv.
 
@@ -145,7 +145,7 @@ semplicemente qualche file di testo.
     GeeXboX supporta le entrate e i sintonizzatori TV. Il sistema cercherà di
     rilevare automaticamente la scheda e il sintonizzatore. E' possibile
     forzare le impostazioni e saltare i tentativi di rilevamento. Modificare il
-    file  /etc/tvsettings come descritto :
+    file  /etc/tvout come descritto :
 
  #TV CARD/TUNER Model (AUTO for autodetection or look at the following urls)
  #http://www.linuxhq.com/kernel/v2.6/2/Documentation/video4linux/CARDLIST.bttv
@@ -163,7 +163,7 @@ semplicemente qualche file di testo.
     e S-VHS) della propria scheda TV. Allo stesso modo, sarà possibile usare il
     sintonizzatore per guardare la TV. Per fare ciò, è necessario specificare
     la regione di appartenenza e la frequenza dei canali TV che si vogliono
-    visualizzare. Anche questa volta basta modificare il file /etc/tvsettings :
+    visualizzare. Anche questa volta basta modificare il file /etc/tvout :
 
     # TV Channels
     # Syntax : CHAN="Channel Title":"Channel Frequency"

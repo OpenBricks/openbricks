@@ -91,7 +91,7 @@ text files.
     dedicated to different video card brands. Currently we use atitvout
     for ATI cards, s3switch for S3 cards and nvtv for nVidia cards (and
     possibly intel i810 and 3dfx cards). The configuration of those programs
-    is done in config/tvsettings. There you can choose the TV standard you
+    is done in config/tvout. There you can choose the TV standard you
     want (pal, ntsc...) and you can also modify specific options for nvtv.
 
 * Lirc :
@@ -136,7 +136,7 @@ text files.
 * tv configuration :
     GeeXboX supports TV inputs and tuners. The system hardly tries to
     autodetect the card and the tuner. You can force the settings and skip
-    the autodetection try. Please modify the /etc/tvsettings as described :
+    the autodetection try. Please modify the /etc/tvout as described :
 
  #TV CARD/TUNER Model (AUTO for autodetection or look at the following urls)
  #http://www.linuxhq.com/kernel/v2.6/2/Documentation/video4linux/CARDLIST.bttv
@@ -153,7 +153,7 @@ text files.
     of your TV card. In the same way, you can use the tuner to watch TV.
     For that, you will have to define the region you belongs to and the
     frequency of the TV channels you want to watch.
-    Once again, simply edit the /etc/tvsettings file :
+    Once again, simply edit the /etc/tvout file :
 
     # TV Channels
     # Syntax : CHAN="Channel Title":"Channel Frequency"

@@ -13,8 +13,8 @@
 
 GeeXboX ist eine Art "Divx Out-Of-The-Box" Software. Genaugenommen ist es eine
 bootfähige CD, welche es erlaubt, Filme anzuschauen, Musik zu hören und Bilder
-zu betrachten. Es unterstützt viele Formate wie zum Beispiel avi, mpeg, divx, ogm,
-rm, mp3, ogg, dvd, vcd, jpg, bmp, cdda...
+zu betrachten. Es unterstützt viele Formate wie zum Beispiel avi, mpeg, divx,
+ogm, rm, mp3, ogg, dvd, vcd, jpg, bmp, cdda...
 GeeXboX unterstützt zudem einige Infrarot-Fernbedienungen und den TV-Ausgang
 einiger Grafikkarten. Dieses Archiv enthält die nötigen Scripte um ein eigenes
 ISO-Image von GeeXboX zu erstellen.
@@ -31,29 +31,19 @@ Um ein GeeXboX ISO zu erstellen, wird eines der folgenden Systeme benötigt:
 Um GeeXboX zu installieren benötigen Sie:
   - GNU/Linux mit syslinux.
 
-Um Ihre eigene GeeXboX zu erstellen benötigen Sie einige "klassische" Werkzeuge:
+Um Ihre eigene GeeXboX zu erstellen benötigen Sie einige "klassische"
+Werkzeuge:
   - ein funktionierendes GNU/Linux System.
   - denn gcc C Compiler.
-    (http://gcc.gnu.org/)
   - GNU make
-    (http://www.gnu.org/software/make/)
   - patch.
-    (http://publibn.boulder.ibm.com/doc_link/en_US/a_doc_lib/cmds/aixcmds4/patch.htm)
-  - den nasm Assembler. (http://www.kernel.org/pub/software/devel/nasm/source/)
+  - den nasm Assembler.
   - bzip2 und gzip.
-    (http://sources.redhat.com/bzip2/)
-    (http://www.gzip.org/)
   - mkfs.ext2 und mkfs.vfat
-    (http://linuxreviews.org/man/mkfs.ext2/)
-    (http://linux.about.com/library/cmd/blcmdl8_mkfs.vfat.htm)
   - wget Kommandozeilen-Downloadtool(wird nicht für das komplette GeeXboX Paket
     benötigt).
-    (http://www.gnu.org/software/wget/wget.html)
   - mkisofs und mkzftree um das ISO-Image zu erstellen und zu komprimieren.
-    (http://www.andante.org/mkisofs.html)
-    (http://gd.tuwien.ac.at/linuxcommand.org/man_pages/mkzftree1.html)
   - cdrecord (um das ISO-Image zu brennen).
-    (http://freshmeat.net/projects/cdrecord/)
 
 Zudem benötigen Sie mindestens 500 MB freien Speicher auf Ihrer Festplatte.
 
@@ -99,27 +89,27 @@ einige Text-Dateien editieren:
     auch in der MPlayer Dokumentation (in build/MPlayer-*/DOCS oder unter
     http://mplayerhq.hu/DOCS/).
     Eine andere Datei, die sie vielleicht editieren wollen, ist
-    packages/MPlayer/menu.conf. Sie können z.B. einzelne Menupunkte entfernen oder
-    das Menü in eine beliebige Sprache übersetzen.
+    packages/MPlayer/menu.conf. Sie können z.B. einzelne Menupunkte entfernen
+    oder das Menü in eine beliebige Sprache übersetzen.
     Die letzte interessante Datei ist packages/MPlayer/build. Sie enthält die
     Optionen, welche für das Erstellen von MPlayer gesetzt sind.
 
 * TV-Ausgang:
     Das Aktivieren des TV-Ausgangs wird durch die Verwendung mehrerer kleiner
     Programme für die unterschiedlichen Video Karten Hersteller erreicht. Wir
-    verwenden im Moment atitvout für ATI Karten, s3switch für S3 Karten und nvtv
-    für nVidia Karten (unterstützt zum Teil ebenfalls Intel i810 und 3dfx Karten).
-    Die Einstellungen dieser Programme werden in der Datei config/tvsettings vor-
-    genommen. Sie können den TV-Standard wählen (PAL, NTSC) und einige spezifische
-    Optionen für nvtv vornehmen.
+    verwenden im Moment atitvout für ATI Karten, s3switch für S3 Karten und
+    nvtv für nVidia Karten (unterstützt zum Teil ebenfalls Intel i810 und 3dfx
+    Karten). Die Einstellungen dieser Programme werden in der Datei
+    config/tvout vorgenommen. Sie können den TV-Standard wählen (PAL, NTSC)
+    und einige spezifische Optionen für nvtv vornehmen.
 
 * Lirc:
-    Sie können eine der unterstützten Fernbedienungen wählen, indem Sie die Datei
-    GEEXBOX/etc/remote editieren. Falls Sie eine ATI Remote Wonder verwenden
-    (welche nicht von Lirc unterstützt wird), müssen Sie nichts verändern, da
-    diese standardmässig von GeeXboX unterstützt wird. Falls Sie die
-    Tastenbelegung ihrer Fernbedienung verändern möchten, so editieren Sie die
-    Datei GEEXBOX/etc/lirc/lircrc_REMOTE.
+    Sie können eine der unterstützten Fernbedienungen wählen, indem Sie die
+    Datei GEEXBOX/etc/remote editieren. Falls Sie eine ATI Remote Wonder
+    verwenden (welche nicht von Lirc unterstützt wird), müssen Sie nichts
+    verändern, da diese standardmässig von GeeXboX unterstützt wird. Falls Sie
+    die Tastenbelegung ihrer Fernbedienung verändern möchten, so editieren Sie
+    die Datei GEEXBOX/etc/lirc/lircrc_REMOTE.
 
 * Netzwerk:
     Die Netzwerkeinstellungen werden in der Datei GEEXBOX/etc/network
@@ -133,10 +123,10 @@ einige Text-Dateien editieren:
 
 * WiFi:
     In der Default-Einstellung versucht GeeXboX automatisch ihre Netzwerkein-
-    stellungen zu erkennen. Wenn sie einen traditionellen NIC und eine WiFi-Karte
-    haben, wird nur letztere eingerichtet. Unter Umständen müssen sie die Datei
-    /etc/network editieren, um sie an ihre Netzwerkeinstellungen anzupassen.
-    Dort finden sie 4 Zeilen die Wireless Lan Karten betreffen:
+    stellungen zu erkennen. Wenn sie einen traditionellen NIC und eine
+    WiFi-Karte haben, wird nur letztere eingerichtet. Unter Umständen müssen
+    sie die Datei /etc/network editieren, um sie an ihre Netzwerkeinstellungen
+    anzupassen. Dort finden sie 4 Zeilen die Wireless Lan Karten betreffen:
 
     * PHY_TYPE="auto"      # Physikalischer Netzwerktyp (auto|ethernet|wifi)
     * WIFI_MODE="managed"  # Wifi Betreibsmodus (managed|ad-hoc)
@@ -144,40 +134,43 @@ einige Text-Dateien editieren:
     * WIFI_ESSID="any"     # Wifi SSID
 
     Hier können sie die meisten der nötigen Einstellungen vornehmen. Sie können
-    die Autoerkennung eingeschalten lassen oder sogar die Verwendung von Ethernet
-    oder WiFi erzwingen. Genauso können sie hier zwischen den Betreibsmodi
-    "managed" oder "ad-hoc" wählen, sowie ihren WEP Schlüssel und SSID einstellen.
+    die Autoerkennung eingeschalten lassen oder sogar die Verwendung von
+    Ethernet oder WiFi erzwingen. Genauso können sie hier zwischen den
+    Betreibsmodi "managed" oder "ad-hoc" wählen, sowie ihren WEP Schlüssel und
+    SSID einstellen.
 
 * Internetzugang (Gateway):
-    GeeXboX unterstützt auch einen Internetzugang. Wenn sie einen Verbindung zum
-    Internet haben, können sie sich diese mit ihrer GeeXboX durch die Verwendung eines
-    Routers oder eines Gateways teilen. Dazu müssen sie nur die IP-Adresse des
-    Gateways in der Datei /etc/network eintragen
+    GeeXboX unterstützt auch einen Internetzugang. Wenn sie einen Verbindung
+    zum Internet haben, können sie sich diese mit ihrer GeeXboX durch die
+    Verwendung eines Routers oder eines Gateways teilen. Dazu müssen sie nur
+    die IP-Adresse des Gateways in der Datei /etc/network eintragen
 
-    * GATEWAY="yourIP"     # Gateway IP ("" für DHCP oder keine Internetverbindung)
+    * GATEWAY="yourIP" # Gateway IP ("" für DHCP oder keine Internetverbindung)
 
 * TV-Konfiguration:
     GeeXboX unterstützt TV-Input und Tuner und versucht die Karte wie den Tuner
-    automatisch zu erkennen. Sie können die Autoerkennung auch umgehen und selbst
-    die richtigen Einstellungen in der Datei /etc/tvsettings wie folgend
+    automatisch zu erkennen. Sie können die Autoerkennung auch umgehen und
+    selbst die richtigen Einstellungen in der Datei /etc/tvout wie folgend
     beschrieben vornehmen:
 
-    #TV CARD/TUNER Model (AUTO für automatische Erkennung, weitere Infos in den Links)
-    #http://www.linuxhq.com/kernel/v2.6/2/Documentation/video4linux/CARDLIST.bttv
-    #http://www.linuxhq.com/kernel/v2.6/2/Documentation/video4linux/CARDLIST.tuner
+#TV CARD/TUNER Model (AUTO für automatische Erkennung, weitere Infos
+in den Links)
+#http://www.linuxhq.com/kernel/v2.6/2/Documentation/video4linux/CARDLIST.bttv
+#http://www.linuxhq.com/kernel/v2.6/2/Documentation/video4linux/CARDLIST.tuner
+
     TV_CARD=AUTO
     TV_TUNER=AUTO
 
-    Bitte lassen sie die Einträge auf "AUTO" wenn sie die automatische Erkennung
-    verwenden wollen. Ansonsten setzen sie die richtige Zahl für ihre Karte und
-    ihren Tuner-Typ (siehe obenstehende Links).
+    Bitte lassen sie die Einträge auf "AUTO" wenn sie die automatische
+    Erkennung verwenden wollen. Ansonsten setzen sie die richtige Zahl für
+    ihre Karte und ihren Tuner-Typ (siehe obenstehende Links).
     VORSICHT: um selber die richtigen Einstellungen vorzunehmen. müssen sie die
               exakten Referenzzahlen ihrer Hardware kennen!!!
 
-    Wenn das erledigt ist, sollte es ihnen möglich sein den TV-Eingang (Composite
-    und S-VHS) ihrer Karte zu nutzen. Auf dieselbe Art und Weise können sie den
-    TV-Tuner benutzen. Dafür müssen sie ihre Region und die Frequenzen der
-    TV Kanäle in der Datei /etc/tvsettings eintragen:
+    Wenn das erledigt ist, sollte es ihnen möglich sein den TV-Eingang
+    (Composite und S-VHS) ihrer Karte zu nutzen. Auf dieselbe Art und Weise
+    können sie den TV-Tuner benutzen. Dafür müssen sie ihre Region und die
+    Frequenzen der TV Kanäle in der Datei /etc/tvout eintragen:
 
     # TV Channels
     # Syntax : CHAN="Channel Title":"Channel Frequency"
@@ -191,8 +184,6 @@ einige Text-Dateien editieren:
     Bitte seien sie vorsichtig beim editieren der Kanäle. Benutzen sie genau
     dieselbe Syntax wie oben beschrieben, dann sind ihre TV Kanäle im Hauptmenü
     verfügbar.
-
-
 
 
 | ERSTELLEN EINER ISO-DATEI
@@ -260,8 +251,8 @@ so, damit er das Verzeichnis /tftpboot zur Verfügung stellt. Das Verzeichnis
 dazu zum Beispiel den Inhalt eine GeeXboX CD von Linux aus MIT DER AKTIVIERTEN
 TRANSPARENTEN DEKOMPRESSION DER CDROM! (um dies zu überprüfen schauen Sie auf
 den Inhalt der sbin/init im GeeXboX Dateibaum und prüfen, ob diese Datei
-keinen Müll enthält). Falls Sie GeeXboX selber aus den Sourcen kompiliert haben,
-so können Sie einen Dateibaum ganz einfach mit make pxe erstellen.
+keinen Müll enthält). Falls Sie GeeXboX selber aus den Sourcen kompiliert
+haben, so können Sie einen Dateibaum ganz einfach mit make pxe erstellen.
 
 Danach sollten Sie die Datei /tftpboot/GEEXBOX/boot/pxelinux.cfg/default
 editieren, so dass nfsroot zum richtigen NFS Pfad des GEEXBOX Dateibaumes
@@ -423,4 +414,3 @@ geschützt. Sie alle sind freie Software und die meisten Programme stehen unter
 der GNU General Public License.
 GeeXboX selber, gemeint sind alle Scripte die für die Komilierung benutzt
 werden, stehen unter der GNU General Public License.
-

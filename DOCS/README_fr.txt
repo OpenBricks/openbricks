@@ -60,7 +60,7 @@ juste à copier vos vidéos (ou vos fichiers sons) et vos playlists dans le
 repertoire iso.
 
 Vous pouvez aussi ajouter des codecs propriétaires comme le rv9 ou le wmv9, en
-les copiant simplement dans le répertoire iso\GEEXBOX\codecs. Ces codecs se
+les copiant simplement dans le répertoire iso/GEEXBOX/codecs. Ces codecs se
 trouvent ici :
 http://www.mplayerhq.hu/MPlayer/releases/codecs/
 
@@ -101,7 +101,7 @@ textes.
     chacun à une marque carte graphique. Nous utilisons actuellement atitvout
     pour les cartes ATI, s3switch pour les cartes S3 et nvtv pour les cartes
     nVidia (ce qui peut aussi marcher abec les cartes i810 et 3dfx). La
-    configuration de ces programmes se fait dans iso\GEEXBOX\etc\tvsettings.
+    configuration de ces programmes se fait dans iso/GEEXBOX/etc/tvout.
     Vous pouvez y choisir le standard que vous utilisez (pal, secam...) et y
     modifier les options spécifiques du nvtv.
 
@@ -113,7 +113,7 @@ textes.
     lirc/lircrc_REMOTE.
 
 * Réseau :
-    Le réseau est configurable au niveau du fichier iso\GEEXBOX\etc\network.
+    Le réseau est configurable au niveau du fichier iso/GEEXBOX/etc/network.
     Ici vous reglerez l'adresse IP de la GeeXboX (qui par défaut cherche un
     serveur DCHP ou prend l'IP 192.168.0.54 si elle n'en trouve pas). Il est
     aussi possible de lui assigner un login est un mot de passe (par défaut,
@@ -148,7 +148,7 @@ textes.
     La GeeXboX supporte les entrées et tuners de cartes TV. Le système essaie
     avec peine de détecter automatiquement le type de carte et de tuners
     utilisés. Vous pouvez forcer les paramètres et ainsi éviter la tentative
-    de détection automatique. Veuillez modifier le fichier /etc/tvsettings
+    de détection automatique. Veuillez modifier le fichier /etc/tvout
     tel qu'il suit :
 
 # TV CARD/TUNER Model (AUTO for autodetection or look at the following urls)
@@ -167,7 +167,7 @@ TV_TUNER=AUTO
     (Composite et S-VHS) de votre carte TV. De la même manière, vous pouvez
     utiliser le tuner pour regarder la TV. Pour cela, vous devrez définir
     votre région ainsi que les fréquences des chaînes que vous souhaitez
-    visionner. Editez simplement le fichier /etc/tvsettings :
+    visionner. Editez simplement le fichier /etc/tvout :
 
     # TV Channels
     # Syntax : CHAN="Channel Title":"Channel Frequency"

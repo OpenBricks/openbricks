@@ -93,7 +93,7 @@ ficheros de texto.
     Actualmente usamos atitvout para las tarjetas Ati, s3switch para las 
     tarjetas S3 y nvtv para las tarjetas Nvidia (y posiblemente las intel 
     i810 y las 3dfx). La configuracion de estos programas se realiza en    
-    config/tvsettings. Ahí puedes seleccionar el estandar de TV que quieras 
+    config/tvout. Ahí puedes seleccionar el estandar de TV que quieras 
     (pal para España, ntsc en Iberoamérica...) y modificar otras opciones 
     específicas de nvtv.
 
