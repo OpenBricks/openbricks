@@ -1,0 +1,32 @@
+#!/bin/sh
+
+LIB=$1
+LIBA=$2
+PROG=$3
+SO=$4
+PROG_SYMS=$5
+LDSCRIPT="/usr/lib/ldscripts/elf_i386.xs";
+
+. config/path
+UCGCC=`ls -d $ROOT/$BUILD/uClibc-*/build/usr/bin/gcc`
+
+echo -n "striping down $LIB ..."
+
+for i in $SO; do
+  SO_SYMS="$SO_SYMS `nm --dynamic $i | sed -n 's/^........ [ABDGTW] \(..*\)/\1/p'`"
+done
+
+for i in $PROG; do
+  for j in `nm --dynamic $PROG | sed -n 's/^........ [BUV] \(..*\)/\1/p'`; do
+    (echo "$SO_SYMS" | grep $j >/dev/null) || (echo "$PROG_SYMS" | grep $j >/dev/null) || PROG_SYMS="$PROG_SYMS $j"
+  done
+done
+
+echo "INCLUDE $LDSCRIPT" > /tmp/ldscript
+for i in $PROG_SYMS; do
+ echo "EXTERN($i)" >> /tmp/ldscript
+done
+
+$UCGCC -s -Wl,-warn-common -shared -o $LIB -Wl,-soname,`basename $LIB` -Wl,--script=/tmp/ldscript $LIBA
+
+echo " done"
