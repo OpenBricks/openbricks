@@ -1,92 +1,73 @@
 #!/bin/sh
 
-# Convert language name (full or short) to a short name
 simplifylang() {
-	local i tmp
+  local i tmp
 
-	for i in $LANGUAGES; do
-		eval tmp=\$${i}_name
-		if [ "$1" = "$i" -o "$1" = "$tmp" ]; then
-			echo $i
-			return
-		fi
-	done
+  for i in $LANGUAGES; do
+    eval tmp=\$${i}_name
+    if [ "$1" = "$i" -o "$1" = "$tmp" ]; then
+      echo $i
+      return
+    fi
+  done
 }
 
-# Convert subtitle font name ($1) to a real font name
-# $1 can be empty, in that case we take $LANG value (if exists).
-# If all fails, this function try to exit and error out.
-subfont2font() {
-	local i tmp subfont=$1
+lang2charset() {
+  local i lang charset=$1
 
-	if [ -z "$subfont" ]; then
-		if [ -n "$LANG" ]; then
-			subfont=$LANG
-		else
-			subfont=$DEFAULT_LANGUAGE
-		fi
-	fi
+  if [ -z "$charset" ]; then
+    if [ -n "$LANG" ]; then
+      charset="$LANG"
+    else
+      charset="$DEFAULT_LANGUAGE"
+    fi
+  fi
 
-	# First check if name matches any language short or full name.
-	# and to convert to the language matching font.
-	tmp=`simplifylang $subfont`
-	if [ -n "$tmp" ]; then
-		eval subfont=\$${tmp}_charset
-	fi
+  lang=`simplifylang $charset`
+  if [ -n "$lang" ]; then
+    eval charset=\$${lang}_charset
+  fi
 
-	# Now `subfont` should match a font, check it.
-	for i in $CHARSETS; do
-		if [ "$subfont" = "$i" ]; then
-			echo $subfont
-			return
-		fi
-	done
+  for i in $CHARSETS; do
+    if [ "$charset" = "$i" ]; then
+      echo $charset
+      return
+    fi
+  done
 
-	echo "ERROR: Couldn't find a matching subtitle font for '$1'." 1>&2
+  echo "ERROR: Couldn't find a matching charset for '$1'." 1>&2
 }
 
-# Convert language name ($1) to menu language
-# if language doesn't require bitmap menu, return empty string.
-lang2menufont() {
-	local tmp lang
-
-	lang=`simplifylang $1`
-
-	eval tmp=\$${lang}_bitmapmenu
-	case "$tmp" in
-	[Yy][Ee][Ss]|[Tt][Rr][Uu][Ee]|1)
-		eval tmp=\$${lang}_charset
-		echo $tmp
-		;;
-	*)
-		;;
-	esac
+lang2font() {
+  lang2charset $1
 }
 
-# Returns mplayer settings needed to display font ($1)
-font2mpsettings() {
-	local tmp font
+charset2mpsettings() {
+  local tmp tmp2 charset
 
-	font=`echo $1 | sed s%-%_%g`
+  charset=`echo $1 | sed s%-%_%g`
 
-	for type in unicode utf8; do
-		eval tmp=\$${font}_$type
-		case "$tmp" in
-		[Yy][Ee][Ss]|[Tt][Rr][Uu][Ee]|1)
-			echo "${2}$type=1"
-			;;
-		*)
-			;;
-		esac
-	done
+  [ "$2" = sub ] && tmp2= || tmp2="$2-"
+  for type in unicode utf8; do
+    eval tmp=\$${charset}_$type
+    case "$tmp" in
+    [Yy][Ee][Ss]|[Tt][Rr][Uu][Ee]|1)
+      echo "${tmp2}$type=1"
+      ;;
+    *)
+      ;;
+    esac
+  done
 
-	eval tmp=\$${font}_fribidi
-	case "$tmp" in
-	[Yy][Ee][Ss]|[Tt][Rr][Uu][Ee]|1)
-		echo "fribidi-charset=`echo $1 | sed s%iso-%iso%`"
-		echo "flip-hebrew=1"
-		;;
-	*)
-		;;
-	esac
+  [ "$2" = sub ] && tmp2= || tmp2=$2
+  eval tmp=\$${charset}_fribidi
+  case "$tmp" in
+  [Yy][Ee][Ss]|[Tt][Rr][Uu][Ee]|1)
+    echo "${tmp2}fribidi-charset=`echo $1 | sed s%iso-%iso%`"
+    echo "${tmp2}flip-hebrew=1"
+    ;;
+  *)
+    echo "${tmp2}flip-hebrew=0"
+    ;;
+  esac
 }

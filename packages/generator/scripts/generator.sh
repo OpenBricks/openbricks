@@ -86,9 +86,10 @@ while [ $# -ne 0 ]; do
   shift || true
 done
 
-MENU_FONT=`lang2menufont $LANG`
-SUB_FONT=`subfont2font $SUB_CHARSET`
-[ -z "$SUB_FONT" ] && exit 1
+MENU_FONT=`lang2font "$LANG" menu`
+SUB_CHARSET=`lang2charset "$SUB_CHARSET"`
+SUB_FONT=`lang2font "$SUB_CHARSET" sub`
+[ -z "$SUB_FONT" -o -z "$MENU_FONT" ] && exit 1
 
 for font in $MENU_FONT $SUB_FONT; do
   if [ ! -f $GEEXBOX_DIR/font/$font/font.desc ]; then
