@@ -7,12 +7,19 @@ echo "### Starting MPlayer ###"
 # default directory
 cd /mnt
 
+# tty used for the video display and commands input
+TTY=4
+
 # start mplayer with gdb when built with debugging options
 if test -x /usr/bin/gdb; then
   echo "r /usr/share/mplayer/background.avi -loop 0" > /gdb_cmd
   gdb -x /gdb_cmd /usr/bin/mplayer
 else
   echo "0" > /tmp/mp_result
+  # disable fbdev cursor
+  echo -e "\033[?1;;c" >/dev/tty$TTY
+  chvt $TTY
+  (
   # start mplayer or fbi and keep them launched
   while true; do
     if [ -r /var/mp_current_path ]; then
@@ -29,6 +36,8 @@ else
     test `cat /tmp/mp_result` -eq 166 && break
     test `cat /tmp/mp_result` -eq 167 && mplayer dvd://1 > /dev/null 2>&1
   done
+  ) </dev/tty$TTY
+  chvt 1
 fi
 
 exit 0
