@@ -5,10 +5,10 @@
 
 if [ "$1" = geexbox ]; then
   DIALOG=/usr/bin/dialog
-  CFDISK=/sbin/cfdisk
-  SFDISK=/sbin/sfdisk
-  MKDOSFS=/sbin/mkdosfs
-  SYSLINUX=/sbin/syslinux
+  CFDISK=/usr/bin/cfdisk
+  SFDISK=/usr/bin/sfdisk
+  MKDOSFS=/usr/bin/mkdosfs
+  SYSLINUX=/usr/bin/syslinux
 else
   DIALOG=""
   [ "$1" != --nodialog ] && DIALOG=`which dialog`
