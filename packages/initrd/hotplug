@@ -1,0 +1,30 @@
+#!/bin/sh
+
+[ "$1" = scsi -a -n "$SCSI_DEVICE" ] || exit 1
+
+case $ACTION in
+  add)
+    if [ -z "`echo $SCSI_DEVICE | grep scd`" ]; then
+      (
+        sleep 1
+        DISK=`cat /etc/last_disk`
+        DISK=$(($DISK+1))
+        PART=0
+        for DEV in `sed -n "s/\ *[0-9][0-9]*\ *[0-9][0-9]*\ *[0-9][0-9][0-9]*\ \(${SCSI_DEVICE}[0-9][0-9]*\)/\1/p" /proc/partitions`; do
+          PART=$(($PART+1))
+          DIR="/mnt/ramfs/mnt/disk $DISK part $PART"
+          mkdir "$DIR"
+          mount -o ro /dev/$DEV "$DIR" >/dev/null 2>&1 || rmdir "$DIR"
+        done
+        echo -n $DISK > /etc/last_disk
+      ) &
+    else
+      NUM=`cat /etc/last_cdrom`
+      NUM=$(($NUM+1))
+      CDROM="/mnt/ramfs/mnt/cdrom $NUM"
+      mkdir "$CDROM"
+      mount -t supermount -o ro,dev=/dev/$SCSI_DEVICE none "$CDROM" >/dev/null 2>&1 || rmdir "$CDROM"
+      echo -n $NUM > /etc/last_cdrom
+    fi
+    ;;
+esac
