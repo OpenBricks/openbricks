@@ -124,21 +124,21 @@ echo ""
 mkdir di
 mount -t vfat "$DEV" di
 if [ -d disk ]; then
-  cp -a disk/* di
+  cp -a disk/* di 2>/dev/null
 else
   if [ -n "$NFS" ]; then
     GEEXBOX="$NFS"
   else
     GEEXBOX="$CDROM/GEEXBOX"
   fi
-  cp -a "$GEEXBOX" di/GEEXBOX
+  cp -a "$GEEXBOX" di/GEEXBOX 2>/dev/null
   mv di/GEEXBOX/boot/* di
   rm di/isolinux.bin
 fi
 sed "s/boot=cdrom/boot=${DEV#/dev/}/" di/isolinux.cfg > di/syslinux.cfg
 rm di/isolinux.cfg
 umount di
-syslinux "$DEV"
+$SYSLINUX "$DEV"
 
 mount -t vfat "$DEV" di
 dd if="$DEV" of=di/geexbox.lnx count=1 bs=512
