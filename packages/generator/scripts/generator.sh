@@ -4,10 +4,10 @@
 # This have no effect on DVD language. See iso/GEEXBOX/etc/mplayer/mplayer.conf
 LANG=en
 
-# Subtitle font (bg/br/ca/cs/de/en/es/et/fi/fr/gr/he/hu/it/ko/nl/no/pl/ro/ru/sk/sr/sv/zh_CN/zh_TW)
+# Subtitle charset (bg/br/ca/cs/de/en/es/et/fi/fr/gr/he/hu/it/ko/nl/no/pl/ro/ru/sk/sr/sv/zh_CN/zh_TW)
 # Can also be set to a charset code (iso-8859-{1,2,7,8,9}/cp125{0,1}/koi8r/gb2312/big5/euc-kr)
 # when empty default is to LANG
-SUB_FONT=
+SUB_CHARSET=
 
 # Remote to Use (pctv/logitech/hauppauge/realmagic/creative/leadtek/RM-S6/
 #                RX-V850/animax/askey/avermedia/packard_bell/atiusb/LG/D-10)
@@ -87,7 +87,7 @@ while [ $# -ne 0 ]; do
 done
 
 MENU_FONT=`lang2menufont $LANG`
-SUB_FONT=`subfont2font $SUB_FONT`
+SUB_FONT=`subfont2font $SUB_CHARSET`
 [ -z "$SUB_FONT" ] && exit 1
 
 for font in $MENU_FONT $SUB_FONT; do
@@ -122,7 +122,7 @@ cp $GEEXBOX_DIR/language/help_$LANG.txt $TMPDIR/iso/GEEXBOX/usr/share/mplayer/
 cp $GEEXBOX_DIR/language/menu_$LANG.conf $TMPDIR/iso/GEEXBOX/etc/mplayer/
 cp $GEEXBOX_DIR/language/lang.conf $TMPDIR/iso/GEEXBOX/etc/
 
-echo $SUB_FONT > $TMPDIR/iso/GEEXBOX/etc/subfont
+echo $SUB_CHARSET > $TMPDIR/iso/GEEXBOX/etc/subfont
 cp -r $GEEXBOX_DIR/font/$SUB_FONT $TMPDIR/iso/GEEXBOX/usr/share/mplayer/font/
 if [ -n "$MENU_FONT" -a "$MENU_FONT" != "$SUB_FONT" ]; then
   cp -r $GEEXBOX_DIR/font/$MENU_FONT $TMPDIR/iso/GEEXBOX/usr/share/mplayer/font/
