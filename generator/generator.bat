@@ -33,9 +33,9 @@ copy language\menu_%LANG%.conf iso\GEEXBOX\etc\mplayer\menu_%LANG%.conf >nul
 set FONT=iso-8859-1
 if %LANG%==cz set FONT=iso-8859-2
 if %LANG%==hu set FONT=iso-8859-2
+if %LANG%==pl set FONT=iso-8859-2
 if %LANG%==ro set FONT=iso-8859-2
 if %LANG%==sk set FONT=iso-8859-2
-if %LANG%==pl set FONT=cp1250
 if %LANG%==bg set FONT=cp1251
 if %LANG%==ru set FONT=koi8r
 md iso\GEEXBOX\usr\share\mplayer\font\%FONT%
