@@ -29,7 +29,7 @@ if [ -z "`which mkisofs`" -o -z "`which mkzftree`" ]; then
   exit 1
 fi
 
-if [ -d ./iso -a -d ./lirc -a -d ./language ]; then
+if [ -d ./iso -a -d ./lirc -a -d ./i18n ]; then
   TMPDIR="."
   GEEXBOX_DIR="."
 elif [ -d /usr/share/geexbox-generator ]; then
@@ -53,8 +53,8 @@ fi
 OUTPUT=geexbox-`cat $GEEXBOX_DIR/VERSION`-$LANG.iso
 W32CODECS_DIR=/usr/lib/win32
 
-. $GEEXBOX_DIR/language/lang.conf
-. $GEEXBOX_DIR/language/lang.funcs
+. $GEEXBOX_DIR/i18n/lang.conf
+. $GEEXBOX_DIR/i18n/lang.funcs
 
 [ -d $W32CODECS_DIR ] && W32CODECS_USAGE=" [-w|--with-w32codecs]"
 
@@ -117,7 +117,7 @@ for font in $MENU_FONT $SUB_FONT; do
 done
 
 for file in menu_$LANG.conf help_$LANG.txt; do
-  if [ ! -f $GEEXBOX_DIR/language/$file ]; then
+  if [ ! -f $GEEXBOX_DIR/i18n/texts/$file ]; then
     echo ""
     echo "**** $file language file is missing ****"
     echo ""
@@ -134,9 +134,9 @@ mkdir -p $TMPDIR/ziso
 [ ! -d $TMPDIR/iso ] && cp -r $GEEXBOX_DIR/iso $TMPDIR/iso
 
 echo $LANG > $TMPDIR/iso/GEEXBOX/etc/lang
-cp $GEEXBOX_DIR/language/help_$LANG.txt $TMPDIR/iso/GEEXBOX/usr/share/mplayer/
-cp $GEEXBOX_DIR/language/menu_$LANG.conf $TMPDIR/iso/GEEXBOX/etc/mplayer/
-cp $GEEXBOX_DIR/language/lang.conf $TMPDIR/iso/GEEXBOX/etc/
+cp $GEEXBOX_DIR/i18n/texts/help_$LANG.txt $TMPDIR/iso/GEEXBOX/usr/share/mplayer/
+cp $GEEXBOX_DIR/i18n/texts/menu_$LANG.conf $TMPDIR/iso/GEEXBOX/etc/mplayer/
+cp $GEEXBOX_DIR/i18n/lang.conf $TMPDIR/iso/GEEXBOX/etc/
 
 echo $SUB_CHARSET > $TMPDIR/iso/GEEXBOX/etc/subfont
 cp -r $GEEXBOX_DIR/font/$SUB_FONT $TMPDIR/iso/GEEXBOX/usr/share/mplayer/font/
