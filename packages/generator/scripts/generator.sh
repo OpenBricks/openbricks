@@ -163,6 +163,9 @@ cp $GEEXBOX_DIR/lirc/lircd_$REMOTE.conf $TMPDIR/iso/GEEXBOX/etc/lircd.conf
 mkzftree $TMPDIR/iso/GEEXBOX $TMPDIR/ziso/GEEXBOX
 rm -f $TMPDIR/iso/GEEXBOX/usr/share/mplayer/help_$LANG.txt
 rm -f $TMPDIR/iso/GEEXBOX/etc/mplayer/menu_$LANG.conf
+rm -f $TMPDIR/iso/GEEXBOX/etc/lang.conf
+rm -f $TMPDIR/iso/GEEXBOX/etc/lang
+rm -f $TMPDIR/iso/GEEXBOX/etc/subfont
 for i in $TMPDIR/iso/GEEXBOX/usr/share/mplayer/font/*/; do
   [ -d $i ] && rm -rf $i
 done
