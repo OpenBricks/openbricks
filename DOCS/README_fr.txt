@@ -235,6 +235,51 @@ Sous Linux, l'ISO est générée en lançant la commande suivante:
 et sous Windows:
   generator.exe
 
+
+| POLICES DE CARACTERES ADDITIONELLES POUR LES SOUS-TITRES
+| ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Vous pouvez être amenés à vouloir rajouter un jeu de caractère différent de
+celui proposé par défaut (iso8859-1) pour les sous-titres. La première étape
+est de s'assurer que la fonte n'est pas déjà inclus dans l'archive officielle
+de la GeeXboX. Pour cela, utilisez le generator et regardez si la fonte ne s'y
+trouve pas déjà.
+
+La plupart des jeus de caractères sont déjà présents dans l'archive officielle
+mais certains n'ont pas pu l'être en raison de leur taille excessive (les
+polices asiatiques en particulier).
+
+* Fontes génériques :
+
+  Pour rajouter le support de nouvelles fontes, vous n'avez qu'à extraire votre
+  police dans le répertoire font et ajouter le nom de votre fonte à la variable
+  FONT du fichier language/lang.conf.
+
+* Support du Chinois :
+
+  Pour inclure les fontes Chinoise dans l'ISO, vous devez au préalable
+  récupérer l'archive big5 ou gb2312 utilisée par MPlayer :
+
+    http://www1.mplayerhq.hu/MPlayer/contrib/fonts/chinesefonts/
+
+  et la décompresser et copier dans le répertoire ./font/big5 ou ./font/gb2312
+  du generator le contenu du répertoire se terminant par `24` (taille de fonte
+  valant 24)
+
+  Par exemple, si vous souhaitez utiliser la police 'gb2312 kai' :
+
+  - Pour les utilisateurs de systèmes GNU/Linux :
+  wget http://www1.mplayerhq.hu/MPlayer/contrib/fonts/chinesefonts/gb2312-kai.tar.bz2
+  tar -jxf gb2312-kai.tar.bz2
+  mv gb2312-kai/gkai00mp24 ../path/to/generator/font/gb2312
+
+  - Pour les utilisateurs de Windows :
+  Téléchargez le fichier à l'adresse http://www1.mplayerhq.hu/MPlayer/contrib/fonts/chinesefonts/gb2312-kai.tar.bz2
+  Ouvrez le avec WinZip ou équivalent.
+  Extrayez le contenu du répertoire gb2312-kai\gkai00mp24 de l'archive vers le
+  répertoire ..\path\to\generator\font\gb2312 du generator.
+
+
 | INSTALLATION
 | ~~~~~~~~~~~~
 
