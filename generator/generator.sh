@@ -7,7 +7,7 @@
 LANG=en
 
 # Remote to Use (pctv/logitech/hauppauge/realmagic/creative/leadtek/RM-S6/
-#                RX-V850/animax/packard_bell/atiusb/LG)
+#                RX-V850/animax/packard_bell/atiusb/LG/D-10)
 REMOTE=atiusb
 
 
