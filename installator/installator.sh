@@ -127,9 +127,9 @@ while true; do
       if [ -z "$CFDISK" ]; then
         CFDISK_MSG="As you don't have cfdisk installed, the installator won't be able to create the partition for you. You'll have to create it yourself before installing."
       else
-        CFDISK_MSG="You can now edit your partition table to create a FAT partition (type=0B). Be careful to choose the right disk! We won't take responsibility for any data loss."
+        CFDISK_MSG="You can now edit your partition table to create a FAT partition (type=0B) or Linux ext2/3 partition (type=83). Be careful to choose the right disk! We won't take responsibility for any data loss."
       fi
-      DISK=`$DIALOG --stdout --backtitle "$BACKTITLE" --title "Installation device" --menu "\nYou are going to install GeeXboX. For this you will need an empty FAT partition with about 8 MB of free space.\n$CFDISK_MSG" 0 0 0 $DISKS` || exit 1
+      DISK=`$DIALOG --stdout --backtitle "$BACKTITLE" --title "Installation device" --menu "\nYou are going to install GeeXboX. For this you will need an empty FAT or Linux ext2/3 partition with about 8 MB of free space.\n$CFDISK_MSG" 0 0 0 $DISKS` || exit 1
       [ $DISK != refresh ] && break
     fi
 done
@@ -148,7 +148,7 @@ while [ ! -b "$DEV" ]; do
       esac
     done
     if [ -z "$DISKS" ]; then
-      $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\nYou don't have any FAT partition on your system. Please create a FAT partition first using for example cfdisk.\n" 0 0
+      $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\nYou don't have any FAT or Linux ext2/3 partition on your system. Please create a FAT or Linux ext2/3 partition first using for example cfdisk.\n" 0 0
       exit 1
     else
       DEV=`$DIALOG --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Installation device" --menu "Where do you want to install GeeXboX?" 0 0 0 $DISKS` || exit 1
