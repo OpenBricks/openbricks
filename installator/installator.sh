@@ -266,7 +266,8 @@ done
 IFS=$saveifs
 
 if [ -f "di/GEEXBOX/usr/share/grub-splash.xpm.gz" ]; then
-  splashimage="splashimage=$rootdev/GEEXBOX/usr/share/grub-splash.xpm.gz"
+  cp -f "di/GEEXBOX/usr/share/grub-splash.xpm.gz" $grubdir
+  splashimage="splashimage=$rootdev$grubprefix/grub-splash.xpm.gz"
 else
   splashimage=""
 fi
