@@ -1,0 +1,44 @@
+#!/bin/sh
+
+. config/path
+. $CONFIG/options
+
+$SCRIPTS/build uClibc || exit 1
+$SCRIPTS/build lirc || exit 1
+$SCRIPTS/build libogg || exit 1
+$SCRIPTS/build libvorbis || exit 1
+$SCRIPTS/build cdparanoia || exit 1
+if [ "$FONT" = "truetype" ]; then
+  $SCRIPTS/build freetype || exit 1
+  TT_CONFIG="--enable-iconv --enable-freetype --with-freetype-config=`ls -d $ROOT/$BUILD/freetype-*/builds/unix/freetype-config`"
+  TT_INCLUDES="-I`ls -d $ROOT/$BUILD/freetype-*/include` "
+  TT_LIBS="`ls -d $ROOT/$BUILD/freetype-*/objs/.libs/libfreetype.a`"
+else
+  TT_CONFIG="--disable-iconv --disable-freetype"
+  TT_INCLUDES=""
+  TT_LIBS=""
+fi
+
+if [ $DEBUG = "yes" ]; then
+  OPTS="--enable-debug=3"
+fi
+
+UCBIN=`ls -d $ROOT/$BUILD/uClibc-*/build/usr/bin`
+CWD=`pwd`
+
+cd `ls -d $BUILD/MPlayer-*` && \
+./configure $OPTS --prefix=/usr --confdir=/etc/mplayer --disable-mencoder --disable-gui --enable-largefiles --disable-linux-devfs --disable-termcap --disable-setlocale --enable-lirc --disable-joystick --disable-tv --disable-tv-v4l --disable-tv-bsdbt848 --disable-edl --enable-rtc --disable-streaming --disable-live --disable-dvdnav --disable-dvdread --enable-mpdvdkit --disable-css --enable-cdparanoia $TT_CONFIG --disable-unrarlib --enable-new-conf --enable-menu --disable-sortsub --disable-gif --disable-png --disable-jpeg --disable-liblzo --enable-dshow --enable-win32 --enable-real --with-reallibdir=/codecs --with-win32libdir=/codecs --disable-qtx-codecs --disable-xanim --disable-xvid --disable-divx4linux --disable-opendivx --enable-libavcodec --disable-libfame --enable-vorbis --disable-tremor --disable-faad --disable-libdv --disable-mad --enable-vidix --disable-gl --disable-dga --enable-vesa --disable-svga --disable-sdl --disable-aa --disable-ggi --disable-directx --disable-dxr2 --disable-dxr3 --disable-dvb --disable-mga --disable-xmga --disable-xv --disable-vm --disable-xinerama --disable-x11 --disable-fbdev --disable-fbdev --disable-mlib --disable-3dfx --disable-tdfxfb --disable-directfb --disable-zr --disable-bl --enable-ossaudio --disable-arts --disable-esd --disable-alsa --disable-sunaudio --disable-nas --disable-win32waveout --disable-select --disable-additional-filters --enable-runtime-cpudetection --cc=$UCBIN/gcc --language=en --disable-i18n --disable-dynamic-plugins --with-cdparanoiaincdir="`ls -d $ROOT/$BUILD/cdparanoia-*/paranoia`" --with-cdparanoialibdir="`ls -d $ROOT/$BUILD/cdparanoia-*/paranoia`" --with-extraincdir="`ls -d $ROOT/$BUILD/lirc-*` $TT_INCLUDES -I`ls -d $ROOT/$BUILD/libogg-*/include` -I`ls -d $ROOT/$BUILD/libvorbis-*/include`" --with-extralibdir="`ls -d $ROOT/$BUILD/lirc-*/lirc/.libs` $TT_LIBS -L`ls -d $ROOT/$BUILD/libogg-*/src/.libs` -L`ls -d $ROOT/$BUILD/libvorbis-*/lib/.libs`" && \
+cat config.mak | sed s/-lnsl// \
+    > config.mak.new && \
+mv -f config.mak.new config.mak && \
+make version.h && \
+gcc -O4 -Iloader -I. codec-cfg.c mp_msg.c -o codec-cfg -DCODECS2HTML && \
+export UCLIBC_GCC_DLOPT="-Wl,--dynamic-linker,/lib/ld-uClibc.so.0" && \
+export LD="$UCBIN/ld --dynamic-linker /lib/ld-uClibc.so.0" && \
+make OPTFLAGS="-Os -mcpu=pentium -march=pentium -DHAVE_MPLAYER" && \
+([ $DEBUG = "yes" ] || strip mplayer libdha/libdha.so vidix/drivers/*.so) && \
+cd "$CWD" && \
+exit 0
+
+cd "$CWD"
+exit 1

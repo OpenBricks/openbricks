@@ -1,0 +1,82 @@
+#!/bin/sh
+
+ROOT=execroot
+
+mkdir -p $ROOT/dev
+mkdir -p $ROOT/lib
+mkdir -p $ROOT/bin
+mkdir -p $ROOT/sbin
+mkdir -p $ROOT/proc
+mkdir -p $ROOT/mnt
+mkdir -p $ROOT/usr/sbin
+mkdir -p $ROOT/var/run
+mkdir -p $ROOT/var/log
+mkdir -p $ROOT/var/lock
+./packages/initrd/makedev $ROOT/dev
+cp -r build/iso/GEEXBOX/sbin $ROOT
+cp -r build/iso/GEEXBOX/etc $ROOT
+cp -r build/iso/GEEXBOX/usr $ROOT
+cp -r build/iso/GEEXBOX/codecs $ROOT
+cp build/uClibc-*/build/lib/* $ROOT/lib
+ln -s libc.so.0 $ROOT/lib/libc.so.6
+cp build/busybox-*/busybox $ROOT/bin
+cp config/init $ROOT/sbin
+ln -s busybox $ROOT/bin/sh
+touch $ROOT/etc/fstab
+touch $ROOT/EXEC
+
+IFS='
+'
+for i in `mount -l | grep -E "/dev/(hd|scd)" | cut -d' ' -f1,3,6`; do
+  IFS=' '
+  i=($i)
+  DEV=${i[0]##*/}
+  if [ "$DEV" = "none" ]; then
+    DEV=`echo "${i[2]}" | sed 's%.*dev=\(.*\)[,\)].*%\1%'`
+    DEV=${DEV##*/}
+  fi
+  mkdir $ROOT/mnt/$DEV
+  mount --bind ${i[1]} $ROOT/mnt/$DEV
+  echo $DEV | grep scd >/dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    test ! -e $ROOT/dev/cdrom && ln -s /dev/$DEV $ROOT/dev/cdrom
+    test ! -e $ROOT/dev/dvd && ln -s /dev/$DEV $ROOT/dev/dvd
+  fi
+done
+
+for DEV in /dev/scd*; do
+  DEV=${DEV##*/}
+  if [ ! -d $ROOT/mnt/$DEV ]; then
+    mkdir $ROOT/mnt/$DEV
+    mount -t supermount -o dev=/dev/$DEV none $ROOT/mnt/$DEV >/dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      test ! -e $ROOT/dev/cdrom && ln -s /dev/$DEV $ROOT/dev/cdrom
+      test ! -e $ROOT/dev/dvd && ln -s /dev/$DEV $ROOT/dev/dvd
+    else
+      rmdir $ROOT/mnt/$DEV
+    fi
+  fi
+done
+
+chroot $ROOT /sbin/init
+
+killall -9 mplayer >/dev/null 2>&1
+killall -9 lircd >/dev/null 2>&1
+[ -f $ROOT/log ] && cp $ROOT/log .
+for i in $ROOT/mnt/share/*; do
+  test -d $i && umount $i >/dev/null 2>&1
+  rmdir $i
+done
+for i in $ROOT/mnt/*; do
+  test -d $i && umount $i >/dev/null 2>&1
+  rmdir $i
+done
+
+for i in $ROOT/*; do
+  if [ "$i" = "$ROOT/mnt" ]; then
+    rmdir $i
+  else
+    rm -rf $i
+  fi
+done
+rmdir $ROOT

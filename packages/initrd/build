@@ -1,0 +1,48 @@
+#!/bin/sh
+
+. config/path
+
+RAMDISK_SIZE=1024
+
+export INSTALL=$BUILD/initrd/mnt
+
+
+mkdir -p $INSTALL
+rm -f $BUILD/initrd/initrd $BUILD/initrd/initrd.gz
+
+
+$SCRIPTS/build uClibc || exit 1
+$SCRIPTS/build busybox || exit 1
+
+
+dd if=/dev/zero of=$BUILD/initrd/initrd bs=1k count=$RAMDISK_SIZE
+mke2fs -vFm0 -N512 $BUILD/initrd/initrd $RAMDISK_SIZE
+tune2fs -c0 -i0 $BUILD/initrd/initrd
+
+mount -o loop $BUILD/initrd/initrd $INSTALL
+
+rmdir $INSTALL/lost+found
+mkdir $INSTALL/bin
+mkdir $INSTALL/mnt
+mkdir $INSTALL/mnt/ramfs
+mkdir $INSTALL/mnt/cdrom
+mkdir $INSTALL/proc
+mkdir $INSTALL/sbin
+mkdir $INSTALL/usr
+mkdir $INSTALL/usr/bin
+mkdir $INSTALL/usr/sbin
+
+mkdir -p $INSTALL/dev
+$PACKAGES/initrd/makedev $INSTALL/dev || exit 1
+
+$SCRIPTS/install uClibc || exit 1
+$SCRIPTS/install busybox || exit 1
+$SCRIPTS/install iscd || exit 1
+$SCRIPTS/install halt || exit 1
+
+cp $PACKAGES/initrd/linuxrc $INSTALL
+cp $PACKAGES/initrd/rescan-scsi-bus $INSTALL/sbin
+cp $PACKAGES/initrd/nosystem $INSTALL/sbin
+
+umount $INSTALL
+gzip -9 $BUILD/initrd/initrd

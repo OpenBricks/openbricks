@@ -1,0 +1,54 @@
+#!/bin/sh
+
+# Menu langage (en/fr/it/cz/sk/ru)
+# This have no effect on DVD language. See iso/GEEXBOX/etc/mplayer/mplayer.conf
+# For ru, you will need to replace the ttf file in
+# iso/GEEXBOX/usr/share/mplayer/font by a KOI8R ttf font.
+LANG=en
+
+# Remote to Use (pctv/logitech/hauppauge/realmagic/leadtek)
+REMOTE=pctv
+
+
+# You should not have to modify the rest of this file
+
+if [ -z "`which mkisofs`" -o -z "`which mkzftree`" ]; then
+  echo ""
+  echo "**** You need to have mkisofs and mkzftree installed ****"
+  echo ""
+  exit 1
+fi
+
+rm -rf ziso
+mkdir -p ziso
+cp language/help_$LANG.txt iso/GEEXBOX/usr/share/mplayer/help.txt
+cp language/menu_$LANG.conf iso/GEEXBOX/etc/mplayer/menu.conf
+if [ $LANG = cz -o $LANG = sk ]; then
+  cp font/iso-8859-2/* iso/GEEXBOX/usr/share/mplayer/font
+elif [ $LANG = ru ]; then
+  cp font/koi8r/* iso/GEEXBOX/usr/share/mplayer/font
+else
+  cp font/iso-8859-1/* iso/GEEXBOX/usr/share/mplayer/font
+fi
+cp lirc/lircrc_$REMOTE iso/GEEXBOX/etc/lircrc
+cp lirc/lircd_$REMOTE iso/GEEXBOX/etc/lircd
+cp lirc/lircd_$REMOTE.conf iso/GEEXBOX/etc/lircd.conf
+mkzftree iso/GEEXBOX ziso/GEEXBOX
+rm -f iso/GEEXBOX/usr/share/mplayer/help.txt
+rm -f iso/GEEXBOX/etc/mplayer/menu.conf
+rm -f iso/GEEXBOX/usr/share/mplayer/font/font.desc
+rm -f iso/GEEXBOX/usr/share/mplayer/font/*.raw
+rm -f iso/GEEXBOX/etc/lirc*
+
+cp -f iso/GEEXBOX/boot/* ziso/GEEXBOX/boot
+for i in iso/*; do
+  [ "$i" != iso/GEEXBOX ] && ln -s "../$i" ziso
+done
+
+mkisofs -quiet -no-pad -V GEEXBOX -volset GEEXBOX -P "The GeeXboX team (http://www.geexbox.org/)" -p "The GeeXboX team (http://www.geexbox.org/)" -A "MKISOFS ISO 9660/HFS FILESYSTEM BUILDER" -z -f -D -r -J -b GEEXBOX/boot/isolinux.bin -c GEEXBOX/boot/boot.catalog -no-emul-boot -boot-load-size 4 -boot-info-table ziso > geexbox-`cat VERSION`.iso
+
+rm -rf ziso
+
+echo ""
+echo "**** Your customized GeeXboX iso is ready ****"
+echo ""

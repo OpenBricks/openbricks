@@ -1,0 +1,134 @@
+#!/bin/busybox sh
+
+/bin/busybox mount -t ramfs none /mnt/ramfs
+/bin/busybox mkdir -p /mnt/ramfs/bin
+/bin/busybox mkdir -p /mnt/ramfs/dev
+/bin/busybox mkdir -p /mnt/ramfs/etc
+/bin/busybox mkdir -p /mnt/ramfs/mnt
+/bin/busybox mkdir -p /mnt/ramfs/proc
+/bin/busybox mkdir -p /mnt/ramfs/lib
+/bin/busybox mkdir -p /mnt/ramfs/sbin
+/bin/busybox mkdir -p /mnt/ramfs/usr/bin
+/bin/busybox mkdir -p /mnt/ramfs/usr/sbin
+/bin/busybox mkdir -p /mnt/ramfs/var/run
+/bin/busybox mkdir -p /mnt/ramfs/var/log
+/bin/busybox mkdir -p /mnt/ramfs/var/lock
+/bin/busybox echo "" > /mnt/ramfs/etc/mtab
+/bin/busybox echo "" > /mnt/ramfs/etc/fstab
+/bin/busybox mount -t proc none /proc
+
+BOOT=cdrom
+/bin/busybox test -n "`/bin/busybox grep 'boot=hdd' /proc/cmdline`" && BOOT=hdd
+/bin/busybox test -n "`/bin/busybox grep 'installator' /proc/cmdline`" && INSTALLATOR=yes
+
+/bin/busybox echo "52 tweaking ide drives" > /proc/progress
+
+for i in /proc/ide/hd*; do
+  /bin/busybox echo io_32bit:1 > $i/settings
+  /bin/busybox echo using_dma:1 > $i/settings
+  /bin/busybox echo file_readahead:2000000 > $i/settings
+done
+
+/bin/busybox echo "54 scanning scsi bus" > /proc/progress
+/sbin/rescan-scsi-bus
+
+if /bin/busybox test "$INSTALLATOR" != yes; then
+  /bin/busybox echo "55 mounting harddisks" > /proc/progress
+  DISK_NAME=
+  DISK=0
+  for DEV in `/bin/busybox cat /proc/partitions | /bin/busybox sed -n "s/\ *[0-9][0-9]*\ *[0-9][0-9]*\ *[0-9][0-9][0-9]*\ \([a-z]*[0-9][0-9]*\)/\1/p"`; do
+    NAME=`/bin/busybox echo $DEV | /bin/busybox sed 's/\([a-z]\{3\}\).*/\1/'`
+    if /bin/busybox test "$NAME" != "$DISK_NAME"; then
+      DISK_NAME="$NAME"
+      DISK=$(($DISK+1))
+      PART=0
+    fi
+    PART=$(($PART+1))
+    DIR="/mnt/ramfs/mnt/disk $DISK part $PART"
+    /bin/busybox mkdir "$DIR"
+    /bin/busybox mount -o ro /dev/$DEV "$DIR" >/dev/null 2>&1 || /bin/busybox rmdir "$DIR"
+    if /bin/busybox test "$BOOT" = hdd -a -z "$GEEXBOX" -a -d "$DIR/GEEXBOX/sbin" -a -f "$DIR/syslinux.cfg"; then
+      GEEXBOX="$DIR/GEEXBOX"
+    fi
+  done
+fi
+
+/bin/busybox echo "60 searching cdrom drives" > /proc/progress
+COUNT=`/bin/busybox cat /proc/scsi/sg/devices | /bin/busybox grep -c "[0-9]*\s*[0-9]*\s*[0-9]*\s*[0-9]*\s*5.*"`
+for DEV in /dev/scd*; do
+  NUM=`/bin/busybox echo $DEV | /bin/busybox sed 's%/dev/scd\(.*\)%\1%'`
+  /bin/busybox test "$NUM" -ge "$COUNT" && break
+  TYPE=`/usr/bin/iscd $DEV`
+  CDROM="/mnt/ramfs/mnt/cdrom $(($NUM+1))"
+  /bin/busybox mkdir "$CDROM"
+  if /bin/busybox mount -t supermount -o dev=$DEV none "$CDROM" 2>/dev/null >/dev/null; then
+    if /bin/busybox test "$BOOT" = cdrom -a -z "$GEEXBOX" -a -d "$CDROM/GEEXBOX"; then
+      GEEXBOX="$CDROM/GEEXBOX"
+      DEVICE=$DEV
+      /bin/busybox test $TYPE = DVD && DVD_DEVICE=$DEV
+    fi
+    /bin/busybox test -z "$DEVICE" && DEVICE=$DEV
+    /bin/busybox test -z "$DVD_DEVICE" -a "$TYPE" = DVD && DVD_DEVICE=$DEV
+  else
+    /bin/busybox rmdir "$CDROM"
+  fi
+done
+
+if /bin/busybox test -n "$GEEXBOX" ; then
+  /bin/busybox echo "70 copying system into ram" > /proc/progress
+  /bin/busybox cp -a "$GEEXBOX/sbin" /mnt/ramfs/
+  /bin/busybox echo "71 copying system into ram" > /proc/progress
+  /bin/busybox cp -a "$GEEXBOX/etc" /mnt/ramfs/
+  /bin/busybox echo "73 copying system into ram" > /proc/progress
+  /bin/busybox cp -a "$GEEXBOX/lib" /mnt/ramfs/
+  /bin/busybox echo "76 copying system into ram" > /proc/progress
+  /bin/busybox cp -a "$GEEXBOX/usr" /mnt/ramfs/
+  /bin/busybox echo "82 copying system into ram" > /proc/progress
+  /bin/busybox cp -a "$GEEXBOX/codecs" /mnt/ramfs/
+  /bin/busybox echo "85 cleaning ram disk" > /proc/progress
+  /bin/busybox test -n "$DEVICE" && /bin/busybox ln -s "$DEVICE" /mnt/ramfs/dev/cdrom;
+  /bin/busybox test -n "$DVD_DEVICE" && /bin/busybox ln -s "$DVD_DEVICE" /mnt/ramfs/dev/dvd;
+  INIT=/sbin/init
+  /bin/busybox test -n "`/bin/busybox grep 'installator' /proc/cmdline`" && INIT=/sbin/installator && export UID=0
+else
+  /bin/busybox cp /sbin/nosystem /mnt/ramfs/sbin
+  INIT=/sbin/nosystem
+  /bin/busybox echo "100 cleaning ram disk" > /proc/progress
+fi
+
+/bin/busybox cp -a /dev/* /mnt/ramfs/dev
+/bin/busybox cp -a /usr/* /mnt/ramfs/usr
+/bin/busybox cp /lib/ld-uClibc-*.so /mnt/ramfs/lib/
+/bin/busybox cp /lib/libuClibc-*.so /mnt/ramfs/lib/
+/bin/busybox cp /lib/libdl-*.so /mnt/ramfs/lib/
+/bin/busybox cp /lib/libpthread-*.so /mnt/ramfs/lib/
+/bin/busybox cp /lib/libm-*.so /mnt/ramfs/lib/
+/bin/busybox cp /lib/libcrypt.so.0 /mnt/ramfs/lib/
+cd /mnt/ramfs/lib/
+/bin/busybox ln -s ld-uClibc-*.so ld-uClibc.so.0
+/bin/busybox ln -s libuClibc-*.so libc.so.0
+/bin/busybox ln -s libuClibc-*.so libc.so
+/bin/busybox ln -s libuClibc-*.so libc.so.6
+/bin/busybox ln -s libdl-*.so libdl.so.0
+/bin/busybox ln -s libdl-*.so libdl.so
+/bin/busybox ln -s libpthread-*.so libpthread.so.0
+/bin/busybox ln -s libpthread-*.so libpthread.so
+/bin/busybox ln -s libm-*.so libm.so.0
+/bin/busybox ln -s libm-*.so libm.so
+
+/bin/busybox cp /bin/busybox /mnt/ramfs/bin
+/bin/busybox ln -s busybox /mnt/ramfs/bin/sh
+
+if /bin/busybox test "$BOOT" = cdrom; then
+  GEEXBOX="${GEEXBOX#/mnt/ramfs}"
+  export CDROM="${GEEXBOX%/GEEXBOX}"
+fi
+
+/bin/busybox umount /proc
+/bin/busybox chroot /mnt/ramfs $INIT geexbox </dev/tty1 >/dev/tty1 2>&1
+
+if /bin/busybox test "$INSTALLATOR" = yes; then
+  /sbin/reboot
+else
+  /sbin/halt
+fi

@@ -1,0 +1,54 @@
+#!/bin/sh
+
+. config/path
+
+if [ "$1" == "" ]; then
+  echo "usage: $0 package_name"
+  exit 1
+fi
+
+$SCRIPTS/get $1 || exit 2
+
+mkdir -p $BUILD
+
+if [ -d $SOURCES/$1 ]; then
+  if [ -f .stamps/$1/unpack -a -f $PACKAGES/$1/need_unpack ]; then
+    $PACKAGES/$1/need_unpack $@
+  fi
+  [ -f .stamps/$1/unpack ] && exit 0
+
+  rm -rf $BUILD/$1*
+
+  if [ -f $SOURCES/$1/$1*.tar.bz2 ]; then
+    rm -rf $BUILD/$1*
+    tar xjf $SOURCES/$1/$1*.tar.bz2 -C $BUILD
+  elif [ -f $SOURCES/$1/$1*.tar.gz ]; then
+    rm -rf $BUILD/$1*
+    tar xzf $SOURCES/$1/$1*.tar.gz -C $BUILD
+  elif [ -f $SOURCES/$1/$1*.tgz ]; then
+    rm -rf $BUILD/$1*
+    tar xzf $SOURCES/$1/$1*.tgz -C $BUILD
+  else
+    echo "$0: unknown package type $1"
+    exit 3
+  fi
+
+  for i in $SOURCES/$1/patch-*.bz2; do
+    if [ -f $i ]; then
+      bzcat $i | patch -d $BUILD/$1* -p1
+    fi
+  done
+  for i in $SOURCES/$1/patch-*.gz; do
+    if [ -f $i ]; then
+      zcat $i | patch -d $BUILD/$1* -p1
+    fi
+  done
+
+  if [ -f $PACKAGES/$1/unpack ]; then
+    $PACKAGES/$1/unpack $@
+  fi
+
+  rm -f .stamps/$1/build
+  rm -f .stamps/$1/install
+  sed 's/^\(.*=.*\)$/STAMP_\1/' $CONFIG/options > .stamps/$1/unpack
+fi

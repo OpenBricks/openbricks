@@ -1,0 +1,25 @@
+#!/bin/sh
+
+. config/path
+
+if [ "$1" == "" ]; then
+  echo "usage: $0 package_name"
+  exit 1
+fi
+
+$SCRIPTS/unpack $1 || exit 2
+if [ -f .stamps/$1/build -a -f $PACKAGES/$1/need_build ]; then
+  $PACKAGES/$1/need_build $@
+fi
+
+if [ ! -f .stamps/$1/build ]; then
+  rm -f .stamps/$1/build
+
+  if [ -f $PACKAGES/$1/build ]; then
+    $PACKAGES/$1/build $@ || exit 3
+  elif [ -f $BUILD/$1*/Makefile ]; then
+    make -C $BUILD/$1* || exit 3
+  fi
+
+  sed 's/^\(.*=.*\)$/STAMP_\1/' $CONFIG/options > .stamps/$1/build
+fi

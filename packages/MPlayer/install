@@ -1,0 +1,80 @@
+#!/bin/sh
+
+. config/path
+. $CONFIG/options
+
+$SCRIPTS/install lirc $2 || exit 1
+$SCRIPTS/unpack theme-$THEME || exit 1
+
+mkdir -p $INSTALL/etc/mplayer
+mkdir -p $INSTALL/usr/bin
+mkdir -p $INSTALL/usr/lib/mplayer/vidix
+mkdir -p $INSTALL/usr/share/mplayer/font
+
+cp $BUILD/MPlayer-*/mplayer $INSTALL/usr/bin
+cp $BUILD/MPlayer-*/libdha/*.so.0.1 $INSTALL/usr/lib
+cp $BUILD/MPlayer-*/vidix/drivers/*.so $INSTALL/usr/lib/mplayer/vidix
+cp $PACKAGES/MPlayer/mplayer.conf $INSTALL/etc/mplayer
+
+case "$2" in
+  generator)
+    mkdir -p $INSTALL/codecs
+    mkdir -p $GENERATOR_NAME/language
+    mkdir -p $GENERATOR_NAME/font
+    cp $PACKAGES/MPlayer/help_*.txt $GENERATOR_NAME/language
+    cp $PACKAGES/MPlayer/menu_*.conf $GENERATOR_NAME/language
+    cp -r $BUILD/MPlayer-*/fonts/font-*-iso-8859-1/font-*-24-* $GENERATOR_NAME/font/iso-8859-1
+    cp -r $BUILD/MPlayer-*/fonts/font-*-iso-8859-2/font-*-24-* $GENERATOR_NAME/font/iso-8859-2
+    cp -r $BUILD/MPlayer-*/fonts/koi8r-font $GENERATOR_NAME/font/koi8r
+    ;;
+
+  installator)
+    mkdir -p $INSTALL/codecs
+    cp $PACKAGES/MPlayer/help_*.txt $INSTALL/usr/share/mplayer
+    cp $PACKAGES/MPlayer/menu_*.conf $INSTALL/etc/mplayer
+    cp -r $BUILD/MPlayer-*/fonts/font-*-iso-8859-1/font-*-24-* $INSTALL/usr/share/mplayer/font/iso-8859-1
+    cp -r $BUILD/MPlayer-*/fonts/font-*-iso-8859-2/font-*-24-* $INSTALL/usr/share/mplayer/font/iso-8859-2
+    cp -r $BUILD/MPlayer-*/fonts/koi8r-font $INSTALL/usr/share/mplayer/font/koi8r
+    echo "# Menu langage (en/fr/it/cz/sk/ru)" > $INSTALL/etc/lang
+    echo "# This have no effect on DVD language. See GEEXBOX/etc/mplayer/mplayer.conf" >> $INSTALL/etc/lang
+    echo "# For ru, you will need to replace the font.ttf file in" >> $INSTALL/etc/lang
+    echo "# GEEXBOX/usr/share/mplayer/font by a KOI8R ttf font." >> $INSTALL/etc/lang
+    echo "LANG=$LANG" >> $INSTALL/etc/lang
+    ;;
+
+  *)
+    cp $PACKAGES/MPlayer/help_$LANG.txt $INSTALL/usr/share/mplayer/help.txt
+    cp $PACKAGES/MPlayer/menu_$LANG.conf $INSTALL/etc/mplayer/menu.conf
+    if [ $LANG = cz -o $LANG = sk ]; then
+      cp $BUILD/MPlayer-*/fonts/font-*-iso-8859-2/font-*-24-*/* $INSTALL/usr/share/mplayer/font
+    elif [ $LANG = ru ]; then
+      cp $BUILD/MPlayer-*/fonts/koi8r-font/* $INSTALL/usr/share/mplayer/font
+    else
+      cp $BUILD/MPlayer-*/fonts/font-*-iso-8859-1/font-*-24-*/* $INSTALL/usr/share/mplayer/font
+    fi
+    ;;
+esac
+
+cp $BUILD/MPlayer-*/etc/input.conf $INSTALL/etc/mplayer
+$PACKAGES/MPlayer/fix $BUILD/MPlayer-*/etc/codecs.conf > $INSTALL/etc/mplayer/codecs.conf
+
+if [ "$FONT" == "truetype" ]; then
+  FONT=/usr/share/mplayer/font/font.ttf
+  SUBFONT=/usr/share/mplayer/font/font.desc
+  cp $BUILD/theme-$THEME/*.ttf $INSTALL/$FONT
+else
+  FONT=/usr/share/mplayer/font/font.desc
+fi
+echo "font=$FONT" >> $INSTALL/etc/mplayer/mplayer.conf
+[ -n "$SUBFONT" ] && echo "subfont=$SUBFONT" >> $INSTALL/etc/mplayer/mplayer.conf
+. $BUILD/theme-$THEME/config
+echo "subfont-text-scale=$FONT_SIZE" >> $INSTALL/etc/mplayer/mplayer.conf
+
+cp $BUILD/theme-$THEME/background.avi $INSTALL/usr/share/mplayer
+if [ -f $BUILD/theme-$THEME/background-audio.avi ]; then
+  cp $BUILD/theme-$THEME/background-audio.avi $INSTALL/usr/share/mplayer
+  BGVIDEO=/usr/share/mplayer/background-audio.avi
+else
+  BGVIDEO=/usr/share/mplayer/background.avi
+fi
+echo "bgvideo=$BGVIDEO" >> $INSTALL/etc/mplayer/mplayer.conf

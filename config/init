@@ -1,0 +1,123 @@
+#!/bin/sh
+
+/bin/busybox mount -t proc none /proc
+/bin/busybox --install -s
+IFS_ORIG=$IFS
+
+if [ -n "$CDROM" ]; then
+  IFS='
+'
+  for PLS in `find "$CDROM" | grep -v /GEEXBOX/ | grep -i '\.\(pls\|m3u\|asx\)$'`; do
+    test -e /usr/bin/autoplay || echo -n "mplayer" > /usr/bin/autoplay
+    echo -n " -playlist \"$PLS\"" >> /usr/bin/autoplay
+  done
+  IFS=$IFS_ORIG
+  if test ! -e /usr/bin/autoplay; then
+    find "$CDROM" | grep -v /GEEXBOX/ | grep -i '\.\(avi\|divx\|asf\|wmv\|mpeg\|mpg\|mpe\|vob\|m2v\|mp4\|ogm\|rm\|ra\|ram\|rmvb\|mov\|qt\|bin\|mp3\|mp2\|ogg\|wav\|wma\|y4m\)$' > /playlist.pls
+    if test -n "`cat /playlist.pls`"; then
+      echo "mplayer -playlist /playlist.pls" > /usr/bin/autoplay
+    else
+      rm /playlist.pls
+    fi
+  fi
+
+  if test ! -e /usr/bin/autoplay; then
+    test -f /proc/progress && echo "86 ejecting GeeXboX CD" > /proc/progress
+    test -e /dev/cdrom -a ! -f /EXEC && eject &
+  fi
+fi
+
+test -f /proc/progress && echo "87 launching modules" > /proc/progress
+for module in `cat /etc/modules`; do
+  insmod $module >/dev/null 2>&1
+done
+
+test -f /proc/progress && echo "92 setting tv-out" > /proc/progress
+tvauto
+
+test -f /proc/progress && echo "94 setting volume" > /proc/progress
+setmixer vol 85 pcm 80 mic 0 line 0
+
+test -f /proc/progress && echo "95 launching lirc daemon" > /proc/progress
+if test -f /etc/remote; then
+  . /etc/remote
+  cp -f /etc/lirc/lircrc_$REMOTE /etc/lircrc
+  cp -f /etc/lirc/lircd_$REMOTE /etc/lircd
+  cp -f /etc/lirc/lircd_$REMOTE.conf /etc/lircd.conf
+fi
+. /etc/lircd
+IFS='|'
+for module in $LIRC_MODULES; do
+  insmod $module >/dev/null 2>&1
+done
+IFS=$IFS_ORIG
+lircd --driver=$LIRC_DRIVER --device=$LIRC_DEVICE
+
+rm -rf /lib/modules
+
+if test -f /etc/network -a -x /usr/bin/smbmount; then
+  . /etc/network
+  test -z "$HOST" && HOST=0.0.0.0
+  if ifconfig eth0 $HOST >/dev/null 2>&1; then
+    if test $HOST = 0.0.0.0; then
+      echo "96 sending dhcp request" > /proc/progress
+      udhcpc -H geexbox -n >/dev/null 2>&1 && NET=yes
+      test "$NET" = yes || ifconfig eth0 192.168.0.54 && NET=yes
+    else
+      NET=yes
+    fi
+    if test "$NET" = yes; then
+      echo "97 mouting network shares" > /proc/progress
+      ( IFS='
+'
+      for i in `smbtree -N | sed -n 's/.*\\\\\\\\\(.*\)\\\\\([^\ $]*\)\ .*/\1\/\2/p'`; do
+        mkdir -p "/mnt/shares/$i"
+        smbmount "//$i" "/mnt/shares/$i" -o ro,username=$USER,passwd=$PWD >/dev/null 2>&1 || rmdir -p "/mnt/shares/$i" >/dev/null 2>&1
+      done ) &
+    fi
+  fi
+fi
+
+test -f /proc/progress && echo "98 setting cdrom speed" > /proc/progress
+for DEV in /dev/scd*; do
+  setcd -x 8 $DEV >/dev/null 2>&1
+done
+
+test -f /proc/progress && echo "100 launching mplayer" > /proc/progress
+if test -f /etc/lang; then
+  . /etc/lang
+  cp -f /etc/mplayer/menu_$LANG.conf /etc/mplayer/menu.conf
+  cp -f /usr/share/mplayer/help_$LANG.txt /usr/share/mplayer/help.txt
+  if test $LANG = cz -o $LANG = sk; then
+    mv /usr/share/mplayer/font/iso-8859-2/* /usr/share/mplayer/font
+  elif test $LANG = ru; then
+    mv /usr/share/mplayer/font/koi8r/* /usr/share/mplayer/font
+  else
+    mv /usr/share/mplayer/font/iso-8859-1/* /usr/share/mplayer/font
+  fi
+fi
+test -e /dev/dvd || ( cp /etc/mplayer/menu.conf /etc/mplayer/menu.conf.new && sed 's/.*DVD.*//' /etc/mplayer/menu.conf.new > /etc/mplayer/menu.conf && rm /etc/mplayer/menu.conf.new )
+cd /mnt
+if test -x /usr/bin/gdb; then
+  echo "r /usr/share/mplayer/background.avi -loop 0" > /gdb_cmd
+  gdb -x /gdb_cmd /usr/bin/mplayer
+else
+  test -e /usr/bin/autoplay && sh /usr/bin/autoplay >/dev/null 2>&1
+
+  if test $? -ne 166; then
+    while true; do
+      mplayer -menu-disp /usr/share/mplayer/background.avi -loop 0 >/dev/null 2>&1
+      test $? -eq 166 && break
+    done
+  fi
+fi
+
+for DIR in /mnt/share/*/*; do
+  test -d "$DIR" && umount "$DIR" >/dev/null 2>&1 && rmdir -p "$DIR"
+done
+if test -f /EXEC; then
+  for DIR in /mnt/*; do
+    test -d "$DIR" && umount "$DIR" >/dev/null 2>&1
+  done
+  umount /proc
+fi

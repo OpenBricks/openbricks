@@ -1,0 +1,37 @@
+#!/bin/sh
+
+. config/path
+. $CONFIG/options
+
+$SCRIPTS/checkdeps || exit 1
+
+export INSTALL=$BUILD/iso/GEEXBOX
+
+
+rm -rf $BUILD/iso
+
+mkdir -p $INSTALL/sbin
+cp $CONFIG/init $INSTALL/sbin
+
+$SCRIPTS/install linux modules || exit 1
+$SCRIPTS/install eject || exit 1
+$SCRIPTS/install setmixer || exit 1
+$SCRIPTS/install tvout || exit 1
+$SCRIPTS/install setcd || exit 1
+$SCRIPTS/install MPlayer || exit 1
+[ "$SAMBA" = yes ] && ( $SCRIPTS/install samba || exit 1 )
+[ "$DEBUG" = yes ] && ( $SCRIPTS/install gdb || exit 1 )
+[ "$EXTRACODECS" = yes ] && ( $SCRIPTS/install extralite || exit 1 )
+
+$SCRIPTS/install installator || exit 1
+
+rm -rf $BUILD/ziso
+mkdir -p $BUILD/ziso
+mkzftree $INSTALL $BUILD/ziso/GEEXBOX
+
+export INSTALL=$BUILD/ziso/GEEXBOX
+$SCRIPTS/install linux image || exit 1
+$SCRIPTS/install initrd || exit 1
+$SCRIPTS/install syslinux || exit 1
+
+mkisofs -quiet -no-pad -V GEEXBOX -volset GEEXBOX -P "The GeeXboX team (http://www.geexbox.org/)" -p "The GeeXboX team (http://www.geexbox.org/)" -A "MKISOFS ISO 9660/HFS FILESYSTEM BUILDER" -z -D -r -J -b GEEXBOX/boot/isolinux.bin -c GEEXBOX/boot/boot.catalog -no-emul-boot -boot-load-size 4 -boot-info-table $BUILD/ziso > $ISO

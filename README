@@ -1,0 +1,205 @@
+
+         ooooo                     oo     o  o               oo     o
+        M"   "Mo                    Mo  oM"  M                Mo  oM"
+       M           oM""Mo  oM""Mo    "Mo"    Mo"""o  oM""Mo    "Mo"
+       M    """M   MooooMM MooooMM   oMMo    M    "M M    M    oMMo
+       "o     oM   M    o  M    o   oM  Mo   M    oM M    M   oM  Mo
+        "MoooM"M   "MooM"  "MooM"  M"    "M  M"ooo"  "MooM"  M"    "M
+
+
+
+| ABOUT
+| ~~~~~
+
+GeeXboX is a kind of "divx box" software. In fact, it is a stand-alone boot
+CD which allows you to watch movies or listen to music. It supports many 
+formats, such as avi, mpeg, divx, ogm, rm, mp3, ogg, dvd, vcd and cdda. 
+It also supports some IR remote controllers and TV-Out for some graphic cards. 
+This archive contain the needed scripts to rebuild an iso image of the GeeXboX.
+
+
+| REQUIREMENTS
+| ~~~~~~~~~~~~
+
+To build the GeeXboX, you will need some classic tools:
+  - a working GNU/Linux system.
+  - the gcc C compiler.
+  - GNU make
+  - the patch command.
+  - the nasm assembler.
+  - bzip2 and gzip.
+  - mkfs.ext2 and mkfs.vfat
+  - the wget download tool (not needed for the full GeeXboX package).
+  - mkisofs and mkzftree to build the iso image.
+  - mkzftree to compress files on the iso image.
+  - cdrecord (to burn the iso image).
+
+And also 500 MB of hard disk free space.
+
+
+| CONFIGURATION
+| ~~~~~~~~~~~~~
+
+* Global options :
+    This is the first thing you should take care of before trying to build
+    the GeeXboX. It stands in the file config/options, and it should be
+    self explanatory. There you can choose your CPU family, your theme,
+    and whether you want truetype fonts or not. You should also modify your
+    cd burner configuration to be able to burn directly the iso.
+
+* Linux :
+    This is a classical Linux configuration. There are two configurations
+    files, one with ACPI enabled and one without. These files are
+    packages/linux/linux.conf and packages/linux/linux-acpi.conf. You
+    can edit them by hand, or you can also do a scripts/unpack linux
+    and then a make menuconfig -C build/linux-* (or use the method you prefer
+    instead of menuconfig). Then you should backup your build/linux-*/.config
+    into packages/linux/linux.conf (or in the acpi version).
+    The only "difficult" thing with this is to keep the kernel small enough
+    to fit on the boot floppy image.
+
+* MPlayer :
+    This is where you can do most of the configuration and tweaking.
+    The options take place in the file packages/MPlayer/mplayer.conf.
+    You may want to modify options such as OSD font size (subfont-text-scale).
+    You can also add lots of options such as DVD default language
+    (eg: alang=fr,en). The best place to find them is the MPlayer manpage
+    for Linux users (man -l build/MPlayer-*/DOCS/mplayer.1). You should also
+    have a look at the MPlayer documentation (in build/MPlayer-*/DOCS or at
+    http://mplayerhq.hu/DOCS/).
+    Another file you may modify is the packages/MPlayer/menu.conf. You can
+    remove items you don't need, or you can translate it in your own language
+    for example.
+    Then the last file you can look at is the packages/MPlayer/build which
+    contain the selection of options which are built into MPlayer.
+
+* tvout :
+    Enabling the TV-Out is achieved with the help of multiple small programs
+    dedicated to different video card brands. Currently we use atitvout
+    for ATI cards, s3switch for S3 cards and nvtv for nVidia cards (and
+    possibly intel i810 and 3dfx cards). The configuration of those programs
+    is done in config/tvsettings. There you can choose the TV standard you
+    want (pal, ntsc...) and you can also modify specific options for nvtv.
+
+* Lirc :
+    Lirc allows you to control the GeeXboX using a remote controller. First
+    you have to choose the file describing your specific remote in
+    build/lirc-*/remotes (after doing a scripts/unpack lirc) and add it
+    in packages/lirc/install. Then you should choose your device (default
+    is /dev/ttyS0 (COM1)) and the lirc driver and put them in a file
+    called packages/lirc/lircd_$REMOTE. Then you can choose your key mapping in
+    the file packages/lirc/lircrc_$REMOTE. For each mapping you have to select
+    a button (pike their names in the remote definition file) and associate an
+    action to it. The action is one of MPlayer's actions (you can find a list
+    in the html file build/MPlayer-*/DOCS/documentation.html#commands).
+
+
+| BUILDING
+| ~~~~~~~~
+
+First have a look at the configuration section just above (at least the
+general and the burning parts).
+
+To build the GeeXboX, you have to be root (the building scripts have to
+mount the boot disk image in loopback).
+
+Then basically you can build the iso with :
+  make
+Or you can directly burn this iso with :
+  make burn
+
+When done, you can save disk space by cleaning the build tree :
+  make clean
+or by doing a full cleaning, even removing downloaded sources :
+  make distclean
+
+There's also more advanced commands if you want to hack around the GeeXboX :
+  scripts/get package        # download the package
+  scripts/unpack package     # unpack and prepare the package
+  scripts/build package      # build the package
+  scripts/install package    # install the package with the $INSTALL prefix
+  scripts/clean package      # clean the package source tree
+  make exec                  # launch directly the GeeXboX in a jail
+                             # WARNING: this is a highly experimental feature
+                             # use it at your own risks.
+
+If you've made a hacked version of the GeeXboX, you can easily
+build a small tar.bz2 for it with :
+  make dist
+or a full tar (containing all sources) with :
+  make fulldist
+or a geexbox generator with :
+  make generator
+or a geexbox installator with :
+  make installator
+
+
+| HACKING
+| ~~~~~~~
+
+The first thing you should look at is the initialization script.
+In fact there are two initialization scripts. The first one is in
+packages/initrd/linuxrc but you shouldn't need to modify it. The
+second one is in config/init and that's where you may put some
+customizations.
+
+Then the next thing which may interest you is the creation of a new
+"package". A package is just a bunch of scripts which have to follow
+some rules. All the scripts have to take place in a directory named as
+the program you want to "package", itself in the packages directory.
+Here is a list of the scripts you may create :
+ - url : just a list of urls where to get the program sources.
+ - unpack : what to do after unpacking the sources. For example, you can
+            modify some configuration files. This does not include
+            applying patches.
+ - need_build : called when the package as allready been built, in order
+                to be sure that it don't need to be rebuilt. It should
+                remove the file .stamps/"package name"/build if the
+                package need to be rebuilt.
+ - build : all the steps needed to build the program.
+ - install : all the steps needed to install the program. The installation
+             prefix should be $INSTALL.
+
+When a file from the urls is named patch-program_name-... it is automatically
+applied to the unpacked sources of the program.
+
+You also have to remember that software which run on the GeeXboX have to
+be compiled with the uClibc gcc wrapper.
+
+Finally, the best way to make a package is to look how other packages are done.
+
+
+| LICENSE
+| ~~~~~~~
+
+All the programs used by the GeeXboX are protected by their respective
+license. They all are free software and most of them are covered by the
+GNU General Public License.
+The GeeXboX itself, meaning all the scripts which are used in the building
+process, are covered by the GNU General Public License.
+
+
+| AUTHOR
+| ~~~~~~
+
+Aurelien Jacobs  <aurel@geexbox.org>
+
+
+| SPECIAL THANKS
+| ~~~~~~~~~~~~~~
+
+Benjamin Zores  <ben@geexbox.org>  for his patches, testings and the website.
+
+
+| THANKS
+| ~~~~~~
+
+Serial Cleaner   <serial.cleaner@gmx.net>  for his setcd patch and hauppauge
+                                          remote support.
+Hervé Urbain     <dersie.urbain@wanadoo.fr>  for his logitech remote support.
+David Legrand    <david@pcinpact.com>  for lending us his ATI Remote Wonder.
+Mickaël Beugnier <Mitch@no-log.org>  for the GeeXboX logo and bootlogo design.
+Andrighetto Riccardo  <geexbox@truzzone.it> for his Italian translation.
+Plom             <tbb.plom@libertysurf.fr>  for his leadtek remote support.
+Eva Mikulcikova  <evmi@seznam.cz>  for his czech and slovak translations.
+The whole free software community, and especially the whole MPlayer team.
