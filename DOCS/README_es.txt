@@ -9,7 +9,7 @@
                              
 
 | ACERCA DE...
-| ~~~~~
+| ~~~~~~~~~~~~
 
 Geexbox es un software que convierte tu ordenador en una máquina de
 reproducir DivX. De hecho, es un CD auto-arrancable que permite ver
@@ -71,7 +71,7 @@ ficheros de texto.
     traducir el menú a tu propio idioma, lo que conlleva la creación de los
     archivos GEEXBOX/etc/mplayer/menu_LANG.conf y 
     GEEXBOX/usr/share/mplayer/help_LANG.txt.
-	
+
 * MPlayer :
     Aquí es donde puedes hacer la mayor parte de las configuraciones y ajustes.
     Las opciones se encuentran en el fichero packages/MPlayer/mplayer.conf.
@@ -112,41 +112,6 @@ ficheros de texto.
     compartidos en máquinas windows (por defecto se conecta únicamente a los
     recursos que permitan conexiones anónimas).
     
-
-| CONFIGURACIÓN
-| ~~~~~~~~~~~~~
-
-* Opciones globales:
-    Éste es el primer apartado en el que debes fijarte antes de intentar
-    compilar GeeXboX. Se encuentra en el archivo config/options, y debería
-    explicarse por sí mismo. En este fichero puedes seleccionar la familia
-    de tu CPU, el tema a usar, y si quieres utilizar fuentes truetype o no.
-    Además, deberías modificar la configuración de la grabadora de CD para
-    poder grabar directamente la ISO.
-    
-* Linux:
-    El archivo packages/linux/linux.conf es una configuración clásica de Linux.
-    Puedes editarlo a mano, o también puedes ejecutar scripts/unpack linux
-    y hacer make menuconfig -C build/linux-* (o utilizar el método que 
-    prefieras en vez de menuconfig). Es conveniente que hagas una copia de
-    seguridad de build/linux-*/.config en packages/linux/linux.conf.
-    Lo más "difícil" que puede ocurrir es mantener tamaño del kernel lo 
-    suficientemente reducido como para que quepa en una imagen de un disquete
-    de arranque.
-    
-* Lirc:
-    Lirc te permite controlar GeeXboX a través de un mando a distancia. Lo 
-    primero que debes hacer es escoger el archivo que describe tu mando en 
-    concreto en build/lirc-*/remotes (despues de hacer scripts/unpack lirc) y 
-    añadirlo a packages/lirc/install. A partir de aquí, escoge un dispositivo
-    (por defecto es /dev/ttyS0, o COM1) y el driver lirc y colócalos en un 
-    archivo con el nombre packages/lirc/lircd_$REMOTE. Entonces podrás escoger
-    la asignación de teclas en packages/lirc/lircrc_$REMOTE. En cada asignación
-    tienes que seleccionar un botón (coge los nombres del archivo de definición
-    del mando a distancia) y asociarle una acción. Esta acción pertenece a 
-    MPlayer, y puedes encontrar un listado en 
-    build/MPlayer-*/DOCS/documentation.html#commands.
-
 
 | GENERACIÓN
 | ~~~~~~~~~~
@@ -211,6 +176,41 @@ o un instalador geexbox con:
   make installator
   
   
+| CONFIGURACIÓN
+| ~~~~~~~~~~~~~
+
+* Opciones globales:
+    Éste es el primer apartado en el que debes fijarte antes de intentar
+    compilar GeeXboX. Se encuentra en el archivo config/options, y debería
+    explicarse por sí mismo. En este fichero puedes seleccionar la familia
+    de tu CPU, el tema a usar, y si quieres utilizar fuentes truetype o no.
+    Además, deberías modificar la configuración de la grabadora de CD para
+    poder grabar directamente la ISO.
+
+* Linux:
+    El archivo packages/linux/linux.conf es una configuración clásica de Linux.
+    Puedes editarlo a mano, o también puedes ejecutar scripts/unpack linux
+    y hacer make menuconfig -C build/linux-* (o utilizar el método que 
+    prefieras en vez de menuconfig). Es conveniente que hagas una copia de
+    seguridad de build/linux-*/.config en packages/linux/linux.conf.
+    Lo más "difícil" que puede ocurrir es mantener tamaño del kernel lo 
+    suficientemente reducido como para que quepa en una imagen de un disquete
+    de arranque.
+
+* Lirc:
+    Lirc te permite controlar GeeXboX a través de un mando a distancia. Lo 
+    primero que debes hacer es escoger el archivo que describe tu mando en 
+    concreto en build/lirc-*/remotes (despues de hacer scripts/unpack lirc) y 
+    añadirlo a packages/lirc/install. A partir de aquí, escoge un dispositivo
+    (por defecto es /dev/ttyS0, o COM1) y el driver lirc y colócalos en un 
+    archivo con el nombre packages/lirc/lircd_$REMOTE. Entonces podrás escoger
+    la asignación de teclas en packages/lirc/lircrc_$REMOTE. En cada asignación
+    tienes que seleccionar un botón (coge los nombres del archivo de definición
+    del mando a distancia) y asociarle una acción. Esta acción pertenece a 
+    MPlayer, y puedes encontrar un listado en 
+    build/MPlayer-*/DOCS/documentation.html#commands.
+
+
 | HACKING
 | ~~~~~~~
 

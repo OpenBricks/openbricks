@@ -108,38 +108,6 @@ text files.
     to windows shares (default will only connect to anonymous shares).
 
 
-| CONFIGURATION
-| ~~~~~~~~~~~~~
-
-* Global options :
-    This is the first thing you should take care of before trying to build
-    the GeeXboX. It stands in the file config/options, and it should be
-    self explanatory. There you can choose your CPU family, your theme,
-    and whether you want truetype fonts or not. You should also modify your
-    cd burner configuration to be able to burn directly the iso.
-
-* Linux :
-    This is a classical Linux configuration (packages/linux/linux.conf).
-    You can edit them by hand, or you can also do a scripts/unpack linux
-    and then a make menuconfig -C build/linux-* (or use the method you prefer
-    instead of menuconfig). Then you should backup your build/linux-*/.config
-    into packages/linux/linux.conf.
-    The only "difficult" thing with this is to keep the kernel small enough
-    to fit on the boot floppy image.
-
-* Lirc :
-    Lirc allows you to control the GeeXboX using a remote controller. First
-    you have to choose the file describing your specific remote in
-    build/lirc-*/remotes (after doing a scripts/unpack lirc) and add it
-    in packages/lirc/install. Then you should choose your device (default
-    is /dev/ttyS0 (COM1)) and the lirc driver and put them in a file
-    called packages/lirc/lircd_$REMOTE. Then you can choose your key mapping in
-    the file packages/lirc/lircrc_$REMOTE. For each mapping you have to select
-    a button (pike their names in the remote definition file) and associate an
-    action to it. The action is one of MPlayer's actions (you can find a list
-    in the html file build/MPlayer-*/DOCS/documentation.html#commands).
-
-
 | GENERATION
 | ~~~~~~~~~~
 
@@ -166,8 +134,8 @@ of the question.
 | BUILDING
 | ~~~~~~~~
 
-First have a look at the configuration section just above (at least the
-general and the burning parts).
+First have a look at the configuration section just under (at least the
+global part).
 
 Then basically you can build the iso with :
   make
@@ -198,6 +166,38 @@ or a geexbox generator with :
   make generator
 or a geexbox installator with :
   make installator
+
+
+| CONFIGURATION
+| ~~~~~~~~~~~~~
+
+* Global options :
+    This is the first thing you should take care of before trying to build
+    the GeeXboX. It stands in the file config/options, and it should be
+    self explanatory. There you can choose your CPU family, your theme,
+    and whether you want truetype fonts or not. You should also modify your
+    cd burner configuration to be able to burn directly the iso.
+
+* Linux :
+    This is a classical Linux configuration (packages/linux/linux.conf).
+    You can edit them by hand, or you can also do a scripts/unpack linux
+    and then a make menuconfig -C build/linux-* (or use the method you prefer
+    instead of menuconfig). Then you should backup your build/linux-*/.config
+    into packages/linux/linux.conf.
+    The only "difficult" thing with this is to keep the kernel small enough
+    to fit on the boot floppy image.
+
+* Lirc :
+    Lirc allows you to control the GeeXboX using a remote controller. First
+    you have to choose the file describing your specific remote in
+    build/lirc-*/remotes (after doing a scripts/unpack lirc) and add it
+    in packages/lirc/install. Then you should choose your device (default
+    is /dev/ttyS0 (COM1)) and the lirc driver and put them in a file
+    called packages/lirc/lircd_$REMOTE. Then you can choose your key mapping in
+    the file packages/lirc/lircrc_$REMOTE. For each mapping you have to select
+    a button (pike their names in the remote definition file) and associate an
+    action to it. The action is one of MPlayer's actions (you can find a list
+    in the html file build/MPlayer-*/DOCS/documentation.html#commands).
 
 
 | HACKING
