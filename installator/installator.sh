@@ -44,7 +44,11 @@ fi
 
 if [ -n "$DIALOG" ]; then
   while true; do
-    DISKS=`cat /proc/partitions | sed -n "s/\ *[0-9][0-9]*\ *[0-9][0-9]*\ *\([0-9][0-9]*\)\ \([a-z]*\)$/\2 (\1_blocks)/p"`
+    if [ -e /dev/.devfsd ]; then
+      DISKS=`cat /proc/partitions | sed -n "s/\ *[0-9][0-9]*\ *[0-9][0-9]*\ *\([0-9][0-9]*\)\ \([a-z0-9/]*disc\).*$/\2 (\1_blocks)/p"`
+    else
+      DISKS=`cat /proc/partitions | sed -n "s/\ *[0-9][0-9]*\ *[0-9][0-9]*\ *\([0-9][0-9]*\)\ \([a-z]*\)$/\2 (\1_blocks)/p"`
+    fi
     if [ -z "$DISKS" ]; then
       $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --yesno "\nNo disks found on this system.\nRecheck ?" 0 0 || exit 1
     else
@@ -73,7 +77,7 @@ fi
 while [ ! -b "$DEV" ]; do
   if [ -n "$DIALOG" ]; then
     DISKS=""
-    for i in `$SFDISK -l | grep FAT16 | grep $DISK | cut -f1 -d' '`; do
+    for i in `$SFDISK -l | grep FAT16 | grep ${DISK%disc} | cut -f1 -d' '`; do
       S=`$SFDISK -s "$i" | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
       DISKS="$DISKS $i ${S}MB"
     done
@@ -147,8 +151,8 @@ else
 fi
 
 if [ "$MBR" = yes ]; then
-  dd if=mbr.bin of="${DEV%%[0-9]*}"
-  PART="${DEV#/dev/$DISK}"
+  dd if=mbr.bin of="/dev/$DISK"
+  PART="${DEV#${DEV%%[0-9]*}}"
   echo ",,,*" | $SFDISK "/dev/$DISK" -N$PART
 else
   if [ -n "$DIALOG" ]; then
