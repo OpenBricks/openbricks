@@ -97,12 +97,12 @@ if not exist %windir%\command\deltree.exe rmdir /q /s ziso >nul
 :nothingtoremove
 
 echo "Applying settings..."
-echo %LANG% > iso\GEEXBOX\etc\lang
+echo %LANG%> iso\GEEXBOX\etc\lang
 copy language\help_%LANG%.txt iso\GEEXBOX\usr\share\mplayer\help_%LANG%.txt >nul
 copy language\menu_%LANG%.conf iso\GEEXBOX\etc\mplayer\menu_%LANG%.conf >nul
 copy language\lang.conf iso\GEEXBOX\etc\lang.conf >nul
 
-echo %SUB_FONT% > iso\GEEXBOX\etc\subfont
+echo %SUB_FONT%> iso\GEEXBOX\etc\subfont
 md iso\GEEXBOX\usr\share\mplayer\font\%SUB_FONT%
 copy font\%SUB_FONT%\* iso\GEEXBOX\usr\share\mplayer\font\%SUB_FONT% >nul
 
