@@ -246,7 +246,7 @@ fi
 
 $GRUB --batch --no-floppy --device-map=$device_map <<EOF
 root $rootdev
-install --stage2=$grubdir/stage2_single $grubprefix/stage1 $rootdev $grubprefix/stage2_single p /boot/grub/single.lst
+install --stage2=$grubdir/stage2_single $grubprefix/stage1 $rootdev $grubprefix/stage2_single p $grubprefix/single.lst
 EOF
 
 oslist=$(detect_os)
