@@ -7,10 +7,28 @@ echo "### Configuring MPlayer's audio settings ###"
 # include audio configuration file
 . /etc/audio
 
-# set ao to SPDIF when specified
-if test "$SPDIF" = yes; then
-  sed -i 's/^ao=.*/ao=alsa:device=spdif/' /etc/mplayer/mplayer.conf
+echo $ALSA_CARD | grep -q ".." || ALSA_CARD="0$ALSA_CARD"
+
+case $ALSA_MODE in
+  SPDIF)  ALSA_REAL_MODE=IEC958 ;;
+  analog) ALSA_REAL_MODE=DAC    ;;
+esac
+
+ALSA_DEVICE=`grep "^$ALSA_CARD-" /proc/asound/pcm | grep $ALSA_REAL_MODE | head -1 | sed 's/^..-\(..\): .*/\1/'`
+
+[ -n $ALSA_DEVICE ] && AO_DEVICE=":device=hw=$ALSA_CARD.$ALSA_DEVICE"
+
+# set alsa as audio output isn't forced already.
+grep -q "^ao=" /etc/mplayer/mplayer.conf || echo "ao=alsa$AO_DEVICE" >> /etc/mplayer/mplayer.conf
+
+# enable hardware AC3 output via S/PDIF if audio codec isn't forced already.
+if [ "$ALSA_MODE" = SPDIF -a "$AC3_DECODER" = hardware ]; then
+  grep -q "^ac=" /etc/mplayer/mplayer.conf || echo "ac=hwac3," >> /etc/mplayer/mplayer.conf
+  CHANNELS=2
 fi
+
+# set number of playback channels if isn't forced already.
+grep -q "^channels=" /etc/mplayer/mplayer.conf || echo "channels=$CHANNELS" >> /etc/mplayer/mplayer.conf
 
 # set DVD default language
 echo "alang=`sed 's/^\(..\).*/\1/' /etc/lang | head -1`,en" >> /etc/mplayer/mplayer.conf
