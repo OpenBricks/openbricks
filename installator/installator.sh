@@ -81,6 +81,7 @@ convert () {
 }
 
 /bin/busybox mount -t proc none /proc
+/bin/busybox mount -t sysfs none /sys
 /bin/busybox --install -s
 
 if [ "$1" = geexbox ]; then
@@ -90,6 +91,7 @@ if [ "$1" = geexbox ]; then
   MKDOSFS=/usr/bin/mkdosfs
   MKE2FS=/usr/bin/mke2fs
   GRUB=/usr/bin/grub
+  SYSLINUX=/usr/bin/syslinux
 else
   DIALOG=`which dialog`
   CFDISK=`which cfdisk`
@@ -97,6 +99,7 @@ else
   MKDOSFS=`which mkdosfs`
   MKE2FS=`which mke2fs`
   GRUB=`which grub`
+  SYSLINUX=`which syslinux`
 fi
 VERSION=`cat VERSION`
 BACKTITLE="GeeXboX $VERSION installator"
@@ -112,6 +115,14 @@ if [ -z "$SFDISK" -o -z "$GRUB" -o -z "$DIALOG" ]; then
     echo ""
     echo "**** You need to have sfdisk, grub and dialog installed to install GeeXboX ****"
     echo ""
+    exit 1
+fi
+
+if [ ! -d "/sys/block" ]; then
+  echo ""
+  echo "**** You need to have a mounted sysfs at /sys. try executing: mount -t sysfs none /sys ****"
+  echo ""
+  exit 1
 fi
 
 while true; do
@@ -124,15 +135,32 @@ while true; do
       $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --yesno "\nNo disks found on this system.\nCheck again?" 0 0 || exit 1
     else
       DISKS="$DISKS refresh list"
-      if [ -z "$CFDISK" ]; then
-        CFDISK_MSG="As you don't have cfdisk installed, the installator won't be able to create the partition for you. You'll have to create it yourself before installing."
-      else
-        CFDISK_MSG="You can now edit your partition table to create a FAT partition (type=0B) or Linux ext2/3 partition (type=83). Be careful to choose the right disk! We won't take responsibility for any data loss."
-      fi
-      DISK=`$DIALOG --stdout --backtitle "$BACKTITLE" --title "Installation device" --menu "\nYou are going to install GeeXboX. For this you will need an empty FAT or Linux ext2/3 partition with about 8 MB of free space.\n$CFDISK_MSG" 0 0 0 $DISKS` || exit 1
+      DISK=`$DIALOG --stdout --backtitle "$BACKTITLE" --title "Installation device" --menu "\nYou are going to install GeeXboX. For this you will need an empty partition with about 8 MB of free space.\nBe careful to choose the right disk! We won't take responsibility for any data loss." 0 0 0 $DISKS` || exit 1
       [ $DISK != refresh ] && break
     fi
 done
+
+if [ "`cat /sys/block/$DISK/removable`" = 1 ]; then
+  BOOTLOADER=`$DIALOG --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Linux partition type" --menu "Which type of boot loader you want ? " 0 0 0 grub "GNU GRUB - Doesn't work with oldest BIOS" syslinux "Syslinux - For oldest BIOS compatbility"` || exit 1
+  TYPE=REMOVABLE
+else
+  BOOTLOADER=grub
+  TYPE=HDD
+fi
+
+if [ $BOOTLOADER = syslinux ]; then
+  PART_MSG="FAT partition (type=06)"
+elif [ $BOOTLOADER = grub ]; then
+  PART_MSG="FAT partition (type=0B) or Linux ext2/3 partition (type=83)"
+fi 
+
+if [ -z "$CFDISK" ]; then
+  CFDISK_MSG="As you don't have cfdisk installed, the installator won't be able to create the partition for you. You'll have to create it yourself before installing."
+else
+  CFDISK_MSG="Please edit your partition table to create a $PART_MSG with about 8 MB of free space.\nRemember to write the changes when done. We won't take responsibility for any data loss."
+fi
+$DIALOG --stdout --backtitle "$BACKTITLE" --title "Installation device" --msgbox "$CFDISK_MSG" 0 0 || exit 1
+
 if [ -n "$CFDISK" ]; then
     $CFDISK /dev/$DISK || exit 1
 fi
@@ -141,14 +169,20 @@ while [ ! -b "$DEV" ]; do
     DISKS=""
     for i in `$SFDISK -l /dev/$DISK | grep ${DISK%disc} | cut -f1 -d' '`; do
       case `$SFDISK --print-id ${i%%[0-9]*} ${i#${i%%[0-9]*}}` in
-        1|11|6|e|16|1e|14|b|c|1b|1c|83)
+        1|11|6|e|16|1e) #FAT12/16 are supported both in syslinux and grub.
           S=`$SFDISK -s "$i" | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
           DISKS="$DISKS $i ${S}MB"
           ;;
+        b|c|1b|1c|83) #FAT32 and Linux are supported only in grub.
+          if [ $BOOTLOADER = grub ]; then
+            S=`$SFDISK -s "$i" | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
+            DISKS="$DISKS $i ${S}MB"
+          fi
+          ;;	  
       esac
     done
     if [ -z "$DISKS" ]; then
-      $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\nYou don't have any FAT or Linux ext2/3 partition on your system. Please create a FAT or Linux ext2/3 partition first using for example cfdisk.\n" 0 0
+      $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\nYou don't have any $PART_MSG partition on your system. Please create a partition first using for example cfdisk.\n" 0 0
       exit 1
     else
       DEV=`$DIALOG --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Installation device" --menu "Where do you want to install GeeXboX?" 0 0 0 $DISKS` || exit 1
@@ -217,7 +251,7 @@ else
   fi
   cp -a "$GEEXBOX" di/GEEXBOX 2>/dev/null
   cd di/GEEXBOX/boot
-  cp vmlinuz initrd.gz ../../
+  mv vmlinuz initrd.gz isolinux.cfg boot.msg help.msg splash.rle ../../
   cd ../../../
   rm -rf di/GEEXBOX/boot
 fi
@@ -230,12 +264,22 @@ rm -rf $grubdir
 mkdir -p $grubdir
 tar xjf "di/GEEXBOX/usr/share/grub-i386-pc.tar.bz2" -C $grubdir
 
-cp $grubdir/stage2 $grubdir/stage2_single
+cp -f "di/GEEXBOX/usr/share/grub-splash.xpm.gz" $grubdir
+splashimage="$grubprefix/grub-splash.xpm.gz"
 
-# Detect BIOS devices
-$GRUB --batch --no-floppy --device-map=$device_map <<EOF
-quit
-EOF
+if [ $BOOTLOADER = syslinux ]; then
+  sed "s/boot=cdrom/boot=${DEV#/dev/}/" di/isolinux.cfg > di/syslinux.cfg
+  rm di/isolinux.cfg
+elif [ $BOOTLOADER = grub ]; then
+  cp $grubdir/stage2 $grubdir/stage2_single
+  rm di/isolinux.cfg di/boot.msg di/help.msg di/splash.rle
+fi
+
+if [ $TYPE = HDD ]; then
+  echo "quit" | $GRUB --batch --no-floppy --device-map=$device_map
+elif [ $TYPE = REMOVABLE ]; then
+  echo "(hd0) ${DEV%%[0-9]*}" > $device_map
+fi
 
 rootdev=$(convert $DEV)
 
@@ -246,34 +290,65 @@ if [ -z "$rootdev" ]; then
   exit 1
 fi
 
-$GRUB --batch --no-floppy --device-map=$device_map <<EOF
-root $rootdev
-install --stage2=$grubdir/stage2_single $grubprefix/stage1 $rootdev $grubprefix/stage2_single p $grubprefix/single.lst
+[ $TYPE = HDD ]       && rootdev_single="$rootdev"
+[ $TYPE = REMOVABLE ] && rootdev_single="(fd0)"
+
+if [ $BOOTLOADER = syslinux ]; then
+  umount di
+  $SYSLINUX "$DEV"
+  mount -t $MKFS_TYPE "$DEV" di
+elif [ $BOOTLOADER = grub ]; then
+  $GRUB --batch --no-floppy --device-map=/dev/null <<EOF
+device $rootdev_single $DEV
+root $rootdev_single
+install --stage2=$grubdir/stage2_single $grubprefix/stage1 $rootdev_single $grubprefix/stage2_single p $grubprefix/single.lst
 EOF
 
-oslist=$(detect_os)
+  cat > $grubdir/single.lst <<EOF
+default  0
+timeout  2
+color cyan/blue white/blue
+splashimage=$rootdev_single$splashimage
 
-supported_os_list=""
-saveifs=$IFS
-IFS='
+title	GeeXboX
+root	$rootdev_single
+kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME splash=silent vga=0x315 video=vesafb:ywrap,mtrr
+initrd  /initrd.gz
+boot
+
+title	GeeXboX (debug)
+root	$rootdev_single
+kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME debugging
+initrd  /initrd.gz
+boot
+EOF
+fi
+
+if [ $TYPE = HDD ]; then
+  oslist=$(detect_os)
+
+  supported_os_list=""
+  saveifs=$IFS
+  IFS='
 '
-for os in $oslist; do
-    title=$(echo "$os" | cut -d: -f2)
-    if [ -n "$supported_os_list" ]; then
-	supported_os_list="$supported_os_list, $title"
-    else
-	supported_os_list="$title"
-    fi
-done
-IFS=$saveifs
-
-cp -f "di/GEEXBOX/usr/share/grub-splash.xpm.gz" $grubdir
-splashimage="splashimage=$rootdev$grubprefix/grub-splash.xpm.gz"
-
-if [ -n "$supported_os_list" ]; then
-  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Bootloader" --defaultno --yesno "\n'$DEV' is now a GeeXboX partition. To boot from it, you will need to install a bootloader. I can install one for you. If you have any other operating system on your computer, I will also install a multiboot for you. If you do not want me to install a new bootloader, you will need to configure yours alone.\nI have found: $supported_os_list\nDo you want to install me to install the boot loader (GRUB) for you ?\n" 0 0 && MBR=yes
-else
-  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Bootloader" --defaultno --yesno "\n'$DEV' is now a GeeXboX partition. I didn't recognize any other OS on your system, want me to install boot loader on your MBR?\n" 0 0 && MBR=yes
+  for os in $oslist; do
+      title=$(echo "$os" | cut -d: -f2)
+      if [ -n "$supported_os_list" ]; then
+  	supported_os_list="$supported_os_list, $title"
+      else
+  	supported_os_list="$title"
+      fi
+  done
+  IFS=$saveifs
+  
+  if [ -n "$supported_os_list" ]; then
+    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Bootloader" --defaultno --yesno "\n'$DEV' is now a GeeXboX partition. To boot from it, you will need to install a bootloader. I can install one for you. If you have any other operating system on your computer, I will also install a multiboot for you. If you do not want me to install a new bootloader, you will need to configure yours alone.\nI have found: $supported_os_list\nDo you want to install me to install the boot loader (GRUB) for you ?\n" 0 0 && MBR=yes
+  else
+    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Bootloader" --defaultno --yesno "\n'$DEV' is now a GeeXboX partition. I didn't recognize any other OS on your system, want me to install boot loader on your MBR?\n" 0 0 && MBR=yes
+  fi
+elif [ $TYPE = REMOVABLE ]; then
+  oslist=
+  MBR=yes
 fi
 
 if [ "$MBR" = "yes" ]; then
@@ -286,7 +361,7 @@ EOF
 default  0
 timeout  5
 color cyan/blue white/blue
-$splashimage
+splashimage=$rootdev$splashimage
 
 EOF
 
@@ -345,25 +420,6 @@ EOF
 else
   $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Bootloader" --msgbox "\nYou must install a boot loader to boot GeeXboX\n" 0 0
 fi
-
-cat > $grubdir/single.lst <<EOF
-default  0
-timeout  2
-color cyan/blue white/blue
-$splashimage
-
-title	GeeXboX
-root	$rootdev
-kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME splash=silent vga=0x315 video=vesafb:ywrap,mtrr
-initrd  /initrd.gz
-boot
-
-title	GeeXboX (debug)
-root	$rootdev
-kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME debugging
-initrd  /initrd.gz
-boot
-EOF
 
 umount di
 rm -r di
