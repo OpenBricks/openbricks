@@ -3,7 +3,7 @@
 . config/path
 
 deps="gcc make patch nasm bzip2 gzip wget mkisofs mkzftree cdrecord perl"
-deps_pkg="gcc make patch nasm bzip2 gzip wget mkisofs mkisofs cdrecord perl"
+deps_pkg="gcc make patch nasm bzip2 gzip wget mkisofs zisofs-tools cdrecord perl"
 files="/usr/include/stdio.h"
 files_pkg="libc6-dev"
 
@@ -11,7 +11,7 @@ deps=($deps)
 deps_pkg=($deps_pkg)
 nb_deps=${#deps[*]}
 for ((i=0; i<$nb_deps; i++)); do
-  [ -z "`which ${deps[$i]}`" ] && need="$need ${deps[$i]}" && need_pkg="$need_pkg ${deps_pkg[$i]}"
+  [ -z "`which ${deps[$i]} 2>/dev/null`" ] && need="$need ${deps[$i]}" && need_pkg="$need_pkg ${deps_pkg[$i]}"
 done
 
 files=($files)
@@ -24,14 +24,24 @@ done
 if [ -n "$need" ]; then
   echo "**** Your system lake the following tools to build the GeeXboX ****"
   echo $need
-  if [ -f /etc/debian_version -a -n "`which apt-get`" ]; then
+  if [ -f /etc/debian_version -a -n "`which apt-get 2>/dev/null`" ]; then
     echo "**** You seem to use a debian system ****"
     if [ $UID -ne 0 ]; then
       echo "**** I could install those packages but you need to be root for this ****"
       exit 1
     else
       read -p "would you like to apt-get install the needed tools ? (y/n) " ans
+      need_pkg=`echo $need_pkg | sed s/zisofs-tools/mkisofs/`
       [ "$ans" = "y" ] && apt-get install $need_pkg || exit 1
+    fi
+  elif [ -f /etc/mandrake-release -a -n "`which urpmi 2>/dev/null`" ]; then
+    echo "**** You seem to use a mandrake system ****"
+    if [ $UID -ne 0 ]; then
+      echo "**** I could install those packages but you need to be root for this ****"
+      exit 1
+    else
+      read -p "would you like to urpmi the needed tools ? (y/n) " ans
+      [ "$ans" = "y" ] && urpmi $need_pkg || exit 1
     fi
   else
     echo "********"
@@ -43,7 +53,7 @@ fi
 need=""
 need_pkg=""
 for ((i=0; i<$nb_deps; i++)); do
-  [ -z "`which ${deps[$i]}`" ] && need="$need ${deps[$i]}" && need_pkg="$need_pkg ${deps_pkg[$i]}"
+  [ -z "`which ${deps[$i]} 2>/dev/null`" ] && need="$need ${deps[$i]}" && need_pkg="$need_pkg ${deps_pkg[$i]}"
 done
 
 for ((i=0; i<$nb_files; i++)); do
