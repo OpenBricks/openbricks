@@ -201,6 +201,11 @@ echo ""
 [ "$FORMAT" = yes ] && $MKFS $MKFS_OPT "$DEV"
 mkdir di
 mount -t $MKFS_TYPE "$DEV" di
+if [ $? -ne 0 ]; then
+  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\nFailed to mount '$DEV' as $MKFS_TYPENAME partition.\n" 0 0
+  exit 1
+fi
+
 if [ -d disk ]; then
   cp -a disk/* di 2>/dev/null
 else
