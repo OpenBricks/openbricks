@@ -1,24 +1,19 @@
 #!/bin/sh
 
-. config/path
-. $CONFIG/options
+. config/options
 
-$SCRIPTS/build linux || exit 1
+$SCRIPTS/unpack linux || exit 1
 
 
-DPREFIX=`ls -d $ROOT/$BUILD/uClibc*`/build
-KSRC=`ls -d $ROOT/$BUILD/linux*`
+UCLIBC=`ls -d $BUILD/uClibc*`
+DPREFIX=$ROOT/$TOOLCHAIN/$TARGET_NAME-uclibc
 
-sed -e "s%^KERNEL_SOURCE=.*%KERNEL_SOURCE=\"$KSRC\"%" \
+sed -e "s%^KERNEL_SOURCE=.*%KERNEL_SOURCE=\"$KERNEL\"%" \
     -e "s%^RUNTIME_PREFIX=.*%RUNTIME_PREFIX=\"$DPREFIX\"%" \
-    -e "s%^DEVEL_PREFIX=.*%DEVEL_PREFIX=\"$DPREFIX\"%"  \
-    $PACKAGES/uClibc/uClibc.conf > `ls -d $BUILD/uClibc*`/.config
+    -e "s%^DEVEL_PREFIX=.*%DEVEL_PREFIX=\"$DPREFIX\"%" \
+    $PACKAGES/uClibc/uClibc.conf > $UCLIBC/.config
 
-sed -i 's%^\(include.*\)%\1\nUCLIBC_HAS_LOCALE=%' $BUILD/uClibc*/utils/Makefile
-sed -i 's%-L../lib%%' $BUILD/uClibc*/utils/Makefile
-sed -i 's%TARGETS =.*%TARGETS = ldd%' $BUILD/uClibc*/utils/Makefile
-sed -i 's%.*INSTALL.*ldconfig.*%%' $BUILD/uClibc*/utils/Makefile
+tar xjf $SOURCES/uClibc/locale-uClibc*.tar.bz2 -C $UCLIBC/extra/locale
 
-tar xjf $SOURCES/uClibc/locale-uClibc*.tar.bz2 -C $BUILD/uClibc*/extra/locale
-
-yes '' | make oldconfig -C "`ls -d $BUILD/uClibc*`"
+yes '' | make -C $UCLIBC oldconfig
+make -C $UCLIBC pregen
