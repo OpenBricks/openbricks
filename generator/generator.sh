@@ -88,6 +88,24 @@ done
 MENU_FONT=`lang2menufont $LANG`
 SUB_FONT=`subfont2font $SUB_FONT`
 
+for font in $MENU_FONT $SUB_FONT; do
+  if [ ! -f $GEEXBOX_DIR/font/$font/font.desc ]; then
+    echo ""
+    echo "**** $font font is missing ****"
+    echo ""
+    exit 1
+  fi
+done
+
+for file in menu_$LANG.conf help_$LANG.txt; do
+  if [ ! -f $GEEXBOX_DIR/language/$file ]; then
+    echo ""
+    echo "**** $file language file is missing ****"
+    echo ""
+    exit 1
+  fi
+done
+
 if [ $TMPDIR = "." ]; then
   rm -rf $TMPDIR/ziso
 else
