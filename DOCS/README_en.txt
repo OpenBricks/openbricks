@@ -106,6 +106,7 @@ text files.
     use DHCP and if it don't work, fall back to 192.168.0.54.
     You can also specify a login and a password which will be used to connect
     to windows shares (default will only connect to anonymous shares).
+    You can also declare some NFS mounts in GEEXBOX/etc/nfs.
 
 
 | GENERATION

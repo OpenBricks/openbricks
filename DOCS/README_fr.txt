@@ -117,6 +117,7 @@ textes.
     serveur DCHP ou prend l'IP 192.168.0.54 si elle n'en trouve pas). Il est
     aussi possible de lui assigner un login est un mot de passe (par défaut,
     la GeeXboX ne peut se connecter que sur des partages anonymes).
+    Vous pouvez aussi déclarer des montages NFS dans GEEXBOX/etc/nfs.
 
 
 | GENERATION DE L'ISO
