@@ -1,12 +1,12 @@
 @echo off
 
-REM Menu language (bg/br/ca/cs/de/en/es/et/fi/fr/he/hu/it/nl/pl/ro/ru/sv/sk)
+REM Menu language (bg/br/ca/cs/de/en/es/et/fi/fr/he/hu/it/nl/pl/ro/ru/sk/sr/sv)
 REM This have no effect on DVD language.
 REM See iso/GEEXBOX/etc/mplayer/mplayer.conf
 set LANG=en
 
-REM Subtitle font  (bg/br/ca/cs/de/en/es/et/fi/fr/he/hu/it/nl/pl/ro/ru/sv/sk)
-REM Can also be set to a charset code (iso-8859-{1,2,7,8,9}/cp1251/koi8r)
+REM Subtitle font (bg/br/ca/cs/de/en/es/et/fi/fr/he/hu/it/nl/pl/ro/ru/sk/sr/sv)
+REM Can also be set to a charset code (iso-8859-{1,2,7,8,9}/cp125{0,1}/koi8r)
 REM when empty default is to LANG
 set SUB_FONT=
 
@@ -30,6 +30,7 @@ echo ""
 set MENU_FONT=
 if %LANG%==hu set MENU_FONT=iso-8859-2
 if %LANG%==he set MENU_FONT=iso-8859-8
+if %LANG%==sr set MENU_FONT=cp1250
 if %LANG%==bg set MENU_FONT=cp1251
 if %LANG%==ru set MENU_FONT=koi8r
 
@@ -45,6 +46,8 @@ if %SUB_FONT%==iso-8859-7 set SUBFONT=iso-8859-7
 if %SUB_FONT%==iso-8859-8 set SUBFONT=iso-8859-8
 if %SUB_FONT%==he set SUBFONT=iso-8859-8
 if %SUB_FONT%==iso-8859-9 set SUBFONT=iso-8859-9
+if %SUB_FONT%==cp1250 set SUBFONT=cp1250
+if %SUB_FONT%==sr set SUBFONT=cp1250
 if %SUB_FONT%==cp1251 set SUBFONT=cp1251
 if %SUB_FONT%==bg set SUBFONT=cp1251
 if %SUB_FONT%==koi8r set SUBFONT=koi8r
