@@ -1,0 +1,181 @@
+diff -Naur MPlayer-1.0pre6.orig/input/input.c MPlayer-1.0pre6/input/input.c
+--- MPlayer-1.0pre6.orig/input/input.c	2004-12-30 19:53:37.774336328 +0100
++++ MPlayer-1.0pre6/input/input.c	2004-12-30 19:53:43.213509448 +0100
+@@ -114,6 +114,7 @@
+   { MP_CMD_SWITCH_RATIO, "switch_ratio", 0, { {MP_CMD_ARG_FLOAT,{0}}, {-1,{0}} } },
+   { MP_CMD_VO_FULLSCREEN, "vo_fullscreen", 0, { {-1,{0}} } },
+   { MP_CMD_VO_ONTOP, "vo_ontop", 0, { {-1,{0}} } },
++  { MP_CMD_FILE_FILTER, "file_filter", 1, { { MP_CMD_ARG_INT, {0}}, {-1,{0}}}},
+   { MP_CMD_VO_ROOTWIN, "vo_rootwin", 0, { {-1,{0}} } },
+   { MP_CMD_SCREENSHOT, "screenshot", 0, { {-1,{0}} } },
+   { MP_CMD_PANSCAN, "panscan",1,  { {MP_CMD_ARG_FLOAT,{0}}, {MP_CMD_ARG_INT,{0}}, {-1,{0}} } },
+diff -Naur MPlayer-1.0pre6.orig/input/input.h MPlayer-1.0pre6/input/input.h
+--- MPlayer-1.0pre6.orig/input/input.h	2004-12-30 19:53:37.774336328 +0100
++++ MPlayer-1.0pre6/input/input.h	2004-12-30 19:53:43.213509448 +0100
+@@ -62,6 +62,7 @@
+ #define MP_CMD_SPEED_MULT 58
+ #define MP_CMD_SPEED_SET 59
+ #define MP_CMD_RUN 60
++#define MP_CMD_FILE_FILTER 61
+ 
+ #define MP_CMD_VCD_PLAY 70
+ #define MP_CMD_DVD_PLAY 71
+diff -Naur MPlayer-1.0pre6.orig/libmenu/menu_filesel.c MPlayer-1.0pre6/libmenu/menu_filesel.c
+--- MPlayer-1.0pre6.orig/libmenu/menu_filesel.c	2004-12-30 19:53:37.775336176 +0100
++++ MPlayer-1.0pre6/libmenu/menu_filesel.c	2004-12-30 19:53:43.213509448 +0100
+@@ -39,6 +39,7 @@
+   char* dir_action;
+   int auto_close;
+   char** actions;
++  char* filter;
+ };
+ 
+ static struct menu_priv_s cfg_dflt = {
+@@ -50,6 +51,7 @@
+   "loadfile '%p'",
+   NULL,
+   0,
++  NULL,
+   NULL
+ };
+ 
+@@ -63,6 +65,7 @@
+   { "dir-action", ST_OFF(dir_action),  CONF_TYPE_STRING, 0, 0, 0, NULL },
+   { "auto-close", ST_OFF(auto_close), CONF_TYPE_FLAG, 0, 0, 1, NULL },
+   { "actions", ST_OFF(actions), CONF_TYPE_STRING_LIST, 0, 0, 0, NULL},
++  { "filter", ST_OFF(filter), CONF_TYPE_STRING, 0, 0, 0, NULL},
+   { NULL, NULL, NULL, 0,0,0,NULL }
+ };
+ 
+@@ -124,6 +127,58 @@
+   }
+ }
+ 
++char **
++get_extensions (menu_t *menu)
++{
++  char **extensions, ext[32];
++  FILE *fp;
++  int n = 1;
++
++  if (mpriv->filter == NULL)
++    return NULL;
++
++  fp = fopen (mpriv->filter, "r");
++  if (fp == NULL)
++    return NULL;
++
++  extensions = (char **) malloc (sizeof (*extensions));
++  *extensions = NULL;
++
++  while (fgets (ext, sizeof (ext), fp))
++    {
++      char **l, *e;
++      int s = strlen (ext);
++
++      if (ext[s-1] == '\n')
++        {
++          ext[s-1] = '\0';
++          s--;
++        }
++      e = (char *) malloc (s + 1);
++      extensions = (char **) realloc (extensions, ++n * sizeof (*extensions));
++      extensions = (char **) realloc (extensions, ++n * sizeof (*extensions));
++      strcpy (e, ext);
++      for (l=extensions; *l; l++);
++      *l++ = e;
++      *l = NULL;
++    }
++
++  fclose (fp);
++  return extensions;
++}
++
++void
++free_extensions (char **extensions)
++{
++  if (extensions != NULL)
++    {
++      char **l = extensions;
++      while (*l)
++        free (*l++);
++      free (extensions);
++    }
++}
++
+ static int open_dir(menu_t* menu,char* args) {
+   char **namelist, **tp;
+   struct dirent *dp;
+@@ -132,6 +187,8 @@
+   char* p = NULL;
+   list_entry_t* e;
+   DIR* dirp;
++  extern int file_filter;
++  char **extensions, **elem, *ext;
+ 
+   menu_list_init(menu);
+ 
+@@ -150,11 +207,26 @@
+   }
+ 
+   namelist = (char **) malloc(sizeof(char *));
++  extensions = get_extensions (menu);
+ 
+   n=0;
+   while ((dp = readdir(dirp)) != NULL) {
+     if(dp->d_name[0] == '.' && strcmp(dp->d_name,"..") != 0)
+       continue;
++    mylstat(args,dp->d_name,&st);
++    if (file_filter && extensions && !S_ISDIR(st.st_mode)) {
++      if((ext = strrchr(dp->d_name,'.')) == NULL)
++        continue;
++      ext++;
++      elem = extensions;
++      do {
++        if (!strcasecmp(ext, *elem))
++          break;
++      } while (*++elem);
++      if (*elem == NULL)
++        continue;
++    }
++
+     if(n%20 == 0){ // Get some more mem
+       if((tp = (char **) realloc(namelist, (n+20) * sizeof (char *)))
+          == NULL) {
+@@ -173,13 +245,13 @@
+     }
+      
+     strcpy(namelist[n], dp->d_name);
+-    mylstat(args,namelist[n],&st); 
+     if(S_ISDIR(st.st_mode))
+       strcat(namelist[n], "/");
+     n++;
+   }
+ 
+ bailout:
++  free_extensions (extensions);
+   qsort(namelist, n, sizeof(char *), (kill_warn)compare);
+ 
+   if (n < 0) {
+diff -Naur MPlayer-1.0pre6.orig/mplayer.c MPlayer-1.0pre6/mplayer.c
+--- MPlayer-1.0pre6.orig/mplayer.c	2004-12-30 19:50:54.485160056 +0100
++++ MPlayer-1.0pre6/mplayer.c	2004-12-30 19:53:43.215509144 +0100
+@@ -249,6 +249,7 @@
+ static char* spudec_ifo=NULL;
+ char* filename=NULL; //"MI2-Trailer.avi";
+ int forced_subs_only=0;
++int file_filter = 1;
+ 
+ static char* bg_video = NULL;
+ static demuxer_t *bg_demuxer = NULL;
+@@ -2832,6 +2833,10 @@
+       cmd->pausing = 1;
+       brk_cmd = 1;
+     } break;
++    case MP_CMD_FILE_FILTER : {
++      file_filter = cmd->args[0].v.i;
++      break;
++    }
+     case MP_CMD_QUIT : {
+       exit_player_with_rc(MSGTR_Exit_quit, (cmd->nargs > 0)? cmd->args[0].v.i : 0);
+     }

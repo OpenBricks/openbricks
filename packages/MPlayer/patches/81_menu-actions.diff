@@ -1,0 +1,86 @@
+diff -Naur MPlayer-1.0pre6.orig/libmenu/menu.h MPlayer-1.0pre6/libmenu/menu.h
+--- MPlayer-1.0pre6.orig/libmenu/menu.h	2004-12-30 19:38:06.756872496 +0100
++++ MPlayer-1.0pre6/libmenu/menu.h	2004-12-30 19:53:04.508393520 +0100
+@@ -31,6 +31,7 @@
+ #define MENU_CMD_DOWN 1
+ #define MENU_CMD_OK 2
+ #define MENU_CMD_CANCEL 3
++#define MENU_CMD_ACTION 4
+ 
+ /// Global init/uninit
+ int menu_init(char* cfg_file);
+diff -Naur MPlayer-1.0pre6.orig/libmenu/menu_filesel.c MPlayer-1.0pre6/libmenu/menu_filesel.c
+--- MPlayer-1.0pre6.orig/libmenu/menu_filesel.c	2004-12-30 19:52:49.756636128 +0100
++++ MPlayer-1.0pre6/libmenu/menu_filesel.c	2004-12-30 19:53:04.508393520 +0100
+@@ -38,6 +38,7 @@
+   char* file_action;
+   char* dir_action;
+   int auto_close;
++  char** actions;
+ };
+ 
+ static struct menu_priv_s cfg_dflt = {
+@@ -48,7 +49,8 @@
+   "Select a file: %p",
+   "loadfile '%p'",
+   NULL,
+-  0
++  0,
++  NULL
+ };
+ 
+ #define ST_OFF(m) M_ST_OFF(struct menu_priv_s,m)
+@@ -60,6 +62,7 @@
+   { "file-action", ST_OFF(file_action),  CONF_TYPE_STRING, 0, 0, 0, NULL },
+   { "dir-action", ST_OFF(dir_action),  CONF_TYPE_STRING, 0, 0, 0, NULL },
+   { "auto-close", ST_OFF(auto_close), CONF_TYPE_FLAG, 0, 0, 1, NULL },
++  { "actions", ST_OFF(actions), CONF_TYPE_STRING_LIST, 0, 0, 0, NULL},
+   { NULL, NULL, NULL, 0,0,0,NULL }
+ };
+ 
+@@ -201,6 +204,8 @@
+ }
+     
+ 
++static char *action;
++
+ static void read_cmd(menu_t* menu,int cmd) {
+   mp_cmd_t* c = NULL;
+   switch(cmd) {
+@@ -253,6 +258,16 @@
+ 	menu->cl = 1;
+     }
+   } break;
++  case MENU_CMD_ACTION: {
++    int fname_len = strlen(mpriv->dir) + strlen(mpriv->p.current->p.txt) + 1;
++    char filename[fname_len];
++    char *str;
++    sprintf(filename,"%s%s",mpriv->dir,mpriv->p.current->p.txt);
++    str = replace_path(action, filename);
++    mp_input_queue_cmd(mp_input_parse_cmd(str));
++    if(str != action)
++      free(str);
++  } break;
+   default:
+     menu_list_read_cmd(menu,cmd);
+   }
+@@ -262,8 +277,17 @@
+   if(c == KEY_BS) {
+     mpriv->p.current = mpriv->p.menu; // Hack : we consider that the first entry is ../
+     read_cmd(menu,MENU_CMD_OK);
+-  } else
+-    menu_list_read_key(menu,c,1);
++  } else {
++    char **str;
++    for (str=mpriv->actions; str && *str; str++)
++      if (c == (*str)[0]) {
++        action = &(*str)[2];
++        read_cmd(menu,MENU_CMD_ACTION);
++        break;
++      }
++    if (!str || !*str)
++      menu_list_read_key(menu,c,1);
++  }
+ }
+ 
+ static void clos(menu_t* menu) {

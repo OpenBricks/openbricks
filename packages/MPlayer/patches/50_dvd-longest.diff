@@ -1,0 +1,234 @@
+diff -Naur MPlayer-1.0pre6.orig/help/help_mp-en.h MPlayer-1.0pre6/help/help_mp-en.h
+--- MPlayer-1.0pre6.orig/help/help_mp-en.h	2004-12-30 19:38:06.735875688 +0100
++++ MPlayer-1.0pre6/help/help_mp-en.h	2004-12-30 19:45:36.351523720 +0100
+@@ -471,6 +471,11 @@
+ #define MSGTR_DVDnoIFO "Cannot open the IFO file for DVD title %d.\n"
+ #define MSGTR_DVDnoVOBs "Cannot open title VOBS (VTS_%02d_1.VOB).\n"
+ #define MSGTR_DVDopenOk "DVD successfully opened.\n"
++#define MSGTR_DVDlookLongest "Looking for longest track ...\n"
++#define MSGTR_DVDinfo001 "Title: %02d, Length: %02x:%02x:%02x (%5d seconds) "
++#define MSGTR_DVDinfo002 "Chapters: %02d, Cells: %02d, "
++#define MSGTR_DVDinfo003 "Audio streams: %02d, Subpictures: %02d\n"
++#define MSGTR_DVDtrackSelected "Selected track %d (%d seconds) ...\n"
+ 
+ // demuxer.c, demux_*.c:
+ #define MSGTR_AudioStreamRedefined "WARNING: Audio stream header %d redefined.\n"
+diff -Naur MPlayer-1.0pre6.orig/libmpdemux/open.c MPlayer-1.0pre6/libmpdemux/open.c
+--- MPlayer-1.0pre6.orig/libmpdemux/open.c	2004-12-30 19:38:06.773869912 +0100
++++ MPlayer-1.0pre6/libmpdemux/open.c	2004-12-30 19:45:36.352523568 +0100
+@@ -109,6 +109,106 @@
+ 
+ #endif
+ 
++int dvd_title_info(dvd_reader_t *dvd, ifo_handle_t *ifo_zero, int mask)
++{
++    int          nr;
++    int          i;
++    ifo_handle_t **t_ifo;
++    int          rt = 0;
++    int          mt;
++
++    // Print some info ...
++    if (mask & 0x0001) {
++        mp_msg(MSGT_OPEN, MSGL_INFO, MSGTR_DVDlookLongest);
++        // printf("Looking for longest track ...\n");
++    }
++
++    //* Alloc space for all info in the dvd
++    nr = ifo_zero->vts_atrt->nr_of_vtss;
++    t_ifo = (ifo_handle_t **)malloc((nr + 1) * sizeof(ifo_handle_t *));
++
++    // * Read all info
++    for(i = 1; i <= nr; i++) {
++        t_ifo[i] = ifoOpen(dvd, i);
++    }
++
++    // Navigate all titles
++    nr = ifo_zero->tt_srpt->nr_of_srpts;
++    for(i = 0; i < nr; i++) {
++        // Load information for the title
++        if (t_ifo[ifo_zero->tt_srpt->title[i].title_set_nr]->vtsi_mat) {
++            vtsi_mat_t *vtsi_mat;
++            pgcit_t    *vts_pgcit;
++            int        vts_ttn;
++            int        title_set_nr;
++            pgc_t      *pgc;
++            dvd_time_t *dvd_time;
++            int        ct;
++
++            vtsi_mat   = t_ifo[ifo_zero->tt_srpt->title[i].title_set_nr]->vtsi_mat;
++            vts_pgcit  = t_ifo[ifo_zero->tt_srpt->title[i].title_set_nr]->vts_pgcit;
++            vts_ttn = ifo_zero->tt_srpt->title[i].vts_ttn;
++            title_set_nr = ifo_zero->tt_srpt->title[i].title_set_nr;
++            pgc = vts_pgcit->pgci_srp[t_ifo[title_set_nr]->vts_ptt_srpt->title[vts_ttn - 1].ptt[0].pgcn - 1].pgc;
++            dvd_time = &pgc->playback_time;
++
++            ct = dvd_time->hour * 3600 + dvd_time->minute * 60 + dvd_time->second;
++
++            if (mask & 0x0002) {
++                // Print required info
++                mp_msg(MSGT_OPEN, MSGL_INFO, MSGTR_DVDinfo001,
++                       i+1,
++                       dvd_time->hour,
++                       dvd_time->minute,
++                       dvd_time->second,
++                       ct);
++                mp_msg(MSGT_OPEN, MSGL_INFO, MSGTR_DVDinfo002,
++                       ifo_zero->tt_srpt->title[i].nr_of_ptts,
++                       pgc->nr_of_cells);
++                mp_msg(MSGT_OPEN, MSGL_INFO, MSGTR_DVDinfo003,
++                       vtsi_mat->nr_of_vts_audio_streams,
++                       vtsi_mat->nr_of_vts_subp_streams);
++            }
++
++            if (mask & 0x0001) {
++                // Look for the longest track
++                if (i == 0) {
++                    // First pass
++                    rt = 1;
++                    mt = ct;
++                }
++                else {
++                    // Check
++                    if (ct > mt) {
++                        rt = i + 1;
++                        mt = ct;
++                    }
++                }
++            }
++        }
++    }
++
++    if (mask & 0x0001) {
++        // Show what happened
++        // printf("Selected track %d (%d seconds) ...\n",
++        mp_msg(MSGT_OPEN, MSGL_INFO, MSGTR_DVDtrackSelected,
++               rt,
++               mt);
++    }
++
++    // Close all ifo
++    nr = ifo_zero->vts_atrt->nr_of_vtss;
++    for(i = 1; i <= nr; i++) {
++        ifoClose(t_ifo[i]);
++    }
++
++    // Free temp memory
++    free(t_ifo);
++
++    // Return track or 0 to stop
++    return( rt );
++}
++
+ // Open a new stream  (stdin/file/vcd/url)
+ 
+ stream_t* open_stream(char* filename,char** options, int* file_format){
+@@ -236,6 +336,17 @@
+         return NULL;
+     }
+     tt_srpt = vmg_file->tt_srpt;
++
++    if (dvd_title < 0) {
++        dvd_title = dvd_title_info(dvd, vmg_file, -dvd_title);
++        if (dvd_title <= 0) {
++             // Close & exit, no msg.
++             ifoClose( vmg_file );
++             DVDClose( dvd );
++             return NULL;
++        }
++    }
++
+     /**
+      * Make sure our title number is valid.
+      */
+diff -Naur MPlayer-1.0pre6.orig/parser-mpcmd.c MPlayer-1.0pre6/parser-mpcmd.c
+--- MPlayer-1.0pre6.orig/parser-mpcmd.c	2004-12-30 19:38:06.694881920 +0100
++++ MPlayer-1.0pre6/parser-mpcmd.c	2004-12-30 19:45:36.352523568 +0100
+@@ -56,6 +56,47 @@
+     *last_entryp = entry;
+ }
+ 
++
++
++static char *get_opt_str(char **arg, char *dst, unsigned dst_size)
++{
++
++    char *t;
++
++    t = *arg;
++    if (*t == '\0') {
++        return( NULL);
++    }
++    else {
++        char *e;
++        unsigned l;
++
++
++        e = strchr(t, ':');
++        if (e != NULL) {
++            l = e - t;
++        }
++        else {
++            l = strlen(t);
++        }
++        if (l < dst_size) {
++            strncpy(dst, t, l);
++            dst[l] = '\0';
++            t += l;
++            if (*t == ':') {
++                ++t;
++            }
++        }
++        else {
++            // Out of size -> error
++            strcpy(dst, "*");
++            t += strlen(t);
++        }
++        *arg = t;
++    }
++    return( dst );
++}
++
+ play_tree_t*
+ m_config_parse_mp_command_line(m_config_t *config, int argc, char **argv)
+ {
+@@ -236,8 +277,37 @@
+                  mp_msg(MSGT_CFGPARSER, MSGL_ERR,"Invalid play entry %s\n",argv[i]);
+                }
+          
+-	     } else { // dvd:// or dvd://x entry
+-                play_tree_add_file(entry,argv[i]);
++             } else { // dvd:// or dvd://x or dvd://longest:list entry
++                 char    *pc;
++
++                 pc = argv[i]+6;
++                 if (*pc >= 'a' && *pc <= 'z') {
++                     // may be option (passed as -nn to open_stream(...)
++
++                     char t_opt[80 + 1];
++                     char *opt_str;
++                     int  op = 0;
++
++                     while ((opt_str = get_opt_str(&pc, t_opt, sizeof(t_opt))) != NULL) {
++                         if (strcmp(opt_str, "longest") == 0) {
++                             op |= 0x0001;
++                         }
++                         else if (strcmp(opt_str, "list") == 0) {
++                             op |= 0x0002;
++                         }
++                         else {
++                             // Error -> bail out
++                             mp_msg(MSGT_CFGPARSER, MSGL_ERR, "dvd:// unknow option: [%s]\n", opt_str);
++
++                             goto err_out;
++                         }
++                     }
++                     snprintf(entbuf, 9, "dvd://%d", -op);
++                     play_tree_add_file(entry, entbuf);
++                 }
++                 else {
++                     play_tree_add_file(entry,argv[i]);
++                 }
+              }
+         } else {
+ 	play_tree_add_file(entry,argv[i]);

@@ -1,0 +1,113 @@
+diff -Naur MPlayer-1.0pre6.orig/cfg-mplayer.h MPlayer-1.0pre6/cfg-mplayer.h
+--- MPlayer-1.0pre6.orig/cfg-mplayer.h	2004-12-30 19:38:06.690882528 +0100
++++ MPlayer-1.0pre6/cfg-mplayer.h	2004-12-30 19:39:15.530417328 +0100
+@@ -124,13 +124,6 @@
+ 
+ /* Options related to audio out plugins */
+ m_option_t ao_plugin_conf[]={
+-	{"list", &ao_plugin_cfg.plugin_list, CONF_TYPE_STRING, 0, 0, 0, NULL},
+-	{"delay", &ao_plugin_cfg.pl_delay_len, CONF_TYPE_INT, CONF_MIN, 0, 0, NULL},
+-	{"format", &ao_plugin_cfg.pl_format_type, CONF_TYPE_INT, CONF_MIN, 0, 0, NULL},
+-	{"fout", &ao_plugin_cfg.pl_resample_fout, CONF_TYPE_INT, CONF_MIN, 0, 0, NULL},
+-	{"volume", &ao_plugin_cfg.pl_volume_volume, CONF_TYPE_INT, CONF_RANGE, 0, 255, NULL},
+-	{"mul", &ao_plugin_cfg.pl_extrastereo_mul, CONF_TYPE_FLOAT, CONF_RANGE, -10.0, 10.0, NULL},
+-	{"softclip", &ao_plugin_cfg.pl_volume_softclip, CONF_TYPE_FLAG, 0, 0, 1, NULL},
+ 	{NULL, NULL, 0, 0, 0, 0, NULL}
+ };
+ 
+@@ -178,11 +171,6 @@
+ 	// override audio buffer size (used only by -ao oss, anyway obsolete...)
+ 	{"abs", &ao_data.buffersize, CONF_TYPE_INT, CONF_MIN, 0, 0, NULL},
+ 
+-	// -ao pcm options:
+-	{"aofile", &ao_outputfilename, CONF_TYPE_STRING, 0, 0, 0, NULL},
+-	{"waveheader", &ao_pcm_waveheader, CONF_TYPE_FLAG, 0, 0, 1, NULL},
+-	{"nowaveheader", &ao_pcm_waveheader, CONF_TYPE_FLAG, 0, 1, 0, NULL},
+-
+ 	{"alsa", "-alsa has been removed. Remove it from your config file.\n",
+             CONF_TYPE_PRINT, 0, 0, 0, NULL},
+ 	{"noalsa", "-noalsa has been removed. Remove it from your config file.\n",
+diff -Naur MPlayer-1.0pre6.orig/configure MPlayer-1.0pre6/configure
+--- MPlayer-1.0pre6.orig/configure	2004-12-30 19:39:11.474033992 +0100
++++ MPlayer-1.0pre6/configure	2004-12-30 19:39:15.532417024 +0100
+@@ -4359,9 +4359,6 @@
+   cc_check && _ossaudio=yes
+ fi
+ if test "$_ossaudio" = yes ; then
+-  _def_ossaudio='#define USE_OSS_AUDIO 1'
+-  _aosrc="$_aosrc ao_oss.c"
+-  _aomodules="oss $_aomodules"
+   if test "$_linux_devfs" = yes; then
+     _def_ossaudio_devdsp='#define PATH_DEV_DSP "/dev/sound/dsp"'
+     _def_ossaudio_devmixer='#define PATH_DEV_MIXER "/dev/sound/mixer"'
+diff -Naur MPlayer-1.0pre6.orig/libao2/Makefile MPlayer-1.0pre6/libao2/Makefile
+--- MPlayer-1.0pre6.orig/libao2/Makefile	2004-12-30 19:38:06.741874776 +0100
++++ MPlayer-1.0pre6/libao2/Makefile	2004-12-30 19:39:15.533416872 +0100
+@@ -2,7 +2,7 @@
+ 
+ LIBNAME = libao2.a
+ 
+-SRCS=afmt.c audio_out.c ao_mpegpes.c ao_null.c ao_pcm.c ao_plugin.c pl_delay.c pl_format.c pl_surround.c remez.c pl_resample.c pl_volume.c pl_extrastereo.c pl_volnorm.c pl_eq.c $(OPTIONAL_SRCS)
++SRCS=afmt.c audio_out.c ao_mpegpes.c pl_delay.c pl_format.c pl_surround.c remez.c pl_resample.c pl_volume.c pl_extrastereo.c pl_volnorm.c pl_eq.c $(OPTIONAL_SRCS)
+ 
+ OBJS=$(SRCS:.c=.o)
+ 
+diff -Naur MPlayer-1.0pre6.orig/libao2/audio_out.c MPlayer-1.0pre6/libao2/audio_out.c
+--- MPlayer-1.0pre6.orig/libao2/audio_out.c	2004-12-30 19:38:06.743874472 +0100
++++ MPlayer-1.0pre6/libao2/audio_out.c	2004-12-30 19:39:15.533416872 +0100
+@@ -81,9 +81,6 @@
+ #ifdef HAVE_WIN32WAVEOUT
+         &audio_out_win32,
+ #endif
+-#ifdef USE_OSS_AUDIO
+-        &audio_out_oss,
+-#endif
+ #ifdef HAVE_ALSA1X
+ 	&audio_out_alsa,
+ #endif
+@@ -121,10 +118,7 @@
+ #ifdef MACOSX
+ 	&audio_out_macosx,
+ #endif
+-        &audio_out_null,
+ // should not be auto-selected:
+-	&audio_out_pcm,
+-	&audio_out_plugin,
+ 	NULL
+ };
+ 
+@@ -164,10 +158,6 @@
+ 	    ao_functions_t* audio_out=audio_out_drivers[i];
+ 	    if(!strncmp(audio_out->info->short_name,ao,ao_len)){
+ 		// name matches, try it
+-		if(use_plugin){
+-		    audio_out_plugin.control(AOCONTROL_SET_PLUGIN_DRIVER,audio_out);
+-		    audio_out=&audio_out_plugin;
+-		}
+ 		if(audio_out->init(rate,channels,format,flags))
+ 		    return audio_out; // success!
+ 	    }
+@@ -183,10 +173,6 @@
+     // now try the rest...
+     for(i=0;audio_out_drivers[i];i++){
+ 	ao_functions_t* audio_out=audio_out_drivers[i];
+-	if(use_plugin){
+-	    audio_out_plugin.control(AOCONTROL_SET_PLUGIN_DRIVER,audio_out);
+-	    audio_out=&audio_out_plugin;
+-	}
+ 	if(audio_out->init(rate,channels,format,flags))
+ 	    return audio_out; // success!
+     }
+diff -Naur MPlayer-1.0pre6.orig/mplayer.c MPlayer-1.0pre6/mplayer.c
+--- MPlayer-1.0pre6.orig/mplayer.c	2004-12-30 19:38:06.693882072 +0100
++++ MPlayer-1.0pre6/mplayer.c	2004-12-30 19:39:15.536416416 +0100
+@@ -2103,8 +2103,7 @@
+   }
+ #endif  
+   current_module="ao2_init";
+-  if(!(audio_out=init_best_audio_out(audio_driver_list,
+-      (ao_plugin_cfg.plugin_list!=NULL), // plugin flag
++  if(!(audio_out=init_best_audio_out(audio_driver_list, NULL,
+       force_srate?force_srate:ao_data.samplerate,
+       audio_output_channels?audio_output_channels:ao_data.channels,
+       audio_output_format?audio_output_format:ao_data.format,0))){

@@ -1,0 +1,155 @@
+diff -Naur MPlayer-1.0pre6.orig/configure MPlayer-1.0pre6/configure
+--- MPlayer-1.0pre6.orig/configure	2004-12-30 19:38:06.691882376 +0100
++++ MPlayer-1.0pre6/configure	2004-12-30 19:39:03.208290576 +0100
+@@ -1393,6 +1393,7 @@
+ _inet6=auto
+ _gethostbyname2=auto
+ _ftp=yes
++_additional_filters=yes
+ for ac_option do
+   case "$ac_option" in
+   # Skip 1st pass
+@@ -1757,6 +1758,8 @@
+   --disable-win32) _win32=no _dshow=no ;;
+   --enable-dshow) _win32=yes _dshow=yes ;;
+   --disable-dshow) _dshow=no ;;
++  --enable-additional-filters) _additional_filters=yes ;;
++  --disable-additional-filters) _additional_filters=no ;;
+ 
+   --with-x11incdir=*)
+     _inc_x11=-I`echo $ac_option | cut -d '=' -f 2 | sed 's,:, -I,g'`
+@@ -6208,6 +6211,12 @@
+ fi
+ echores "$_gethostbyname2"
+ 
++if test "$_additional_filters" = yes ; then
++  _def_additional_filters='#define USE_ADDITIONAL_FILTERS 1'
++else
++  _def_additional_filters='#undef USE_ADDITIONAL_FILTERS'
++fi
++
+ # --------------- GUI specific tests begin -------------------
+ echocheck "GUI"
+ echo "$_gui"
+@@ -6633,6 +6642,7 @@
+ AV_DEP = $_dep_libavcodec $_dep_libavformat
+ AV_LIB = $_ld_libavcodec $_ld_libavformat
+ CONFIG_LIBAVFORMAT = $_libavformat
++ADDITIONAL_FILTERS = $_additional_filters
+ ZORAN = $_zr
+ FAME = $_fame
+ FAME_LIB = $_ld_fame
+@@ -6980,6 +6990,9 @@
+ /* DirectShow support */
+ $_def_dshow
+ 
++/* Additionnal filters support */
++$_def_additional_filters
++
+ /* Mac OS X specific features */
+ $_def_macosx
+ $_def_macosx_finder_support
+diff -Naur MPlayer-1.0pre6.orig/libmpcodecs/Makefile MPlayer-1.0pre6/libmpcodecs/Makefile
+--- MPlayer-1.0pre6.orig/libmpcodecs/Makefile	2004-12-30 19:38:06.757872344 +0100
++++ MPlayer-1.0pre6/libmpcodecs/Makefile	2004-12-30 19:39:03.208290576 +0100
+@@ -14,7 +14,7 @@
+ VIDEO_SRCS_OPT=vd_realvid.c vd_ffmpeg.c vd_dshow.c vd_dmo.c vd_vfw.c vd_vfwex.c vd_odivx.c vd_divx4.c vd_zrmjpeg.c vd_xanim.c vd_xvid.c vd_xvid4.c vd_libdv.c vd_qtvideo.c vd_theora.c
+ VIDEO_SRCS=dec_video.c vd.c $(VIDEO_SRCS_NAT) $(VIDEO_SRCS_LIB) $(VIDEO_SRCS_OPT)
+ 
+-VFILTER_SRCS=vf.c vf_vo.c vf_crop.c vf_expand.c vf_scale.c vf_format.c vf_noformat.c vf_yuy2.c vf_flip.c vf_rgb2bgr.c vf_rotate.c vf_mirror.c vf_palette.c vf_lavc.c vf_dvbscale.c vf_cropdetect.c vf_test.c vf_noise.c vf_yvu9.c vf_rectangle.c vf_lavcdeint.c vf_eq.c vf_eq2.c vf_halfpack.c vf_dint.c vf_1bpp.c vf_bmovl.c vf_2xsai.c vf_unsharp.c vf_swapuv.c vf_il.c vf_boxblur.c vf_sab.c vf_smartblur.c vf_perspective.c vf_down3dright.c vf_field.c vf_denoise3d.c vf_hqdn3d.c vf_detc.c vf_telecine.c vf_tfields.c vf_ivtc.c vf_ilpack.c vf_dsize.c vf_decimate.c vf_softpulldown.c vf_tinterlace.c vf_pullup.c pullup.c vf_framestep.c vf_tile.c vf_delogo.c vf_fil.c vf_hue.c vf_spp.c vf_yuvcsp.c vf_filmdint.c vf_kerndeint.c vf_rgbtest.c vf_qp.c vf_phase.c vf_divtc.c vf_harddup.c vf_softskip.c
++VFILTER_SRCS=vf.c vf_vo.c vf_crop.c vf_expand.c vf_scale.c vf_format.c vf_lavc.c
+ ifeq ($(HAVE_FFPOSTPROCESS),yes)
+ VFILTER_SRCS += vf_pp.c
+ endif
+@@ -23,6 +23,10 @@
+ 
+ NATIVE_SRCS=native/RTjpegN.c native/minilzo.c native/nuppelvideo.c native/xa_gsm.c native/decode144.c native/decode288.c
+ 
++ifeq ($(ADDITIONAL_FILTERS),yes)
++VFILTER_SRCS += vf_noformat.c vf_yuy2.c vf_flip.c vf_rgb2bgr.c vf_rotate.c vf_mirror.c vf_palette.c vf_dvbscale.c vf_cropdetect.c vf_test.c vf_noise.c vf_yvu9.c vf_rectangle.c vf_lavcdeint.c vf_eq.c vf_eq2.c vf_halfpack.c vf_dint.c vf_1bpp.c vf_bmovl.c vf_2xsai.c vf_unsharp.c vf_swapuv.c vf_il.c vf_boxblur.c vf_sab.c vf_smartblur.c vf_perspective.c vf_down3dright.c vf_field.c vf_denoise3d.c vf_hqdn3d.c vf_detc.c vf_telecine.c vf_tfields.c vf_ivtc.c vf_ilpack.c vf_dsize.c vf_decimate.c vf_softpulldown.c vf_tinterlace.c vf_pullup.c pullup.c vf_framestep.c vf_tile.c vf_delogo.c vf_fil.c vf_hue.c vf_spp.c vf_yuvcsp.c vf_filmdint.c vf_kerndeint.c vf_rgbtest.c vf_qp.c vf_phase.c vf_divtc.c vf_harddup.c vf_softskip.c
++endif
++
+ ifeq ($(FAME),yes)
+ VFILTER_SRCS += vf_fame.c
+ endif
+diff -Naur MPlayer-1.0pre6.orig/libmpcodecs/vf.c MPlayer-1.0pre6/libmpcodecs/vf.c
+--- MPlayer-1.0pre6.orig/libmpcodecs/vf.c	2004-12-30 19:38:06.761871736 +0100
++++ MPlayer-1.0pre6/libmpcodecs/vf.c	2004-12-30 19:39:03.209290424 +0100
+@@ -24,16 +24,17 @@
+ #include "../libvo/fastmemcpy.h"
+ 
+ extern vf_info_t vf_info_vo;
+-extern vf_info_t vf_info_rectangle;
+-#ifndef HAVE_NO_POSIX_SELECT
+-extern vf_info_t vf_info_bmovl;
+-#endif
+ extern vf_info_t vf_info_crop;
+ extern vf_info_t vf_info_expand;
+ #ifdef FF_POSTPROCESS
+ extern vf_info_t vf_info_pp;
+ #endif
+ extern vf_info_t vf_info_scale;
++extern vf_info_t vf_info_lavc;
++extern vf_info_t vf_info_rectangle;
++#ifndef HAVE_NO_POSIX_SELECT
++extern vf_info_t vf_info_bmovl;
++#endif
+ #ifdef USE_LIBFAME
+ extern vf_info_t vf_info_fame;
+ #endif
+@@ -45,7 +46,6 @@
+ extern vf_info_t vf_info_rotate;
+ extern vf_info_t vf_info_mirror;
+ extern vf_info_t vf_info_palette;
+-extern vf_info_t vf_info_lavc;
+ extern vf_info_t vf_info_zrmjpeg;
+ extern vf_info_t vf_info_dvbscale;
+ extern vf_info_t vf_info_cropdetect;
+@@ -98,22 +98,26 @@
+ 
+ // list of available filters:
+ static vf_info_t* filter_list[]={
+-    &vf_info_rectangle,
+-#ifndef HAVE_NO_POSIX_SELECT
+-    &vf_info_bmovl,
+-#endif
+     &vf_info_crop,
+     &vf_info_expand,
+ #ifdef FF_POSTPROCESS
+     &vf_info_pp,
+ #endif
+     &vf_info_scale,
++#ifdef USE_LIBAVCODEC
++    &vf_info_lavc,
++#endif
+ //    &vf_info_osd,
+     &vf_info_vo,
++    &vf_info_format,
++#ifdef USE_ADDITIONAL_FILTERS
++    &vf_info_rectangle,
++#ifndef HAVE_NO_POSIX_SELECT
++    &vf_info_bmovl,
++#endif
+ #ifdef USE_LIBFAME
+     &vf_info_fame,
+ #endif
+-    &vf_info_format,
+     &vf_info_noformat,
+     &vf_info_yuy2,
+     &vf_info_flip,
+@@ -122,7 +126,6 @@
+     &vf_info_mirror,
+     &vf_info_palette,
+ #ifdef USE_LIBAVCODEC
+-    &vf_info_lavc,
+     &vf_info_lavcdeint,
+ #endif
+ #ifdef HAVE_ZR
+@@ -179,6 +182,7 @@
+     &vf_info_divtc,
+     &vf_info_harddup,
+     &vf_info_softskip,
++#endif
+     NULL
+ };
+ 

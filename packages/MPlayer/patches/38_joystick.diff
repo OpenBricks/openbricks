@@ -1,0 +1,124 @@
+diff -Naur MPlayer-1.0pre6.orig/input/joystick.c MPlayer-1.0pre6/input/joystick.c
+--- MPlayer-1.0pre6.orig/input/joystick.c	2004-12-30 19:38:06.738875232 +0100
++++ MPlayer-1.0pre6/input/joystick.c	2004-12-30 19:44:00.216138520 +0100
+@@ -30,6 +30,9 @@
+ int axis[10];
+ int btns = 0;
+ 
++// Callback to allow the menu filter to grab the incoming joystick event
++void (*mp_input_joy_cb)(int code) = NULL;
++
+ int mp_input_joystick_init(char* dev) {
+   int fd,l=0;
+   int inited = 0;
+@@ -122,7 +125,14 @@
+     btns &= ~(1 << ev.number);
+     btns |= (ev.value << ev.number);
+     if(ev.value == 1)
+-      return ((JOY_BTN0+ev.number) | MP_KEY_DOWN);
++      {
++        if (mp_input_joy_cb)
++          {
++            mp_input_joy_cb (JOY_BTN0+ev.number);
++            return MP_INPUT_NOTHING;
++          }
++        return ((JOY_BTN0+ev.number) | MP_KEY_DOWN);
++      }
+     else
+       return (JOY_BTN0+ev.number); 
+   } else if(ev.type & JS_EVENT_AXIS) {
+@@ -135,6 +145,11 @@
+     } else if(ev.value <= JOY_AXIS_DELTA && ev.value >= -JOY_AXIS_DELTA && axis[ev.number] != 0) {
+       int r = axis[ev.number] == 1 ? JOY_AXIS0_PLUS+(2*ev.number) : JOY_AXIS0_MINUS+(2*ev.number);
+       axis[ev.number] = 0;
++      if (mp_input_joy_cb)
++        {
++          mp_input_joy_cb (r);
++          return MP_INPUT_NOTHING;
++        }
+       return r;
+     } else
+       return MP_INPUT_NOTHING;
+diff -Naur MPlayer-1.0pre6.orig/input/joystick.h MPlayer-1.0pre6/input/joystick.h
+--- MPlayer-1.0pre6.orig/input/joystick.h	2004-12-30 19:38:06.738875232 +0100
++++ MPlayer-1.0pre6/input/joystick.h	2004-12-30 19:44:00.216138520 +0100
+@@ -37,3 +37,5 @@
+ 
+ int mp_input_joystick_read(int fd);
+ 
++// Set this to grab all incoming key codes
++extern void (*mp_input_joy_cb)(int code);
+diff -Naur MPlayer-1.0pre6.orig/libmenu/menu.c MPlayer-1.0pre6/libmenu/menu.c
+--- MPlayer-1.0pre6.orig/libmenu/menu.c	2004-12-30 19:38:06.756872496 +0100
++++ MPlayer-1.0pre6/libmenu/menu.c	2004-12-30 19:44:00.216138520 +0100
+@@ -19,6 +19,9 @@
+ #include "../m_struct.h"
+ #include "menu.h"
+ 
++#include "../input/input.h"
++#include "../input/joystick.h"
++
+ extern menu_info_t menu_info_cmdlist;
+ extern menu_info_t menu_info_pt;
+ extern menu_info_t menu_info_filesel;
+@@ -179,17 +182,23 @@
+ void menu_dflt_read_key(menu_t* menu,int cmd) {
+   switch(cmd) {
+   case KEY_UP:
++  case JOY_AXIS1_MINUS:
+     menu->read_cmd(menu,MENU_CMD_UP);
+     break;
+   case KEY_DOWN:
++  case JOY_AXIS1_PLUS:
+     menu->read_cmd(menu,MENU_CMD_DOWN);
+     break;
+   case KEY_LEFT:
+   case KEY_ESC:
++  case JOY_AXIS0_MINUS:
++  case JOY_BTN1:
+     menu->read_cmd(menu,MENU_CMD_CANCEL);
+     break;
+   case KEY_RIGHT:
+   case KEY_ENTER:
++  case JOY_AXIS0_PLUS:
++  case JOY_BTN0:
+     menu->read_cmd(menu,MENU_CMD_OK);
+     break;
+   }
+diff -Naur MPlayer-1.0pre6.orig/libmenu/vf_menu.c MPlayer-1.0pre6/libmenu/vf_menu.c
+--- MPlayer-1.0pre6.orig/libmenu/vf_menu.c	2004-12-30 19:38:06.757872344 +0100
++++ MPlayer-1.0pre6/libmenu/vf_menu.c	2004-12-30 19:44:00.216138520 +0100
+@@ -19,6 +19,7 @@
+ #include "../libvo/video_out.h"
+ #include "../libvo/font_load.h"
+ #include "../input/input.h"
++#include "../input/joystick.h"
+ #include "../m_struct.h"
+ #include "menu.h"
+ 
+@@ -206,6 +207,14 @@
+   if(mp_input_key_cb && !vf->priv->current->show)
+     mp_input_key_cb = NULL;
+ 
++#ifdef HAVE_JOYSTICK
++  // Grab // Ungrab the joy inputs
++  if(!mp_input_joy_cb && vf->priv->current->show)
++    mp_input_joy_cb = key_cb;
++  if(mp_input_joy_cb && !vf->priv->current->show)
++    mp_input_joy_cb = NULL;
++#endif
++
+   if(mpi->flags&MP_IMGFLAG_DIRECT)
+     dmpi = mpi->priv;
+   else {
+@@ -219,6 +228,10 @@
+   } else {
+     if(mp_input_key_cb)
+       mp_input_key_cb = NULL;
++#ifdef HAVE_JOYSTICK
++    if(mp_input_joy_cb)
++      mp_input_joy_cb = NULL;
++#endif
+     dmpi = vf_get_image(vf->next,mpi->imgfmt,
+ 			MP_IMGTYPE_EXPORT, MP_IMGFLAG_ACCEPT_STRIDE,
+ 			mpi->w,mpi->h);

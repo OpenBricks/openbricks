@@ -1,0 +1,207 @@
+diff -Naur MPlayer-1.0pre6.orig/input/input.c MPlayer-1.0pre6/input/input.c
+--- MPlayer-1.0pre6.orig/input/input.c	2004-12-30 19:43:46.230264696 +0100
++++ MPlayer-1.0pre6/input/input.c	2004-12-30 19:45:53.579904608 +0100
+@@ -102,6 +102,15 @@
+ #ifdef HAS_DVBIN_SUPPORT
+   { MP_CMD_DVB_SET_CHANNEL, "dvb_set_channel", 2, { {MP_CMD_ARG_INT,{0}}, {MP_CMD_ARG_INT,{0}}, {-1,{0}}}},
+ #endif
++#ifdef HAVE_VCD
++  { MP_CMD_VCD_PLAY, "play_vcd", 0, { {MP_CMD_ARG_STRING, {0}}, {-1,{0}} } },
++#endif
++#ifdef USE_DVDREAD
++  { MP_CMD_DVD_PLAY, "play_dvd", 0, { {MP_CMD_ARG_STRING, {0}}, {-1,{0}} } },
++#endif
++#ifdef HAVE_CDDA
++  { MP_CMD_CDDA_PLAY, "play_cdda", 0, { {MP_CMD_ARG_STRING, {0}}, {-1,{0}} } },
++#endif
+   { MP_CMD_SWITCH_RATIO, "switch_ratio", 0, { {MP_CMD_ARG_FLOAT,{0}}, {-1,{0}} } },
+   { MP_CMD_VO_FULLSCREEN, "vo_fullscreen", 0, { {-1,{0}} } },
+   { MP_CMD_VO_ONTOP, "vo_ontop", 0, { {-1,{0}} } },
+diff -Naur MPlayer-1.0pre6.orig/input/input.h MPlayer-1.0pre6/input/input.h
+--- MPlayer-1.0pre6.orig/input/input.h	2004-12-30 19:38:06.737875384 +0100
++++ MPlayer-1.0pre6/input/input.h	2004-12-30 19:45:53.579904608 +0100
+@@ -63,6 +63,10 @@
+ #define MP_CMD_SPEED_SET 59
+ #define MP_CMD_RUN 60
+ 
++#define MP_CMD_VCD_PLAY 70
++#define MP_CMD_DVD_PLAY 71
++#define MP_CMD_CDDA_PLAY 72
++
+ #define MP_CMD_GUI_EVENTS       5000
+ #define MP_CMD_GUI_LOADFILE     5001
+ #define MP_CMD_GUI_LOADSUBTITLE 5002
+diff -Naur MPlayer-1.0pre6.orig/libmpdemux/cdda.c MPlayer-1.0pre6/libmpdemux/cdda.c
+--- MPlayer-1.0pre6.orig/libmpdemux/cdda.c	2004-12-30 19:38:06.768870672 +0100
++++ MPlayer-1.0pre6/libmpdemux/cdda.c	2004-12-30 19:45:53.580904456 +0100
+@@ -247,6 +247,34 @@
+ static void cdparanoia_callback(long inpos, int function) {
+ }
+ 
++int get_cdda_tracks_num(char* dev) {
++  cdrom_drive* cdd = NULL;
++  int nb_tracks;
++
++#if defined(__NetBSD__)
++  cdd = cdda_identify_scsi(dev,dev,0,NULL);
++#else
++  cdd = cdda_identify(dev,0,NULL);
++#endif
++
++  if(!cdd) {
++    mp_msg(MSGT_OPEN,MSGL_ERR,"Can't open cdda device\n");
++    return -1;
++  }
++
++  if(cdda_open(cdd)) {
++    mp_msg(MSGT_OPEN,MSGL_ERR,"Can't open disc\n");
++    cdda_close(cdd);
++    return -1;
++  }
++
++  cdda_verbose_set(cdd, CDDA_MESSAGE_FORGETIT, CDDA_MESSAGE_FORGETIT);
++
++  nb_tracks = cdda_tracks(cdd);
++  cdda_close(cdd);
++  return nb_tracks;
++}
++
+ static int fill_buffer(stream_t* s, char* buffer, int max_len) {
+   cdda_priv* p = (cdda_priv*)s->priv;
+   cd_track_t *cd_track;
+diff -Naur MPlayer-1.0pre6.orig/libmpdemux/open.c MPlayer-1.0pre6/libmpdemux/open.c
+--- MPlayer-1.0pre6.orig/libmpdemux/open.c	2004-12-30 19:45:43.102497416 +0100
++++ MPlayer-1.0pre6/libmpdemux/open.c	2004-12-30 19:45:53.580904456 +0100
+@@ -378,7 +378,6 @@
+ 	    return NULL;
+ 	}
+     }
+-    --dvd_chapter; // remap 1.. -> 0..
+     /* XXX No need to remap dvd_last_chapter */
+     /**
+      * Make sure the angle number is valid for this title.
+@@ -547,8 +546,8 @@
+      * chapter number.
+      */
+     ttn = tt_srpt->title[ dvd_title ].vts_ttn; // local
+-    pgc_id = vts_file->vts_ptt_srpt->title[ttn-1].ptt[dvd_chapter].pgcn; // local
+-    pgn    = vts_file->vts_ptt_srpt->title[ttn-1].ptt[dvd_chapter].pgn;  // local
++    pgc_id = vts_file->vts_ptt_srpt->title[ttn-1].ptt[dvd_chapter-1].pgcn; // local
++    pgn    = vts_file->vts_ptt_srpt->title[ttn-1].ptt[dvd_chapter-1].pgn;  // local
+     d->cur_pgc = vts_file->vts_pgcit->pgci_srp[pgc_id-1].pgc;
+     d->cur_cell = d->cur_pgc->program_map[pgn-1] - 1; // start playback here
+     d->packs_left=-1;      // for Navi stuff
+diff -Naur MPlayer-1.0pre6.orig/mplayer.c MPlayer-1.0pre6/mplayer.c
+--- MPlayer-1.0pre6.orig/mplayer.c	2004-12-30 19:44:26.401157792 +0100
++++ MPlayer-1.0pre6/mplayer.c	2004-12-30 19:45:53.582904152 +0100
+@@ -2831,6 +2831,110 @@
+     case MP_CMD_QUIT : {
+       exit_player_with_rc(MSGTR_Exit_quit, (cmd->nargs > 0)? cmd->args[0].v.i : 0);
+     }
++#ifdef HAVE_VCD
++    case MP_CMD_VCD_PLAY : {
++      char buf[10];
++      play_tree_t *vcd, *tracks;
++      stream_t *s;
++      int i, m;
++
++      if ((s = open_stream ("vcd://", NULL, &i)) == NULL)
++        break;
++      for (m=2; m<100; m++)
++        if (vcd_seek_to_track (s->priv, m) < 0)
++          break;
++      free_stream (s);
++
++      tracks = play_tree_new();
++      sprintf(buf, "vcd://%d", i = m > 2 ? 2 : 1);
++      play_tree_add_file(tracks, buf);
++      for (i++; i<m; i++)
++        {
++          sprintf(buf, "vcd://%d", i);
++          vcd = play_tree_new();
++          play_tree_add_file(vcd, buf);
++          play_tree_append_entry(tracks, vcd);
++        }
++
++      if (cmd->nargs==1 && !strcmp(cmd->args[0].v.s, "hide_menu"))
++        mp_input_queue_cmd(mp_input_parse_cmd("menu hide"));
++
++      while(play_tree_iter_up_step(playtree_iter, 0, 1) != PLAY_TREE_ITER_END);
++      play_tree_free_list(playtree->child, 1);
++      play_tree_set_child(playtree, tracks);
++      play_tree_iter_step(playtree_iter, 0, 0);
++      eof = PT_NEXT_SRC;
++    } break;
++#endif
++#ifdef USE_DVDREAD
++    case MP_CMD_DVD_PLAY : {
++      char buf[10];
++      play_tree_t *dvd, *tracks;
++      stream_t *s;
++      int nb_tracks, i; 
++
++      if ((s = open_stream("dvd://", NULL, &i)) == NULL)
++        break;
++
++      tracks = play_tree_new();
++      play_tree_add_file(tracks, "dvd://1");
++
++      nb_tracks = ((dvd_priv_t *) s->priv)->vmg_file->tt_srpt->nr_of_srpts;
++      for (i=2; i<=nb_tracks; i++)
++        {
++          dvd = play_tree_new();
++          sprintf(buf, "dvd://%d", i);
++          play_tree_add_file(dvd, buf);
++          play_tree_append_entry(tracks, dvd);
++        }
++      i = dvd_title_info(((dvd_priv_t *) s->priv)->dvd,
++                         ((dvd_priv_t *) s->priv)->vmg_file, 0x0001);
++      free_stream (s);
++
++      if (cmd->nargs==1 && !strcmp(cmd->args[0].v.s, "hide_menu"))
++        mp_input_queue_cmd(mp_input_parse_cmd("menu hide"));
++
++      while(play_tree_iter_up_step(playtree_iter, 0, 1) != PLAY_TREE_ITER_END);
++      play_tree_free_list(playtree->child, 1);
++      play_tree_set_child(playtree, tracks);
++      play_tree_iter_down_step(playtree_iter, 0, 0);
++      play_tree_iter_step(playtree_iter, i-1, 0);
++      eof = PT_NEXT_SRC;
++    } break;
++#endif
++#ifdef HAVE_CDDA
++    case MP_CMD_CDDA_PLAY : {
++      int get_cdda_tracks_num(char* dev);
++      char buf[11];
++      play_tree_t *cdda, *tracks;
++      int nb_tracks, i; 
++
++      nb_tracks = get_cdda_tracks_num (cdrom_device ? cdrom_device : DEFAULT_CDROM_DEVICE);
++      if (nb_tracks <= 0)
++        break;
++
++      tracks = play_tree_new();
++      play_tree_add_file(tracks, "cdda://1");
++
++      for (i=2; i<=nb_tracks; i++)
++        {
++          cdda = play_tree_new();
++          sprintf(buf, "cdda://%d", i);
++          play_tree_add_file(cdda, buf);
++          play_tree_append_entry(tracks, cdda);
++        }
++
++      if (cmd->nargs==1 && !strcmp(cmd->args[0].v.s, "hide_menu"))
++        mp_input_queue_cmd(mp_input_parse_cmd("menu hide"));
++
++      while(play_tree_iter_up_step(playtree_iter, 0, 1) != PLAY_TREE_ITER_END);
++      play_tree_free_list(playtree->child, 1);
++      play_tree_set_child(playtree, tracks);
++      play_tree_iter_step(playtree_iter, 0, 0);
++      eof = PT_NEXT_SRC;
++    } break;
++#endif
++
+     case MP_CMD_GRAB_FRAMES : {
+       grab_frames=2;
+     } break;

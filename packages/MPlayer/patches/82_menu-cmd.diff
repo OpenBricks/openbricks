@@ -1,0 +1,91 @@
+diff -Naur MPlayer-1.0pre6.orig/input/input.c MPlayer-1.0pre6/input/input.c
+--- MPlayer-1.0pre6.orig/input/input.c	2004-12-30 19:52:49.756636128 +0100
++++ MPlayer-1.0pre6/input/input.c	2004-12-30 19:53:33.733950560 +0100
+@@ -832,7 +832,7 @@
+   return binds[j].cmd;
+ }
+ 
+-static mp_cmd_t*
++mp_cmd_t*
+ mp_input_get_cmd_from_keys(int n,int* keys, int paused) {
+   char* cmd = NULL;
+   mp_cmd_t* ret;
+diff -Naur MPlayer-1.0pre6.orig/input/input.h MPlayer-1.0pre6/input/input.h
+--- MPlayer-1.0pre6.orig/input/input.h	2004-12-30 19:52:49.756636128 +0100
++++ MPlayer-1.0pre6/input/input.h	2004-12-30 19:53:33.733950560 +0100
+@@ -195,6 +195,10 @@
+ void
+ mp_input_rm_key_fd(int fd);
+ 
++// Convert a key list into a cmd
++mp_cmd_t*
++mp_input_get_cmd_from_keys(int n,int* keys, int paused);
++
+ // This function can be used to put a command in the system again. It's used by libmpdemux
+ // when it performs a blocking operation to resend the command it received to the main
+ // loop.
+diff -Naur MPlayer-1.0pre6.orig/libmenu/menu.c MPlayer-1.0pre6/libmenu/menu.c
+--- MPlayer-1.0pre6.orig/libmenu/menu.c	2004-12-30 19:52:49.756636128 +0100
++++ MPlayer-1.0pre6/libmenu/menu.c	2004-12-30 19:53:33.733950560 +0100
+@@ -207,6 +207,8 @@
+   case JOY_BTN0:
+     menu->read_cmd(menu,MENU_CMD_OK);
+     break;
++  default:
++    mp_input_queue_cmd(mp_input_get_cmd_from_keys (1, &cmd, 0));
+   }
+ }
+ 
+diff -Naur MPlayer-1.0pre6.orig/libmenu/menu_filesel.c MPlayer-1.0pre6/libmenu/menu_filesel.c
+--- MPlayer-1.0pre6.orig/libmenu/menu_filesel.c	2004-12-30 19:53:10.021555392 +0100
++++ MPlayer-1.0pre6/libmenu/menu_filesel.c	2004-12-30 19:53:33.734950408 +0100
+@@ -253,9 +253,9 @@
+ 	free(str);
+     }	  
+     if(c) {
+-      mp_input_queue_cmd(c);
+       if(mpriv->auto_close)
+-	menu->cl = 1;
++        mp_input_queue_cmd(mp_input_parse_cmd("menu hide"));
++      mp_input_queue_cmd(c);
+     }
+   } break;
+   case MENU_CMD_ACTION: {
+diff -Naur MPlayer-1.0pre6.orig/libmenu/vf_menu.c MPlayer-1.0pre6/libmenu/vf_menu.c
+--- MPlayer-1.0pre6.orig/libmenu/vf_menu.c	2004-12-30 19:52:49.757635976 +0100
++++ MPlayer-1.0pre6/libmenu/vf_menu.c	2004-12-30 19:53:33.735950256 +0100
+@@ -156,12 +156,12 @@
+ 
+ inline static void copy_mpi(mp_image_t *dmpi, mp_image_t *mpi) {
+   if(mpi->flags&MP_IMGFLAG_PLANAR){
+-    memcpy_pic(dmpi->planes[0],mpi->planes[0], mpi->w, mpi->h,
+-	       dmpi->stride[0],mpi->stride[0]);
+-    memcpy_pic(dmpi->planes[1],mpi->planes[1], mpi->chroma_width, mpi->chroma_height,
+-	       dmpi->stride[1],mpi->stride[1]);
+     memcpy_pic(dmpi->planes[2], mpi->planes[2], mpi->chroma_width, mpi->chroma_height,
+ 	       dmpi->stride[2],mpi->stride[2]);
++    memcpy_pic(dmpi->planes[1],mpi->planes[1], mpi->chroma_width, mpi->chroma_height,
++	       dmpi->stride[1],mpi->stride[1]);
++    memcpy_pic(dmpi->planes[0],mpi->planes[0], mpi->w, mpi->h,
++	       dmpi->stride[0],mpi->stride[0]);
+   } else {
+     memcpy_pic(dmpi->planes[0],mpi->planes[0], 
+ 	       mpi->w*(dmpi->bpp/8), mpi->h,
+@@ -181,15 +181,14 @@
+     return vf_next_put_image(vf,dmpi);
+   }
+ 
+-  if(vf->priv->current->show 
+-  || (vf->priv->current->parent && vf->priv->current->parent->show)) {
+   // Close all menu who requested it
+-  while(vf->priv->current->cl && vf->priv->current != vf->priv->root) {
++  while(vf->priv->current != vf->priv->root && vf->priv->current->cl) {
+     menu_t* m = vf->priv->current;
+     vf->priv->current = m->parent ? m->parent :  vf->priv->root;
+     menu_close(m);
+   }
+ 
++  if(vf->priv->current->show) {
+   // Step 1 : save the picture
+   while(go2pause == 1) {
+     static char delay = 0; // Hack : wait the 2 frame to be sure to show the right picture

@@ -1,0 +1,149 @@
+diff -Naur MPlayer-1.0pre6.orig/cfg-mplayer.h MPlayer-1.0pre6/cfg-mplayer.h
+--- MPlayer-1.0pre6.orig/cfg-mplayer.h	2004-12-30 19:39:19.514811608 +0100
++++ MPlayer-1.0pre6/cfg-mplayer.h	2004-12-30 19:44:22.649728096 +0100
+@@ -374,6 +374,8 @@
+ 	{"guiwid", &guiWinID, CONF_TYPE_INT, 0, 0, 0, NULL},
+ #endif
+ 
++	{"bgvideo", &bg_video, CONF_TYPE_STRING, 0, 0, 0, NULL},
++
+ 	{"noloop", &loop_times, CONF_TYPE_FLAG, 0, 0, -1, NULL},
+ 	{"loop", &loop_times, CONF_TYPE_INT, CONF_RANGE, -1, 10000, NULL},
+ 	{"playlist", NULL, CONF_TYPE_STRING, 0, 0, 0, NULL},
+diff -Naur MPlayer-1.0pre6.orig/mplayer.c MPlayer-1.0pre6/mplayer.c
+--- MPlayer-1.0pre6.orig/mplayer.c	2004-12-30 19:39:19.518811000 +0100
++++ MPlayer-1.0pre6/mplayer.c	2004-12-30 19:44:22.651727792 +0100
+@@ -250,6 +250,9 @@
+ char* filename=NULL; //"MI2-Trailer.avi";
+ int forced_subs_only=0;
+ 
++static char* bg_video = NULL;
++static demuxer_t *bg_demuxer = NULL;
++
+ // cache2:
+        int stream_cache_size=-1;
+ #ifdef USE_STREAM_CACHE
+@@ -410,6 +413,13 @@
+ 	free_demuxer(demuxer);
+     }
+     demuxer=NULL;
++    current_module="free_bg_demuxer";
++    if(bg_demuxer) {
++      stream_t* bg_s = bg_demuxer->stream;
++      free_demuxer(bg_demuxer);
++      bg_demuxer = NULL;
++      free_stream(bg_s);
++    }
+   }
+ 
+   // kill the cache process:
+@@ -1738,6 +1748,34 @@
+ sh_audio=d_audio->sh;
+ sh_video=d_video->sh;
+ 
++while(sh_audio && !sh_video && bg_video) {
++  int bg_file_format = 0;
++  stream_t* bg_s;
++  mp_msg(MSGT_CPLAYER,MSGL_INFO, "Open bgvideo: %s\n",bg_video);
++  bg_s = open_stream(bg_video,NULL,&bg_file_format);
++  if(!bg_s) {
++    mp_msg(MSGT_CPLAYER,MSGL_ERR, "Couldn't open the stream for back ground video: %s\n",bg_video);
++    break;
++  }
++  bg_demuxer = demux_open(bg_s,bg_file_format,-2,video_id,dvdsub_id,bg_video);
++  if(!bg_demuxer) {
++    mp_msg(MSGT_DEMUXER,MSGL_ERR,"Failed to open background video\n");
++    free_stream(bg_s);
++    break;
++  }
++  if(!bg_demuxer->video && !bg_demuxer->video->sh) {
++    mp_msg(MSGT_DEMUXER,MSGL_ERR,"The background video don't have a video stream\n");
++    free_demuxer(bg_demuxer);
++    bg_demuxer = NULL;
++    free_stream(bg_s);
++    break;
++  }
++  d_video = bg_demuxer->video;
++  sh_video = d_video->sh;
++  mp_msg(MSGT_DEMUXER,MSGL_INFO,"Background video should work ;)\n");
++  break;
++}
++
+ if(sh_video){
+ 
+   current_module="video_read_properties";
+@@ -2197,7 +2235,15 @@
+ 
+     if(play_n_frames>=0){
+       --play_n_frames;
+-      if(play_n_frames<0) eof = PT_NEXT_ENTRY;
++      if(play_n_frames<0) {
++	if(bg_demuxer) {
++	  if(!demux_seek(bg_demuxer,0,1))
++	    eof = PT_NEXT_ENTRY;
++	  else
++	    play_n_frames = play_n_frames_mf;
++	} else
++	  eof = PT_NEXT_ENTRY;
++      }
+     }
+ 
+ /*========================== PLAY AUDIO ============================*/
+@@ -2248,6 +2294,8 @@
+   break;
+ } // while(sh_audio)
+ 
++if(bg_demuxer && d_audio->eof) eof=1;
++
+ if(!sh_video) {
+   // handle audio-only case:
+   if(!quiet) {
+@@ -2274,7 +2322,16 @@
+ 	// get it!
+ 	current_module="video_read_frame";
+         in_size=video_read_frame(sh_video,&next_frame_time,&start,force_fps);
+-	if(in_size<0){ eof=1; break; }
++	if(in_size<0){
++	  if(bg_demuxer) {
++	    if(!demux_seek(bg_demuxer,0,1))
++	      eof = 1;
++	    else
++	      continue;
++	  } else
++	    eof=1;
++	  break;
++	}
+ 	if(in_size>max_framesize) max_framesize=in_size; // stats
+ 	sh_video->timer+=frame_time;
+ 	if(sh_audio) sh_audio->delay-=frame_time;
+@@ -2480,6 +2537,13 @@
+   current_module="av_sync";
+ 
+   if(sh_audio){
++   if(bg_demuxer) {
++     if(!quiet) mp_msg(MSGT_AVSYNC,MSGL_STATUS,"A:%6.1f %4.1f%% %d%%   \r"
++		       ,sh_audio->delay-audio_out->get_delay()
++		       ,(sh_audio->delay>0.5)?100.0*audio_time_usage/(double)sh_audio->delay:0
++		       ,cache_fill_status
++		       );
++   } else {
+     float a_pts=0;
+     float v_pts=0;
+ 
+@@ -2551,7 +2615,7 @@
+         if(!quiet)
+           print_status(a_pts - audio_delay - delay, AV_delay, c_total);
+       }
+-    
++   }
+   } else {
+     // No audio:
+     
+@@ -3840,6 +3904,7 @@
+   if(osd_level>=1 && sh_video){
+       int pts=sh_video->pts;
+       char osd_text_tmp[64];
++      if (bg_demuxer) pts=d_audio->pts+(ds_tell_pts(d_audio)-sh_audio->a_in_buffer_len)/sh_audio->i_bps;
+       if(pts==osd_last_pts-1) ++pts; else osd_last_pts=pts;
+       vo_osd_text=osd_text_buffer;
+ #ifdef USE_DVDNAV
