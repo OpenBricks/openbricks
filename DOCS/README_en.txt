@@ -282,6 +282,15 @@ but not included because of their excessive size (Chinese fonts for example).
   And extract gb2312-kai\gkai00mp24 directory from the archive
   into ..\path\to\generator\font\gb2312
 
+* Korean support:
+
+  Similar to Chinese font support, only you can get the euc-kr font from:
+
+    http://www1.mplayerhq.hu/MPlayer/contrib/fonts/korean/
+
+  A good choise will be to use dotum20.tar.gz euc-kr font,
+  and unpack and copy into generator ./font/euc-kr
+  in similar way mention above.
 
 | INSTALLATION
 | ~~~~~~~~~~~~
