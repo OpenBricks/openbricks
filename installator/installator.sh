@@ -134,6 +134,7 @@ sed 's/TIMEOUT.*//' di/isolinux.cfg > di/syslinux.cfg
 sed 's/PROMPT.*//' di/syslinux.cfg > di/isolinux.cfg
 sed "s/boot=cdrom/boot=${DEV#/dev/}/" di/isolinux.cfg > di/syslinux.cfg
 rm di/isolinux.cfg
+dd if="$DEV" of=di/geexbox.lnx
 umount di
 rmdir di
 syslinux "$DEV"
@@ -160,14 +161,21 @@ if [ "$MBR" = yes ]; then
   echo ",,,*" | $SFDISK "/dev/$DISK" -N$PART
 else
   if [ -n "$DIALOG" ]; then
-    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Bootloader" --msgbox "\nYou can configure lilo to boot the GeeXboX simply by adding thoses lines at the end of your /etc/lilo.conf :\n\n    other=$DEV\n          label=GeeXboX\n\nDon't forget to execute lilo after doing this modification.\n\nIf you only use windows, you may have a look at a boot menu such as XOSL (http://www.xosl.org/)." 0 0
+    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Bootloader" --msgbox "\nYou can configure lilo to boot the GeeXboX simply by adding thoses lines at the end of your /etc/lilo.conf :\n\n    other=$DEV\n          label=GeeXboX\n\nDon't forget to execute lilo after doing this modification.\n\nWindows users must copy geexbox.lnx to their C:\ drive and add the\nfollowing line to the boot.ini file to use with the NT Loader.\n\n    c:\geexbox.lnx=\"GeeXboX\"\n\nOtherwise, you may have a look at a boot menu such as XOSL (http://www.xosl.org/)." 0 0
   else
     echo ""
     echo "You can configure lilo to boot the GeeXboX simply by adding thoses"
     echo "lines at the end of your /etc/lilo.conf :"
+    echo ""
     echo "    other=$DEV"
     echo "          label=GeeXboX"
     echo "Don't forget to execute lilo after doing this modification."
+    echo ""
+    echo "Windows users must copy geexbox.lnx to their C:\ drive and add the "
+    echo "following line to the boot.ini file to use with the NT Loader."
+    echo ""
+    echo "    c:\geexbox.lnx=\"GeeXboX\""
+    echo ""
   fi
 fi
 
