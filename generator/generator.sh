@@ -114,7 +114,7 @@ for i in $TMPDIR/iso/*; do
   [ "$i" != $TMPDIR/iso/GEEXBOX ] && ln -s "../$i" $TMPDIR/ziso
 done
 
-mkisofs -quiet -no-pad -V GEEXBOX -volset GEEXBOX -P "The GeeXboX team (www.geexbox.org)" -p "The GeeXboX team (www.geexbox.org)" -A "MKISOFS ISO 9660/HFS FILESYSTEM BUILDER" -z -f -D -r -J -b GEEXBOX/boot/isolinux.bin -c GEEXBOX/boot/boot.catalog -sort $GEEXBOX_DIR/sort -no-emul-boot -boot-load-size 4 -boot-info-table $TMPDIR/ziso > $OUTPUT
+mkisofs -quiet -no-pad -V GEEXBOX -volset GEEXBOX -publisher "The GeeXboX team (www.geexbox.org)" -p "The GeeXboX team (www.geexbox.org)" -A "MKISOFS ISO 9660/HFS FILESYSTEM BUILDER" -z -f -D -r -J -b GEEXBOX/boot/isolinux.bin -c GEEXBOX/boot/boot.catalog -sort $GEEXBOX_DIR/sort -no-emul-boot -boot-load-size 4 -boot-info-table $TMPDIR/ziso > $OUTPUT
 
 if [ $TMPDIR = "." ]; then
   rm -rf $TMPDIR/ziso
