@@ -1,10 +1,10 @@
 #!/bin/sh
 
-# Menu language (bg/br/cat/cz/de/en/es/fi/fr/he/hu/it/nl/pl/ro/ru/se/sk)
+# Menu language (bg/br/ca/cs/de/en/es/et/fi/fr/he/hu/it/nl/pl/ro/ru/sv/sk)
 # This have no effect on DVD language. See iso/GEEXBOX/etc/mplayer/mplayer.conf
 LANG=en
 
-# Subtitle font (bg/br/cat/cz/de/en/es/fi/fr/he/hu/it/nl/po/ro/ru/se/sk)
+# Subtitle font (bg/br/ca/cs/de/en/es/et/fi/fr/he/hu/it/nl/pl/ro/ru/sv/sk)
 # Can also be set to a charset code (iso-8859-{1,2,8}/cp1251/koi8r)
 # when empty default is to LANG
 SUB_FONT=
@@ -109,7 +109,7 @@ fi
 if [ -z "$SUB_FONT" ]; then
   SUB_FONT=$LANG
 fi
-if [ $SUB_FONT = iso-8859-2 -o $SUB_FONT = cz -o $SUB_FONT = hu -o $SUB_FONT = pl -o $SUB_FONT = ro -o $SUB_FONT = sk ]; then
+if [ $SUB_FONT = iso-8859-2 -o $SUB_FONT = cs -o $SUB_FONT = hu -o $SUB_FONT = pl -o $SUB_FONT = ro -o $SUB_FONT = sk ]; then
   SUB_FONT=iso-8859-2
 elif [ $SUB_FONT = iso-8859-8 -o $SUB_FONT = he ]; then
   SUB_FONT=iso-8859-8
