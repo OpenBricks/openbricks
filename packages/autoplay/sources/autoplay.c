@@ -172,7 +172,7 @@ main (int argc, char **argv)
   char *filename, **params = argv+1;
   char *play_dvd_cmd;
   struct stat st;
-  int i, m, n, x, status;
+  int i, m, n, x, status, speed=0;
 
   if (argc < 3)
     return 1;
@@ -198,6 +198,9 @@ main (int argc, char **argv)
 
   fullname_maxlen = 1024;
   fullname = (char *) malloc (fullname_maxlen);
+
+  if (!(argc&1))
+    speed = atoi (argv[argc-1]);
 
   file_exts = get_extensions ("/etc/file_ext");
   playlist_exts = get_extensions ("/etc/list_ext");
@@ -240,6 +243,8 @@ main (int argc, char **argv)
                 {
                   /* a media as been inserted */
                   drive->status = status;
+                  if (speed > 1 && speed < 100)
+                    ioctl (drive->fd, CDROM_SELECT_SPEED, speed);
                   status = ioctl (drive->fd, CDROM_DISC_STATUS, CDSL_CURRENT);
                   switch (status)
                     {
