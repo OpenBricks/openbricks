@@ -1,0 +1,816 @@
+diff -Nur grub-0.95+cvs20040624.orig/aclocal.m4 grub-0.95+cvs20040624/aclocal.m4
+--- grub-0.95+cvs20040624.orig/aclocal.m4	2004-11-12 23:39:22.000000000 +0200
++++ grub-0.95+cvs20040624/aclocal.m4	2004-11-12 23:42:32.000000000 +0200
+@@ -1,4 +1,4 @@
+-# generated automatically by aclocal 1.8.2 -*- Autoconf -*-
++# generated automatically by aclocal 1.8.5 -*- Autoconf -*-
+ 
+ # Copyright (C) 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004
+ # Free Software Foundation, Inc.
+@@ -40,7 +40,7 @@
+ # Call AM_AUTOMAKE_VERSION so it can be traced.
+ # This function is AC_REQUIREd by AC_INIT_AUTOMAKE.
+ AC_DEFUN([AM_SET_CURRENT_AUTOMAKE_VERSION],
+-	 [AM_AUTOMAKE_VERSION([1.8.2])])
++	 [AM_AUTOMAKE_VERSION([1.8.5])])
+ 
+ # AM_AUX_DIR_EXPAND
+ 
+@@ -149,7 +149,7 @@
+ Usually this means the macro was only invoked conditionally.])
+ fi])])
+ 
+-# serial 6						-*- Autoconf -*-
++# serial 7						-*- Autoconf -*-
+ 
+ # Copyright (C) 1999, 2000, 2001, 2002, 2003, 2004
+ # Free Software Foundation, Inc.
+@@ -236,7 +236,9 @@
+     : > sub/conftest.c
+     for i in 1 2 3 4 5 6; do
+       echo '#include "conftst'$i'.h"' >> sub/conftest.c
+-      : > sub/conftst$i.h
++      # Using `: > sub/conftst$i.h' creates only sub/conftst1.h with
++      # Solaris 8's {/usr,}/bin/sh.
++      touch sub/conftst$i.h
+     done
+     echo "${am__include} ${am__quote}sub/conftest.Po${am__quote}" > confmf
+ 
+@@ -264,9 +266,14 @@
+        grep sub/conftest.${OBJEXT-o} sub/conftest.Po > /dev/null 2>&1 &&
+        ${MAKE-make} -s -f confmf > /dev/null 2>&1; then
+       # icc doesn't choke on unknown options, it will just issue warnings
+-      # (even with -Werror).  So we grep stderr for any message
+-      # that says an option was ignored.
+-      if grep 'ignoring option' conftest.err >/dev/null 2>&1; then :; else
++      # or remarks (even with -Werror).  So we grep stderr for any message
++      # that says an option was ignored or not supported.
++      # When given -MP, icc 7.0 and 7.1 complain thusly:
++      #   icc: Command line warning: ignoring option '-M'; no argument required
++      # The diagnosis changed in icc 8.0:
++      #   icc: Command line remark: option '-MP' not supported
++      if (grep 'ignoring option' conftest.err ||
++          grep 'not supported' conftest.err) >/dev/null 2>&1; then :; else
+         am_cv_$1_dependencies_compiler_type=$depmode
+         break
+       fi
+@@ -312,7 +319,7 @@
+ 
+ # Generate code to set up dependency tracking.   -*- Autoconf -*-
+ 
+-# Copyright (C) 1999, 2000, 2001, 2002, 2003 Free Software Foundation, Inc.
++# Copyright (C) 1999, 2000, 2001, 2002, 2003, 2004 Free Software Foundation, Inc.
+ 
+ # This program is free software; you can redistribute it and/or modify
+ # it under the terms of the GNU General Public License as published by
+@@ -351,14 +358,14 @@
+   grep '^DEP_FILES *= *[[^ @%:@]]' < "$mf" > /dev/null || continue
+   # Extract the definition of DEP_FILES from the Makefile without
+   # running `make'.
+-  DEPDIR=`sed -n -e '/^DEPDIR = / s///p' < "$mf"`
++  DEPDIR=`sed -n 's/^DEPDIR = //p' < "$mf"`
+   test -z "$DEPDIR" && continue
+   # When using ansi2knr, U may be empty or an underscore; expand it
+-  U=`sed -n -e '/^U = / s///p' < "$mf"`
++  U=`sed -n 's/^U = //p' < "$mf"`
+   test -d "$dirpart/$DEPDIR" || mkdir "$dirpart/$DEPDIR"
+   # We invoke sed twice because it is the simplest approach to
+   # changing $(DEPDIR) to its actual value in the expansion.
+-  for file in `sed -n -e '
++  for file in `sed -n '
+     /^DEP_FILES = .*\\\\$/ {
+       s/^DEP_FILES = //
+       :loop
+@@ -757,8 +764,16 @@
+ #
+ # Do not use -m 0755 and let people choose whatever they expect by
+ # setting umask.
++#
++# We cannot accept any implementation of `mkdir' that recognizes `-p'.
++# Some implementations (such as Solaris 8's) are not thread-safe: if a
++# parallel make tries to run `mkdir -p a/b' and `mkdir -p a/c'
++# concurrently, both version can detect that a/ is missing, but only
++# one can create it and the other will error out.  Consequently we
++# restrict ourselves to GNU make (using the --version option ensures
++# this.)
+ AC_DEFUN([AM_PROG_MKDIR_P],
+-[if mkdir -p -- . 2>/dev/null; then
++[if mkdir -p --version . >/dev/null 2>&1 && test ! -d ./--version; then
+   # Keeping the `.' argument allows $(mkdir_p) to be used without
+   # argument.  Indeed, we sometimes output rules like
+   #   $(mkdir_p) $(somedir)
+@@ -771,7 +786,7 @@
+   # recognize any option.  It will interpret all options as
+   # directories to create, and then abort because `.' already
+   # exists.
+-  for d in ./-p ./--;
++  for d in ./-p ./--version;
+   do
+     test -d $d && rmdir $d
+   done
+diff -Nur grub-0.95+cvs20040624.orig/configure grub-0.95+cvs20040624/configure
+--- grub-0.95+cvs20040624.orig/configure	2004-11-12 23:39:22.000000000 +0200
++++ grub-0.95+cvs20040624/configure	2004-11-12 23:43:28.000000000 +0200
+@@ -311,7 +311,7 @@
+ # include <unistd.h>
+ #endif"
+ 
+-ac_subst_vars='SHELL PATH_SEPARATOR PACKAGE_NAME PACKAGE_TARNAME PACKAGE_VERSION PACKAGE_STRING PACKAGE_BUGREPORT exec_prefix prefix program_transform_name bindir sbindir libexecdir datadir sysconfdir sharedstatedir localstatedir libdir includedir oldincludedir infodir mandir build_alias host_alias target_alias DEFS ECHO_C ECHO_N ECHO_T LIBS INSTALL_PROGRAM INSTALL_SCRIPT INSTALL_DATA CYGPATH_W PACKAGE VERSION ACLOCAL AUTOCONF AUTOMAKE AUTOHEADER MAKEINFO AMTAR install_sh STRIP ac_ct_STRIP INSTALL_STRIP_PROGRAM mkdir_p AWK SET_MAKE am__leading_dot build build_cpu build_vendor build_os host host_cpu host_vendor host_os MAINTAINER_MODE_TRUE MAINTAINER_MODE_FALSE MAINT PERL CC ac_ct_CC CFLAGS LDFLAGS CPPFLAGS EXEEXT OBJEXT DEPDIR am__include am__quote AMDEP_TRUE AMDEP_FALSE AMDEPBACKSLASH CCDEPMODE am__fastdepCC_TRUE am__fastdepCC_FALSE CCAS RANLIB ac_ct_RANLIB STAGE1_CFLAGS STAGE2_CFLAGS GRUB_CFLAGS OBJCOPY ac_ct_OBJCOPY GRUB_LIBS CPP EGREP NETBOOT_SUPPORT_TRUE NETBOOT_SUPPORT_FALSE DISKLESS_SUPPORT_TRUE DISKLESS_SUPPORT_FALSE HERCULES_SUPPORT_TRUE HERCULES_SUPPORT_FALSE SERIAL_SUPPORT_TRUE SERIAL_SUPPORT_FALSE SERIAL_SPEED_SIMULATION_TRUE SERIAL_SPEED_SIMULATION_FALSE BUILD_EXAMPLE_KERNEL_TRUE BUILD_EXAMPLE_KERNEL_FALSE FSYS_CFLAGS NET_CFLAGS NET_EXTRAFLAGS NETBOOT_DRIVERS CCASFLAGS LIBOBJS LTLIBOBJS'
++ac_subst_vars='SHELL PATH_SEPARATOR PACKAGE_NAME PACKAGE_TARNAME PACKAGE_VERSION PACKAGE_STRING PACKAGE_BUGREPORT exec_prefix prefix program_transform_name bindir sbindir libexecdir datadir sysconfdir sharedstatedir localstatedir libdir includedir oldincludedir infodir mandir build_alias host_alias target_alias DEFS ECHO_C ECHO_N ECHO_T LIBS INSTALL_PROGRAM INSTALL_SCRIPT INSTALL_DATA CYGPATH_W PACKAGE VERSION ACLOCAL AUTOCONF AUTOMAKE AUTOHEADER MAKEINFO AMTAR install_sh STRIP ac_ct_STRIP INSTALL_STRIP_PROGRAM mkdir_p AWK SET_MAKE am__leading_dot build build_cpu build_vendor build_os host host_cpu host_vendor host_os MAINTAINER_MODE_TRUE MAINTAINER_MODE_FALSE MAINT PERL CC ac_ct_CC CFLAGS LDFLAGS CPPFLAGS EXEEXT OBJEXT DEPDIR am__include am__quote AMDEP_TRUE AMDEP_FALSE AMDEPBACKSLASH CCDEPMODE am__fastdepCC_TRUE am__fastdepCC_FALSE CCAS RANLIB ac_ct_RANLIB STAGE1_CFLAGS STAGE2_CFLAGS GRUB_CFLAGS OBJCOPY ac_ct_OBJCOPY GRUB_LIBS CPP EGREP NETBOOT_SUPPORT_TRUE NETBOOT_SUPPORT_FALSE DISKLESS_SUPPORT_TRUE DISKLESS_SUPPORT_FALSE GRAPHICS_SUPPORT_TRUE GRAPHICS_SUPPORT_FALSE HERCULES_SUPPORT_TRUE HERCULES_SUPPORT_FALSE SERIAL_SUPPORT_TRUE SERIAL_SUPPORT_FALSE SERIAL_SPEED_SIMULATION_TRUE SERIAL_SPEED_SIMULATION_FALSE BUILD_EXAMPLE_KERNEL_TRUE BUILD_EXAMPLE_KERNEL_FALSE FSYS_CFLAGS NET_CFLAGS NET_EXTRAFLAGS NETBOOT_DRIVERS CCASFLAGS LIBOBJS LTLIBOBJS'
+ ac_subst_files=''
+ 
+ # Initialize some variables set by options.
+@@ -914,6 +914,7 @@
+                           set the default memory location for WD/SMC
+   --enable-cs-scan=LIST   probe for CS89x0 base address using LIST
+   --enable-diskless       enable diskless support
++  --disable-graphics      disable graphics terminal support
+   --disable-hercules      disable hercules terminal support
+   --disable-serial        disable serial terminal support
+   --enable-serial-speed-simulation
+@@ -1032,7 +1033,7 @@
+     else
+       echo "$as_me: WARNING: no configuration information is in $ac_dir" >&2
+     fi
+-    cd $ac_popdir
++    cd "$ac_popdir"
+   done
+ fi
+ 
+@@ -1568,7 +1569,7 @@
+ echo "$as_me: WARNING: \`missing' script is too old or missing" >&2;}
+ fi
+ 
+-if mkdir -p -- . 2>/dev/null; then
++if mkdir -p --version . >/dev/null 2>&1 && test ! -d ./--version; then
+   # Keeping the `.' argument allows $(mkdir_p) to be used without
+   # argument.  Indeed, we sometimes output rules like
+   #   $(mkdir_p) $(somedir)
+@@ -1581,7 +1582,7 @@
+   # recognize any option.  It will interpret all options as
+   # directories to create, and then abort because `.' already
+   # exists.
+-  for d in ./-p ./--;
++  for d in ./-p ./--version;
+   do
+     test -d $d && rmdir $d
+   done
+@@ -2619,8 +2620,7 @@
+   cat conftest.err >&5
+   echo "$as_me:$LINENO: \$? = $ac_status" >&5
+   (exit $ac_status); } &&
+-	 { ac_try='test -z "$ac_c_werror_flag"
+-			 || test ! -s conftest.err'
++	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+   { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+   (eval $ac_try) 2>&5
+   ac_status=$?
+@@ -2678,8 +2678,7 @@
+   cat conftest.err >&5
+   echo "$as_me:$LINENO: \$? = $ac_status" >&5
+   (exit $ac_status); } &&
+-	 { ac_try='test -z "$ac_c_werror_flag"
+-			 || test ! -s conftest.err'
++	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+   { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+   (eval $ac_try) 2>&5
+   ac_status=$?
+@@ -2795,8 +2794,7 @@
+   cat conftest.err >&5
+   echo "$as_me:$LINENO: \$? = $ac_status" >&5
+   (exit $ac_status); } &&
+-	 { ac_try='test -z "$ac_c_werror_flag"
+-			 || test ! -s conftest.err'
++	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+   { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+   (eval $ac_try) 2>&5
+   ac_status=$?
+@@ -2850,8 +2848,7 @@
+   cat conftest.err >&5
+   echo "$as_me:$LINENO: \$? = $ac_status" >&5
+   (exit $ac_status); } &&
+-	 { ac_try='test -z "$ac_c_werror_flag"
+-			 || test ! -s conftest.err'
++	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+   { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+   (eval $ac_try) 2>&5
+   ac_status=$?
+@@ -2896,8 +2893,7 @@
+   cat conftest.err >&5
+   echo "$as_me:$LINENO: \$? = $ac_status" >&5
+   (exit $ac_status); } &&
+-	 { ac_try='test -z "$ac_c_werror_flag"
+-			 || test ! -s conftest.err'
++	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+   { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+   (eval $ac_try) 2>&5
+   ac_status=$?
+@@ -2941,8 +2937,7 @@
+   cat conftest.err >&5
+   echo "$as_me:$LINENO: \$? = $ac_status" >&5
+   (exit $ac_status); } &&
+-	 { ac_try='test -z "$ac_c_werror_flag"
+-			 || test ! -s conftest.err'
++	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+   { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+   (eval $ac_try) 2>&5
+   ac_status=$?
+@@ -3087,7 +3082,9 @@
+     : > sub/conftest.c
+     for i in 1 2 3 4 5 6; do
+       echo '#include "conftst'$i'.h"' >> sub/conftest.c
+-      : > sub/conftst$i.h
++      # Using `: > sub/conftst$i.h' creates only sub/conftst1.h with
++      # Solaris 8's {/usr,}/bin/sh.
++      touch sub/conftst$i.h
+     done
+     echo "${am__include} ${am__quote}sub/conftest.Po${am__quote}" > confmf
+ 
+@@ -3115,9 +3112,14 @@
+        grep sub/conftest.${OBJEXT-o} sub/conftest.Po > /dev/null 2>&1 &&
+        ${MAKE-make} -s -f confmf > /dev/null 2>&1; then
+       # icc doesn't choke on unknown options, it will just issue warnings
+-      # (even with -Werror).  So we grep stderr for any message
+-      # that says an option was ignored.
+-      if grep 'ignoring option' conftest.err >/dev/null 2>&1; then :; else
++      # or remarks (even with -Werror).  So we grep stderr for any message
++      # that says an option was ignored or not supported.
++      # When given -MP, icc 7.0 and 7.1 complain thusly:
++      #   icc: Command line warning: ignoring option '-M'; no argument required
++      # The diagnosis changed in icc 8.0:
++      #   icc: Command line remark: option '-MP' not supported
++      if (grep 'ignoring option' conftest.err ||
++          grep 'not supported' conftest.err) >/dev/null 2>&1; then :; else
+         am_cv_CC_dependencies_compiler_type=$depmode
+         break
+       fi
+@@ -3191,7 +3193,9 @@
+     : > sub/conftest.c
+     for i in 1 2 3 4 5 6; do
+       echo '#include "conftst'$i'.h"' >> sub/conftest.c
+-      : > sub/conftst$i.h
++      # Using `: > sub/conftst$i.h' creates only sub/conftst1.h with
++      # Solaris 8's {/usr,}/bin/sh.
++      touch sub/conftst$i.h
+     done
+     echo "${am__include} ${am__quote}sub/conftest.Po${am__quote}" > confmf
+ 
+@@ -3219,9 +3223,14 @@
+        grep sub/conftest.${OBJEXT-o} sub/conftest.Po > /dev/null 2>&1 &&
+        ${MAKE-make} -s -f confmf > /dev/null 2>&1; then
+       # icc doesn't choke on unknown options, it will just issue warnings
+-      # (even with -Werror).  So we grep stderr for any message
+-      # that says an option was ignored.
+-      if grep 'ignoring option' conftest.err >/dev/null 2>&1; then :; else
++      # or remarks (even with -Werror).  So we grep stderr for any message
++      # that says an option was ignored or not supported.
++      # When given -MP, icc 7.0 and 7.1 complain thusly:
++      #   icc: Command line warning: ignoring option '-M'; no argument required
++      # The diagnosis changed in icc 8.0:
++      #   icc: Command line remark: option '-MP' not supported
++      if (grep 'ignoring option' conftest.err ||
++          grep 'not supported' conftest.err) >/dev/null 2>&1; then :; else
+         am_cv_CC_dependencies_compiler_type=$depmode
+         break
+       fi
+@@ -3432,8 +3441,7 @@
+   cat conftest.err >&5
+   echo "$as_me:$LINENO: \$? = $ac_status" >&5
+   (exit $ac_status); } &&
+-	 { ac_try='test -z "$ac_c_werror_flag"
+-			 || test ! -s conftest.err'
++	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+   { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+   (eval $ac_try) 2>&5
+   ac_status=$?
+@@ -3497,8 +3505,7 @@
+   cat conftest.err >&5
+   echo "$as_me:$LINENO: \$? = $ac_status" >&5
+   (exit $ac_status); } &&
+-	 { ac_try='test -z "$ac_c_werror_flag"
+-			 || test ! -s conftest.err'
++	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+   { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+   (eval $ac_try) 2>&5
+   ac_status=$?
+@@ -3569,8 +3576,7 @@
+   cat conftest.err >&5
+   echo "$as_me:$LINENO: \$? = $ac_status" >&5
+   (exit $ac_status); } &&
+-	 { ac_try='test -z "$ac_c_werror_flag"
+-			 || test ! -s conftest.err'
++	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+   { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+   (eval $ac_try) 2>&5
+   ac_status=$?
+@@ -3630,8 +3636,7 @@
+   cat conftest.err >&5
+   echo "$as_me:$LINENO: \$? = $ac_status" >&5
+   (exit $ac_status); } &&
+-	 { ac_try='test -z "$ac_c_werror_flag"
+-			 || test ! -s conftest.err'
++	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+   { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+   (eval $ac_try) 2>&5
+   ac_status=$?
+@@ -4069,8 +4074,7 @@
+   cat conftest.err >&5
+   echo "$as_me:$LINENO: \$? = $ac_status" >&5
+   (exit $ac_status); } &&
+-	 { ac_try='test -z "$ac_c_werror_flag"
+-			 || test ! -s conftest.err'
++	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+   { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+   (eval $ac_try) 2>&5
+   ac_status=$?
+@@ -4135,8 +4139,7 @@
+   cat conftest.err >&5
+   echo "$as_me:$LINENO: \$? = $ac_status" >&5
+   (exit $ac_status); } &&
+-	 { ac_try='test -z "$ac_c_werror_flag"
+-			 || test ! -s conftest.err'
++	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+   { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+   (eval $ac_try) 2>&5
+   ac_status=$?
+@@ -4208,8 +4211,7 @@
+   cat conftest.err >&5
+   echo "$as_me:$LINENO: \$? = $ac_status" >&5
+   (exit $ac_status); } &&
+-	 { ac_try='test -z "$ac_c_werror_flag"
+-			 || test ! -s conftest.err'
++	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+   { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+   (eval $ac_try) 2>&5
+   ac_status=$?
+@@ -4274,8 +4276,7 @@
+   cat conftest.err >&5
+   echo "$as_me:$LINENO: \$? = $ac_status" >&5
+   (exit $ac_status); } &&
+-	 { ac_try='test -z "$ac_c_werror_flag"
+-			 || test ! -s conftest.err'
++	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+   { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+   (eval $ac_try) 2>&5
+   ac_status=$?
+@@ -4340,8 +4341,7 @@
+   cat conftest.err >&5
+   echo "$as_me:$LINENO: \$? = $ac_status" >&5
+   (exit $ac_status); } &&
+-	 { ac_try='test -z "$ac_c_werror_flag"
+-			 || test ! -s conftest.err'
++	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+   { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+   (eval $ac_try) 2>&5
+   ac_status=$?
+@@ -4414,8 +4414,7 @@
+   cat conftest.err >&5
+   echo "$as_me:$LINENO: \$? = $ac_status" >&5
+   (exit $ac_status); } &&
+-	 { ac_try='test -z "$ac_c_werror_flag"
+-			 || test ! -s conftest.err'
++	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+   { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+   (eval $ac_try) 2>&5
+   ac_status=$?
+@@ -4480,8 +4479,7 @@
+   cat conftest.err >&5
+   echo "$as_me:$LINENO: \$? = $ac_status" >&5
+   (exit $ac_status); } &&
+-	 { ac_try='test -z "$ac_c_werror_flag"
+-			 || test ! -s conftest.err'
++	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+   { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+   (eval $ac_try) 2>&5
+   ac_status=$?
+@@ -4571,8 +4569,7 @@
+   cat conftest.err >&5
+   echo "$as_me:$LINENO: \$? = $ac_status" >&5
+   (exit $ac_status); } &&
+-	 { ac_try='test -z "$ac_c_werror_flag"
+-			 || test ! -s conftest.err'
++	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+   { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+   (eval $ac_try) 2>&5
+   ac_status=$?
+@@ -4647,8 +4644,7 @@
+   cat conftest.err >&5
+   echo "$as_me:$LINENO: \$? = $ac_status" >&5
+   (exit $ac_status); } &&
+-	 { ac_try='test -z "$ac_c_werror_flag"
+-			 || test ! -s conftest.err'
++	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+   { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+   (eval $ac_try) 2>&5
+   ac_status=$?
+@@ -4719,8 +4715,7 @@
+   cat conftest.err >&5
+   echo "$as_me:$LINENO: \$? = $ac_status" >&5
+   (exit $ac_status); } &&
+-	 { ac_try='test -z "$ac_c_werror_flag"
+-			 || test ! -s conftest.err'
++	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+   { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+   (eval $ac_try) 2>&5
+   ac_status=$?
+@@ -5044,8 +5039,7 @@
+   cat conftest.err >&5
+   echo "$as_me:$LINENO: \$? = $ac_status" >&5
+   (exit $ac_status); } &&
+-	 { ac_try='test -z "$ac_c_werror_flag"
+-			 || test ! -s conftest.err'
++	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+   { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+   (eval $ac_try) 2>&5
+   ac_status=$?
+@@ -5215,8 +5209,7 @@
+   cat conftest.err >&5
+   echo "$as_me:$LINENO: \$? = $ac_status" >&5
+   (exit $ac_status); } &&
+-	 { ac_try='test -z "$ac_c_werror_flag"
+-			 || test ! -s conftest.err'
++	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+   { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+   (eval $ac_try) 2>&5
+   ac_status=$?
+@@ -5287,8 +5280,7 @@
+   cat conftest.err >&5
+   echo "$as_me:$LINENO: \$? = $ac_status" >&5
+   (exit $ac_status); } &&
+-	 { ac_try='test -z "$ac_c_werror_flag"
+-			 || test ! -s conftest.err'
++	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+   { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+   (eval $ac_try) 2>&5
+   ac_status=$?
+@@ -5940,6 +5932,22 @@
+ fi
+ 
+ 
++# Check whether --enable-graphics or --disable-graphics was given.
++if test "${enable_graphics+set}" = set; then
++  enableval="$enable_graphics"
++
++fi;
++
++
++if test "x$enable_graphics" != xno; then
++  GRAPHICS_SUPPORT_TRUE=
++  GRAPHICS_SUPPORT_FALSE='#'
++else
++  GRAPHICS_SUPPORT_TRUE='#'
++  GRAPHICS_SUPPORT_FALSE=
++fi
++
++
+ # Check whether --enable-hercules or --disable-hercules was given.
+ if test "${enable_hercules+set}" = set; then
+   enableval="$enable_hercules"
+@@ -6244,6 +6252,13 @@
+ Usually this means the macro was only invoked conditionally." >&2;}
+    { (exit 1); exit 1; }; }
+ fi
++if test -z "${GRAPHICS_SUPPORT_TRUE}" && test -z "${GRAPHICS_SUPPORT_FALSE}"; then
++  { { echo "$as_me:$LINENO: error: conditional \"GRAPHICS_SUPPORT\" was never defined.
++Usually this means the macro was only invoked conditionally." >&5
++echo "$as_me: error: conditional \"GRAPHICS_SUPPORT\" was never defined.
++Usually this means the macro was only invoked conditionally." >&2;}
++   { (exit 1); exit 1; }; }
++fi
+ if test -z "${HERCULES_SUPPORT_TRUE}" && test -z "${HERCULES_SUPPORT_FALSE}"; then
+   { { echo "$as_me:$LINENO: error: conditional \"HERCULES_SUPPORT\" was never defined.
+ Usually this means the macro was only invoked conditionally." >&5
+@@ -6879,6 +6894,8 @@
+ s,@NETBOOT_SUPPORT_FALSE@,$NETBOOT_SUPPORT_FALSE,;t t
+ s,@DISKLESS_SUPPORT_TRUE@,$DISKLESS_SUPPORT_TRUE,;t t
+ s,@DISKLESS_SUPPORT_FALSE@,$DISKLESS_SUPPORT_FALSE,;t t
++s,@GRAPHICS_SUPPORT_TRUE@,$GRAPHICS_SUPPORT_TRUE,;t t
++s,@GRAPHICS_SUPPORT_FALSE@,$GRAPHICS_SUPPORT_FALSE,;t t
+ s,@HERCULES_SUPPORT_TRUE@,$HERCULES_SUPPORT_TRUE,;t t
+ s,@HERCULES_SUPPORT_FALSE@,$HERCULES_SUPPORT_FALSE,;t t
+ s,@SERIAL_SUPPORT_TRUE@,$SERIAL_SUPPORT_TRUE,;t t
+@@ -7060,11 +7077,6 @@
+   *) ac_INSTALL=$ac_top_builddir$INSTALL ;;
+   esac
+ 
+-  if test x"$ac_file" != x-; then
+-    { echo "$as_me:$LINENO: creating $ac_file" >&5
+-echo "$as_me: creating $ac_file" >&6;}
+-    rm -f "$ac_file"
+-  fi
+   # Let's still pretend it is `configure' which instantiates (i.e., don't
+   # use $as_me), people would be surprised to read:
+   #    /* config.h.  Generated by config.status.  */
+@@ -7103,6 +7115,12 @@
+ 	 fi;;
+       esac
+     done` || { (exit 1); exit 1; }
++
++  if test x"$ac_file" != x-; then
++    { echo "$as_me:$LINENO: creating $ac_file" >&5
++echo "$as_me: creating $ac_file" >&6;}
++    rm -f "$ac_file"
++  fi
+ _ACEOF
+ cat >>$CONFIG_STATUS <<_ACEOF
+   sed "$ac_vpsub
+@@ -7519,14 +7537,14 @@
+   grep '^DEP_FILES *= *[^ #]' < "$mf" > /dev/null || continue
+   # Extract the definition of DEP_FILES from the Makefile without
+   # running `make'.
+-  DEPDIR=`sed -n -e '/^DEPDIR = / s///p' < "$mf"`
++  DEPDIR=`sed -n 's/^DEPDIR = //p' < "$mf"`
+   test -z "$DEPDIR" && continue
+   # When using ansi2knr, U may be empty or an underscore; expand it
+-  U=`sed -n -e '/^U = / s///p' < "$mf"`
++  U=`sed -n 's/^U = //p' < "$mf"`
+   test -d "$dirpart/$DEPDIR" || mkdir "$dirpart/$DEPDIR"
+   # We invoke sed twice because it is the simplest approach to
+   # changing $(DEPDIR) to its actual value in the expansion.
+-  for file in `sed -n -e '
++  for file in `sed -n '
+     /^DEP_FILES = .*\\\\$/ {
+       s/^DEP_FILES = //
+       :loop
+diff -Nur grub-0.95+cvs20040624.orig/docs/Makefile.in grub-0.95+cvs20040624/docs/Makefile.in
+--- grub-0.95+cvs20040624.orig/docs/Makefile.in	2004-11-12 23:39:22.000000000 +0200
++++ grub-0.95+cvs20040624/docs/Makefile.in	2004-11-12 23:43:34.000000000 +0200
+@@ -119,6 +119,8 @@
+ EGREP = @EGREP@
+ EXEEXT = @EXEEXT@
+ FSYS_CFLAGS = @FSYS_CFLAGS@
++GRAPHICS_SUPPORT_FALSE = @GRAPHICS_SUPPORT_FALSE@
++GRAPHICS_SUPPORT_TRUE = @GRAPHICS_SUPPORT_TRUE@
+ GRUB_CFLAGS = @GRUB_CFLAGS@
+ GRUB_LIBS = @GRUB_LIBS@
+ HERCULES_SUPPORT_FALSE = @HERCULES_SUPPORT_FALSE@
+diff -Nur grub-0.95+cvs20040624.orig/grub/Makefile.in grub-0.95+cvs20040624/grub/Makefile.in
+--- grub-0.95+cvs20040624.orig/grub/Makefile.in	2004-11-12 23:39:22.000000000 +0200
++++ grub-0.95+cvs20040624/grub/Makefile.in	2004-11-12 23:43:35.000000000 +0200
+@@ -97,6 +97,8 @@
+ EGREP = @EGREP@
+ EXEEXT = @EXEEXT@
+ FSYS_CFLAGS = @FSYS_CFLAGS@
++GRAPHICS_SUPPORT_FALSE = @GRAPHICS_SUPPORT_FALSE@
++GRAPHICS_SUPPORT_TRUE = @GRAPHICS_SUPPORT_TRUE@
+ GRUB_CFLAGS = @GRUB_CFLAGS@
+ GRUB_LIBS = @GRUB_LIBS@
+ HERCULES_SUPPORT_FALSE = @HERCULES_SUPPORT_FALSE@
+diff -Nur grub-0.95+cvs20040624.orig/lib/Makefile.in grub-0.95+cvs20040624/lib/Makefile.in
+--- grub-0.95+cvs20040624.orig/lib/Makefile.in	2004-11-12 23:39:22.000000000 +0200
++++ grub-0.95+cvs20040624/lib/Makefile.in	2004-11-12 23:43:35.000000000 +0200
+@@ -97,6 +97,8 @@
+ EGREP = @EGREP@
+ EXEEXT = @EXEEXT@
+ FSYS_CFLAGS = @FSYS_CFLAGS@
++GRAPHICS_SUPPORT_FALSE = @GRAPHICS_SUPPORT_FALSE@
++GRAPHICS_SUPPORT_TRUE = @GRAPHICS_SUPPORT_TRUE@
+ GRUB_CFLAGS = @GRUB_CFLAGS@
+ GRUB_LIBS = @GRUB_LIBS@
+ HERCULES_SUPPORT_FALSE = @HERCULES_SUPPORT_FALSE@
+diff -Nur grub-0.95+cvs20040624.orig/Makefile.in grub-0.95+cvs20040624/Makefile.in
+--- grub-0.95+cvs20040624.orig/Makefile.in	2004-11-12 23:39:22.000000000 +0200
++++ grub-0.95+cvs20040624/Makefile.in	2004-11-12 23:43:34.000000000 +0200
+@@ -100,6 +100,8 @@
+ EGREP = @EGREP@
+ EXEEXT = @EXEEXT@
+ FSYS_CFLAGS = @FSYS_CFLAGS@
++GRAPHICS_SUPPORT_FALSE = @GRAPHICS_SUPPORT_FALSE@
++GRAPHICS_SUPPORT_TRUE = @GRAPHICS_SUPPORT_TRUE@
+ GRUB_CFLAGS = @GRUB_CFLAGS@
+ GRUB_LIBS = @GRUB_LIBS@
+ HERCULES_SUPPORT_FALSE = @HERCULES_SUPPORT_FALSE@
+diff -Nur grub-0.95+cvs20040624.orig/netboot/Makefile.in grub-0.95+cvs20040624/netboot/Makefile.in
+--- grub-0.95+cvs20040624.orig/netboot/Makefile.in	2004-11-12 23:39:22.000000000 +0200
++++ grub-0.95+cvs20040624/netboot/Makefile.in	2004-11-12 23:43:35.000000000 +0200
+@@ -127,6 +127,8 @@
+ EGREP = @EGREP@
+ EXEEXT = @EXEEXT@
+ FSYS_CFLAGS = @FSYS_CFLAGS@
++GRAPHICS_SUPPORT_FALSE = @GRAPHICS_SUPPORT_FALSE@
++GRAPHICS_SUPPORT_TRUE = @GRAPHICS_SUPPORT_TRUE@
+ GRUB_CFLAGS = @GRUB_CFLAGS@
+ GRUB_LIBS = @GRUB_LIBS@
+ HERCULES_SUPPORT_FALSE = @HERCULES_SUPPORT_FALSE@
+diff -Nur grub-0.95+cvs20040624.orig/stage1/Makefile.in grub-0.95+cvs20040624/stage1/Makefile.in
+--- grub-0.95+cvs20040624.orig/stage1/Makefile.in	2004-11-12 23:39:22.000000000 +0200
++++ grub-0.95+cvs20040624/stage1/Makefile.in	2004-11-12 23:43:36.000000000 +0200
+@@ -95,6 +95,8 @@
+ EGREP = @EGREP@
+ EXEEXT = @EXEEXT@
+ FSYS_CFLAGS = @FSYS_CFLAGS@
++GRAPHICS_SUPPORT_FALSE = @GRAPHICS_SUPPORT_FALSE@
++GRAPHICS_SUPPORT_TRUE = @GRAPHICS_SUPPORT_TRUE@
+ GRUB_CFLAGS = @GRUB_CFLAGS@
+ GRUB_LIBS = @GRUB_LIBS@
+ HERCULES_SUPPORT_FALSE = @HERCULES_SUPPORT_FALSE@
+diff -Nur grub-0.95+cvs20040624.orig/stage2/Makefile.in grub-0.95+cvs20040624/stage2/Makefile.in
+--- grub-0.95+cvs20040624.orig/stage2/Makefile.in	2004-11-12 23:39:22.000000000 +0200
++++ grub-0.95+cvs20040624/stage2/Makefile.in	2004-11-12 23:43:38.000000000 +0200
+@@ -99,7 +99,7 @@
+ 	libgrub_a-fsys_xfs.$(OBJEXT) libgrub_a-gunzip.$(OBJEXT) \
+ 	libgrub_a-md5.$(OBJEXT) libgrub_a-serial.$(OBJEXT) \
+ 	libgrub_a-stage2.$(OBJEXT) libgrub_a-terminfo.$(OBJEXT) \
+-	libgrub_a-tparm.$(OBJEXT)
++	libgrub_a-tparm.$(OBJEXT) libgrub_a-graphics.$(OBJEXT)
+ libgrub_a_OBJECTS = $(am_libgrub_a_OBJECTS)
+ PROGRAMS = $(noinst_PROGRAMS)
+ am__objects_1 = diskless_exec-asm.$(OBJEXT) \
+@@ -124,7 +124,8 @@
+ 	diskless_exec-serial.$(OBJEXT) \
+ 	diskless_exec-smp-imps.$(OBJEXT) \
+ 	diskless_exec-stage2.$(OBJEXT) \
+-	diskless_exec-terminfo.$(OBJEXT) diskless_exec-tparm.$(OBJEXT)
++	diskless_exec-terminfo.$(OBJEXT) diskless_exec-tparm.$(OBJEXT) \
++	diskless_exec-graphics.$(OBJEXT)
+ am_diskless_exec_OBJECTS = $(am__objects_1)
+ diskless_exec_OBJECTS = $(am_diskless_exec_OBJECTS)
+ diskless_exec_DEPENDENCIES = ../netboot/libdrivers.a
+@@ -216,7 +217,8 @@
+ 	pre_stage2_exec-smp-imps.$(OBJEXT) \
+ 	pre_stage2_exec-stage2.$(OBJEXT) \
+ 	pre_stage2_exec-terminfo.$(OBJEXT) \
+-	pre_stage2_exec-tparm.$(OBJEXT)
++	pre_stage2_exec-tparm.$(OBJEXT) \
++	pre_stage2_exec-graphics.$(OBJEXT)
+ pre_stage2_exec_OBJECTS = $(am_pre_stage2_exec_OBJECTS)
+ @NETBOOT_SUPPORT_TRUE@pre_stage2_exec_DEPENDENCIES =  \
+ @NETBOOT_SUPPORT_TRUE@	../netboot/libdrivers.a
+@@ -294,6 +296,7 @@
+ @AMDEP_TRUE@	./$(DEPDIR)/diskless_exec-fsys_ufs2.Po \
+ @AMDEP_TRUE@	./$(DEPDIR)/diskless_exec-fsys_vstafs.Po \
+ @AMDEP_TRUE@	./$(DEPDIR)/diskless_exec-fsys_xfs.Po \
++@AMDEP_TRUE@	./$(DEPDIR)/diskless_exec-graphics.Po \
+ @AMDEP_TRUE@	./$(DEPDIR)/diskless_exec-gunzip.Po \
+ @AMDEP_TRUE@	./$(DEPDIR)/diskless_exec-hercules.Po \
+ @AMDEP_TRUE@	./$(DEPDIR)/diskless_exec-md5.Po \
+@@ -348,6 +351,7 @@
+ @AMDEP_TRUE@	./$(DEPDIR)/libgrub_a-fsys_ufs2.Po \
+ @AMDEP_TRUE@	./$(DEPDIR)/libgrub_a-fsys_vstafs.Po \
+ @AMDEP_TRUE@	./$(DEPDIR)/libgrub_a-fsys_xfs.Po \
++@AMDEP_TRUE@	./$(DEPDIR)/libgrub_a-graphics.Po \
+ @AMDEP_TRUE@	./$(DEPDIR)/libgrub_a-gunzip.Po \
+ @AMDEP_TRUE@	./$(DEPDIR)/libgrub_a-md5.Po \
+ @AMDEP_TRUE@	./$(DEPDIR)/libgrub_a-serial.Po \
+@@ -378,6 +382,7 @@
+ @AMDEP_TRUE@	./$(DEPDIR)/pre_stage2_exec-fsys_ufs2.Po \
+ @AMDEP_TRUE@	./$(DEPDIR)/pre_stage2_exec-fsys_vstafs.Po \
+ @AMDEP_TRUE@	./$(DEPDIR)/pre_stage2_exec-fsys_xfs.Po \
++@AMDEP_TRUE@	./$(DEPDIR)/pre_stage2_exec-graphics.Po \
+ @AMDEP_TRUE@	./$(DEPDIR)/pre_stage2_exec-gunzip.Po \
+ @AMDEP_TRUE@	./$(DEPDIR)/pre_stage2_exec-hercules.Po \
+ @AMDEP_TRUE@	./$(DEPDIR)/pre_stage2_exec-md5.Po \
+@@ -471,6 +476,8 @@
+ EGREP = @EGREP@
+ EXEEXT = @EXEEXT@
+ FSYS_CFLAGS = @FSYS_CFLAGS@
++GRAPHICS_SUPPORT_FALSE = @GRAPHICS_SUPPORT_FALSE@
++GRAPHICS_SUPPORT_TRUE = @GRAPHICS_SUPPORT_TRUE@
+ GRUB_CFLAGS = @GRUB_CFLAGS@
+ GRUB_LIBS = @GRUB_LIBS@
+ HERCULES_SUPPORT_FALSE = @HERCULES_SUPPORT_FALSE@
+@@ -560,7 +567,7 @@
+         fat.h filesys.h freebsd.h fs.h hercules.h i386-elf.h \
+ 	imgact_aout.h iso9660.h jfs.h mb_header.h mb_info.h md5.h \
+ 	nbi.h pc_slice.h serial.h shared.h smp-imps.h term.h \
+-	terminfo.h tparm.h nbi.h ufs2.h vstafs.h xfs.h
++	terminfo.h tparm.h nbi.h ufs2.h vstafs.h xfs.h graphics.h
+ 
+ EXTRA_DIST = setjmp.S apm.S $(noinst_SCRIPTS)
+ 
+@@ -573,7 +580,7 @@
+ 	disk_io.c fsys_ext2fs.c fsys_fat.c fsys_ffs.c fsys_iso9660.c \
+ 	fsys_jfs.c fsys_minix.c fsys_reiserfs.c fsys_ufs2.c \
+ 	fsys_vstafs.c fsys_xfs.c gunzip.c md5.c serial.c stage2.c \
+-	terminfo.c tparm.c
++	terminfo.c tparm.c graphics.c
+ 
+ libgrub_a_CFLAGS = $(GRUB_CFLAGS) -I$(top_srcdir)/lib \
+ 	-DGRUB_UTIL=1 -DFSYS_EXT2FS=1 -DFSYS_FAT=1 -DFSYS_FFS=1 \
+@@ -605,8 +612,10 @@
+ @SERIAL_SUPPORT_TRUE@SERIAL_FLAGS = -DSUPPORT_SERIAL=1
+ @HERCULES_SUPPORT_FALSE@HERCULES_FLAGS = 
+ @HERCULES_SUPPORT_TRUE@HERCULES_FLAGS = -DSUPPORT_HERCULES=1
++@GRAPHICS_SUPPORT_FALSE@GRAPHICS_FLAGS = 
++@GRAPHICS_SUPPORT_TRUE@GRAPHICS_FLAGS = -DSUPPORT_GRAPHICS=1
+ STAGE2_COMPILE = $(STAGE2_CFLAGS) -fno-builtin -nostdinc \
+-	$(NETBOOT_FLAGS) $(SERIAL_FLAGS) $(HERCULES_FLAGS)
++	$(NETBOOT_FLAGS) $(SERIAL_FLAGS) $(HERCULES_FLAGS) $(GRAPHICS_FLAGS)
+ 
+ STAGE1_5_LINK = -nostdlib -Wl,-N -Wl,-Ttext -Wl,2000
+ STAGE1_5_COMPILE = $(STAGE2_COMPILE) -DNO_DECOMPRESSION=1 -DSTAGE1_5=1
+@@ -616,7 +625,8 @@
+ 	cmdline.c common.c console.c disk_io.c fsys_ext2fs.c \
+ 	fsys_fat.c fsys_ffs.c fsys_iso9660.c fsys_jfs.c fsys_minix.c \
+ 	fsys_reiserfs.c fsys_ufs2.c fsys_vstafs.c fsys_xfs.c gunzip.c \
+-	hercules.c md5.c serial.c smp-imps.c stage2.c terminfo.c tparm.c
++	hercules.c md5.c serial.c smp-imps.c stage2.c terminfo.c tparm.c \
++	graphics.c
+ 
+ pre_stage2_exec_CFLAGS = $(STAGE2_COMPILE) $(FSYS_CFLAGS)
+ pre_stage2_exec_CCASFLAGS = $(STAGE2_COMPILE) $(FSYS_CFLAGS)
+@@ -892,6 +902,7 @@
+ @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/diskless_exec-fsys_ufs2.Po@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/diskless_exec-fsys_vstafs.Po@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/diskless_exec-fsys_xfs.Po@am__quote@
++@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/diskless_exec-graphics.Po@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/diskless_exec-gunzip.Po@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/diskless_exec-hercules.Po@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/diskless_exec-md5.Po@am__quote@
+@@ -946,6 +957,7 @@
+ @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libgrub_a-fsys_ufs2.Po@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libgrub_a-fsys_vstafs.Po@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libgrub_a-fsys_xfs.Po@am__quote@
++@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libgrub_a-graphics.Po@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libgrub_a-gunzip.Po@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libgrub_a-md5.Po@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libgrub_a-serial.Po@am__quote@
+@@ -976,6 +988,7 @@
+ @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pre_stage2_exec-fsys_ufs2.Po@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pre_stage2_exec-fsys_vstafs.Po@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pre_stage2_exec-fsys_xfs.Po@am__quote@
++@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pre_stage2_exec-graphics.Po@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pre_stage2_exec-gunzip.Po@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pre_stage2_exec-hercules.Po@am__quote@
+ @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/pre_stage2_exec-md5.Po@am__quote@
+@@ -1539,6 +1552,22 @@
+ @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+ @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libgrub_a_CFLAGS) $(CFLAGS) -c -o libgrub_a-tparm.obj `if test -f 'tparm.c'; then $(CYGPATH_W) 'tparm.c'; else $(CYGPATH_W) '$(srcdir)/tparm.c'; fi`
+ 
++libgrub_a-graphics.o: graphics.c
++@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libgrub_a_CFLAGS) $(CFLAGS) -MT libgrub_a-graphics.o -MD -MP -MF "$(DEPDIR)/libgrub_a-graphics.Tpo" -c -o libgrub_a-graphics.o `test -f 'graphics.c' || echo '$(srcdir)/'`graphics.c; \
++@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/libgrub_a-graphics.Tpo" "$(DEPDIR)/libgrub_a-graphics.Po"; else rm -f "$(DEPDIR)/libgrub_a-graphics.Tpo"; exit 1; fi
++@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='graphics.c' object='libgrub_a-graphics.o' libtool=no @AMDEPBACKSLASH@
++@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/libgrub_a-graphics.Po' tmpdepfile='$(DEPDIR)/libgrub_a-graphics.TPo' @AMDEPBACKSLASH@
++@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
++@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libgrub_a_CFLAGS) $(CFLAGS) -c -o libgrub_a-graphics.o `test -f 'graphics.c' || echo '$(srcdir)/'`graphics.c
++
++libgrub_a-graphics.obj: graphics.c
++@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libgrub_a_CFLAGS) $(CFLAGS) -MT libgrub_a-graphics.obj -MD -MP -MF "$(DEPDIR)/libgrub_a-graphics.Tpo" -c -o libgrub_a-graphics.obj `if test -f 'graphics.c'; then $(CYGPATH_W) 'graphics.c'; else $(CYGPATH_W) '$(srcdir)/graphics.c'; fi`; \
++@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/libgrub_a-graphics.Tpo" "$(DEPDIR)/libgrub_a-graphics.Po"; else rm -f "$(DEPDIR)/libgrub_a-graphics.Tpo"; exit 1; fi
++@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='graphics.c' object='libgrub_a-graphics.obj' libtool=no @AMDEPBACKSLASH@
++@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/libgrub_a-graphics.Po' tmpdepfile='$(DEPDIR)/libgrub_a-graphics.TPo' @AMDEPBACKSLASH@
++@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
++@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libgrub_a_CFLAGS) $(CFLAGS) -c -o libgrub_a-graphics.obj `if test -f 'graphics.c'; then $(CYGPATH_W) 'graphics.c'; else $(CYGPATH_W) '$(srcdir)/graphics.c'; fi`
++
+ diskless_exec-bios.o: bios.c
+ @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(diskless_exec_CFLAGS) $(CFLAGS) -MT diskless_exec-bios.o -MD -MP -MF "$(DEPDIR)/diskless_exec-bios.Tpo" -c -o diskless_exec-bios.o `test -f 'bios.c' || echo '$(srcdir)/'`bios.c; \
+ @am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/diskless_exec-bios.Tpo" "$(DEPDIR)/diskless_exec-bios.Po"; else rm -f "$(DEPDIR)/diskless_exec-bios.Tpo"; exit 1; fi
+@@ -1955,6 +1984,22 @@
+ @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+ @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(diskless_exec_CFLAGS) $(CFLAGS) -c -o diskless_exec-tparm.obj `if test -f 'tparm.c'; then $(CYGPATH_W) 'tparm.c'; else $(CYGPATH_W) '$(srcdir)/tparm.c'; fi`
+ 
++diskless_exec-graphics.o: graphics.c
++@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(diskless_exec_CFLAGS) $(CFLAGS) -MT diskless_exec-graphics.o -MD -MP -MF "$(DEPDIR)/diskless_exec-graphics.Tpo" -c -o diskless_exec-graphics.o `test -f 'graphics.c' || echo '$(srcdir)/'`graphics.c; \
++@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/diskless_exec-graphics.Tpo" "$(DEPDIR)/diskless_exec-graphics.Po"; else rm -f "$(DEPDIR)/diskless_exec-graphics.Tpo"; exit 1; fi
++@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='graphics.c' object='diskless_exec-graphics.o' libtool=no @AMDEPBACKSLASH@
++@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/diskless_exec-graphics.Po' tmpdepfile='$(DEPDIR)/diskless_exec-graphics.TPo' @AMDEPBACKSLASH@
++@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
++@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(diskless_exec_CFLAGS) $(CFLAGS) -c -o diskless_exec-graphics.o `test -f 'graphics.c' || echo '$(srcdir)/'`graphics.c
++
++diskless_exec-graphics.obj: graphics.c
++@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(diskless_exec_CFLAGS) $(CFLAGS) -MT diskless_exec-graphics.obj -MD -MP -MF "$(DEPDIR)/diskless_exec-graphics.Tpo" -c -o diskless_exec-graphics.obj `if test -f 'graphics.c'; then $(CYGPATH_W) 'graphics.c'; else $(CYGPATH_W) '$(srcdir)/graphics.c'; fi`; \
++@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/diskless_exec-graphics.Tpo" "$(DEPDIR)/diskless_exec-graphics.Po"; else rm -f "$(DEPDIR)/diskless_exec-graphics.Tpo"; exit 1; fi
++@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='graphics.c' object='diskless_exec-graphics.obj' libtool=no @AMDEPBACKSLASH@
++@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/diskless_exec-graphics.Po' tmpdepfile='$(DEPDIR)/diskless_exec-graphics.TPo' @AMDEPBACKSLASH@
++@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
++@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(diskless_exec_CFLAGS) $(CFLAGS) -c -o diskless_exec-graphics.obj `if test -f 'graphics.c'; then $(CYGPATH_W) 'graphics.c'; else $(CYGPATH_W) '$(srcdir)/graphics.c'; fi`
++
+ e2fs_stage1_5_exec-common.o: common.c
+ @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(e2fs_stage1_5_exec_CFLAGS) $(CFLAGS) -MT e2fs_stage1_5_exec-common.o -MD -MP -MF "$(DEPDIR)/e2fs_stage1_5_exec-common.Tpo" -c -o e2fs_stage1_5_exec-common.o `test -f 'common.c' || echo '$(srcdir)/'`common.c; \
+ @am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/e2fs_stage1_5_exec-common.Tpo" "$(DEPDIR)/e2fs_stage1_5_exec-common.Po"; else rm -f "$(DEPDIR)/e2fs_stage1_5_exec-common.Tpo"; exit 1; fi
+@@ -2947,6 +2992,22 @@
+ @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+ @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pre_stage2_exec_CFLAGS) $(CFLAGS) -c -o pre_stage2_exec-tparm.obj `if test -f 'tparm.c'; then $(CYGPATH_W) 'tparm.c'; else $(CYGPATH_W) '$(srcdir)/tparm.c'; fi`
+ 
++pre_stage2_exec-graphics.o: graphics.c
++@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pre_stage2_exec_CFLAGS) $(CFLAGS) -MT pre_stage2_exec-graphics.o -MD -MP -MF "$(DEPDIR)/pre_stage2_exec-graphics.Tpo" -c -o pre_stage2_exec-graphics.o `test -f 'graphics.c' || echo '$(srcdir)/'`graphics.c; \
++@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pre_stage2_exec-graphics.Tpo" "$(DEPDIR)/pre_stage2_exec-graphics.Po"; else rm -f "$(DEPDIR)/pre_stage2_exec-graphics.Tpo"; exit 1; fi
++@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='graphics.c' object='pre_stage2_exec-graphics.o' libtool=no @AMDEPBACKSLASH@
++@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pre_stage2_exec-graphics.Po' tmpdepfile='$(DEPDIR)/pre_stage2_exec-graphics.TPo' @AMDEPBACKSLASH@
++@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
++@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pre_stage2_exec_CFLAGS) $(CFLAGS) -c -o pre_stage2_exec-graphics.o `test -f 'graphics.c' || echo '$(srcdir)/'`graphics.c
++
++pre_stage2_exec-graphics.obj: graphics.c
++@am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pre_stage2_exec_CFLAGS) $(CFLAGS) -MT pre_stage2_exec-graphics.obj -MD -MP -MF "$(DEPDIR)/pre_stage2_exec-graphics.Tpo" -c -o pre_stage2_exec-graphics.obj `if test -f 'graphics.c'; then $(CYGPATH_W) 'graphics.c'; else $(CYGPATH_W) '$(srcdir)/graphics.c'; fi`; \
++@am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/pre_stage2_exec-graphics.Tpo" "$(DEPDIR)/pre_stage2_exec-graphics.Po"; else rm -f "$(DEPDIR)/pre_stage2_exec-graphics.Tpo"; exit 1; fi
++@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='graphics.c' object='pre_stage2_exec-graphics.obj' libtool=no @AMDEPBACKSLASH@
++@AMDEP_TRUE@@am__fastdepCC_FALSE@	depfile='$(DEPDIR)/pre_stage2_exec-graphics.Po' tmpdepfile='$(DEPDIR)/pre_stage2_exec-graphics.TPo' @AMDEPBACKSLASH@
++@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
++@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(pre_stage2_exec_CFLAGS) $(CFLAGS) -c -o pre_stage2_exec-graphics.obj `if test -f 'graphics.c'; then $(CYGPATH_W) 'graphics.c'; else $(CYGPATH_W) '$(srcdir)/graphics.c'; fi`
++
+ reiserfs_stage1_5_exec-common.o: common.c
+ @am__fastdepCC_TRUE@	if $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(reiserfs_stage1_5_exec_CFLAGS) $(CFLAGS) -MT reiserfs_stage1_5_exec-common.o -MD -MP -MF "$(DEPDIR)/reiserfs_stage1_5_exec-common.Tpo" -c -o reiserfs_stage1_5_exec-common.o `test -f 'common.c' || echo '$(srcdir)/'`common.c; \
+ @am__fastdepCC_TRUE@	then mv -f "$(DEPDIR)/reiserfs_stage1_5_exec-common.Tpo" "$(DEPDIR)/reiserfs_stage1_5_exec-common.Po"; else rm -f "$(DEPDIR)/reiserfs_stage1_5_exec-common.Tpo"; exit 1; fi
+diff -Nur grub-0.95+cvs20040624.orig/util/Makefile.in grub-0.95+cvs20040624/util/Makefile.in
+--- grub-0.95+cvs20040624.orig/util/Makefile.in	2004-11-12 23:39:22.000000000 +0200
++++ grub-0.95+cvs20040624/util/Makefile.in	2004-11-12 23:43:38.000000000 +0200
+@@ -102,6 +102,8 @@
+ EGREP = @EGREP@
+ EXEEXT = @EXEEXT@
+ FSYS_CFLAGS = @FSYS_CFLAGS@
++GRAPHICS_SUPPORT_FALSE = @GRAPHICS_SUPPORT_FALSE@
++GRAPHICS_SUPPORT_TRUE = @GRAPHICS_SUPPORT_TRUE@
+ GRUB_CFLAGS = @GRUB_CFLAGS@
+ GRUB_LIBS = @GRUB_LIBS@
+ HERCULES_SUPPORT_FALSE = @HERCULES_SUPPORT_FALSE@
