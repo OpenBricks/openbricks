@@ -100,14 +100,26 @@ if [ ! -f "themes/$THEME/config" ]; then
   fi
 fi
 
+. themes/$THEME/config
+[ -z "$FONT_CHARSETS" ] && FONT_CHARSETS="iso-8859-1"
+
 MENU_CHARSET=`lang2charset "$LANG"`
 MENU_FONT=`lang2font "$LANG" menu`
 SUB_CHARSET=`lang2charset "$SUB_CHARSET"`
 SUB_FONT=`lang2font "$SUB_CHARSET" sub`
+
+for i in $FONT_CHARSETS; do
+  if [ "$i" = "$MENU_CHARSET" ]; then
+    cp $GEEXBOX_DIR/themes/$THEME/*.ttf $TMPDIR/iso/GEEXBOX/usr/share/fonts/themefont.ttf
+    MENU_FONT="themefont.ttf"
+    break
+  fi
+done
+
 [ -z "$SUB_FONT" -o -z "$MENU_FONT" ] && exit 1
 
 for font in $MENU_FONT $SUB_FONT; do
-  if [ ! -f $GEEXBOX_DIR/font/$font/font.desc ]; then
+  if [ "$font" != "themefont.ttf" -a ! -f $GEEXBOX_DIR/i18n/fonts/$font ]; then
     echo ""
     echo "**** $font font is missing ****"
     echo "**** Please visit the README - EXTRA SUBTITLE FONTS section ****"
@@ -139,9 +151,9 @@ cp $GEEXBOX_DIR/i18n/texts/menu_$LANG.conf $TMPDIR/iso/GEEXBOX/etc/mplayer/
 cp $GEEXBOX_DIR/i18n/lang.conf $TMPDIR/iso/GEEXBOX/etc/
 
 echo $SUB_CHARSET > $TMPDIR/iso/GEEXBOX/etc/subfont
-cp -r $GEEXBOX_DIR/font/$SUB_FONT $TMPDIR/iso/GEEXBOX/usr/share/mplayer/font/
-if [ -n "$MENU_FONT" -a "$MENU_FONT" != "$SUB_FONT" ]; then
-  cp -r $GEEXBOX_DIR/font/$MENU_FONT $TMPDIR/iso/GEEXBOX/usr/share/mplayer/font/
+cp -r $GEEXBOX_DIR/i18n/fonts/$SUB_FONT $TMPDIR/iso/GEEXBOX/usr/share/fonts/
+if [ "$MENU_FONT" != "themefont.ttf" -a "$MENU_FONT" != "$SUB_FONT" ]; then
+  cp -r $GEEXBOX_DIR/i18n/fonts/$MENU_FONT $TMPDIR/iso/GEEXBOX/usr/share/fonts/
 fi
 
 for i in $SUB_CHARSET $MENU_CHARSET; do
@@ -166,9 +178,6 @@ rm -f $TMPDIR/iso/GEEXBOX/etc/mplayer/menu_$LANG.conf
 rm -f $TMPDIR/iso/GEEXBOX/etc/lang.conf
 rm -f $TMPDIR/iso/GEEXBOX/etc/lang
 rm -f $TMPDIR/iso/GEEXBOX/etc/subfont
-for i in $TMPDIR/iso/GEEXBOX/usr/share/mplayer/font/*/; do
-  [ -d $i ] && rm -rf $i
-done
 rm -f $TMPDIR/iso/GEEXBOX/etc/theme.conf
 rm -rf $TMPDIR/iso/GEEXBOX/usr/share/iconv/*
 rm -rf $TMPDIR/iso/GEEXBOX/usr/share/fonts/*
