@@ -39,8 +39,6 @@ else
   echo ""
   exit 1
 fi
-OUTPUT=geexbox-`cat $GEEXBOX_DIR/VERSION`-$LANG.iso
-W32CODECS_DIR=/usr/lib/win32
 
 if [ -e /etc/geexbox-generator.conf ]; then
   . /etc/geexbox-generator.conf;
@@ -49,6 +47,9 @@ fi
 if [ -e ~/.geexbox-generator ]; then
   . ~/.geexbox-generator.conf;
 fi
+
+OUTPUT=geexbox-`cat $GEEXBOX_DIR/VERSION`-$LANG.iso
+W32CODECS_DIR=/usr/lib/win32
 
 . $GEEXBOX_DIR/language/lang.conf
 . $GEEXBOX_DIR/language/lang.funcs
