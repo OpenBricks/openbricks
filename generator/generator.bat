@@ -27,17 +27,6 @@ echo "## You should NOT use this generator.bat. Use generator.exe instead ##"
 echo "######################################################################"
 echo ""
 
-if not exist ziso goto nothingtoremove
-echo "Removing old compressed tree..."
-if exist %windir%\command\deltree.exe deltree /y ziso >nul
-if not exist %windir%\command\deltree.exe rmdir /q /s ziso >nul
-:nothingtoremove
-
-echo "Applying settings..."
-echo %LANG% > iso\GEEXBOX\etc\lang
-copy language\help_%LANG%.txt iso\GEEXBOX\usr\share\mplayer\help_%LANG%.txt >nul
-copy language\menu_%LANG%.conf iso\GEEXBOX\etc\mplayer\menu_%LANG%.conf >nul
-copy language\lang.conf iso\GEEXBOX\etc\lang.conf >nul
 set MENU_FONT=
 if %LANG%==hu set MENU_FONT=iso-8859-2
 if %LANG%==he set MENU_FONT=iso-8859-8
@@ -60,6 +49,18 @@ if %SUB_FONT%==bg set SUBFONT=cp1251
 if %SUB_FONT%==koi8r set SUBFONT=koi8r
 if %SUB_FONT%==ru set SUBFONT=koi8r
 set SUB_FONT=%SUBFONT%
+
+if not exist ziso goto nothingtoremove
+echo "Removing old compressed tree..."
+if exist %windir%\command\deltree.exe deltree /y ziso >nul
+if not exist %windir%\command\deltree.exe rmdir /q /s ziso >nul
+:nothingtoremove
+
+echo "Applying settings..."
+echo %LANG% > iso\GEEXBOX\etc\lang
+copy language\help_%LANG%.txt iso\GEEXBOX\usr\share\mplayer\help_%LANG%.txt >nul
+copy language\menu_%LANG%.conf iso\GEEXBOX\etc\mplayer\menu_%LANG%.conf >nul
+copy language\lang.conf iso\GEEXBOX\etc\lang.conf >nul
 
 echo %SUB_FONT% > iso\GEEXBOX\etc\subfont
 md iso\GEEXBOX\usr\share\mplayer\font\%SUB_FONT%

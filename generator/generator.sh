@@ -85,6 +85,9 @@ while [ $# -ne 0 ]; do
   shift || true
 done
 
+MENU_FONT=`lang2menufont $LANG`
+SUB_FONT=`subfont2font $SUB_FONT`
+
 if [ $TMPDIR = "." ]; then
   rm -rf $TMPDIR/ziso
 else
@@ -97,9 +100,6 @@ echo $LANG > $TMPDIR/iso/GEEXBOX/etc/lang
 cp $GEEXBOX_DIR/language/help_$LANG.txt $TMPDIR/iso/GEEXBOX/usr/share/mplayer/
 cp $GEEXBOX_DIR/language/menu_$LANG.conf $TMPDIR/iso/GEEXBOX/etc/mplayer/
 cp $GEEXBOX_DIR/language/lang.conf $TMPDIR/iso/GEEXBOX/etc/
-
-MENU_FONT=`lang2menufont $LANG`
-SUB_FONT=`subfont2font $SUB_FONT`
 
 echo $SUB_FONT > $TMPDIR/iso/GEEXBOX/etc/subfont
 cp -r $GEEXBOX_DIR/font/$SUB_FONT $TMPDIR/iso/GEEXBOX/usr/share/mplayer/font/
