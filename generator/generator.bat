@@ -6,7 +6,7 @@ REM See iso/GEEXBOX/etc/mplayer/mplayer.conf
 set LANG=en
 
 REM Subtitle font  (bg/br/ca/cs/de/en/es/et/fi/fr/he/hu/it/nl/pl/ro/ru/sv/sk)
-REM Can also be set to a charset code (iso-8859-{1,2,8,9}/cp1251/koi8r)
+REM Can also be set to a charset code (iso-8859-{1,2,7,8,9}/cp1251/koi8r)
 REM when empty default is to LANG
 set SUB_FONT=
 
@@ -41,6 +41,7 @@ if %SUB_FONT%==hu set SUBFONT=iso-8859-2
 if %SUB_FONT%==pl set SUBFONT=iso-8859-2
 if %SUB_FONT%==ro set SUBFONT=iso-8859-2
 if %SUB_FONT%==sk set SUBFONT=iso-8859-2
+if %SUB_FONT%==iso-8859-7 set SUBFONT=iso-8859-7
 if %SUB_FONT%==iso-8859-8 set SUBFONT=iso-8859-8
 if %SUB_FONT%==he set SUBFONT=iso-8859-8
 if %SUB_FONT%==iso-8859-9 set SUBFONT=iso-8859-9
