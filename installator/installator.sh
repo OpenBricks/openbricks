@@ -79,7 +79,7 @@ fi
 while [ ! -b "$DEV" ]; do
   if [ -n "$DIALOG" ]; then
     DISKS=""
-    for i in `$SFDISK -l | grep FAT16 | grep ${DISK%disc} | cut -f1 -d' '`; do
+    for i in `$SFDISK -l /dev/$DISK | grep FAT16 | grep ${DISK%disc} | cut -f1 -d' '`; do
       S=`$SFDISK -s "$i" | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
       DISKS="$DISKS $i ${S}MB"
     done
