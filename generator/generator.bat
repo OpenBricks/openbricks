@@ -66,6 +66,29 @@ if %SUB_FONT%==big5 set SUBFONT=big5
 if %SUB_FONT%==zh_TW set SUBFONT=big5
 set SUB_FONT=%SUBFONT%
 
+set TEST_FONT=%SUB_FONT%
+if not exist font\%TEST_FONT%\font.desc goto missingfont
+set TEST_FONT=%MENU_FONT%
+if not exist font\%TEST_FONT%\font.desc goto missingfont
+set TEST_FILE=menu_%LANG%.conf
+if not exist language\%TEST_FILE% goto missinglang
+set TEST_FILE=help_%LANG%.txt
+if not exist language\%TEST_FILE% goto missinglang
+goto nomissingfiles
+:missingfont
+echo.
+echo **** %TEST_FONT% font is missing ****
+echo **** Please visit the README - EXTRA SUBTITLE FONTS section ****
+echo.
+pause
+exit
+:missinglang
+echo.
+echo **** %TEST_FILE% language file is missing ****
+echo.
+pause
+exit
+:nomissingfiles
 if not exist ziso goto nothingtoremove
 echo "Removing old compressed tree..."
 if exist %windir%\command\deltree.exe deltree /y ziso >nul
@@ -111,3 +134,4 @@ if not exist %windir%\command\deltree.exe rmdir /q /s ziso >nul
 echo.
 echo **** Your customized GeeXboX iso is ready ****
 echo.
+pause
