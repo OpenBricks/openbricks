@@ -82,7 +82,7 @@ convert () {
 
 # Configure network interface and parameters before installing GeeXboX to disk.
 setup_network () {
-  local title phy_type wifi_mode wep essid host_ip gw_ip
+  local title phy_type wifi_mode wep essid host_ip gw_ip smb_user smb_pwd
   
   title="$BACKTITLE : Network Configuration"
 
@@ -105,12 +105,20 @@ setup_network () {
     gw_ip=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "GeeXboX GateWay" --inputbox "\nYou may want to connect GeeXboX to the Internet. Please fill in the following input box with your gateway IP address or let it blank if you do not want to set a gateway for this computer.\n" 0 0 ""` || exit 1
   fi
 
+  # get samba user name
+  smb_user=`$DIALOG --no-cancel --stdout --backtitle "$title" --title "Set Samba User name" --inputbox "\nWhen accessing to remote Samba shares, you may need to be authenticated. Most of Microsoft Windows computers let you anonymously access to remote shares using the guest account (SHARE). Please fill in the following input box with your user name for accesing to remote Samba shares or leave it blank if you do not have one.\n" 0 0 "SHARE"` || exit 1
+
+  # get samba password
+  smb_pwd=`$DIALOG --no-cancel --stdout --backtitle "$title" --title "Set Samba Password" --inputbox "\nIf user needs to be authenticated through a password, please fill in the following input box with it or leave it blank if you do not have one.\n" 0 0 ""` || exit 1
+
   sed -i "s%^PHY_TYPE=\".*\"\(.*\)%PHY_TYPE=\"$phy_type\"\1%" $1/etc/network
   sed -i "s%^WIFI_MODE=\".*\"\(.*\)%WIFI_MODE=\"$wifi_mode\"\1%" $1/etc/network
   sed -i "s%^WIFI_WEP=\".*\"\(.*\)%WIFI_WEP=\"$wep\"\1%" $1/etc/network
   sed -i "s%^WIFI_ESSID=\".*\"\(.*\)%WIFI_ESSID=\"$essid\"\1%" $1/etc/network
   sed -i "s%^HOST=.*%HOST=\"$host_ip\"%" $1/etc/network
   sed -i "s%^GATEWAY=.*%GATEWAY=\"$gw_ip\"%" $1/etc/network
+  sed -i "s%^SMB_USER=.*%SMB_USER=\"$smb_user\"%" $1/etc/network
+  sed -i "s%^SMB_PWD=.*%SMB_PWD=\"$smb_pwd\"%" $1/etc/network
 }
 
 /bin/busybox mount -t proc none /proc
