@@ -2,9 +2,12 @@
 
 # Menu language (bg/br/cat/cz/de/en/es/fi/fr/he/hu/it/nl/pl/ro/ru/se/sk)
 # This have no effect on DVD language. See iso/GEEXBOX/etc/mplayer/mplayer.conf
-# For ru, you will need to replace the ttf file in
-# iso/GEEXBOX/usr/share/mplayer/font by a KOI8R ttf font.
 LANG=en
+
+# Subtitle font (bg/br/cat/cz/de/en/es/fi/fr/he/hu/it/nl/po/ro/ru/se/sk)
+# Can also be set to a charset code (iso-8859-{1,2,8}/cp1251/koi8r)
+# when empty default is to LANG
+SUB_FONT=
 
 # Remote to Use (pctv/logitech/hauppauge/realmagic/creative/leadtek/RM-S6/
 #                RX-V850/animax/askey/avermedia/packard_bell/atiusb/LG/D-10)
@@ -86,20 +89,44 @@ else
 fi
 mkdir -p $TMPDIR/ziso
 [ ! -d $TMPDIR/iso ] && cp -r $GEEXBOX_DIR/iso $TMPDIR/iso
+
 echo $LANG > $TMPDIR/iso/GEEXBOX/etc/lang
 cp $GEEXBOX_DIR/language/help_$LANG.txt $TMPDIR/iso/GEEXBOX/usr/share/mplayer/
 cp $GEEXBOX_DIR/language/menu_$LANG.conf $TMPDIR/iso/GEEXBOX/etc/mplayer/
-if [ $LANG = cz -o $LANG = hu -o $LANG = pl -o $LANG = ro -o $LANG = sk ]; then
-  cp -r $GEEXBOX_DIR/font/iso-8859-2 $TMPDIR/iso/GEEXBOX/usr/share/mplayer/font/
+
+# Those are the languages which require `bitmap font` for menu
+if [ $LANG = hu ]; then
+  MENU_FONT=iso-8859-2
 elif [ $LANG = he ]; then
-  cp -r $GEEXBOX_DIR/font/iso-8859-8 $TMPDIR/iso/GEEXBOX/usr/share/mplayer/font/
+  MENU_FONT=iso-8859-8
 elif [ $LANG = bg ]; then
-  cp -r $GEEXBOX_DIR/font/cp1251 $TMPDIR/iso/GEEXBOX/usr/share/mplayer/font/
+  MENU_FONT=cp1251
 elif [ $LANG = ru ]; then
-  cp -r $GEEXBOX_DIR/font/koi8r $TMPDIR/iso/GEEXBOX/usr/share/mplayer/font/
+  MENU_FONT=koi8r
 else
-  cp -r $GEEXBOX_DIR/font/iso-8859-1 $TMPDIR/iso/GEEXBOX/usr/share/mplayer/font/
+  MENU_FONT=
 fi
+if [ -z "$SUB_FONT" ]; then
+  SUB_FONT=$LANG
+fi
+if [ $SUB_FONT = iso-8859-2 -o $SUB_FONT = cz -o $SUB_FONT = hu -o $SUB_FONT = pl -o $SUB_FONT = ro -o $SUB_FONT = sk ]; then
+  SUB_FONT=iso-8859-2
+elif [ $SUB_FONT = iso-8859-8 -o $SUB_FONT = he ]; then
+  SUB_FONT=iso-8859-8
+elif [ $SUB_FONT = cp1251 -o $SUB_FONT = bg ]; then
+  SUB_FONT=cp1251
+elif [ $SUB_FONT = koi8r -o $SUB_FONT = ru ]; then
+  SUB_FONT=koi8r
+else
+  SUB_FONT=iso-8859-1
+fi
+
+echo $SUB_FONT > $TMPDIR/iso/GEEXBOX/etc/subfont
+cp -r $GEEXBOX_DIR/font/$SUB_FONT $TMPDIR/iso/GEEXBOX/usr/share/mplayer/font/
+if [ -n "$MENU_FONT" -a "$MENU_FONT" != "$SUB_FONT" ]; then
+  cp -r $GEEXBOX_DIR/font/$MENU_FONT $TMPDIR/iso/GEEXBOX/usr/share/mplayer/font/
+fi
+
 cp $GEEXBOX_DIR/lirc/lircrc_$REMOTE $TMPDIR/iso/GEEXBOX/etc/lircrc
 cp $GEEXBOX_DIR/lirc/lircd_$RECEIVER $TMPDIR/iso/GEEXBOX/etc/lircd
 cp $GEEXBOX_DIR/lirc/lircd_$REMOTE.conf $TMPDIR/iso/GEEXBOX/etc/lircd.conf
@@ -107,8 +134,9 @@ cp $GEEXBOX_DIR/lirc/lircd_$REMOTE.conf $TMPDIR/iso/GEEXBOX/etc/lircd.conf
 mkzftree $TMPDIR/iso/GEEXBOX $TMPDIR/ziso/GEEXBOX
 rm -f $TMPDIR/iso/GEEXBOX/usr/share/mplayer/help.txt
 rm -f $TMPDIR/iso/GEEXBOX/etc/mplayer/menu.conf
-rm -f $TMPDIR/iso/GEEXBOX/usr/share/mplayer/font/font.desc
-rm -f $TMPDIR/iso/GEEXBOX/usr/share/mplayer/font/*.raw
+for i in $TMPDIR/iso/GEEXBOX/usr/share/mplayer/font/*/; do
+  [ -d $i ] && rm -rf $i
+done
 rm -f $TMPDIR/iso/GEEXBOX/etc/lirc*
 
 cp -rf $TMPDIR/iso/GEEXBOX/boot/* $TMPDIR/ziso/GEEXBOX/boot
