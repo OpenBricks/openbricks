@@ -8,13 +8,13 @@
 
 
 
-| Informazioni
+| INFORMAZIONI
 | ~~~~~~~~~~~~
 
-GeeXboX è una sorta di software per "divx box". Infatti, è un boot CD
+GeeXboX è una sorta di software per "divx box". Infatti, è un boot CD 
 stand-alone che permette di vedere film o ascoltare musica. Supporta molti
 formati, come avi, mpeg, divx, ogm, rm, mp3, ogg, dvd, vcd e cdda.
-Supporta inoltre qualche telecomando IR e il TV-Out per qualche scheda grafica.
+Supporta inoltre qualche telecomando IR e il TV-Out per qualche scheda grafica. 
 Questo archivio contiene gli script che servono per creare un'immagine iso di
 GeeXboX.
 
@@ -49,7 +49,7 @@ E anche 500 MB di spazio libero su disco.
 | PERSONALIZZAZIONE
 | ~~~~~~~~~~~~~~~~~
 
-Quando GeeXboX è installato su disco o generato,
+Quando GeeXboX è installato su disco o generato, 
 è facile da personalizzare.
 
 E' possibile aggiugnere alcuni codecs proprietari come rv9 o wmv9,
@@ -114,6 +114,69 @@ semplicemente qualche file di testo.
     E' possibile inoltre specificare un login e una password che sarnno usati
     per connettersi con le condivisioni windows (predefinito: anonimo).
     E' inoltre possibile dichiarare i mount NFS in GEEXBOX/etc/nfs.
+
+* wifi :
+    Come impostazioni predefinite, GeeXboX cerca di rilevare automaticamente
+    le impostazioni di rete. Se sulla macchina sono installate sia una scheda
+    di rete (NIC) e una scheda WiFi, solo quest'ultima sarà impostata.
+    Per impostare correttamente la rete, può essere necessario modificare il
+    file /etc/network.
+
+    In questo file ci sono 4 linee riguardanti le schede wireless :
+    * PHY_TYPE="auto"      # Tipo fisico di rete (auto|ethernet|wifi)
+    * WIFI_MODE="managed"  # metodo di utilizzo Wifi (managed|ad-hoc)
+    * WIFI_WEP=""          # chiave WEP Wifi
+    * WIFI_ESSID="any"     # SSID Wifi
+
+    Con queste linee è possibile configurare la gran parte delle impostazioni.
+    E' possibile lasciare la rilevazione automatica oppure forzare l'uso della
+    scheda ethernet o dell'adattatore WiFi.
+    Allo stesso modo, è possibile scegliere tra il metodo managed e ad-hoc e
+    definire la propria chiave WEP e SSID.
+
+* gateway :
+    GeeXboX supporta l'accesso a Internet. Nel caso in cui tu abbia una
+    connessione Internet, è possibile condividerla con il proprio multimedia
+    box, utilizzando un router o un gateway. Per fare ciò, è necessario
+    definire l'indirizzo IP del gateway nel file /etc/network.
+
+    * GATEWAY=""     # Gateway IP ("" per DHCP o nessuna connesione internet)
+
+* configuraqzione tv :
+    GeeXboX supporta le entrate e i sintonizzatori TV. Il sistema cercherà di
+    rilevare automaticamente la scheda e il sintonizzatore. E' possibile
+    forzare le impostazioni e saltare i tentativi di rilevamento. Modificare il
+    file  /etc/tvsettings come descritto :
+
+ #TV CARD/TUNER Model (AUTO for autodetection or look at the following urls)
+ #http://www.linuxhq.com/kernel/v2.6/2/Documentation/video4linux/CARDLIST.bttv
+ #http://www.linuxhq.com/kernel/v2.6/2/Documentation/video4linux/CARDLIST.tuner
+ TV_CARD=AUTO
+ TV_TUNER=AUTO
+
+    Lasciare il parametro AUTO se si vuole mantenere il rilevazione automatica,
+    oppure sostiruirlo con il numero del tipo di scheda e sintonizzatore in
+    possesso, in base alle informazioni dei precedenti URL. Prestare molta
+    attenzione: per forzare il tipo si scheda e sintonizzatore occorre
+    conoscere l' ESATTO MODELLOP del proprio hardware.
+
+    Successivamente, dovrebbe essere possibile utilizzare l'input TV (Composito
+    e S-VHS) della propria scheda TV. Allo stesso modo, sarà possibile usare il
+    sintonizzatore per guardare la TV. Per fare ciò, è necessario specificare
+    la regione di appartenenza e la frequenza dei canali TV che si vogliono
+    visualizzare. Anche questa volta basta modificare il file /etc/tvsettings :
+
+    # TV Channels
+    # Syntax : CHAN="Channel Title":"Channel Frequency"
+    # Example :
+    # CHAN="France 2":"26"
+    # CHAN="Canal +":"K08"
+    # TV Channels List
+    # Available : france, europe-east, europe-west, us-bcast, us-cable
+    CHANLIST=france
+
+    Prestare attenzione nell'usare la stessa sintassi descritta sopra, affinchè
+    i canali TV siano presenti nel menu principale.
 
 
 | CREAZIONE
@@ -211,7 +274,7 @@ Ci sono anche comandi più avanzati, se si vuole fare un po' di hack di GeeXboX:
   scripts/install package    # installa il pacchetto con il prefisso $INSTALL
   scripts/clean package      # pulisce la directory dei sorgenti del pacchetto
   make exec                  # lancia direttamente GeeXboX in una [prigione]
-                             # ATTENZIONE: funzione sperimentale,
+                             # ATTENZIONE: funzione sperimentale, 
                              # usare a proprio rischio.
 
 
@@ -303,4 +366,5 @@ Tutti i programmi utilizzati da GeeXboX sono protetti dalle rispettive licenze.
 Sono tutti software liberi e molti di questi sono regolati dalla GNU General
 Public License.
 GeeXboX per sè, intesa come tutti gli script utilizzati nel processo di
-compilazione, sono regolati dalla GNU General Public License. 
+compilazione, sono regolati dalla GNU General Public License.
+
