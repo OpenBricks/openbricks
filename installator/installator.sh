@@ -43,18 +43,21 @@ if [ -z "$SFDISK" -o -z "$SYSLINUX" ]; then
 fi
 
 if [ -n "$DIALOG" ]; then
-  DISKS=`cat /proc/partitions | sed -n "s/\ *[0-9][0-9]*\ *[0-9][0-9]*\ *\([0-9][0-9]*\)\ \([a-z]*\)$/\2 (\1_blocks)/p"`
-  if [ -z "$DISKS" ]; then
-    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\nNo disks found on this system.\n" 0 0
-    exit 1
-  else
-    if [ -z "$CFDISK" ]; then
-      CFDISK_MSG="As you don't have cfdisk installed, the installator wont be able to create the partition for you. You have to do it yourself before installing."
+  while true; do
+    DISKS=`cat /proc/partitions | sed -n "s/\ *[0-9][0-9]*\ *[0-9][0-9]*\ *\([0-9][0-9]*\)\ \([a-z]*\)$/\2 (\1_blocks)/p"`
+    if [ -z "$DISKS" ]; then
+      $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --yesno "\nNo disks found on this system.\nRecheck ?" 0 0 || exit 1
     else
-      CFDISK_MSG="You can now edit your partition table to create this FAT16 partition (type=06). Be carefull to choose the right disk ! We wont be responsible for any data loss."
+      DISKS="$DISKS refresh list"
+      if [ -z "$CFDISK" ]; then
+        CFDISK_MSG="As you don't have cfdisk installed, the installator wont be able to create the partition for you. You have to do it yourself before installing."
+      else
+        CFDISK_MSG="You can now edit your partition table to create this FAT16 partition (type=06). Be carefull to choose the right disk ! We wont be responsible for any data loss."
+      fi
+      DISK=`$DIALOG --stdout --backtitle "$BACKTITLE" --title "Installation device" --menu "\nYou are going to install the GeeXboX. For this you will need a PRIMARY FAT16 partition (hdX1 to hdX4) with about 8 MB of free space (max. 1 GB). It WONT work with FAT32 or ext2 partitions.\n$CFDISK_MSG" 0 0 0 $DISKS` ||exit 1
+      [ $DISK != refresh ] && break
     fi
-    DISK=`$DIALOG --stdout --backtitle "$BACKTITLE" --title "Installation device" --menu "\nYou are going to install the GeeXboX. For this you will need a PRIMARY FAT16 partition (hdX1 to hdX4) with about 8 MB of free space (max. 1 GB). It WONT work with FAT32 or ext2 partitions.\n$CFDISK_MSG" 0 0 0 $DISKS` || exit 1
-  fi
+  done
   $CFDISK /dev/$DISK || exit 1
 else
   echo ""
@@ -127,7 +130,7 @@ else
   rm di/isolinux.bin
   sed 's/TIMEOUT.*//' di/isolinux.cfg > di/syslinux.cfg
   sed 's/PROMPT.*//' di/syslinux.cfg > di/isolinux.cfg
-  sed 's/boot=cdrom/boot=hdd/' di/isolinux.cfg > di/syslinux.cfg
+  sed "s/boot=cdrom/boot=${DEV#/dev/}/" di/isolinux.cfg > di/syslinux.cfg
   rm di/isolinux.cfg
 fi
 umount di

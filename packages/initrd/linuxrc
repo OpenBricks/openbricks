@@ -18,10 +18,9 @@
 /bin/busybox echo "" > /mnt/ramfs/etc/fstab
 /bin/busybox mount -t proc none /proc
 
-BOOT=cdrom
-/bin/busybox test -n "`/bin/busybox grep 'boot=hdd' /proc/cmdline`" && BOOT=hdd
 /bin/busybox test -n "`/bin/busybox grep 'installator' /proc/cmdline`" && INSTALLATOR=yes
 /bin/busybox test -n "`/bin/busybox grep debugging /proc/cmdline`" && DEBUG=yes
+BOOT=`/bin/busybox sed 's/.*boot=\([^\ ]*\).*/\1/' /proc/cmdline`
 
 /bin/busybox echo "52 scanning scsi bus" > /proc/progress
 /sbin/rescan-scsi-bus
@@ -34,7 +33,7 @@ for i in /proc/ide/hd*; do
 done
 
 /bin/busybox echo "55 searching cdrom drives" > /proc/progress
-COUNT=`/bin/busybox cat /proc/scsi/sg/devices | /bin/busybox cut -f 5 | /bin/busybox grep -c 5`
+COUNT=`/bin/busybox cut -f 5 /proc/scsi/sg/devices | /bin/busybox grep -c 5`
 for DEV in /dev/scd*; do
   NUM=`/bin/busybox echo $DEV | /bin/busybox sed 's%/dev/scd\(.*\)%\1%'`
   /bin/busybox test "$NUM" -ge "$COUNT" && break
@@ -60,12 +59,18 @@ if /bin/busybox test -e /mnt/ramfs/usr/bin/autolaunchparam; then
   /bin/busybox rm /mnt/ramfs/usr/bin/autolaunchparam
 fi
 
+if /bin/busybox test "$BOOT" != cdrom; then
+  /bin/busybox echo "63 boot device detection" > /proc/progress
+  while /bin/busybox test -z `/bin/busybox grep "$BOOT" /proc/partitions`; do
+    /bin/busybox sleep 1
+  done
+fi
+
 if /bin/busybox test "$INSTALLATOR" != yes; then
-  /bin/busybox sleep 3
   /bin/busybox echo "65 mounting harddisks" > /proc/progress
   DISK_NAME=
   DISK=0
-  for DEV in `/bin/busybox cat /proc/partitions | /bin/busybox sed -n "s/\ *[0-9][0-9]*\ *[0-9][0-9]*\ *[0-9][0-9][0-9]*\ \([a-z]*[0-9][0-9]*\)/\1/p"`; do
+  for DEV in `/bin/busybox sed -n "s/\ *[0-9][0-9]*\ *[0-9][0-9]*\ *[0-9][0-9][0-9]*\ \([a-z]*[0-9][0-9]*\)/\1/p" /proc/partitions`; do
     NAME=`/bin/busybox echo $DEV | /bin/busybox sed 's/\([a-z]\{3\}\).*/\1/'`
     if /bin/busybox test "$NAME" != "$DISK_NAME"; then
       DISK_NAME="$NAME"
@@ -77,7 +82,7 @@ if /bin/busybox test "$INSTALLATOR" != yes; then
     DIR="/mnt/ramfs/mnt/disk $DISK part $PART"
     /bin/busybox mkdir "$DIR"
     /bin/busybox mount -o ro /dev/$DEV "$DIR" >/dev/null 2>&1 || /bin/busybox rmdir "$DIR"
-    if /bin/busybox test "$BOOT" = hdd -a -z "$GEEXBOX" -a -d "$DIR/GEEXBOX/sbin" -a -f "$DIR/syslinux.cfg"; then
+    if /bin/busybox test "$BOOT" != cdrom -a -z "$GEEXBOX" -a -d "$DIR/GEEXBOX/sbin" -a -f "$DIR/syslinux.cfg"; then
       GEEXBOX="$DIR/GEEXBOX"
     fi
   done
