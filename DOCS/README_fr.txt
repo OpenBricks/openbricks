@@ -107,10 +107,10 @@ textes.
 
 * Lirc :
     Choisissez la télécommande supporté en éditant le fichier generator.sh ou
-    generator.bat (en fonction de votre OS). Si vous utilisez la télécommande
-    ATI Remote Wonder qui n'est pas supportée par lirc, il n'y a rien à
-    modifier car elle est activée par défaut. Si vous désirez modifier le
-    mappage des touches reportez vous au fichier lirc/lircrc_REMOTE.
+    generator.bat (en fonction de votre OS). Faite également attention à
+    bien choisir le récepteur infrarouge correspondant dans le même fichier.
+    Si vous désirez modifier le mappage des touches reportez vous au fichier
+    lirc/lircrc_REMOTE.
 
 * Réseau :
     Le réseau est configurable au niveau du fichier iso\GEEXBOX\etc\network.

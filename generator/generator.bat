@@ -11,6 +11,10 @@ REM Remote to Use (pctv/logitech/hauppauge/realmagic/creative/leadtek/RM-S6/
 REM                RX-V850/animax/packard_bell/atiusb/LG/D-10)
 set REMOTE=atiusb
 
+REM Remote receiver to use (animax/atiusb/creative/hauppauge/homemade/irman/
+REM                         leadtek/logitech/pctv/realmagic)
+set RECEIVER=atiusb
+
 
 REM You should not have to modify the rest of this file
 
@@ -42,7 +46,7 @@ md iso\GEEXBOX\usr\share\mplayer\font\%FONT%
 copy font\%FONT%\* iso\GEEXBOX\usr\share\mplayer\font\%FONT% >nul
 
 copy lirc\lircrc_%REMOTE% iso\GEEXBOX\etc\lircrc >nul
-copy lirc\lircd_%REMOTE% iso\GEEXBOX\etc\lircd >nul
+copy lirc\lircd_%RECEIVER% iso\GEEXBOX\etc\lircd >nul
 copy lirc\lircd_%REMOTE%.conf iso\GEEXBOX\etc\lircd.conf >nul
 
 echo "Building compressed tree..."

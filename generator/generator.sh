@@ -10,6 +10,10 @@ LANG=en
 #                RX-V850/animax/packard_bell/atiusb/LG/D-10)
 REMOTE=atiusb
 
+# Remote receiver to use (animax/atiusb/creative/hauppauge/homemade/irman/
+#                         leadtek/logitech/pctv/realmagic)
+RECEIVER=atiusb
+
 
 # You should not have to modify the rest of this file
 
@@ -35,7 +39,7 @@ else
   cp -r font/iso-8859-1 iso/GEEXBOX/usr/share/mplayer/font/
 fi
 cp lirc/lircrc_$REMOTE iso/GEEXBOX/etc/lircrc
-cp lirc/lircd_$REMOTE iso/GEEXBOX/etc/lircd
+cp lirc/lircd_$RECEIVER iso/GEEXBOX/etc/lircd
 cp lirc/lircd_$REMOTE.conf iso/GEEXBOX/etc/lircd.conf
 mkzftree iso/GEEXBOX ziso/GEEXBOX
 rm -f iso/GEEXBOX/usr/share/mplayer/help.txt

@@ -96,10 +96,9 @@ text files.
 
 * Lirc :
     You can choose one of the supported remote controller by editing the file
-    GEEXBOX/etc/remote. The ATI Remote Wonder is not managed by lirc and is
-    allways activated, so you don't have to modify anything for it. If you
-    want to modify the key binding of your remote controler, look at the file
-    GEEXBOX/etc/lirc/lircrc_REMOTE.
+    GEEXBOX/etc/remote. Also take care to chose the corresponding ir receiver
+    in the same configuration file. If you want to modify the key binding of
+    your remote controler, look at the file GEEXBOX/etc/lirc/lircrc_REMOTE.
 
 * network :
     You can configure the network in the file GEEXBOX/etc/network.
