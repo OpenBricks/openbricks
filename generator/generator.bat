@@ -30,10 +30,14 @@ echo ""
 set MENU_FONT=
 if %LANG%==no set MENU_FONT=iso-8859-1
 if %LANG%==hu set MENU_FONT=iso-8859-2
+if %LANG%==gr set MENU_FONT=iso-8859-7
 if %LANG%==he set MENU_FONT=iso-8859-8
 if %LANG%==sr set MENU_FONT=cp1250
 if %LANG%==bg set MENU_FONT=cp1251
 if %LANG%==ru set MENU_FONT=koi8r
+if %LANG%==ko set MENU_FONT=euc-kr
+if %LANG%==zh_CN set MENU_FONT=gb2312
+if %LANG%==zh_TW set MENU_FONT=big5
 
 if "X%SUB_FONT%"=="X" set SUB_FONT=%LANG%
 set SUBFONT=iso-8859-1
@@ -44,6 +48,7 @@ if %SUB_FONT%==pl set SUBFONT=iso-8859-2
 if %SUB_FONT%==ro set SUBFONT=iso-8859-2
 if %SUB_FONT%==sk set SUBFONT=iso-8859-2
 if %SUB_FONT%==iso-8859-7 set SUBFONT=iso-8859-7
+if %SUB_FONT%==gr set SUBFONT=iso-8859-7
 if %SUB_FONT%==iso-8859-8 set SUBFONT=iso-8859-8
 if %SUB_FONT%==he set SUBFONT=iso-8859-8
 if %SUB_FONT%==iso-8859-9 set SUBFONT=iso-8859-9
@@ -53,6 +58,12 @@ if %SUB_FONT%==cp1251 set SUBFONT=cp1251
 if %SUB_FONT%==bg set SUBFONT=cp1251
 if %SUB_FONT%==koi8r set SUBFONT=koi8r
 if %SUB_FONT%==ru set SUBFONT=koi8r
+if %SUB_FONT%==euc-kr set SUBFONT=euc-kr
+if %SUB_FONT%==ko set SUBFONT=euc-kr
+if %SUB_FONT%==gb2312 set SUBFONT=gb2312
+if %SUB_FONT%==zh_CN set SUBFONT=gb2312
+if %SUB_FONT%==big5 set SUBFONT=big5
+if %SUB_FONT%==zh_TW set SUBFONT=big5
 set SUB_FONT=%SUBFONT%
 
 if not exist ziso goto nothingtoremove
