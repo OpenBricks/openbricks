@@ -8,7 +8,7 @@ REM iso/GEEXBOX/usr/share/mplayer/font by a KOI8R ttf font.
 set LANG=en
 
 REM Remote to Use (pctv/logitech/hauppauge/realmagic/creative/leadtek/RM-S6/
-REM                RX-V850)
+REM                RX-V850/animax)
 set REMOTE=pctv
 
 
