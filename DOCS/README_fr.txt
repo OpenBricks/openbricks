@@ -537,6 +537,8 @@ sous-répertoires additionnels :
              appliqués aux sources du paquetage, au moment du script unpack.
  - sources : si des fichiers sont présents dans ce sous-répertoire, ils seront
              automatiquement copiés dans l'arbre de compilation du paquetage.
+ - init.d : contient les scripts d'initialisation qui seront éxécutés au
+            chargement du système.
 
 Vous devez avoir à l'esprit que les applications qui tournent sous le système
 GeeXboX doivent avoir été compilé avec la librairie uClibc.

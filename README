@@ -519,6 +519,7 @@ In addition, the package main directory may contain extra subdirs :
              of the package, at unpack time.
  - sources : if files are present here, they will be automatically copied
              into the package's build tree.
+ - init.d : contains initialization scripts to be launched at runtime.
 
 You also have to remember that software which run on the GeeXboX have to
 be compiled with the uClibc gcc wrapper.
