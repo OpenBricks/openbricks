@@ -4,11 +4,19 @@ busybox mount -t proc none /proc
 busybox --install -s
 echo geexbox > /proc/sys/kernel/hostname
 
+box() { return; }
+splash_config="/etc/splash/default/800x600.cfg"
+test -f "$splash_config" && . $splash_config
+splash_options="-x $text_x -y $text_y -s $text_size -t \"$text_color\""
+export splash_options
+
+/sbin/splash_helper 1 init 0 0 s default
+/sbin/splash_util --vc=0 --theme=default --cmd=setcfg
+/sbin/splash_util --vc=0 --mode=s --cmd=setmode
+
 progress() {
-  if test -f /proc/splash; then
-    echo "show $1" > /proc/splash
-    fbtruetype -x 300 -y 545 -s 18 -t 0x080808 "$2"
-  fi
+  /sbin/splash_util --vc=0 --progress $1 --mode=s --theme=default --cmd=repaint
+  /sbin/fbtruetype $splash_options "$2"
 }
 
 progress 8000 "scanning scsi bus"
@@ -37,6 +45,10 @@ cp -a /lib/* /mnt/ramfs/lib/
 ln -s libuClibc-*.so libc.so.6
 cp /bin/busybox /mnt/ramfs/bin
 ln -s busybox /mnt/ramfs/bin/sh
+
+cp -a /etc/splash /mnt/ramfs/etc/
+cp -a /sbin/splash_util /mnt/ramfs/sbin/
+cp -a /sbin/fbtruetype /mnt/ramfs/sbin/
 
 test -n "`grep 'installator' /proc/cmdline`" && INSTALLATOR=yes
 test -n "`grep debugging /proc/cmdline`" && DEBUG=yes
