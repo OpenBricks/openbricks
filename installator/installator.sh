@@ -216,8 +216,10 @@ else
     GEEXBOX="$CDROM/GEEXBOX"
   fi
   cp -a "$GEEXBOX" di/GEEXBOX 2>/dev/null
-  mv di/GEEXBOX/boot/* di
-  rm -f di/isolinux.bin di/isolinux.cfg di/boot.catalog
+  cd di/GEEXBOX/boot
+  cp vmlinuz initrd.gz ../../
+  cd ../../../
+  rm -rf di/boot
 fi
 
 grubprefix=/boot/grub
