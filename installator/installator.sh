@@ -126,12 +126,15 @@ mount -t vfat "$DEV" di
 if [ -d disk ]; then
   cp -a disk/* di
 else
-  cp -a "$CDROM/GEEXBOX" di
+  if [ -n "$NFS" ]; then
+    GEEXBOX="$NFS"
+  else
+    GEEXBOX="$CDROM/GEEXBOX"
+  fi
+  cp -a "$GEEXBOX" di/GEEXBOX
   mv di/GEEXBOX/boot/* di
   rm di/isolinux.bin
 fi
-sed 's/TIMEOUT.*//' di/isolinux.cfg > di/syslinux.cfg
-sed 's/PROMPT.*//' di/syslinux.cfg > di/isolinux.cfg
 sed "s/boot=cdrom/boot=${DEV#/dev/}/" di/isolinux.cfg > di/syslinux.cfg
 rm di/isolinux.cfg
 umount di
