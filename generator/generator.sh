@@ -7,11 +7,11 @@
 LANG=en
 
 # Remote to Use (pctv/logitech/hauppauge/realmagic/creative/leadtek/RM-S6/
-#                RX-V850/animax/avermedia/packard_bell/atiusb/LG/D-10)
+#                RX-V850/animax/askey/avermedia/packard_bell/atiusb/LG/D-10)
 REMOTE=atiusb
 
-# Remote receiver to use (animax/avermedia/atiusb/creative/hauppauge/homemade/
-#                         irman/leadtek/logitech/pctv/realmagic)
+# Remote receiver to use (animax/askey/avermedia/atiusb/creative/hauppauge/
+#                         homemade/irman/leadtek/logitech/pctv/realmagic)
 RECEIVER=atiusb
 
 
