@@ -143,6 +143,7 @@ if [ -n "$MENU_FONT" -a "$MENU_FONT" != "$SUB_FONT" ]; then
   cp -r $GEEXBOX_DIR/font/$MENU_FONT $TMPDIR/iso/GEEXBOX/usr/share/mplayer/font/
 fi
 
+cp $GEEXBOX_DIR/themes/$THEME/config $TMPDIR/iso/GEEXBOX/etc/theme.conf
 cp $GEEXBOX_DIR/themes/$THEME/*.ttf $TMPDIR/iso/GEEXBOX/usr/share/fonts/themefont.ttf
 cp $GEEXBOX_DIR/themes/$THEME/background.avi $TMPDIR/iso/GEEXBOX/usr/share/mplayer/
 [ -f $GEEXBOX_DIR/themes/$THEME/background-audio.avi ] && cp $GEEXBOX_DIR/themes/$THEME/background-audio.avi $TMPDIR/iso/GEEXBOX/usr/share/mplayer/
@@ -158,6 +159,7 @@ rm -f $TMPDIR/iso/GEEXBOX/etc/mplayer/menu.conf
 for i in $TMPDIR/iso/GEEXBOX/usr/share/mplayer/font/*/; do
   [ -d $i ] && rm -rf $i
 done
+rm -f $TMPDIR/iso/GEEXBOX/etc/theme.conf
 rm -rf $TMPDIR/iso/GEEXBOX/usr/share/fonts/*
 rm -f $TMPDIR/iso/GEEXBOX/usr/share/mplayer/background.avi
 rm -f $TMPDIR/iso/GEEXBOX/usr/share/mplayer/background-audio.avi
