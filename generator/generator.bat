@@ -14,6 +14,12 @@ set REMOTE=pctv
 
 REM You should not have to modify the rest of this file
 
+echo ""
+echo "######################################################################"
+echo "## You should NOT use this generator.bat. Use generator.exe instead ##"
+echo "######################################################################"
+echo ""
+
 if not exist ziso goto nothingtoremove
 echo "Removing old compressed tree..."
 if exist %windir%\command\deltree.exe deltree /y ziso >nul
