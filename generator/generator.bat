@@ -55,7 +55,7 @@ echo "Copying additionnal files..."
 xcopy /d /e iso\* ziso >nul
 
 echo "Generating iso..."
-win32\mkisofs -quiet -no-pad -V GEEXBOX -volset GEEXBOX -P "The GeeXboX team (http://www.geexbox.org/)" -p "The GeeXboX team (http://www.geexbox.org/)" -A "MKISOFS ISO 9660/HFS FILESYSTEM BUILDER" -z -f -D -r -J -b GEEXBOX/boot/isolinux.bin -c GEEXBOX/boot/boot.catalog -sort sort -no-emul-boot -boot-load-size 4 -boot-info-table ziso > geexbox-custom.iso
+win32\mkisofs -quiet -no-pad -V GEEXBOX -volset GEEXBOX -P "The GeeXboX team (www.geexbox.org)" -p "The GeeXboX team (www.geexbox.org)" -A "MKISOFS ISO 9660/HFS FILESYSTEM BUILDER" -z -f -D -r -J -b GEEXBOX/boot/isolinux.bin -c GEEXBOX/boot/boot.catalog -sort sort -no-emul-boot -boot-load-size 4 -boot-info-table ziso > geexbox-custom.iso
 
 echo "Cleaning tree..."
 if exist %windir%\command\deltree.exe deltree /y ziso >nul
