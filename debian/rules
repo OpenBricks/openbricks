@@ -3,7 +3,7 @@
 
 # cdbs support
 include /usr/share/cdbs/1/rules/debhelper.mk
-include /usr/share/cdbs/1/rules/simple-patchsys.mk
+#include /usr/share/cdbs/1/rules/simple-patchsys.mk
 
 MANPAGES:=$(patsubst %.sgml,%.1,$(wildcard debian/*.sgml))
 DEB_INSTALL_MANPAGES_geexbox-generator:=$(MANPAGES)
@@ -14,23 +14,26 @@ GENERATOR:=generator
 
 GENERATOR_CONF:=debian/geexbox-generator.conf
 
-build/geexbox-generator:: $(MANPAGES) $(GENERATOR_CONF)
+build/geexbox-generator:: $(MANPAGES) $(GENERATOR_CONF) stamp-build
+stamp-build:
 	INSTALL=$(GENERATOR_NAME)/iso/GEEXBOX scripts/gentree generator full
+	touch $@
 
 debian/%.1:: debian/%.sgml
 	/usr/bin/docbook-to-man $< > $@
 
 clean::
+	-rm stamp-build
 	-rm $(MANPAGES) $(GENERATOR_CONF)
 	-rm -rf $(GENERATOR_NAME)
 #	-$(MAKE) clean
 
-$(GENERATOR_CONF)::
+$(GENERATOR_CONF):: $(GENERATOR)/generator.sh
 	sed -n -e"/Menu/,/RECEIVER/p" $(GENERATOR)/generator.sh | sed -e"s/LANG=.*$$/LANG=/" -e"s/REMOTE=.*$$/REMOTE=/" -e"s/RECEIVER=.*$$/RECEIVER=/" > $@
 
 install/geexbox-generator::
-	sed -n -e'/DEB-SPECIFIC/,$$p' $(GENERATOR)/generator.sh | sed 's/%VERSION%/$(shell cat VERSION)/' > $(CURDIR)/debian/geexbox-generator/usr/bin/geexbox-generator
+	install -m 755 $(GENERATOR)/generator.sh $(CURDIR)/debian/geexbox-generator/usr/bin/geexbox-generator
 	cp -r $(GENERATOR_NAME)/* $(CURDIR)/debian/geexbox-generator/usr/share/geexbox-generator/
-	install -m 644 config/sort $(CURDIR)/debian/geexbox-generator/usr/share/geexbox-generator/
+	install -m 644 config/sort VERSION $(CURDIR)/debian/geexbox-generator/usr/share/geexbox-generator/
 	install -m 644 $(GENERATOR_CONF) $(CURDIR)/debian/geexbox-generator/usr/share/geexbox-generator/geexbox-generator.conf.template
 
