@@ -43,7 +43,7 @@ rm -f iso/GEEXBOX/usr/share/mplayer/font/font.desc
 rm -f iso/GEEXBOX/usr/share/mplayer/font/*.raw
 rm -f iso/GEEXBOX/etc/lirc*
 
-cp -f iso/GEEXBOX/boot/* ziso/GEEXBOX/boot
+cp -rf iso/GEEXBOX/boot/* ziso/GEEXBOX/boot
 for i in iso/*; do
   [ "$i" != iso/GEEXBOX ] && ln -s "../$i" ziso
 done
