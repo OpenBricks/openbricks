@@ -8,11 +8,11 @@ REM iso/GEEXBOX/usr/share/mplayer/font by a KOI8R ttf font.
 set LANG=en
 
 REM Remote to Use (pctv/logitech/hauppauge/realmagic/creative/leadtek/RM-S6/
-REM                RX-V850/animax/packard_bell/atiusb/LG/D-10)
+REM                RX-V850/animax/avermedia/packard_bell/atiusb/LG/D-10)
 set REMOTE=atiusb
 
-REM Remote receiver to use (animax/atiusb/creative/hauppauge/homemade/irman/
-REM                         leadtek/logitech/pctv/realmagic)
+REM Remote receiver to use (animax/avermedia/atiusb/creative/hauppauge/
+REM                         homemade/irman/leadtek/logitech/pctv/realmagic)
 set RECEIVER=atiusb
 
 
