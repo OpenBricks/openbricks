@@ -42,7 +42,7 @@ To build the GeeXboX, you will need some classic tools :
   - mkzftree to compress files on the iso image.
   - cdrecord (to burn the iso image).
 
-And also 500 MB of hard disk free space.
+And also 1.2 GB of hard disk free space.
 
 
 | PERSONALIZATION
@@ -106,6 +106,9 @@ text files.
     possibly intel i810 and 3dfx cards). The configuration of those programs
     is done in config/tvout. There you can choose the TV standard you
     want (pal, ntsc...) and you can also modify specific options for nvtv.
+
+    # TV Output Standard (ntsc/pal/secam)
+    TVOUT_STANDARD=pal
 
     Please note that you can also define the output aspect (say 4:3 or 16:9
     display) in this file through the line :
@@ -211,6 +214,18 @@ text files.
     to connect your soundcard to an external amplifier for decoding AC3/DTS
     streams (using passthrough mode).
 
+* video post-processing :
+    Post-Processing is a software way to get a smoother and more accurate
+    render of your videos. It however consumes a lot of CPU time to magnify
+    pictures but, as a result, it looks far better. Using MPlayer internal
+    filters, GeeXboX lets you make h/v deblocking, deringing and auto
+    luminance to enhance your image. By default, post-processing is disabled
+    to avoid lagging on small configurations. You can enable it simply by
+    editing the /etc/tvout :
+
+    # Set Post Processing (consume CPU power, disable for low configs)
+    POSTPROCESS=no
+
 * DXR3/Hollywood+ cards :
     Users with this kind of hardware decompression card does NOT even need
     to have a video board and sound card to use GeeXboX. On the drawbacks,
@@ -271,13 +286,17 @@ but not included because of their excessive size (Chinese fonts for example).
 | INSTALLATION
 | ~~~~~~~~~~~~
 
-First you need to create a FAT16 partition with about 16 MB of free space.
+First you need to create a FAT16/32 or EXT2/3 partition with at least 16 MB
+of free space.
 
 Then you can install the GeeXboX under Linux by launching
   ./installator.sh
 And then responding to all the questions. Be carefull during this step.
 Read twice each question and stop installing if you don't understand one
 of the question.
+
+But the easiest way to install GeeXboX is still to boot it from CD and type
+"install" at isolinux boot prompt.
 
 
 | PXE BOOT
@@ -344,14 +363,15 @@ or by doing a full cleaning, even removing downloaded sources :
   make distclean
 
 There's also more advanced commands if you want to hack around the GeeXboX :
-  scripts/get package        # download the package
-  scripts/unpack package     # unpack and prepare the package
-  scripts/build package      # build the package
-  scripts/install package    # install the package with the $INSTALL prefix
-  scripts/clean package      # clean the package source tree
-  make exec                  # launch directly the GeeXboX in a jail
-                             # WARNING: this is a highly experimental feature
-                             # use it at your own risks.
+  scripts/get package          # download the package
+  scripts/unpack package       # unpack and prepare the package
+  scripts/build package        # build the package
+  scripts/install package      # install the package with the $INSTALL prefix
+  scripts/clean package        # clean the package build tree
+  scripts/clean --full package # clean both the package build and source trees
+  make exec                    # launch directly the GeeXboX in a jail
+                               # WARNING: this is a highly experimental feature
+                               # use it at your own risks.
 
 If you've made a hacked version of the GeeXboX, you can easily
 build a small tar.bz2 for it with :
@@ -372,9 +392,7 @@ or a pxe ready tree with :
 * Global options :
     This is the first thing you should take care of before trying to build
     the GeeXboX. It stands in the file config/options, and it should be
-    self explanatory. There you can choose your CPU family, your theme,
-    and whether you want truetype fonts or not. You should also modify your
-    cd burner configuration to be able to burn directly the iso.
+    self explanatory.
 
 * Linux :
     This is a classical Linux configuration (packages/linux/linux.conf).
