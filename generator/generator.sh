@@ -6,7 +6,8 @@
 # iso/GEEXBOX/usr/share/mplayer/font by a KOI8R ttf font.
 LANG=en
 
-# Remote to Use (pctv/logitech/hauppauge/realmagic/creative/leadtek/RM-S6)
+# Remote to Use (pctv/logitech/hauppauge/realmagic/creative/leadtek/RM-S6/
+#                RX-V850)
 REMOTE=pctv
 
 
