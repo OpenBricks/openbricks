@@ -100,6 +100,7 @@ if [ ! -f "themes/$THEME/config" ]; then
   fi
 fi
 
+MENU_CHARSET=`lang2charset "$LANG"`
 MENU_FONT=`lang2font "$LANG" menu`
 SUB_CHARSET=`lang2charset "$SUB_CHARSET"`
 SUB_FONT=`lang2font "$SUB_CHARSET" sub`
@@ -143,6 +144,12 @@ if [ -n "$MENU_FONT" -a "$MENU_FONT" != "$SUB_FONT" ]; then
   cp -r $GEEXBOX_DIR/font/$MENU_FONT $TMPDIR/iso/GEEXBOX/usr/share/mplayer/font/
 fi
 
+for i in $SUB_CHARSET $MENU_CHARSET; do
+  grep "^$i " $GEEXBOX_DIR/i18n/iconv/charset.db | cut -d ' ' -f 2 | while read f; do
+    cp -f $GEEXBOX_DIR/i18n/iconv/$f $TMPDIR/iso/GEEXBOX/usr/share/iconv/
+  done
+done
+
 cp $GEEXBOX_DIR/themes/$THEME/config $TMPDIR/iso/GEEXBOX/etc/theme.conf
 cp $GEEXBOX_DIR/themes/$THEME/*.ttf $TMPDIR/iso/GEEXBOX/usr/share/fonts/themefont.ttf
 cp $GEEXBOX_DIR/themes/$THEME/background.avi $TMPDIR/iso/GEEXBOX/usr/share/mplayer/
@@ -160,6 +167,7 @@ for i in $TMPDIR/iso/GEEXBOX/usr/share/mplayer/font/*/; do
   [ -d $i ] && rm -rf $i
 done
 rm -f $TMPDIR/iso/GEEXBOX/etc/theme.conf
+rm -rf $TMPDIR/iso/GEEXBOX/usr/share/iconv/*
 rm -rf $TMPDIR/iso/GEEXBOX/usr/share/fonts/*
 rm -f $TMPDIR/iso/GEEXBOX/usr/share/mplayer/background.avi
 rm -f $TMPDIR/iso/GEEXBOX/usr/share/mplayer/background-audio.avi
