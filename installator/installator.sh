@@ -135,12 +135,10 @@ sed 's/PROMPT.*//' di/syslinux.cfg > di/isolinux.cfg
 sed "s/boot=cdrom/boot=${DEV#/dev/}/" di/isolinux.cfg > di/syslinux.cfg
 rm di/isolinux.cfg
 umount di
-rmdir di
 syslinux "$DEV"
 
-mkdir di
 mount -t vfat "$DEV" di
-dd if="$DEV" of=di/geexbox.lnx
+dd if="$DEV" of=di/geexbox.lnx count=1 bs=512
 umount di
 rmdir di
 
