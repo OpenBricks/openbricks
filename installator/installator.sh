@@ -73,8 +73,8 @@ fi
 while [ ! -b "$DEV" ]; do
   if [ -n "$DIALOG" ]; then
     DISKS=""
-    for i in `sfdisk -l | grep FAT16 | grep $DISK | cut -f1 -d' '`; do
-      S=`sfdisk -s "$i" | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
+    for i in `$SFDISK -l | grep FAT16 | grep $DISK | cut -f1 -d' '`; do
+      S=`$SFDISK -s "$i" | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
       DISKS="$DISKS $i ${S}MB"
     done
     if [ -z "$DISKS" ]; then
@@ -117,9 +117,6 @@ fi
 echo ""
 
 [ "$FORMAT" = yes ] && $MKDOSFS -n GEEXBOX "$DEV"
-PART="${DEV#/dev/$DISK}"
-echo ",,,*" | sfdisk "/dev/$DISK" -N$PART
-
 mkdir di
 mount -t vfat "$DEV" di
 if [ -d disk ]; then
@@ -151,6 +148,8 @@ fi
 
 if [ "$MBR" = yes ]; then
   dd if=mbr.bin of="${DEV%%[0-9]*}"
+  PART="${DEV#/dev/$DISK}"
+  echo ",,,*" | $SFDISK "/dev/$DISK" -N$PART
 else
   if [ -n "$DIALOG" ]; then
     $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Bootloader" --msgbox "\nYou can configure lilo to boot the GeeXboX simply by adding thoses lines at the end of your /etc/lilo.conf :\n\n    other=$DEV\n          label=GeeXboX\n\nDon't forget to execute lilo after doing this modification.\n\nIf you only use windows, you may have a look at a boot menu such as XOSL (http://www.xosl.org/)." 0 0
