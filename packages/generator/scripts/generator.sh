@@ -161,8 +161,8 @@ cp $GEEXBOX_DIR/lirc/lircd_$RECEIVER $TMPDIR/iso/GEEXBOX/etc/lircd
 cp $GEEXBOX_DIR/lirc/lircd_$REMOTE.conf $TMPDIR/iso/GEEXBOX/etc/lircd.conf
 [ -n "$W32CODECS" ] && ln -s $W32CODECS_DIR/* $TMPDIR/iso/GEEXBOX/codecs/
 mkzftree $TMPDIR/iso/GEEXBOX $TMPDIR/ziso/GEEXBOX
-rm -f $TMPDIR/iso/GEEXBOX/usr/share/mplayer/help.txt
-rm -f $TMPDIR/iso/GEEXBOX/etc/mplayer/menu.conf
+rm -f $TMPDIR/iso/GEEXBOX/usr/share/mplayer/help_$LANG.txt
+rm -f $TMPDIR/iso/GEEXBOX/etc/mplayer/menu_$LANG.conf
 for i in $TMPDIR/iso/GEEXBOX/usr/share/mplayer/font/*/; do
   [ -d $i ] && rm -rf $i
 done
