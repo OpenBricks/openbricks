@@ -108,7 +108,7 @@ fi
 
 if [ -z "$SFDISK" -o -z "$GRUB" -o -z "$DIALOG" ]; then
     echo ""
-    echo "**** You need to have syslinux, grub and dialog installed to install GeeXboX ****"
+    echo "**** You need to have cfdisk, grub and dialog installed to install GeeXboX ****"
     echo ""
 fi
 
@@ -125,9 +125,9 @@ while true; do
       if [ -z "$CFDISK" ]; then
         CFDISK_MSG="As you don't have cfdisk installed, the installator won't be able to create the partition for you. You'll have to create it yourself before installing."
       else
-        CFDISK_MSG="You can now edit your partition table to create a FAT16 partition (type=06). Be careful to choose the right disk! We won't take responsibility for any data loss."
+        CFDISK_MSG="You can now edit your partition table to create a FAT partition (type=0B). Be careful to choose the right disk! We won't take responsibility for any data loss."
       fi
-      DISK=`$DIALOG --stdout --backtitle "$BACKTITLE" --title "Installation device" --menu "\nYou are going to install GeeXboX. For this you will need a PRIMARY FAT16 partition (hdX1 to hdX4) with about 8 MB of free space (max. 1 GB). It WON'T work with FAT32 or ext2 partitions.\n$CFDISK_MSG" 0 0 0 $DISKS` || exit 1
+      DISK=`$DIALOG --stdout --backtitle "$BACKTITLE" --title "Installation device" --menu "\nYou are going to install GeeXboX. For this you will need an empty FAT partition with about 8 MB of free space.\n$CFDISK_MSG" 0 0 0 $DISKS` || exit 1
       [ $DISK != refresh ] && break
     fi
 done
@@ -142,7 +142,7 @@ while [ ! -b "$DEV" ]; do
       DISKS="$DISKS $i ${S}MB"
     done
     if [ -z "$DISKS" ]; then
-      $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\nYou don't have any FAT16 partitions on your system. Please create a FAT16 partition first using for example cfdisk.\n" 0 0
+      $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\nYou don't have any FAT partition on your system. Please create a FAT partition first using for example cfdisk.\n" 0 0
       exit 1
     else
       DEV=`$DIALOG --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Installation device" --menu "Where do you want to install GeeXboX?" 0 0 0 $DISKS` || exit 1
@@ -155,9 +155,9 @@ done
 DEVNAME="${DEV#/dev/}"
 
 if [ -z "$MKDOSFS" ]; then
-    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Warning" --msgbox "\n'$DEV' needs to be a FAT16 partition. As you don't have mkdosfs installed, I won't be able to format the partition. Hopefully it is already formatted.\n" 0 0
+    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Warning" --msgbox "\n'$DEV' needs to be a FAT partition. As you don't have mkdosfs installed, I won't be able to format the partition. Hopefully it is already formatted.\n" 0 0
 else
-    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Formatting" --defaultno --yesno "\nDo you want to format '$DEV' in FAT16?\n" 0 0 && FORMAT=yes
+    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Formatting" --defaultno --yesno "\nDo you want to format '$DEV' in FAT32?\n" 0 0 && FORMAT=yes
 fi
 echo ""
 
@@ -195,7 +195,7 @@ EOF
 rootdev=$(convert $DEV)
 
 if [ -z "$rootdev" ]; then
-  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\nCouldn't find my GRUB partition represation\n" 0 0
+  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\nCouldn't find my GRUB partition representation\n" 0 0
   exit 1
 fi
 
@@ -227,7 +227,7 @@ else
 fi
 
 if [ -n "$supported_os_list" ]; then
-  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Bootloader" --defaultno --yesno "\n'$DEV' is now a GeeXboX partition. To boot from it, you will need to install a bootloader. If you don't have any other operating systems on this hard disk, I can install a bootloader for you. Else, you will need to configure yourself a boot loader, such as LILO or GRUB.\nI have found: $supported_os_list\nDo you want to install me to install the boot loader for you?\n" 0 0 && MBR=yes
+  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Bootloader" --defaultno --yesno "\n'$DEV' is now a GeeXboX partition. To boot from it, you will need to install a bootloader. I can install one for you. If you have any other operating system on your computer, I will also install a multiboot for you. If you do not want me to install a new bootloader, you will need to configure yours alone.\nI have found: $supported_os_list\nDo you want to install me to install the boot loader (GRUB) for you ?\n" 0 0 && MBR=yes
 else
   $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Bootloader" --defaultno --yesno "\n'$DEV' is now a GeeXboX partition. I didn't recognize any other OS on your system, want me to install boot loader on your MBR?\n" 0 0 && MBR=yes
 fi
@@ -299,7 +299,7 @@ boot
 EOF
 
 else
-  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Bootloader" --msgbox "\nYou should install boot loader to boot geexbox\n" 0 0
+  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Bootloader" --msgbox "\nYou must install a boot loader to boot GeeXboX\n" 0 0
 fi
 
 cat > $grubdir/single.lst <<EOF
