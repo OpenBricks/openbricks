@@ -1,0 +1,64 @@
+diff -Nur iconv-base-2.0.orig/ccs/endian.h iconv-base-2.0/ccs/endian.h
+--- iconv-base-2.0.orig/ccs/endian.h	Sun Oct 29 15:45:37 2000
++++ iconv-base-2.0/ccs/endian.h	Fri Mar  4 21:31:24 2005
+@@ -30,7 +30,11 @@
+  *	iconv (Charset Conversion Library) v2.0
+  */
+ 
++#ifdef __linux__
++#include <endian.h>
++#else
+ #include <machine/endian.h>
++#endif
+ 
+ #if BYTE_ORDER == LITTLE_ENDIAN
+ 
+diff -Nur iconv-base-2.0.orig/lib/ccs.c iconv-base-2.0/lib/ccs.c
+--- iconv-base-2.0.orig/lib/ccs.c	Sun Nov 26 17:16:20 2000
++++ iconv-base-2.0/lib/ccs.c	Fri Mar  4 21:31:24 2005
+@@ -30,12 +30,20 @@
+  *	iconv (Charset Conversion Library) v2.0
+  */
+ 
++#include <netinet/in.h>
++#ifdef __linux__
++#include <linux/types.h>
++#endif
+ #include <errno.h>		/* errno */
+ #include <limits.h>		/* PATH_MAX */
+ #include <stdio.h>		/* snprintf */
+ #include <stdlib.h>		/* free, malloc */
+ #include <string.h>		/* strncmp */
+-#include <machine/endian.h>	/* ntohl, ntohs */
++#ifdef __linux__
++#include <endian.h>	/* ntohl, ntohs */
++#else
++#include <machine/endian.h>
++#endif
+ 
+ #define ICONV_INTERNAL
+ #include <iconv.h>	/* iconv_ccs */
+diff -Nur iconv-base-2.0.orig/lib/ces.c iconv-base-2.0/lib/ces.c
+--- iconv-base-2.0.orig/lib/ces.c	Sun Nov 26 17:16:52 2000
++++ iconv-base-2.0/lib/ces.c	Fri Mar  4 21:33:27 2005
+@@ -116,7 +116,7 @@
+ 	int res;
+ 	char *pathlist;
+ 
+-	if (issetugid() || !(pathlist = getenv("ICONV_MODULE_PATH")))
++	if (/*issetugid() || */ !(pathlist = getenv("ICONV_MODULE_PATH")))
+ 		pathlist = ICONV_MODULE_PATH;
+ 	snprintf(file, sizeof(file), "%s.so", name);
+ 	if (iconv_filesize(pathlist, file, buffer) <= 0)
+diff -Nur iconv-base-2.0.orig/lib/utils.c iconv-base-2.0/lib/utils.c
+--- iconv-base-2.0.orig/lib/utils.c	Wed Mar  9 15:21:54 2005
++++ iconv-base-2.0/lib/utils.c	Wed Mar  9 15:22:02 2005
+@@ -84,7 +84,7 @@
+ 
+ 	if (fd < 0)
+ 		return NULL;
+-	ptr = (const void *)mmap(NULL, size, PROT_READ, 0, fd, 0);
++	ptr = (const void *)mmap(NULL, size, PROT_READ, MAP_SHARED, fd, 0);
+ 	close(fd);
+ 	if (ptr == MAP_FAILED)
+ 		return NULL;
