@@ -4,7 +4,6 @@
 
 echo "### Setting up network ###"
 
-(
 # get options
 test -f /etc/network || exit 1
 . /etc/network
@@ -44,44 +43,5 @@ if ifconfig $DEV $HOST >/dev/null 2>&1; then
   fi
 fi
 test "$NET" = yes || exit 1
-
-# start telnet daemon
-/usr/sbin/telnetd -f /etc/issue >/dev/null 2>&1
-
-# load ftp server
-if test -f /etc/bftpd.conf; then
-  bftpd -d -c /etc/bftpd.conf
-fi
-
-IFS='
-'
-
-# mount nfs shares
-if test -f /etc/nfs; then
-  for MOUNTS in `grep -v "^#" /etc/nfs | grep -v "^$"`; do
-    SRV=`echo $MOUNTS | sed 's/[ ]*\([^ ]*\)[ ]*.*/\1/'`
-    DIR=`echo $MOUNTS | sed 's/[ ]*[^ ]*[ ]*\([^ ]*\)/\1/'`
-    mkdir -p /mnt/nfs/$DIR
-    mount -t nfs -o ro,nolock,nfsvers=2 $SRV /mnt/nfs/$DIR >/dev/null 2>&1
-  done
-fi
-
-# mount samba shares
-if test -x /usr/bin/smbmount -a -x /usr/bin/mount.cifs; then
-  OPT="-N"
-  test -n "$SMB_USER" && OPT="-U$SMB_USER%$SMB_PWD"
-  saveifs=$IFS
-  IFS='
-'
-  for i in `smbtree $OPT`; do
-    IFS=$saveifs
-    mkdir -p "/mnt/shares/$i"
-    mount.cifs "//$i" "/mnt/shares/$i" -o ro,username=$SMB_USER,passwd=$SMB_PWD >/dev/null 2>&1 || smbmount "//$i" "/mnt/shares/$i" -o ro,username=$SMB_USER,passwd=$SMB_PWD >/dev/null 2>&1 || rmdir -p "/mnt/shares/$i" >/dev/null 2>&1
-    IFS='
-'
-  done
-  IFS=$saveifs
-fi
-)&
 
 exit 0
