@@ -9,6 +9,9 @@ cd /mnt
 # remove DVD from the menu if no dvd drive available
 test -e /dev/dvd || sed -i 's/.*DVD.*//' /etc/mplayer/menu.conf
 
+# remove image viewer from the menu if fbi is not present
+test -x /usr/bin/fbi || sed -i 's/.*set_menu\ view_img.*//' /etc/mplayer/menu.conf
+
 # set double to no for nvidia, sis and Kyro cards and VMWare
 for i in 'Class 0300:.*10de:' 'Class 0300:.*1039:' 'Class 0300:.*104a:0010' 'Class 0300:.*15ad:'; do
   grep "$i" /proc/pci >/dev/null 2>&1 && sed -i 's/double=.*/double=no/' /etc/mplayer/mplayer.conf && sed -i 's/^\(vf=.*\)/\1,expand=-1:-1:-1:-1:1/' /etc/mplayer/mplayer.conf
@@ -25,9 +28,11 @@ if test -n "`grep 'Class 0480:.*1105:8300' /proc/pci 2>/dev/null`"; then
   em8300setup -p -a -o -f /usr/share/em8300.uc >/dev/null 2>&1
 fi
 
+# create the mplayer control pipe for external programs
+mkfifo /var/mp_control
+
 # start the autolaunching script
 if test -e /usr/bin/autolaunch; then
-  mkfifo /var/mp_control
   sh /usr/bin/autolaunch > /var/mp_control &
 fi
 
@@ -45,10 +50,11 @@ if test -x /usr/bin/gdb; then
   echo "r /usr/share/mplayer/background.avi -loop 0" > /gdb_cmd
   gdb -x /gdb_cmd /usr/bin/mplayer
 else
-# start mplayer and keep it launched
+# start mplayer or fbi and keep then launched
   while true; do
-    mplayer -menu-disp /usr/share/mplayer/background.avi -loop 0 >/dev/null 2>&1
-    test $? -eq 166 && break
+    irpty /etc/lircrc -- mp_wrapper
+    test `cat /tmp/mp_result` -eq 165 -a -x /usr/bin/fbi && fbi_wrapper
+    test `cat /tmp/mp_result` -eq 166 && break
   done
 fi
 
