@@ -161,6 +161,8 @@ directory and copy a full GEEXBOX tree in this directory. For exemple
 you can copy the content of a GeeXboX CD from a linux WITH THE CDROM
 TRANSPARENT DECOMPRESSION ENABLED !! (to verify this, look at the sbin/init
 file in the GeeXboX tree and verify that it do not contain garbage)
+If you've built the GeeXboX yourself from sources, you can also generate
+the GEEXBOX tree with make pxe.
 
 Then you should edit the file /tftpboot/GEEXBOX/boot/pxelinux.cfg/default
 to set nfsroot to the right NFS path to the GEEXBOX tree.
@@ -212,6 +214,8 @@ or a geexbox generator with :
   make generator
 or a geexbox installator with :
   make installator
+or a pxe ready tree with :
+  make pxe
 
 
 | CONFIGURATION

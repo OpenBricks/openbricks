@@ -16,6 +16,9 @@ generator:
 installator:
 	scripts/installator
 
+pxe:
+	scripts/pxe
+
 exec: iso
 	scripts/exec
 

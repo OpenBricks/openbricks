@@ -172,6 +172,8 @@ dans ce répertoire. Par exemple il est possible de copier le contenu d'un
 CD de GeeXboX depuis un linux AVEC L'OPTION CDROM TRANSPARENT DECOMPRESSION
 ACTIVE !! (pour vérifier cela, il suffit de regarder si le fichier sbin/init
 de l'arborescence GeeXboX ne contient pas de caractères totalement incohérents)
+Si vous avez compilé la GeeXboX vous même a partir des sources, il est aussi
+possible de générer l'arborescence GEEXBOX avec make pxe.
 
 Ensuite il faut éditer le fichier /tftpboot/GEEXBOX/boot/pxelinux.cfg/default
 pour faire correspondre le nfsroot au bon chemin NFS vers l'arborescence
@@ -225,6 +227,8 @@ ou construire le générateur d'ISO :
   make generator
 ou encore l'installateur : 
   make installator
+ou enfin une arborescence PXE :
+  make pxe
 
 
 | CONFIGURATION
