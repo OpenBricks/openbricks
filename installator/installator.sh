@@ -195,45 +195,94 @@ done
 DEVNAME="${DEV#/dev/}"
 
 case `$SFDISK --print-id ${DEV%%[0-9]*} ${DEV#${DEV%%[0-9]*}}` in
-  1|11|6|e|16|1e|14) # FAT12 and FAT16
-    MKFS=$MKDOSFS
-    MKFS_OPT="-n GEEXBOX"
-    MKFS_TYPE=vfat
-    MKFS_TYPENAME="FAT"
-    ;;
-  b|c|1b|1c) # FAT32
-    MKFS=$MKDOSFS
-    MKFS_OPT="-n GEEXBOX -F 32"
-    MKFS_TYPE=vfat
-    MKFS_TYPENAME="FAT"
+  1|11|6|e|16|1e|14|b|c|1b|1c)
+    SUPPORTED_TYPES="vfat"
+    PART_TYPE="FAT"
     ;;
   83) # Linux
-    MKFS_TYPE=`$DIALOG --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Linux partition type" --menu "Which type of Linux partition you want ?" 0 0 0 ext2 "Linux ext2" ext3 "Linux ext3"` || exit 1
-
-    case $MKFS_TYPE in
-      ext2)
-        MKFS=$MKE2FS
-        MKFS_OPT="-L GEEXBOX"
-        MKFS_TYPENAME="Linux ext2"
-        ;;
-      ext3)
-        MKFS=$MKE2FS
-        MKFS_OPT="-L GEEXBOX -j"
-        MKFS_TYPENAME="Linux ext3"
-        ;;
-    esac
+    SUPPORTED_TYPES="ext3 ext2"
+    PART_TYPE="Linux"
     ;;
 esac
 
-if [ -z "$MKFS" ]; then
-  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Warning" --msgbox "\n'$DEV' needs to be a $MKFS_TYPENAME partition. As you don't have formatting tool installed, I won't be able to format the partition. Hopefully it is already formatted.\n" 0 0
-else
-  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Formatting" --defaultno --yesno "\nDo you want to format '$DEV' ?\n" 0 0 && FORMAT=yes
-fi
-echo ""
-
-[ "$FORMAT" = yes ] && $MKFS $MKFS_OPT "$DEV"
 mkdir di
+
+# Try to guess current partition type.
+MKFS_TYPE=
+for type in vfat ext3 ext2 auto; do
+  tmp=`mount -v -t $type "$DEV" di && umount di`
+  if [ -n "$tmp" ]; then
+    MKFS_TYPE=`echo $tmp | grep $DEV | grep di | sed "s/.*type \(.*\) .*/\1/"`
+    break
+  fi
+done
+
+NEED_FORMAT=yes
+if [ -z "$MKFS_TYPE" ]; then
+  FORMAT_MSG="Partition is not formated. "
+else
+  for type in $SUPPORTED_TYPES; do
+    [ $type = $MKFS_TYPE ] && NEED_FORMAT=no
+  done
+
+  if [ "$NEED_FORMAT" = yes ]; then
+    FORMAT_MSG="Partition format type ($MKFS_TYPE) is not supported in your partition type ($PART_TYPE). "
+  else
+    FORMAT_MSG="Partition is already formated. "
+  fi
+fi
+
+$DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Formatting" --defaultno --yesno "$FORMAT_MSG\nDo you want to format '$DEV' ?\n" 0 0 && FORMAT=yes
+
+if [ "$FORMAT" = yes ]; then
+  case `$SFDISK --print-id ${DEV%%[0-9]*} ${DEV#${DEV%%[0-9]*}}` in
+    1|11|6|e|16|1e|14) # FAT12 and FAT16
+      MKFS=$MKDOSFS
+      MKFS_OPT="-n GEEXBOX"
+      MKFS_TYPE=vfat
+      MKFS_TYPENAME="FAT"
+      ;;
+    b|c|1b|1c) # FAT32
+      MKFS=$MKDOSFS
+      MKFS_OPT="-n GEEXBOX -F 32"
+      MKFS_TYPE=vfat
+      MKFS_TYPENAME="FAT"
+      ;;
+    83) # Linux
+      MKFS_TYPE=`$DIALOG --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Linux partition type" --menu "Which type of Linux partition you want ?" 0 0 0 ext2 "Linux ext2" ext3 "Linux ext3"` || exit 1
+
+      case $MKFS_TYPE in
+        ext2)
+          MKFS=$MKE2FS
+          MKFS_OPT="-L GEEXBOX"
+          MKFS_TYPENAME="Linux ext2"
+          ;;
+        ext3)
+          MKFS=$MKE2FS
+          MKFS_OPT="-L GEEXBOX -j"
+          MKFS_TYPENAME="Linux ext3"
+          ;;
+      esac
+      ;;
+  esac
+
+  if [ -z "$MKFS" -o ! -x $MKFS ]; then
+    if [ "$NEED_FORMAT" = yes ]; then
+      $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\n'$DEV' must be formated. As you don't have formatting tool installed, I won't be able to format the partition.\n" 0 0
+      rm -r di
+      exit 1
+    else
+      $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Warning" --msgbox "\n'$DEV' needs to be a $MKFS_TYPENAME partition. As you don't have formatting tool installed, I won't be able to format the partition. Hopefully it is already formatted.\n" 0 0
+    fi
+  else
+    $MKFS $MKFS_OPT "$DEV"
+  fi
+elif [ "$NEED_FORMAT" = yes ]; then
+  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\n'$DEV' needs to be a formated.\n" 0 0
+  rm -r di
+  exit 1
+fi
+
 mount -t $MKFS_TYPE "$DEV" di
 if [ $? -ne 0 ]; then
   $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\nFailed to mount '$DEV' as $MKFS_TYPENAME partition.\n" 0 0
