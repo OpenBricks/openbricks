@@ -183,7 +183,7 @@ device_map=$grubdir/device.map
 
 rm -rf $grubdir	
 mkdir -p $grubdir
-tar xjf "di/geexbox/usr/share/grub-i386-pc.tar.bz2" -C $grubdir
+tar xjf "di/GEEXBOX/usr/share/grub-i386-pc.tar.bz2" -C $grubdir
 
 cp $grubdir/stage2 $grubdir/stage2_single
 
@@ -220,8 +220,8 @@ for os in $oslist; do
 done
 IFS=$saveifs
 
-if [ -f "di/geexbox/usr/share/grub-splash.xpm.gz" ]; then
-  splashimage="splashimage=$rootdev/geexbox/usr/share/grub-splash.xpm.gz"
+if [ -f "di/GEEXBOX/usr/share/grub-splash.xpm.gz" ]; then
+  splashimage="splashimage=$rootdev/GEEXBOX/usr/share/grub-splash.xpm.gz"
 else
   splashimage=""
 fi
