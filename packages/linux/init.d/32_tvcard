@@ -4,15 +4,13 @@
 
 echo "### Setting up TV card ###"
 
-. /etc/tvcard
-
 if test -z "`grep 'Class 0400:.*109e:' /proc/pci`" \
      -a -z "`grep 'Class 0480:.*1131:' /proc/pci`"; then
   # No supported TV card found
-  sed -i 's/.*ok="set_menu tv_settings".*//' /etc/mplayer/menu.conf
-  sed -i 's/.*ok="set_menu tv_norm"*//' /etc/mplayer/menu.conf
   exit 1
 fi
+
+. /etc/tvcard
 
 CARD=
 test "$TV_CARD" != "AUTO" && CARD="card=$TV_CARD"
@@ -31,14 +29,13 @@ if test -n "`grep 'Class 0400:.*109e:' /proc/pci`"; then
     modprobe bttv card=1 $TUNER >/dev/null 2>&1
   fi
 
-  # set mplayer TV options
-  echo "tv=driver=v4l2:norm=$TVIN_STANDARD:chanlist=$CHANLIST:width=768:height=576" >> /etc/mplayer/mplayer.conf
+  echo "TV_WIDTH=768" > /var/tvcard
+  echo "TV_HEIGHT=576" >> /var/tvcard
 elif test -n "`grep 'Class 0480:.*1131:' /proc/pci`"; then
   # SAA7134 Card
   modprobe saa7134 $CARD $TUNER >/dev/null 2>&1
 
-  # set mplayer TV options
-  echo "tv=driver=v4l2:norm=$TVIN_STANDARD:chanlist=$CHANLIST" >> /etc/mplayer/mplayer.conf
+  echo -n "" > /var/tvcard
 fi
 
 modprobe tuner >/dev/null 2>&1
@@ -47,10 +44,5 @@ modprobe msp3400 >/dev/null 2>&1
 modprobe tda7432 >/dev/null 2>&1
 modprobe tda9875 >/dev/null 2>&1
 modprobe tda9887 >/dev/null 2>&1
-
-# set mplayer TV channels list
-echo "<cmdlist name=\"tv_chan\" title=\"TV Channels\" ptr=\"<>\" >" >> /etc/mplayer/menu.conf
-grep '^CHAN' /etc/tvcard | sed 's/^CHAN="\([^:]*\):\(.*\)"/<e name=\"\2\" ok=\"loadfile tv:\/\/\1\"\/>/' >> /etc/mplayer/menu.conf
-echo "</cmdlist>" >> /etc/mplayer/menu.conf
 
 exit 0
