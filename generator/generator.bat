@@ -22,8 +22,8 @@ if not exist %windir%\command\deltree.exe rmdir /q /s ziso >nul
 
 echo "Applying settings..."
 echo %LANG% > iso\GEEXBOX\etc\lang
-copy language\help_%LANG%.txt iso\GEEXBOX\usr\share\mplayer\ >nul
-copy language\menu_%LANG%.conf iso\GEEXBOX\etc\mplayer\ >nul
+copy language\help_%LANG%.txt iso\GEEXBOX\usr\share\mplayer\help_%LANG%.txt >nul
+copy language\menu_%LANG%.conf iso\GEEXBOX\etc\mplayer\menu_%LANG%.conf >nul
 set FONT=iso-8859-1
 if %LANG%==cz set FONT=iso-8859-2
 if %LANG%==hu set FONT=iso-8859-2
@@ -41,8 +41,8 @@ copy lirc\lircd_%REMOTE%.conf iso\GEEXBOX\etc\lircd.conf >nul
 echo "Building compressed tree..."
 md ziso >nul
 win32\mkzftree iso\GEEXBOX ziso\GEEXBOX >nul
-if exist %windir%\command\deltree.exe deltree /y ziso\GEEXBOX\boot\* iso\GEEXBOX\usr\share\mplayer\help.txt iso\GEEXBOX\etc\mplayer\menu.conf iso\GEEXBOX\usr\share\mplayer\font\font.desc iso\GEEXBOX\usr\share\mplayer\font\*.raw iso\GEEXBOX\etc\lirc* >nul
-if not exist %windir%\command\deltree.exe del /f /q ziso\GEEXBOX\boot\* iso\GEEXBOX\usr\share\mplayer\help.txt iso\GEEXBOX\etc\mplayer\menu.conf iso\GEEXBOX\usr\share\mplayer\font\font.desc iso\GEEXBOX\usr\share\mplayer\font\*.raw iso\GEEXBOX\etc\lirc*
+if exist %windir%\command\deltree.exe deltree /y ziso\GEEXBOX\boot\* iso\GEEXBOX\usr\share\mplayer\help_%LANG%.txt iso\GEEXBOX\etc\mplayer\menu_%LANG%.conf iso\GEEXBOX\usr\share\mplayer\font\%FONT% iso\GEEXBOX\etc\lirc* >nul
+if not exist %windir%\command\deltree.exe del /f /q ziso\GEEXBOX\boot\* iso\GEEXBOX\usr\share\mplayer\help_%LANG%.txt iso\GEEXBOX\etc\mplayer\menu_%LANG%.conf iso\GEEXBOX\usr\share\mplayer\font\%FONT% iso\GEEXBOX\etc\lirc*
 copy iso\GEEXBOX\boot\* ziso\GEEXBOX\boot >nul
 echo "Copying additionnal files..."
 xcopy /d /e iso\* ziso >nul
