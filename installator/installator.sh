@@ -307,7 +307,7 @@ EOF
     title=$(echo "$os" | cut -d: -f2)
     type=$(echo "$os" | cut -d: -f3)
 
-    if [ "$type" == chain ]; then
+    if [ "$type" = chain ]; then
       cat >> $grubdir/menu.lst <<EOF
 title	$title
 EOF
