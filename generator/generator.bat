@@ -1,6 +1,6 @@
 @echo off
 
-REM Menu langage (cz/en/es/fi/fr/it/nl/ru/se/sk)
+REM Menu langage (br/cz/en/es/fi/fr/it/nl/ru/se/sk)
 REM This have no effect on DVD language.
 REM See iso/GEEXBOX/etc/mplayer/mplayer.conf
 REM For ru, you will need to replace the ttf file in
