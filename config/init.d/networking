@@ -8,6 +8,9 @@ test -f /etc/network || exit 1
 . /etc/network
 test -z "$HOST" && HOST=0.0.0.0
 if [ -x /usr/bin/iwconfig ]; then
+  for i in `iwconfig 2>&1 | grep '^[^\ ]' | grep -v '^lo' | cut -f1 -d' '`; do
+    ifconfig $i up >/dev/null 2>&1
+  done
   WIFI=`iwconfig 2>&1 | grep '^[^\ ]' | grep -v "no wireless extensions" | cut -f1 -d' ' | head -n 1`
   ETH=`iwconfig 2>&1 | grep '^[^\ ]'  | grep -v '^lo' | grep "no wireless extensions" | cut -f1 -d' ' | head -n 1`
 else
@@ -18,7 +21,6 @@ fi
 if test $PHY_TYPE = wifi -o $PHY_TYPE = auto; then
   DEV=$WIFI
   if test -n "$DEV"; then
-    ifconfig "$DEV" up >/dev/null 2>&1
     test -n "$WIFI_MODE" && iwconfig "$DEV" mode $WIFI_MODE
     test -n "$WIFI_ESSID" && iwconfig "$DEV" essid $WIFI_ESSID
     test -n "$WIFI_WEP" && iwconfig "$DEV" key $WIFI_WEP
@@ -32,7 +34,7 @@ test -n "$DEV" || exit 1
 # bring interface up
 if ifconfig $DEV $HOST >/dev/null 2>&1; then
   if test $HOST = 0.0.0.0; then
-    udhcpc -H geexbox -n >/dev/null 2>&1 && NET=yes
+    udhcpc -H geexbox -n -i $DEV >/dev/null 2>&1 && NET=yes
     test "$NET" != yes && ifconfig $DEV 192.168.0.54 && NET=yes
   else
     test -n "$GATEWAY" && route add default gw $GATEWAY
