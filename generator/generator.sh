@@ -7,8 +7,8 @@
 LANG=en
 
 # Remote to Use (pctv/logitech/hauppauge/realmagic/creative/leadtek/RM-S6/
-#                RX-V850/animax/packard_bell)
-REMOTE=pctv
+#                RX-V850/animax/packard_bell/atiusb)
+REMOTE=atiusb
 
 
 # You should not have to modify the rest of this file
