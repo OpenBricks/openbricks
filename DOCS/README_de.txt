@@ -57,13 +57,11 @@ Mit dem Generator ist es sehr einfach GeeXboX zu personalisieren.
 Sie können zum Beispiel die Unterstützung einiger proprietäre Codecs wie rv9
 oder wmv9 hinzufügen, indem Sie die Codecs einfach in das Verzeichnis
 GEEXBOX/codecs kopieren. Diese Codecs finden Sie im Paket, welches unter
-http://www2.mplayerhq.hu/MPlayer/releases/codecs/extralite.tar.bz2 erhältlich
-ist.
+http://www.mplayerhq.hu/MPlayer/releases/codecs/ erhältlich ist.
 
 Folgende Dateien aus diesem Paket sind nützlich:
   * Real Codecs (werden benötigt um beispielsweise rv9 abzuspielen):
-    atrc.so.6.0, cook.so.6.0, sipr.so.6.0, drv2.so.6.0, drv3.so.6.0,
-    drv4.so.6.0.
+    atrc.so.6.0, cook.so.6.0, sipr.so.6.0, drv3.so.6.0, drv4.so.6.0.
   * Windows Media Codecs (wmv9/wma9): wma9dmod.dll und wmv9dmod.dll.
 
 Sie können aber auch andere Einstellungen verändern, indem Sie einfach einige

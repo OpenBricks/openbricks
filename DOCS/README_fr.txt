@@ -62,12 +62,12 @@ repertoire iso.
 Vous pouvez aussi ajouter des codecs propriétaires comme le rv9 ou le wmv9, en
 les copiant simplement dans le répertoire iso\GEEXBOX\codecs. Ces codecs se
 trouvent ici :
-http://www2.mplayerhq.hu/MPlayer/releases/codecs/extralite.tar.bz2.
+http://www.mplayerhq.hu/MPlayer/releases/codecs/
 
 Les fichiers utiles sont les suivants:
 
   * Codecs Real (pour le rv9 par exemple) : atrc.so.6.0, cook.so.6.0,
-      sipr.so.6.0, drv2.so.6.0, drv3.so.6.0 et drv4.so.6.0.
+      sipr.so.6.0, drv3.so.6.0 et drv4.so.6.0.
   * Codecs Windows Media (wmv9/wma9) : wma9dmod.dll et wmv9dmod.dll.
 
 Vous pouvez modifier d'autres options en éditant simplement des fichiers

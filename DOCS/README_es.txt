@@ -54,11 +54,11 @@ fácil personalizarlo.
 
 Puedes añadir algunos códecs propietarios como rv9 o wmv9, copiándolos 
 en el directorio iso/GEEXBOX/codecs. Puedes encontrar estos códecs en el 
-paquete http://www2.mplayerhq.hu/MPlayer/releases/codecs/extralite.tar.bz2.
+paquete http://www.mplayerhq.hu/MPlayer/releases/codecs/ .
 
 Ficheros útiles en el paquete de códecs:  
   * Códecs de Real (usados para reroducir ficheros rv9 por ejemplo) : atrc.so.6.0,
-     cook.so.6.0, sipr.so.6.0, drv2.so.6.0, drv3.so.6.0, drv4.so.6.0.  
+     cook.so.6.0, sipr.so.6.0, drv3.so.6.0, drv4.so.6.0.  
   * Códecs de Windows Media (wmv9/wma9) : wma9dmod.dll y wmv9dmod.dll.
 
 También puedes modificar muchas opcionesa través de la edición de algunos 
