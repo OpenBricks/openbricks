@@ -1,0 +1,132 @@
+diff -Naur alsa-lib-1.0.4.orig/src/alisp/alisp.c alsa-lib-1.0.4/src/alisp/alisp.c
+--- alsa-lib-1.0.4.orig/src/alisp/alisp.c	2004-04-27 00:16:40.000000000 +0200
++++ alsa-lib-1.0.4/src/alisp/alisp.c	2004-04-27 00:18:10.000000000 +0200
+@@ -30,7 +30,6 @@
+ #include <ctype.h>
+ #include <math.h>
+ #include <err.h>
+-#include <wordexp.h>
+ 
+ #define alisp_seq_iterator alisp_object
+ 
+diff -Naur alsa-lib-1.0.4.orig/src/conf.c alsa-lib-1.0.4/src/conf.c
+--- alsa-lib-1.0.4.orig/src/conf.c	2004-04-27 00:16:40.000000000 +0200
++++ alsa-lib-1.0.4/src/conf.c	2004-04-27 00:18:10.000000000 +0200
+@@ -415,7 +415,6 @@
+ 
+ 
+ #include <stdarg.h>
+-#include <wordexp.h>
+ #include <dlfcn.h>
+ #include <limits.h>
+ #include <sys/stat.h>
+diff -Naur alsa-lib-1.0.4.orig/src/pcm/pcm_ladspa.c alsa-lib-1.0.4/src/pcm/pcm_ladspa.c
+--- alsa-lib-1.0.4.orig/src/pcm/pcm_ladspa.c	2004-04-27 00:16:40.000000000 +0200
++++ alsa-lib-1.0.4/src/pcm/pcm_ladspa.c	2004-04-27 00:18:10.000000000 +0200
+@@ -28,7 +28,11 @@
+   
+ #include <dirent.h>
+ #include <dlfcn.h>
++#ifdef HAS_WORDEXP
+ #include <wordexp.h>
++#else
++#include <glob.h>
++#endif
+ #include "pcm_local.h"
+ #include "pcm_plugin.h"
+ 
+@@ -795,13 +799,18 @@
+ {
+ 	const char *c;
+ 	size_t l;
++#ifdef HAS_WORDEXP
+ 	wordexp_t we;
++#else
++	glob_t globbuf;
++#endif
+ 	int err;
+ 	
+ 	for (c = path; (l = strcspn(c, ": ")) > 0; ) {
+ 		char name[l + 1];
+ 		memcpy(name, c, l);
+ 		name[l] = 0;
++#ifdef HAS_WORDEXP
+ 		err = wordexp(name, &we, WRDE_NOCMD);
+ 		switch (err) {
+ 		case WRDE_NOSPACE:
+@@ -815,6 +824,21 @@
+ 		}
+ 		err = snd_pcm_ladspa_check_dir(plugin, we.we_wordv[0], label, ladspa_id);
+ 		wordfree(&we);
++#else
++		err = glob(name, 0, NULL, &globbuf);
++		switch (err) {
++		case GLOB_NOSPACE:
++			return -ENOMEM;
++		case 0:
++			if (globbuf.gl_pathc == 1)
++				break;
++			/* Fall through */
++		default:
++			return -EINVAL;
++		}
++		err = snd_pcm_ladspa_check_dir(plugin, globbuf.gl_pathv[0], label, ladspa_id);
++		globfree(&globbuf);
++#endif
+ 		if (err < 0)
+ 			return err;
+ 		if (err > 0)
+diff -Naur alsa-lib-1.0.4.orig/src/userfile.c alsa-lib-1.0.4/src/userfile.c
+--- alsa-lib-1.0.4.orig/src/userfile.c	2004-04-27 00:16:40.000000000 +0200
++++ alsa-lib-1.0.4/src/userfile.c	2004-04-27 00:18:10.000000000 +0200
+@@ -20,15 +20,24 @@
+   
+ #include <string.h>
+ #include <errno.h>
++#ifdef HAS_WORDEXP
+ #include <wordexp.h>
++#else
++#include <glob.h>
++#endif
+ #include <assert.h>
+ 
+ int snd_user_file(const char *file, char **result)
+ {
++#ifdef HAS_WORDEXP
+ 	wordexp_t we;
++#else
++	glob_t globbuf;
++#endif
+ 	int err;
+ 	
+ 	assert(file && result);
++#ifdef HAS_WORDEXP
+ 	err = wordexp(file, &we, WRDE_NOCMD);
+ 	switch (err) {
+ 	case WRDE_NOSPACE:
+@@ -42,8 +51,24 @@
+ 		return -EINVAL;
+ 	}
+ 	*result = strdup(we.we_wordv[0]);
++	wordfree(&we);
++#else
++	err = glob(file, 0, NULL, &globbuf);
++	switch (err) {
++	case GLOB_NOSPACE:
++		return -ENOMEM;
++	case 0:
++		if (globbuf.gl_pathc == 1)
++			break;
++		/* Fall through */
++	default:
++		globfree(&globbuf);
++		return -EINVAL;
++	}
++	*result = strdup(globbuf.gl_pathv[0]);
++	globfree(&globbuf);
++#endif
+ 	if (*result == NULL)
+ 		return -ENOMEM;
+-	wordfree(&we);
+ 	return 0;
+ }
