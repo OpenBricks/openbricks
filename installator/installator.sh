@@ -82,9 +82,10 @@ convert () {
 
 # Configure network interface and parameters before installing GeeXboX to disk.
 setup_network () {
-  local title phy_type wifi_mode wep essid host_ip gw_ip smb_user smb_pwd
+  local title phy_type wifi_mode wep essid host_ip gw_ip smb_user smb_pwd val f
   
   title="$BACKTITLE : Network Configuration"
+  f="$1/etc/network"
 
   # Get type of physical interface
   phy_type=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "Network Physical Interface" --menu "\nGeeXboX can only use one network physical interface at a time. If you have more than one NIC, GeeXboX will use the first one. If you have both a traditional Ethernet adapter and a Wireless card, GeeXboX will use the wireless card by default. It is recommended to keep physical interface auto-detection but you may also want to force the use of one kind of interface.\n" 0 0 0 auto "Auto detection (recommanded)" ethernet "Force using Ethernet card" wifi "Force using Wireless card"` || exit 1
@@ -93,32 +94,39 @@ setup_network () {
   if [ $phy_type = "auto" -o $phy_type = "wifi" ]; then
     wifi_mode=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "Configuring WiFi Mode" --menu "\nAs you seem to be using your wireless adapter to connect this computer to your network, you will have to setup the networking mode.\n Are you connected to an access point (recommanded) or directly to another computer ?\n" 0 0 0 managed "Connected to an access point (recommanded)" ad-hoc "Direct Connection"` || exit 1
 
-    wep=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "Configuring WEP key" --inputbox "\nAs you seem to be using your wireless adapter to connect this computer to your network, you may be using a WEP key. If so, please fill in the following input box with your access point WEP key or let it blank if you do not have one (open network).\n" 0 0 ""` || exit 1
+    val=`grep WIFI_WEP $f | cut -d'"' -f2`
+    wep=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "Configuring WEP key" --inputbox "\nAs you seem to be using your wireless adapter to connect this computer to your network, you may be using a WEP key. If so, please fill in the following input box with your access point WEP key or let it blank if you do not have one (open network).\n" 0 0 "$val"` || exit 1
 
-    essid=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "Configuring WiFi ESSID" --inputbox "\nAs you seem to be using your wireless adapter to connect this computer to your network, you probably are using an SSID. If so, please fill in the following input box with your SSID indentifier or let it blank if you do not have one (open network).\n" 0 0 "any"` || exit 1
+    val=`grep WIFI_ESSID $f | cut -d'"' -f2`
+    essid=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "Configuring WiFi ESSID" --inputbox "\nAs you seem to be using your wireless adapter to connect this computer to your network, you probably are using an SSID. If so, please fill in the following input box with your SSID indentifier or let it blank if you do not have one (open network).\n" 0 0 "$val"` || exit 1
   fi
 
-  host_ip=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "GeeXboX IP" --inputbox "\nGeeXboX needs to be allocated an IP address to be present on your network. Please fill in the following input box or leave it as it for using DHCP autoconfiguration\n" 0 0 ""` || exit 1
+  # get GeeXboX IP address
+  val=`grep HOST $f | cut -d'"' -f2`
+  host_ip=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "GeeXboX IP" --inputbox "\nGeeXboX needs to be allocated an IP address to be present on your network. Please fill in the following input box or leave it as it for using DHCP autoconfiguration\n" 0 0 "$val"` || exit 1
 
   # do not get more settings if DHCP
   if [ ! -z $host_ip ]; then
-    gw_ip=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "GeeXboX GateWay" --inputbox "\nYou may want to connect GeeXboX to the Internet. Please fill in the following input box with your gateway IP address or let it blank if you do not want to set a gateway for this computer.\n" 0 0 ""` || exit 1
+    val=`grep GATEWAY $f | cut -d'"' -f2`
+    gw_ip=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "GeeXboX GateWay" --inputbox "\nYou may want to connect GeeXboX to the Internet. Please fill in the following input box with your gateway IP address or let it blank if you do not want to set a gateway for this computer.\n" 0 0 "$val"` || exit 1
   fi
 
   # get samba user name
-  smb_user=`$DIALOG --no-cancel --stdout --backtitle "$title" --title "Set Samba User name" --inputbox "\nWhen accessing to remote Samba shares, you may need to be authenticated. Most of Microsoft Windows computers let you anonymously access to remote shares using the guest account (SHARE). Please fill in the following input box with your user name for accesing to remote Samba shares or leave it blank if you do not have one.\n" 0 0 "SHARE"` || exit 1
+  val=`grep SMB_USER $f | cut -d'"' -f2`
+  smb_user=`$DIALOG --no-cancel --stdout --backtitle "$title" --title "Set Samba User name" --inputbox "\nWhen accessing to remote Samba shares, you may need to be authenticated. Most of Microsoft Windows computers let you anonymously access to remote shares using the guest account (SHARE). Please fill in the following input box with your user name for accesing to remote Samba shares or leave it blank if you do not have one.\n" 0 0 "$val"` || exit 1
 
   # get samba password
-  smb_pwd=`$DIALOG --no-cancel --stdout --backtitle "$title" --title "Set Samba Password" --inputbox "\nIf user needs to be authenticated through a password, please fill in the following input box with it or leave it blank if you do not have one.\n" 0 0 ""` || exit 1
+  val=`grep SMB_PWD $f | cut -d'"' -f2`
+  smb_pwd=`$DIALOG --no-cancel --stdout --backtitle "$title" --title "Set Samba Password" --inputbox "\nIf user needs to be authenticated through a password, please fill in the following input box with it or leave it blank if you do not have one.\n" 0 0 "$val"` || exit 1
 
-  sed -i "s%^PHY_TYPE=\".*\"\(.*\)%PHY_TYPE=\"$phy_type\"\1%" $1/etc/network
-  sed -i "s%^WIFI_MODE=\".*\"\(.*\)%WIFI_MODE=\"$wifi_mode\"\1%" $1/etc/network
-  sed -i "s%^WIFI_WEP=\".*\"\(.*\)%WIFI_WEP=\"$wep\"\1%" $1/etc/network
-  sed -i "s%^WIFI_ESSID=\".*\"\(.*\)%WIFI_ESSID=\"$essid\"\1%" $1/etc/network
-  sed -i "s%^HOST=.*%HOST=\"$host_ip\"%" $1/etc/network
-  sed -i "s%^GATEWAY=.*%GATEWAY=\"$gw_ip\"%" $1/etc/network
-  sed -i "s%^SMB_USER=.*%SMB_USER=\"$smb_user\"%" $1/etc/network
-  sed -i "s%^SMB_PWD=.*%SMB_PWD=\"$smb_pwd\"%" $1/etc/network
+  sed -i "s%^PHY_TYPE=\".*\"\(.*\)%PHY_TYPE=\"$phy_type\"\1%" $f
+  sed -i "s%^WIFI_MODE=\".*\"\(.*\)%WIFI_MODE=\"$wifi_mode\"\1%" $f
+  sed -i "s%^WIFI_WEP=\".*\"\(.*\)%WIFI_WEP=\"$wep\"\1%" $f
+  sed -i "s%^WIFI_ESSID=\".*\"\(.*\)%WIFI_ESSID=\"$essid\"\1%" $f
+  sed -i "s%^HOST=.*%HOST=\"$host_ip\"%" $f
+  sed -i "s%^GATEWAY=.*%GATEWAY=\"$gw_ip\"%" $f
+  sed -i "s%^SMB_USER=.*%SMB_USER=\"$smb_user\"%" $f
+  sed -i "s%^SMB_PWD=.*%SMB_PWD=\"$smb_pwd\"%" $f
 }
 
 /bin/busybox mount -t proc none /proc
