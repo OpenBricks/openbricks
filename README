@@ -53,11 +53,11 @@ it is quite easy to personalize it.
 
 You can add some proprietary codecs such a rv9 or wmv9, simply by adding
 them in the GEEXBOX/codecs directory. You can find those codecs in the
-package http://www2.mplayerhq.hu/MPlayer/releases/codecs/extralite.tar.bz2.
+package on http://www.mplayerhq.hu/MPlayer/releases/codecs/ .
 
 Useful files in it are :
   * Real codecs (used to play rv9 for exemple) : atrc.so.6.0, cook.so.6.0,
-      sipr.so.6.0, drv2.so.6.0, drv3.so.6.0, drv4.so.6.0.
+      sipr.so.6.0, drv3.so.6.0, drv4.so.6.0.
   * Windows Media codecs (wmv9/wma9) : wma9dmod.dll and wmv9dmod.dll.
 
 You can also modify many options. This can be done simply by editing some
