@@ -203,6 +203,7 @@ mkdir di
 mount -t $MKFS_TYPE "$DEV" di
 if [ $? -ne 0 ]; then
   $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\nFailed to mount '$DEV' as $MKFS_TYPENAME partition.\n" 0 0
+  rm -r di
   exit 1
 fi
 
@@ -238,6 +239,8 @@ rootdev=$(convert $DEV)
 
 if [ -z "$rootdev" ]; then
   $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\nCouldn't find my GRUB partition representation\n" 0 0
+  umount di
+  rm -r di
   exit 1
 fi
 
