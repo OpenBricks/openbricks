@@ -57,8 +57,7 @@ anzupassen.
 Sie können zum Beispiel die Unterstützung einiger proprietäre Codecs wie rv9
 oder wmv9 hinzufügen, indem Sie die Codecs einfach in das Verzeichnis
 GEEXBOX/codecs kopieren. Diese Codecs finden Sie im Paket, welches unter
-http://www2.mplayerhq.hu/MPlayer/releases/codecs/extralite.tar.bz2 erhältlich
-ist.
+http://www.mplayerhq.hu/MPlayer/releases/codecs/ erhältlich ist.
 
 Nützliche Files in diesem Paket sind:
   * Real Codecs (werden benötigt um beispielsweise rv9 abzuspielen):
