@@ -6,7 +6,6 @@
        "o     oM   M    o  M    o   oM  Mo   M    oM M    M   oM  Mo
         "MoooM"M   "MooM"  "MooM"  M"    "M  M"ooo"  "MooM"  M"    "M
 
-                             Generator Version
 
 
 
@@ -29,6 +28,25 @@ Pour générer une iso GeeXboX vous devez posséder l'un des sytémes suivants:
   - GNU/Linux avec mkisofs et mkzftree.
   - Windows.
 
+Pour installer la GeeXboX, vous aurez besoin :
+  - un système GNU/Linux avec SysLinux.
+
+Pour construire votre propre GeeXboX, vous nécessiterez les outils classiques :
+  - un système GNU/Linux opérationnel.
+  - Le compilateur C GCC.
+  - GNU make
+  - La commande patch.
+  - L'assembleur nasm.
+  - bzip2 et gzip.
+  - mkfs.ext2 et mkfs.vfat
+  - L'outil de téléchargement wget (non nécessaire pour le paquetage 
+  GeeXboX complet).
+  - mkisofs et mkzftree pour construire l'image ISO.
+  - mkzftree pour compresser les fichiers de l'image ISO.
+  - cdrecord (pour graver l'image).
+
+Et environ 500 Mo d'espace disque disponible.
+
 
 | PERSONALISATION
 | ~~~~~~~~~~~~~~~
@@ -42,7 +60,7 @@ repertoire iso.
 
 Vous pouvez aussi ajouter des codecs propriétaires comme le rv9 ou le wmv9, en
 les copiant simplement dans le répertoire iso\GEEXBOX\codecs. Ces codecs se
-trouvent ici:
+trouvent ici :
 http://www2.mplayerhq.hu/MPlayer/releases/codecs/extralite.tar.bz2.
 
 Les fichiers utiles sont les suivants:
@@ -61,16 +79,9 @@ textes.
     vous pouvez toujours traduire un menu. Il suffit de re-créer les fichiers
     language/menu_LANG.conf and language/help_LANG.txt.
 
-* Lirc :
-    Choisissez la télécommande supporté en éditant le fichier generator.sh ou
-    generator.bat (en fonction de votre OS). Si vous utilisez la télécommande
-    ATI Remote Wonder qui n'est pas supportée par lirc, il n'y a rien à
-    modifier car elle est activée par défaut. Si vous désirez modifier le
-    mappage des touches reportez vous au fichier lirc/lircrc_REMOTE.
-
 * MPlayer :
-    C'est ici que se font la plupart des configurations et autres bidouilles.
-    Les options se situent dans le fichier iso/GEEXBOX/etc/mplayer/mplayer.conf
+    C'est ici que se font la plupart des configurations et modifications.
+    Les options se situent dans le fichier packages/MPlayer/mplayer.conf
     Il est possible de changer des options comme la taille des police de l'OSD
     (subfont-text-scale) et beaucoup d'autres choses telles que la langue par
     défaut de lecture des DVD (ex: alang=fr,en). La meilleur façon de
@@ -78,6 +89,11 @@ textes.
     au MAN de MPlayer (man -l build/MPlayer-*/DOCS/mplayer.1). D'autres
     informations sont aussi disponibles sur la documentation officielle
     (http://mplayerhq.hu/DOCS/).
+    Il peut également être intéressant de modifier le fichier 
+    packages/MPlayer/menu.conf. Vous pouvez les menus qui vous semblent 
+    inutiles, ou les traduire dans d'autres langues par exemple. Enfin, le 
+    dernier intéressant est packages/MPlayer/build, qui contient la sélection
+    d'options de compilation de MPlayer.
 
 * Sortie TV :
     Activer la sortie TV se fait au moyen de nombreux petits utilitaires dédiés
@@ -87,6 +103,13 @@ textes.
     configuration de ces programmes se fait dans iso\GEEXBOX\etc\tvsettings.
     Vous pouvez y choisir le standard que vous utilisez (pal, secam...) et y
     modifier les options spécifiques du nvtv.
+
+* Lirc :
+    Choisissez la télécommande supporté en éditant le fichier generator.sh ou
+    generator.bat (en fonction de votre OS). Si vous utilisez la télécommande
+    ATI Remote Wonder qui n'est pas supportée par lirc, il n'y a rien à
+    modifier car elle est activée par défaut. Si vous désirez modifier le
+    mappage des touches reportez vous au fichier lirc/lircrc_REMOTE.
 
 * Réseau :
     Le réseau est configurable au niveau du fichier iso\GEEXBOX\etc\network.
@@ -104,7 +127,127 @@ Avant tout, jetez un oeuil sur la section personalisation juste au dessus
 Sous Linux, l'ISO est générée en lançant la commande suivante:
   ./generator.sh
 et sous Windows:
-  generator.bat
+  generator.exe
+
+| INSTALLATION
+| ~~~~~~~~~~~~
+
+Avant tout, vous devez créer une partition PRIMAIRE FAT16 d'environ 16 Mo.
+
+Puis, vous pouvez installer la GeeXboX depuis Linux en lançant simplement
+  ./installator.sh
+
+Répondez ensuite à toutes les questions. Lisez les questions avec attention
+et stoppez l'installation si vous ne comprenez pas ce que vous faites.
+
+
+| COMPILATION
+| ~~~~~~~~~~~
+
+Tout d'abord, regardez la partie de configuration ci-dessous.
+
+Typiquement, la compilation s'effectue simplement au moyen de : 
+  make
+Ou vous pouvez directement compiler et graver l'ISO via : 
+  make burn
+
+Une fois cela fait, vous pouvez regagner de l'espace disque en effaçant 
+l'arborescence de compilation via :
+  make clean
+ou en effectant un nettoyage complet, éliminant même les sources téléchargées :
+  make distclean
+
+Il existe également des commandes plus avancées si vous désirez effectuer
+des modifications en profondeur au niveau de la GeeXboX :
+  scripts/get package        # télécharge le paquetage
+  scripts/unpack package     # prépare le paquetage
+  scripts/build package      # compile le paquetage
+  scripts/install package    # installe le paquetage dans $INSTALL
+  scripts/clean package      # nettoie l'arborescence du paquetage
+  make exec                  # lance la GeeXboX dans une cellule
+                             # ATTENTION: ceci est une fonction expérimentale
+                             # Utilisez là à vos propres risques.
+
+Si vous avez effectué une version modifiée de la GeeXboX, vous pouvez :
+construire une archive réduite tar.bz2 via :
+  make dist
+ou une archive complète (avec l'intégralité des sources) au moyen de :
+  make fulldist
+ou construire le générateur d'ISO :
+  make generator
+ou encore l'installateur : 
+  make installator
+
+
+| CONFIGURATION
+| ~~~~~~~~~~~~~
+
+* Options Globales :
+    C'est la première chose dont vous aurez à vous soucier avant d'essayer de
+    compiler la GeeXboX. Elles sont contenues dans le fichier config/options, 
+    et devraient être suffisamment explicites. Vous pouvez y choisir la famille
+    du CPU cible, votre thème, si vous désirez utiliser des polices TrueType
+    ou non etc ... Vous pourrez également y modifier les propriétés de votre
+    graveur afin de graver directement l'image ISO.
+
+* Linux :
+    Il s'agit d'une configuration Linux classique (packages/linux/linux.conf).
+    Vous pouvez éditer le fichier à la main, ou via scripts/unpack linux
+    suivi de make menuconfig -C build/linux-* (ou utiliser votre méthode 
+    préférée en lieu et place de menuconfig). Puis, vous devrez sauvegarder
+    votre fichier build/linux-*/.config dans packages/linux/linux.conf.
+
+* Lirc :
+    Lirc vous permet de contrôler la GeeXboX en utilisant une télécommande.
+    En premier lieu, vous aurez à choisir le fichier correspondant à votre
+    télécommande dans build/lirc-*/remotes (après avoir effectué scripts/unpack
+    lirc) et l'ajouterez à packages/lirc/install. Puis, choisissez votre
+    périphérique (par défaut, il s'agit de /dev/ttyS0 (COM1)) et le pilote
+    lirc et mettez le tout dans un fichier nommé packages/lirc/lircd_$REMOTE. 
+    Vous pourrez ensuite choisir l'affectation des touches dans le fichier 
+    packages/lirc/lircrc_$REMOTE. Pour chaque affectation, vous aurez à chosir
+    un bouton (choisissez leurs noms dans le fichier de définitions de la
+    télécommande) et associez lui une action. L'action sera une de celle
+    disponible dans MPlayer (vous pouvez trouver une liste dans le fichier html
+    build/MPlayer-*/DOCS/documentation.html#commands).
+
+
+| MODIFICATION
+| ~~~~~~~~~~~~
+
+La première chose dont vous aurez àvous soucier concerne le script 
+d'initialisation. En fait, ils sont 2. Le premier est dans 
+packages/initrd/linuxrc mais vous ne devriez pas avoir besoin de le modifier.
+Le second est config/init et c'est dans ce dernier que vous aurez de
+probables modifications à effectuer.
+
+Puis, vous pourrez être intéressés par l'ajout de nouveaux paquetages. Un
+paquetage n'est implement qu'un ensemble de scripts qui se doivent de suivre
+certaines règles. Tous les scripts se doivent d'être placés dans un
+répertoire dont le nom coïncide avec celui du programme que vous désirez
+ajouter, lui-même dans le répertoire packages.
+
+Voici une liste de scripts que vous aurez à créer :
+ - url : simple liste d'URLS où sont disponibles les sources.
+ - unpack : que faire après avoir décompresser les sources. Par exemples, vous
+            pouvez modifier les fichiers de configuration. Ceci ne concerne pas
+            l'application de patchs.
+ - need_build : appelé lorsque le paquetage a déjà été compilé, afin de
+                s'assurer qu'il n'aura plus besoin d'être recompilé. Il devrait
+                supprimer le fichier .stamps/"package name"/build si le
+                paquetage nécessite d'être reconstruit.
+ - build : l'ensemble des étapes nécessaires pour compiler le programme.
+ - install : l'ensemble des étapes nécessaires à l'installation du programme.
+             Le préfixe d'installation devrait être $INSTALL.
+
+Lorsqu'un fichier de la liste d'URLS est nommé patch-nom_du_programme-..., il
+est automatiquement appliqué aux sources du programme.
+
+Vous devez avoir à l'esprit que les applications qui tournent sous le système
+GeeXboX doivent avoir été compilé avec la librairie uClibc.
+
+Enfin, la meilleure manière d'ajouter un paquetage est de s'inspirer de la 
+façon dont les actuels sont faits.
 
 
 | LICENSE

@@ -21,14 +21,14 @@ This archive contain the needed scripts to rebuild an iso image of the GeeXboX.
 | REQUIREMENTS
 | ~~~~~~~~~~~~
 
-To generate a GeeXboX iso, you will need either:
+To generate a GeeXboX iso, you will need either :
   - a GNU/Linux system with mkisofs and mkzftree.
   - a windows system.
 
-To install the GeeXboX, you will need:
+To install the GeeXboX, you will need :
   - a GNU/Linux system with syslinux.
 
-To build the GeeXboX, you will need some classic tools:
+To build the GeeXboX, you will need some classic tools :
   - a working GNU/Linux system.
   - the gcc C compiler.
   - GNU make
@@ -116,7 +116,7 @@ First have a look at the personalization section just above.
 Then basically you can generate the iso under Linux by launching
   ./generator.sh
 or under windows by launching
-  generator.bat
+  generator.exe
 
 
 | INSTALLATION
@@ -184,8 +184,6 @@ or a geexbox installator with :
     and then a make menuconfig -C build/linux-* (or use the method you prefer
     instead of menuconfig). Then you should backup your build/linux-*/.config
     into packages/linux/linux.conf.
-    The only "difficult" thing with this is to keep the kernel small enough
-    to fit on the boot floppy image.
 
 * Lirc :
     Lirc allows you to control the GeeXboX using a remote controller. First
