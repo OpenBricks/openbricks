@@ -64,12 +64,24 @@ You can also modify many options. This can be done simply by editing some
 text files.
 
 * Language :
-    You can easily select your preferred menu language by editing the file
-    GEEXBOX/etc/lang. This as no effect on DVD language (see the MPlayer
-    section). If your language is not available, you can translate the menu
-    in your own language. This simply involve the creation of
-    GEEXBOX/etc/mplayer/menu_LANG.conf and
-    GEEXBOX/usr/share/mplayer/help_LANG.txt.
+    You can easily select your preferred menu language by following
+    the procedure below :
+
+    - GNU/Linux users:
+    Edit the generator.sh script before running it and change the line
+    near the top: "LANG=en" to your preferred language.
+    For example: if you're French, change it to "LANG=fr".
+
+    - Microsoft Windows users:
+    When started, generator.exe gives you a combo list that allows you
+    to choose your preferred language.
+
+    NB : This has no effect on DVD language (see the MPlayer section).
+
+    For the list of available languages please see the "language" directory.
+    If your language is not available, you can translate the menu
+    in your own language. This simply involves the creation of
+    language/menu_LANG.conf and language/help_LANG.txt.
 
 * MPlayer :
     This is where you can do most of the configuration and tweaking.
