@@ -1,0 +1,15 @@
+#!/bin/sh
+
+if [ -n "`echo $1 | grep '/mnt/..*'`" ]; then
+  MNT=`echo $1 | sed "s%\(/mnt/[^/]*\)/.*%\1%"`
+  DEV=`mount | sed 's/\\040/ /g' | sed -n "s%\(.*\) on ${MNT}.*%\1%p"`
+  [ -f /var/rw ] && COUNT=`sed "s%\([0-9]*\)\ $DEV%\1%" /var/rw`
+  [ -z "$COUNT" -o "$COUNT" -le "0" ] && mount -o remount,rw "$DEV" "$MNT"
+  if [ -z "$COUNT" ]; then
+    echo "1 $DEV" >> /var/rw
+  else
+    COUNT=$(($COUNT+1))
+    sed "s%[0-9]*\ $DEV%$COUNT $DEV%" /var/rw > /var/rw.new
+    mv /var/rw.new /var/rw
+  fi
+fi
