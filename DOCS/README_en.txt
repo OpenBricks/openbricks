@@ -237,7 +237,7 @@ First make sure you font is not included in offical GeeXboX package,
 by using the generator and looking up your font in the section above.
 
 Most fonts are already included in offical package, some are supported
-but not included because of their size (Chinese fonts for example).
+but not included because of their excessive size (Chinese fonts for example).
 
 * General support:
 
