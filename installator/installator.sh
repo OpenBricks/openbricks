@@ -140,7 +140,7 @@ fi
 while [ ! -b "$DEV" ]; do
     DISKS=""
     for i in `$SFDISK -l /dev/$DISK | grep ${DISK%disc} | cut -f1 -d' '`; do
-      case `$SFDISK --print-id $DISK ${i#${i%%[0-9]*}}` in
+      case `$SFDISK --print-id ${i%%[0-9]*} ${i#${i%%[0-9]*}}` in
         1|11|6|e|16|1e|14|b|c|1b|1c|83)
           S=`$SFDISK -s "$i" | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
           DISKS="$DISKS $i ${S}MB"
