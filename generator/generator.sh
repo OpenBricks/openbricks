@@ -50,6 +50,9 @@ if [ -e ~/.geexbox-generator ]; then
   . ~/.geexbox-generator.conf;
 fi
 
+. $GEEXBOX_DIR/language/lang.conf
+. $GEEXBOX_DIR/language/lang.funcs
+
 [ -d $W32CODECS_DIR ] && W32CODECS_USAGE=" [-w|--with-w32codecs]"
 
 usage()
@@ -93,33 +96,10 @@ mkdir -p $TMPDIR/ziso
 echo $LANG > $TMPDIR/iso/GEEXBOX/etc/lang
 cp $GEEXBOX_DIR/language/help_$LANG.txt $TMPDIR/iso/GEEXBOX/usr/share/mplayer/
 cp $GEEXBOX_DIR/language/menu_$LANG.conf $TMPDIR/iso/GEEXBOX/etc/mplayer/
+cp $GEEXBOX_DIR/language/lang.conf $TMPDIR/iso/GEEXBOX/etc/
 
-# Those are the languages which require `bitmap font` for menu
-if [ $LANG = hu ]; then
-  MENU_FONT=iso-8859-2
-elif [ $LANG = he ]; then
-  MENU_FONT=iso-8859-8
-elif [ $LANG = bg ]; then
-  MENU_FONT=cp1251
-elif [ $LANG = ru ]; then
-  MENU_FONT=koi8r
-else
-  MENU_FONT=
-fi
-if [ -z "$SUB_FONT" ]; then
-  SUB_FONT=$LANG
-fi
-if [ $SUB_FONT = iso-8859-2 -o $SUB_FONT = cs -o $SUB_FONT = hu -o $SUB_FONT = pl -o $SUB_FONT = ro -o $SUB_FONT = sk ]; then
-  SUB_FONT=iso-8859-2
-elif [ $SUB_FONT = iso-8859-8 -o $SUB_FONT = he ]; then
-  SUB_FONT=iso-8859-8
-elif [ $SUB_FONT = cp1251 -o $SUB_FONT = bg ]; then
-  SUB_FONT=cp1251
-elif [ $SUB_FONT = koi8r -o $SUB_FONT = ru ]; then
-  SUB_FONT=koi8r
-else
-  SUB_FONT=iso-8859-1
-fi
+MENU_FONT=`lang2menufont $LANG`
+SUB_FONT=`subfont2font $SUB_FONT`
 
 echo $SUB_FONT > $TMPDIR/iso/GEEXBOX/etc/subfont
 cp -r $GEEXBOX_DIR/font/$SUB_FONT $TMPDIR/iso/GEEXBOX/usr/share/mplayer/font/

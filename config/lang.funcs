@@ -1,0 +1,66 @@
+#!/bin/sh
+
+# Convert language name (full or short) to a short name
+simplifylang() {
+	local i tmp
+
+	for i in $LANGUAGES; do
+		eval tmp=\$${i}_name
+		if [ "$1" = "$i" -o "$1" = "$tmp" ]; then
+			echo $i
+			return
+		fi
+	done
+}
+
+# Convert subtitle font name ($1) to a real font name
+# $1 can be empty, in that case we take $LANG value (if exists).
+# In any case this function always returns a valid font name.
+subfont2font() {
+	local i tmp subfont=$1
+
+	if [ -z "$subfont" ]; then
+		if [ -n "$LANG" ]; then
+			subfont=$LANG
+		else
+			subfont=$DEFAULT_LANGUAGE
+		fi
+	fi
+
+	# First check if name matches any language short or full name.
+	# and to convert to the language matching font.
+	tmp=`simplifylang $subfont`
+	if [ -n "$tmp" ]; then
+		eval subfont=\$${tmp}_font
+	fi
+
+	# Now `subfont` should match a font, check it.
+	for i in $FONTS; do
+		if [ "$subfont" = "$i" ]; then
+			echo $subfont
+			return
+		fi
+	done
+
+	# subfont doesn't match any valid font.
+	# return the default language font.
+	eval echo \$${DEFAULT_LANGUAGE}_font
+}
+
+# Convert language name ($1) to menu language
+# if language doesn't require bitmap menu, return empty string.
+lang2menufont() {
+	local tmp lang
+
+	lang=`simplifylang $1`
+
+	eval tmp=\$${lang}_bitmapmenu
+	case "$tmp" in
+	[Yy][Ee][Ss]|[Tt][Rr][Uu][Ee]|1)
+		eval tmp=\$${lang}_font
+		echo $tmp
+		;;
+	*)
+		;;
+	esac
+}

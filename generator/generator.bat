@@ -37,6 +37,7 @@ echo "Applying settings..."
 echo %LANG% > iso\GEEXBOX\etc\lang
 copy language\help_%LANG%.txt iso\GEEXBOX\usr\share\mplayer\help_%LANG%.txt >nul
 copy language\menu_%LANG%.conf iso\GEEXBOX\etc\mplayer\menu_%LANG%.conf >nul
+copy language\lang.conf iso\GEEXBOX\etc\lang.conf >nul
 set MENU_FONT=
 if %LANG%==hu set MENU_FONT=iso-8859-2
 if %LANG%==he set MENU_FONT=iso-8859-8
