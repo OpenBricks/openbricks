@@ -323,6 +323,10 @@ sans disque ! Pour obtenir cela il vous faudra :
  - un serveur TFTP
  - un serveur NFS
  - une machine supportant le PXE :-)
+
+* Depuis un poste GNU/Linux :
+  -------------------------
+
 Il faut tout d'abord configurer le server DHCP pour qu'il envoie les info de
 boot PXE. Voilà un exemple de configuration avec isc dhcp :
 
@@ -361,6 +365,66 @@ et un /etc/hosts.allow ressemblant à :
 ALL: ALL
 
 Ca devrait être bon. Reste a booter la machine PXE et a voir ce qu'il se passe.
+
+* Depuis un poste Microsoft Windows :
+  ---------------------------------
+
+Pour démarrer en mode PXE depuis un système Microsoft Windows, il vous faudra
+les logiciels suivants :
+
+* Un serveur TFTP et un serveur DHCP ("tftpd32" remplira cette tâche,
+  il est disponible à l'adresse http://tftpd32.jounin.net/).
+* Un serveur NFS (comme par exemple "Allegro NFS server", disponible à
+  l'adresse http://opensource.franz.com/nfs/).
+* Une machine supportant le boot en mode PXE. 
+
+Téléchargez et décompressez (aucune installation n'est requise) le dossier
+tftpd32 quelque part sur votre disque, par exemple C:\tftpd32
+
+Copiez y une arborescence GEEXBOX complète : C:\tftpd32\GEEXBOX
+
+Lancez tftpd32 :
+- Sélectionnez le dossier C:\tftpd32 pour "current directory".
+- choisissez l'interface (carte réseau) à utiliser en haut dans
+  "server interface". Ici dans l'exemple une carte avec l'IP 192.168.0.1
+- Cliquez sur "setting" et vérifiez que "DHCP server" soit bien cochée.
+- Dans l'onglet "DHCP server", remplissez les champs, en suivant cet exemple :
+  (se référer à une documentation plus approfondie sur le fonctionnement
+  d'un serveur DHCP pour plus de détails)
+	* IP starting pool : 192.168.0.10
+	* Size of pool  : 10
+	* Boot file : ./GEEXBOX/boot/pxelinux.0
+	* WINS/DNS server : 192.168.0.254
+	* Default router : 192.168.0.254
+	* Mask : 255.255.255.0
+	* Domain name : mydomain.net
+- Faites "save" pour appliquer les modifications.
+
+La première partie est terminée, normalement en démarrant la machine cliente
+(qui doit lancer la GeeXboX), on devrait apercevoir le chargement jusqu'à
+l'affichage du logo. Le système se bloquera alors, car le serveur NFS
+n'a pas encore été configuré.
+
+Installez "Allegro NFS Server" et configurez le comme suit :
+
+- Onglet Exports : 
+	* faites un "new name" : et nommez le "/tftpboot/GEEXBOX"
+	* dans "path", juste en dessous : selectionnez le
+          répertoire "C:\tftp32\GEEXBOX"
+	* "Set mode bits (octal)" : 777
+	* dans "allowed host list", selectionnez "all".
+	* "Read write" , et "read only user list", selectionnez "root"
+          et "everyone" (pour avoir un log, il suffit de tout cocher
+          dans le dernier onglet).
+
+Faites "Appliquer".
+
+N'oubliez pas de modifier le fichier
+C:\tftp32\GEEXBOX\boot\pxelinux.cfg\default et d'y changer l'adresse IP
+"192.168.0.2" en "192.168.0.1" (ou toute adresse que vous aurez choisie).
+
+Il suffit maintenant de démarrer la machine cliente pour amorçer la GeeXboX
+par le réseau.
 
 
 | COMPILATION
