@@ -134,10 +134,15 @@ sed 's/TIMEOUT.*//' di/isolinux.cfg > di/syslinux.cfg
 sed 's/PROMPT.*//' di/syslinux.cfg > di/isolinux.cfg
 sed "s/boot=cdrom/boot=${DEV#/dev/}/" di/isolinux.cfg > di/syslinux.cfg
 rm di/isolinux.cfg
-dd if="$DEV" of=di/geexbox.lnx
 umount di
 rmdir di
 syslinux "$DEV"
+
+mkdir di
+mount -t vfat "$DEV" di
+dd if="$DEV" of=di/geexbox.lnx
+umount di
+rmdir di
 
 if [ -n "$DIALOG" ]; then
   `$DIALOG --backtitle "$BACKTITLE" --title "Bootloader" --defaultno --yesno "\n'$DEV' is now a bootable partition. To boot on it, you will need to install a bootloader. If you don't have any other operating system on this hard disk, I can install a bootloader for you. Else, you will need to configure yourself a boot menu such as lilo.\n\nDo you want to install a single system bootloader ?\n" 0 0` && MBR=yes
