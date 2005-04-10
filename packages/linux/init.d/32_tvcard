@@ -5,7 +5,8 @@
 echo "### Setting up TV card ###"
 
 if test -z "`grep 'Class 0400:.*109e:' /proc/pci`" \
-     -a -z "`grep 'Class 0480:.*1131:' /proc/pci`"; then
+     -a -z "`grep 'Class 0480:.*1131:' /proc/pci`" \
+     -a -z "`grep 'Class 0480:.*14f1:88' /proc/pci`"; then
   # No supported TV card found
   exit 1
 fi
@@ -36,6 +37,30 @@ elif test -n "`grep 'Class 0480:.*1131:' /proc/pci`"; then
   modprobe saa7134 $CARD $TUNER >/dev/null 2>&1
 
   echo -n "" > /var/tvcard
+elif test -n "`grep 'Class 0480:.*14f1:88' /proc/pci`"; then
+  # Conexant BT881/CX88 Card
+  modprobe tveeprom >/dev/null 2>&1
+  modprobe cx88xx $CARD $TUNER >/dev/null 2>&1
+  modprobe cx8800 >/dev/null 2>&1
+
+  # cx8800 module tries to autodetect/force tuner model according to eeprom.
+  # It fails if eeprom is corrupted so force tuner module loading before cx8800
+  if test "$TV_CARD" != "AUTO" \
+       -a -n "`dmesg | grep 'tveeprom: Encountered bad packet header'`"; then
+    rmmod cx8800 cx88xx tuner
+    modprobe cx88xx $CARD $TUNER >/dev/null 2>&1
+    modprobe tuner >/dev/null 2>&1
+    modprobe cx8800 >/dev/null 2>&1
+  fi
+
+  echo "TV_WIDTH=768" > /var/tvcard
+  echo "TV_HEIGHT=576" >> /var/tvcard
+
+  # CX88 driver reset color values to 0, so need to be forced.
+  echo "TV_BRIGHTNESS=50" >> /var/tvcard
+  echo "TV_CONTRAST=50" >> /var/tvcard
+  echo "TV_HUE=100" >> /var/tvcard
+  echo "TV_SATURATION=75" >> /var/tvcard
 fi
 
 modprobe tuner >/dev/null 2>&1
