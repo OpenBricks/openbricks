@@ -242,6 +242,21 @@ TV_TUNER=AUTO
     Vous pouvez etre amené à définir la norme d'image souhaitée (PAL/NTSC)
     via le fichier /etc/tvout ainsi que le type de sortie audio à utiliser
     (Analogique ou SPDIF) via le fichier /etc/audio.
+    
+* configuration de la radio:
+
+    Si vôtre carte TV dispose d'un tuner radio FM intégré, la GeeXboX vous
+    permet d'écouter la radio. Pour cela, il vous faudra modifier le fichier
+    GEEXBOX/etc/radio pour mettre l'option RADIO à yes.
+
+    Le fichier GEEXBOX/etc/radio contient aussi la définition des stations.
+    Des exemples sont présents dans le fichier. Il suffira de les dé-commenter
+    et de les adapter à vos stations favorites.
+
+    Le programme d'écoute de la radio ne faisant pas partie de MPlayer, il
+    y a des contrôle de volume séparés pour la radio. Notez que le volume
+    contrôlé est le volume principale. Il pourra donc être nécessaire de le
+    réajuster avant de lancer la TV, une vidéo ou de la musique.
 
 
 | GENERATION DE L'ISO

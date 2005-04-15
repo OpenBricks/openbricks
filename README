@@ -234,6 +234,26 @@ text files.
     You may have to set the required image norm (PAL/NTSC) in the /etc/tvout
     file and the kind of audio output you want to use (Analog or SPDIF)
     in /etc/audio.
+    
+* Radio configuration :
+
+    If your TV-card has built-in FM radio tuner, GeeXboX can support playing
+    the radio. You have to modify the GEEXBOX/etc/radio file to have 
+    "RADIO=yes" if you want to use the radio. There is no hardware auto-
+    detection, so setting this to 'yes' without a TV-card-based FM radio will 
+    put unnecessary menu items on your GeeXboX screen.
+
+    The GEEXBOX/etc/radio file also has the radio station definition. There 
+    are a number of examples in the file, which simply include the radio 
+    frequency and the name of the station. Please be careful when editing 
+    channels and simply use the same syntax as the examples and the radio
+    stations should be present in the main menu under "LISTEN RADIO".
+
+    Since the radio application itself is not part of MPlayer, there is 
+    separate access to the volume. Please note that the volume that is being
+    increased or decreased is Master volume. Before switching back to TV or
+    video viewing, or music playing, the volume should be re-adjusted.
+
 
 | GENERATION
 | ~~~~~~~~~~
