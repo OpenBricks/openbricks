@@ -133,6 +133,41 @@ setup_network () {
   sed -i "s%^SMB_PWD=.*%SMB_PWD=\"$smb_pwd\"%" $f
 }
 
+# Configure TV card and scan for channels.
+setup_tvscan () {
+  MPTVSCAN=/usr/bin/mptvscan
+  title="$BACKTITLE : Analog TV Channels Scanner"
+  MPLAYER_CONF="$1/etc/mplayer/mplayer.conf"
+
+  for i in `$MPTVSCAN -i`; do
+    INPUTS="$INPUTS $i ''"
+  done
+
+  for i in `$MPTVSCAN -s`; do
+    NORMS="$NORMS $i ''"
+  done
+
+  for i in `$MPTVSCAN -c`; do
+    CHANLISTS="$CHANLISTS $i ''"
+  done
+
+  while [ -z "$DONE" ]; do
+    INPUT=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "TV Input Selection" --menu "\nBelow is the list of your TV card's available inputs. Please select the one you want to use for channels scan (should be Television)." 0 0 0 $INPUTS`
+
+    NORM=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "TV Norm Selection" --menu "\nBelow is the list of your TV card's supported video standards. Please select the one you want to use, according to your localization." 0 0 0 $NORMS`
+
+    CHANLIST=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "TV Chanlist Selection" --menu "\nBelow is the list of pre-configured chanlists for scan. Select the one corresponding to your location or choose 'all' for a deep scan (scanning all existing frequencies)." 0 0 0 "all channels" ' ' $CHANLISTS`
+
+    $MPTVSCAN -i$INPUT -s$NORM -c$CHANLIST -p 2>tmp | $DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "Scanning Channels" --gauge "\nGeeXboX is currently scanning your channels. This operation may take a while. Please wait while processing ..." 0 0
+
+    CHANNELS=`sed 's/channels=//' tmp | sed 's/-/ - /g' | sed 's/,/\\\\n/g'`
+    $DIALOG --aspect 12 --stdout --yes-label "Accept" --no-label "Retry" --backtitle "$title" --title "Scan Done ..." --yesno "\nCongratulations, the TV channels scan is done. The following channels has been discoverd (if no channel has been found, you can then try again with new card/tuner/norm/chanlist settings).\n\n$CHANNELS" 0 0 && DONE=true
+  done
+
+  echo -n "tv=" | cat - tmp >> $MPLAYER_CONF
+  rm tmp
+}
+
 /bin/busybox mount -t proc none /proc
 /bin/busybox mount -t sysfs none /sys
 /bin/busybox --install -s
@@ -361,6 +396,17 @@ fi
 # Setup network is only available when booting from GeeXboX.
 if [ "$1" = geexbox ]; then
   $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Configure Network ?" --yesno "\nDo you want to configure your network parameters before installing GeeXboX to disk ?\n" 0 0 && setup_network "di/GEEXBOX"
+fi
+
+# Configure TV card and scan for channels.
+# (only available when booting from GeeXboX).
+if [ "$1" = geexbox ]; then
+  if test -n "`grep 'Class 0400:.*109e:' /proc/pci`" \
+       -o -n "`grep 'Class 0480:.*1131:' /proc/pci`" \
+       -o -n "`grep 'Class 0480:.*14f1:88' /proc/pci`"; then
+    # Only scan if a TV card is detected
+    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Scan for Analog TV Channels ?" --yesno "\nDo you want to configure your analog tv card and scan for channels before installing GeeXboX to disk ?\n" 0 0 && setup_tvscan "di/GEEXBOX"
+  fi
 fi
 
 grubprefix=/boot/grub
