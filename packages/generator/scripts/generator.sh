@@ -110,7 +110,6 @@ SUB_FONT=`lang2font "$SUB_CHARSET" sub`
 
 for i in $FONT_CHARSETS; do
   if [ "$i" = "$MENU_CHARSET" ]; then
-    cp $GEEXBOX_DIR/themes/$THEME/*.ttf $TMPDIR/iso/GEEXBOX/usr/share/fonts/themefont.ttf
     MENU_FONT="themefont.ttf"
     break
   fi
@@ -152,7 +151,9 @@ cp $GEEXBOX_DIR/i18n/lang.conf $TMPDIR/iso/GEEXBOX/etc/
 
 echo $SUB_CHARSET > $TMPDIR/iso/GEEXBOX/etc/subfont
 cp -r $GEEXBOX_DIR/i18n/fonts/$SUB_FONT $TMPDIR/iso/GEEXBOX/usr/share/fonts/
-if [ "$MENU_FONT" != "themefont.ttf" -a "$MENU_FONT" != "$SUB_FONT" ]; then
+if [ "$MENU_FONT" = "themefont.ttf" ]; then
+  cp $GEEXBOX_DIR/themes/$THEME/*.ttf $TMPDIR/iso/GEEXBOX/usr/share/fonts/themefont.ttf
+elif [ "$MENU_FONT" != "$SUB_FONT" ]; then
   cp -r $GEEXBOX_DIR/i18n/fonts/$MENU_FONT $TMPDIR/iso/GEEXBOX/usr/share/fonts/
 fi
 
