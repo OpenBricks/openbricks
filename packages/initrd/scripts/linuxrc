@@ -64,22 +64,33 @@ progress 12000 "searching cdrom drives"
 echo 0 > /proc/sys/dev/cdrom/autoclose
 echo 0 > /proc/sys/dev/cdrom/lock
 echo -n 0 > /etc/last_cdrom
+IDENUM=0
 COUNT=`cut -f 5 /proc/scsi/sg/devices | grep -c 5`
-for DEV in /dev/sr*; do
-  NUM=`echo $DEV | sed 's%/dev/sr\(.*\)%\1%'`
+for DEV in /proc/ide/hd* /dev/sr*; do
+  NUM=`echo $DEV | sed -e 's/\/proc\/ide\/hd.\(.*\)/-1/' \
+                       -e 's/\/dev\/sr\(.*\)/\1/'`
   test "$NUM" -ge "$COUNT" && break
-  TYPE=`/usr/bin/iscd $DEV`
-  CDROM="/mnt/ramfs/mnt/cdrom $(($NUM+1))"
+  if [ "$NUM" -eq "-1" ]; then
+    if [ "`cat $DEV/media`" = "cdrom" ]; then 
+      test "`cat $DEV/driver | grep scsi -c`" -eq "1" && continue 
+      IDENUM=$(($IDENUM+1))
+    else
+      continue
+    fi
+  fi   
+  DEVNAME=`echo $DEV | sed -e 's/\/proc\/ide\//\/dev\//' `
+  TYPE=`/usr/bin/iscd $DEVNAME`
+  CDROM="/mnt/ramfs/mnt/cdrom $(($NUM+$IDENUM+1))"
   mkdir "$CDROM"
-  if mount -t supermount -o ro,dev=$DEV,fs=auto,tray_lock=onwrite none "$CDROM" 2>/dev/null >/dev/null; then
+  if mount -t supermount -o ro,dev=$DEVNAME,fs=auto,tray_lock=onwrite none "$CDROM" 2>/dev/null >/dev/null; then
     if test "$BOOT" = cdrom -a -z "$GEEXBOX" -a -d "$CDROM/GEEXBOX"; then
       GEEXBOX="$CDROM/GEEXBOX"
-      DEVICE=$DEV
-      test $TYPE = DVD && DVD_DEVICE=$DEV
+      DEVICE=$DEVNAME
+      test $TYPE = DVD && DVD_DEVICE=$DEVNAME
     fi
-    test -z "$DEVICE" && DEVICE=$DEV
-    test -z "$DVD_DEVICE" -a "$TYPE" = DVD && DVD_DEVICE=$DEV
-    echo -n " $DEV '`echo $CDROM | sed s%/mnt/ramfs%%`'" >> /mnt/ramfs/tmp/autolaunchparam
+    test -z "$DEVICE" && DEVICE=$DEVNAME
+    test -z "$DVD_DEVICE" -a "$TYPE" = DVD && DVD_DEVICE=$DEVNAME
+    echo -n " $DEVNAME '`echo $CDROM | sed s%/mnt/ramfs%%`'" >> /mnt/ramfs/tmp/autolaunchparam
     echo -n $(($NUM+1)) > /etc/last_cdrom
   else
     rmdir "$CDROM"
