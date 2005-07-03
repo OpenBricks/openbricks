@@ -55,12 +55,7 @@ Quando GeeXboX è installato su disco o generato,
 E' possibile aggiugnere alcuni codecs proprietari come rv9 o wmv9,
 semplicemente aggiugnendoli nella cartella GEEXBOX/codecs. Si possono trovare
 questi codecs nel pacchetto:
-http://www.mplayerhq.hu/MPlayer/releases/codecs/
-
-I file utili del pacchetto sono :
-  * i codec Real (utilizzati per visualizzare rv9 per esempio) :
-      atrc.so.6.0, cook.so.6.0, sipr.so.6.0, drv3.so.6.0, drv4.so.6.0.
-  * i codec Windows Media (wmv9/wma9) : wma9dmod.dll e wmv9dmod.dll.
+http://www.geexbox.org/releases/geexbox-extra-codecs-nonfree.tar.gz
 
 E' possibile inoltre modificare molte opzioni. Questo è possibile modificando
 semplicemente qualche file di testo.

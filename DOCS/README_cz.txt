@@ -60,12 +60,7 @@ je velice jednoduché vytvoøit osobní nastavení.
 
 Mùžete pøidat další kodeky jako napøíklad rv9 nebo wmv9 pouhým nakopírováním
 do adresáøe GEEXBOX/codecs. Tyto kodeky mùžete nalézt v balíècích na
-http://www.mplayerhq.hu/MPlayer/releases/codecs/.
-
-Užiteèné soubory jsou:
-  * Real codecs (slouží pro pøehrávání rv9) : atrc.so.6.0, cook.so.6.0,
-      sipr.so.6.0, drv3.so.6.0, drv4.so.6.0.
-  * Windows Media codecs (wmv9/wma9) : wma9dmod.dll and wmv9dmod.dll.
+http://www.geexbox.org/releases/geexbox-extra-codecs-nonfree.tar.gz
 
 Dále upravit velké množství nastavení editací textových konfiguraèních  souborù.
 

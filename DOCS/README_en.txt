@@ -53,12 +53,7 @@ it is quite easy to personalize it.
 
 You can add some proprietary codecs such a rv9 or wmv9, simply by adding
 them in the GEEXBOX/codecs directory. You can find those codecs in the
-package on http://www.mplayerhq.hu/MPlayer/releases/codecs/ .
-
-Useful files in it are :
-  * Real codecs (used to play rv9 for example) : atrc.so.6.0, cook.so.6.0,
-      sipr.so.6.0, drv3.so.6.0, drv4.so.6.0.
-  * Windows Media codecs (wmv9/wma9) : wma9dmod.dll and wmv9dmod.dll.
+package on http://www.geexbox.org/releases/geexbox-extra-codecs-nonfree.tar.gz
 
 You can also modify many options. This can be done simply by editing some
 text files.
@@ -193,7 +188,7 @@ text files.
     # TV Channels
     # Syntax : CHAN="Channel Frequency:Channel Title"
     # Example :
-    # CHAN="29:France 2"
+    # CHAN="26:France 2"
     # CHAN="K08:Canal +"
     # TV Channels List
     # Available : france, europe-east, europe-west, us-bcast, us-cable
