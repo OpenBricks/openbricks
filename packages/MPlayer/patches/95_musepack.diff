@@ -1,0 +1,564 @@
+diff -Naur MPlayer-1.0pre7.orig/configure MPlayer-1.0pre7/configure
+--- MPlayer-1.0pre7.orig/configure	2005-07-03 19:39:28.936527768 +0200
++++ MPlayer-1.0pre7/configure	2005-07-03 19:49:17.620034272 +0200
+@@ -226,6 +226,7 @@
+   --disable-liba52       disable builtin liba52 [enabled]
+   --enable-libdts        enable libdts support [autodetect]
+   --disable-libmpeg2     disable builtin libmpeg2 [enabled]
++  --disable-musepack     disable musepack support [autodetect]
+   --disable-amr_nb       disable amr narrowband, floating point [autodetect]
+   --disable-amr_nb-fixed disable amr narrowband, fixed point [autodetect]
+   --disable-amr_wb       disable amr wideband, floating point [autodetect]
+@@ -1410,6 +1411,7 @@
+ _inet6=auto
+ _gethostbyname2=auto
+ _ftp=yes
++_musepack=auto
+ _additional_filters=yes
+ _vstream=auto
+ for ac_option do
+@@ -1526,6 +1528,8 @@
+   --disable-libdts)	_libdts=no      ;;
+   --enable-libmpeg2)	_libmpeg2=yes	;;
+   --disable-libmpeg2)	_libmpeg2=no	;;
++  --enable-musepack)   _musepack=yes    ;;
++  --disable-musepack)  _musepack=no     ;;
+   --enable-internal-matroska)  _matroska_internal=yes ;;
+   --disable-internal-matroska) _matroska_internal=no ;;
+   --enable-internal-faad)	_faad_internal=yes	_faad_external=no	;;
+@@ -5315,6 +5319,29 @@
+ fi
+ echores "$_libmpeg2"
+ 
++echocheck "patched libmpcdec"
++if test "$_musepack" = auto ; then
++  _musepack=no
++  cat > $TMPC << EOF
++#include <mpcdec/mpcdec.h>
++int main(void) {
++  mpc_streaminfo info;
++  mpc_decoder decoder;
++  mpc_decoder_set_streaminfo(&decoder, &info);
++  mpc_decoder_decode_frame(&decoder, NULL, 0, NULL);
++}
++EOF
++  cc_check -lmpcdec $_ld_lm && _musepack=yes
++fi
++if test "$_musepack" = yes ; then
++  _def_musepack='#define HAVE_MUSEPACK 1'
++  _ld_musepack='-lmpcdec'
++  _codecmodules="musepack $_codecmodules"
++else
++  _def_musepack='#undef HAVE_MUSEPACK'
++  _nocodecmodules="musepack $_nocodecmodules"
++fi
++echores "$_musepack"
+ 
+ echocheck "Matroska support"
+ if test "$_matroska_internal" = yes ; then
+@@ -6744,6 +6771,8 @@
+ TREMOR = $_tremor_internal
+ TREMOR_FLAGS = $_tremor_flags
+ 
++MUSEPACK = $_musepack
++
+ UNRARLIB = $_unrarlib
+ HAVE_FFPOSTPROCESS = $_def_haveffpostprocess
+ PNG = $_mkf_png
+@@ -6848,6 +6877,7 @@
+ LIBLZO_LIB= $_ld_liblzo
+ MAD_LIB = $_ld_mad
+ VORBIS_LIB = $_ld_vorbis $_ld_libdv
++MUSEPACK_LIB = $_ld_musepack
+ THEORA_LIB = $_ld_theora
+ FAAD_LIB = $_ld_faad
+ INTERNAL_FAAD = $_faad_internal
+@@ -7390,6 +7420,9 @@
+ /* enable Tremor as vorbis decoder */
+ $_def_tremor
+ 
++/* enable musepack support */
++$_def_musepack
++
+ /* enable OggTheora support */
+ $_def_theora
+ 
+diff -Naur MPlayer-1.0pre7.orig/etc/codecs.conf MPlayer-1.0pre7/etc/codecs.conf
+--- MPlayer-1.0pre7.orig/etc/codecs.conf	2005-07-03 19:39:29.107501776 +0200
++++ MPlayer-1.0pre7/etc/codecs.conf	2005-07-03 19:50:37.282923672 +0200
+@@ -2428,6 +2428,13 @@
+   driver ffmpeg
+   dll "dts"
+ 
++audiocodec musepack
++  info "MPC/MpegPlus audio codec"
++  status  working
++  fourcc  "MPC "
++  format 0x60
++  driver libmusepack
++
+ audiocodec ffamrnb
+   info "AMR Narrowband"
+   status working
+diff -Naur MPlayer-1.0pre7.orig/libmpcodecs/ad.c MPlayer-1.0pre7/libmpcodecs/ad.c
+--- MPlayer-1.0pre7.orig/libmpcodecs/ad.c	2005-07-03 19:39:29.170492200 +0200
++++ MPlayer-1.0pre7/libmpcodecs/ad.c	2005-07-03 19:51:23.927832568 +0200
+@@ -39,6 +39,7 @@
+ extern ad_functions_t mpcodecs_ad_qtaudio;
+ extern ad_functions_t mpcodecs_ad_ra1428;
+ extern ad_functions_t mpcodecs_ad_twin;
++extern ad_functions_t mpcodecs_ad_libmusepack;
+ 
+ ad_functions_t* mpcodecs_ad_drivers[] =
+ {
+@@ -87,5 +88,8 @@
+   &mpcodecs_ad_libdv,
+ #endif
+   &mpcodecs_ad_ra1428,
++#ifdef HAVE_MUSEPACK
++  &mpcodecs_ad_libmusepack,
++#endif
+   NULL
+ };
+diff -Naur MPlayer-1.0pre7.orig/libmpcodecs/ad_mpc.c MPlayer-1.0pre7/libmpcodecs/ad_mpc.c
+--- MPlayer-1.0pre7.orig/libmpcodecs/ad_mpc.c	1970-01-01 01:00:00.000000000 +0100
++++ MPlayer-1.0pre7/libmpcodecs/ad_mpc.c	2005-07-03 19:52:03.430827200 +0200
+@@ -0,0 +1,178 @@
++/**
++ * Musepack audio files decoder for MPlayer
++ * by Reza Jelveh <reza.jelveh@tuhh.de> and
++ * Reimar Döffinger <Reimar.Doeffinger@stud.uni-karlsruhe.de>
++ * License: GPL
++ */
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <unistd.h>
++
++#include "config.h"
++#include "ad_internal.h"
++#include "../libaf/af_format.h"
++#include "../libvo/fastmemcpy.h"
++
++static ad_info_t info = 
++{
++	"MPC/MPEGPlus audio decoder",
++	"libmusepack",
++	"Reza Jelveh and Reimar Döffinger",
++	"",
++	""
++};
++
++LIBAD_EXTERN(libmusepack)
++
++#include <mpcdec/mpcdec.h>
++
++#define MAX_FRAMESIZE MPC_DECODER_BUFFER_LENGTH
++
++typedef struct context_s {
++  char *header;
++  int header_len;
++  sh_audio_t *sh;
++  uint32_t pos;
++  mpc_decoder decoder;
++} context_t;
++
++/**
++ * \brief mpc_reader callback function for reading the header
++ */
++static mpc_int32_t cb_read(void *data, void *buf, mpc_int32_t size) {
++  context_t *d = (context_t *)data;
++  char *p = (char *)buf;
++  int s = size;
++  if (d->pos < d->header_len) {
++    if (s > d->header_len - d->pos)
++      s = d->header_len - d->pos;
++    memcpy(p, &d->header[d->pos], s);
++  } else
++    s = 0;
++  memset(&p[s], 0, size - s);
++  d->pos += size;
++  return size;
++}
++
++/**
++ * \brief dummy mpc_reader callback function for seeking
++ */
++static mpc_bool_t cb_seek(void *data, mpc_int32_t offset ) {
++  context_t *d = (context_t *)data;
++  d->pos = offset;
++  return 1;
++}
++
++/**
++ * \brief dummy mpc_reader callback function for getting stream position
++ */
++static mpc_int32_t cb_tell(void *data) {
++  context_t *d = (context_t *)data;
++  return d->pos;
++}
++
++/**
++ * \brief dummy mpc_reader callback function for getting stream length
++ */
++static mpc_int32_t cb_get_size(void *data) {
++  return 1 << 30;
++}
++
++/**
++ * \brief mpc_reader callback function, we cannot seek.
++ */
++static mpc_bool_t cb_canseek(void *data) {
++  return 0;
++}
++
++
++mpc_reader header_reader = {
++  .read = cb_read, .seek = cb_seek, .tell = cb_tell,
++  .get_size = cb_get_size, .canseek = cb_canseek
++};
++
++static int preinit(sh_audio_t *sh) {
++//  sh->audio_out_minsize = 2 * MPC_DECODER_BUFFER_LENGTH;
++  return 1;
++}
++
++static void uninit(sh_audio_t *sh) {
++  if (sh->context)
++    free(sh->context);
++}
++
++static int init(sh_audio_t *sh) {
++  mpc_streaminfo info;
++  context_t *cd = malloc(sizeof(context_t));
++
++  if (!sh->wf || (sh->wf->cbSize < 6 * 4)) {
++    mp_msg(MSGT_DECAUDIO, MSGL_FATAL, "Missing extradata!\n");
++    return 0;
++  }
++  cd->header = (char *)sh->wf;
++  cd->header = &cd->header[sizeof(WAVEFORMATEX)];
++  cd->header_len = sh->wf->cbSize;
++  cd->sh = sh;
++  cd->pos = 0;
++  sh->context = (char *)cd;
++
++  /* read file's streaminfo data */
++  mpc_streaminfo_init(&info);
++  header_reader.data = cd;
++  if (mpc_streaminfo_read(&info, &header_reader) != ERROR_CODE_OK) {
++    mp_msg(MSGT_DECAUDIO, MSGL_FATAL, "Not a valid musepack file.\n");
++    return 0;
++  }
++  sh->i_bps = info.average_bitrate / 8;
++  sh->channels = info.channels;
++  sh->samplerate = info.sample_freq;
++  sh->samplesize = 4;
++  sh->sample_format =
++#if MPC_SAMPLE_FORMAT == float
++             AF_FORMAT_FLOAT_NE;
++#elif  MPC_SAMPLE_FORMAT == mpc_int32_t
++             AF_FORMAT_S32_NE;
++#else
++  #error musepack lib must use either float or mpc_int32_t sample format
++#endif
++
++  mpc_decoder_setup(&cd->decoder, NULL);
++  mpc_decoder_set_streaminfo(&cd->decoder, &info);
++  return 1;
++}
++
++// FIXME: minlen is currently ignored
++static int decode_audio(sh_audio_t *sh, unsigned char *buf,
++                        int minlen, int maxlen) {
++  int status, len;
++  MPC_SAMPLE_FORMAT *sample_buffer = (MPC_SAMPLE_FORMAT *)buf;
++  mpc_uint32_t *packet = NULL;
++  
++  context_t *cd = (context_t *) sh->context;
++  if (maxlen < MPC_DECODER_BUFFER_LENGTH) {
++    mp_msg(MSGT_DECAUDIO, MSGL_ERR, "maxlen too small in decode_audio\n");
++    return -1;
++  }
++  len = ds_get_packet(sh->ds, (unsigned char **)&packet);
++  if (len <= 0) return -1;
++  status = mpc_decoder_decode_frame(&cd->decoder, packet, len, sample_buffer);
++  if (status == -1) // decode error
++    mp_msg(MSGT_DECAUDIO, MSGL_FATAL, "Error decoding file.\n");
++  if (status <= 0) // error or EOF
++    return -1;
++
++  status = MPC_FRAME_LENGTH * sh->channels; // one sample per channel
++#if MPC_SAMPLE_FORMAT == float || MPC_SAMPLE_FORMAT == mpc_int32_t
++  status *= 4;
++#else
++  // should not happen
++  status *= 2;
++#endif
++  return status;
++}
++
++static int control(sh_audio_t *sh, int cmd, void* arg, ...) {
++  return CONTROL_UNKNOWN;
++}
++
+diff -Naur MPlayer-1.0pre7.orig/libmpcodecs/Makefile MPlayer-1.0pre7/libmpcodecs/Makefile
+--- MPlayer-1.0pre7.orig/libmpcodecs/Makefile	2005-07-03 19:39:29.170492200 +0200
++++ MPlayer-1.0pre7/libmpcodecs/Makefile	2005-07-03 19:53:20.605094928 +0200
+@@ -9,6 +9,10 @@
+ AUDIO_SRCS_OPT=ad_acm.c ad_dshow.c ad_dmo.c ad_qtaudio.c ad_ffmpeg.c ad_faad.c ad_libvorbis.c ad_libmad.c ad_realaud.c ad_libdv.c ad_twin.c
+ AUDIO_SRCS=dec_audio.c ad.c $(AUDIO_SRCS_LIB) $(AUDIO_SRCS_NAT) $(AUDIO_SRCS_OPT)
+ 
++ifeq ($(MUSEPACK),yes)
++AUDIO_SRCS += ad_mpc.c
++endif
++
+ VIDEO_SRCS_LIB=vd_libmpeg2.c vd_nuv.c vd_lzo.c
+ VIDEO_SRCS_NAT=vd_null.c vd_raw.c vd_hmblck.c vd_mpegpes.c vd_mtga.c vd_sgi.c
+ VIDEO_SRCS_OPT=vd_realvid.c vd_ffmpeg.c vd_dshow.c vd_dmo.c vd_vfw.c vd_vfwex.c vd_odivx.c vd_divx4.c vd_zrmjpeg.c vd_xanim.c vd_xvid.c vd_xvid4.c vd_libdv.c vd_qtvideo.c vd_theora.c
+diff -Naur MPlayer-1.0pre7.orig/libmpdemux/demuxer.c MPlayer-1.0pre7/libmpdemux/demuxer.c
+--- MPlayer-1.0pre7.orig/libmpdemux/demuxer.c	2005-07-03 19:39:29.203487184 +0200
++++ MPlayer-1.0pre7/libmpdemux/demuxer.c	2005-07-03 19:55:57.362264216 +0200
+@@ -209,6 +209,8 @@
+ #endif
+     case DEMUXER_TYPE_AUDIO:
+       demux_close_audio(demuxer); break;
++    case DEMUXER_TYPE_MPC:
++      demux_close_mpc(demuxer); break;
+ #ifdef HAVE_OGGVORBIS
+     case DEMUXER_TYPE_OGG:
+       demux_close_ogg(demuxer); break;
+@@ -381,6 +383,7 @@
+ #endif
+     case DEMUXER_TYPE_Y4M: return demux_y4m_fill_buffer(demux);
+     case DEMUXER_TYPE_AUDIO: return demux_audio_fill_buffer(ds);
++    case DEMUXER_TYPE_MPC: return demux_mpc_fill_buffer(ds);
+ #ifdef HAVE_XMMS
+     case DEMUXER_TYPE_XMMS: return demux_xmms_fill_buffer(demux,ds);
+ #endif
+@@ -1138,6 +1141,17 @@
+     demuxer = NULL;
+   }
+ }
++//=============== Try to open as musepack file: =================
++if(file_format==DEMUXER_TYPE_UNKNOWN || file_format==DEMUXER_TYPE_MPC){
++  demuxer=new_demuxer(stream,DEMUXER_TYPE_MPC,audio_id,video_id,dvdsub_id);
++  if(demux_mpc_open(demuxer)){
++    mp_msg(MSGT_DEMUXER,MSGL_INFO,MSGTR_Detected_XXX_FileFormat, "MPC");
++    file_format=DEMUXER_TYPE_MPC;
++  } else {
++    free_demuxer(demuxer);
++    demuxer = NULL;
++  }
++}
+ #ifdef HAVE_XMMS
+ //=============== Try to open as XMMS file: =================
+ if(file_format==DEMUXER_TYPE_UNKNOWN || file_format==DEMUXER_TYPE_XMMS){
+@@ -1594,6 +1608,8 @@
+       demux_seek_nuv(demuxer,rel_seek_secs,flags);  break;
+   case DEMUXER_TYPE_AUDIO:
+       demux_audio_seek(demuxer,rel_seek_secs,flags);  break;
++  case DEMUXER_TYPE_MPC:
++      demux_mpc_seek(demuxer,rel_seek_secs,flags);  break;
+  case DEMUXER_TYPE_DEMUXERS:
+       demux_demuxers_seek(demuxer,rel_seek_secs,flags);  break;
+ #ifdef HAVE_OGGVORBIS
+@@ -1715,6 +1731,8 @@
+ 	    return demux_avi_control(demuxer,cmd,arg);
+ 	case DEMUXER_TYPE_AUDIO:
+ 	    return demux_audio_control(demuxer,cmd,arg);
++        case DEMUXER_TYPE_MPC:
++            return demux_mpc_control(demuxer,cmd,arg);
+ #ifdef HAVE_OGGVORBIS
+ 	case DEMUXER_TYPE_OGG:
+ 	    return demux_ogg_control(demuxer,cmd,arg);
+diff -Naur MPlayer-1.0pre7.orig/libmpdemux/demuxer.h MPlayer-1.0pre7/libmpdemux/demuxer.h
+--- MPlayer-1.0pre7.orig/libmpdemux/demuxer.h	2005-07-03 19:39:29.203487184 +0200
++++ MPlayer-1.0pre7/libmpdemux/demuxer.h	2005-07-03 19:56:35.799420880 +0200
+@@ -46,11 +46,12 @@
+ #define DEMUXER_TYPE_NSV 36
+ #define DEMUXER_TYPE_VQF 37
+ #define DEMUXER_TYPE_AVS 38
++#define DEMUXER_TYPE_MPC 39
+ 
+ // This should always match the higest demuxer type number.
+ // Unless you want to disallow users to force the demuxer to some types
+ #define DEMUXER_TYPE_MIN 0
+-#define DEMUXER_TYPE_MAX 38
++#define DEMUXER_TYPE_MAX 39
+ 
+ #define DEMUXER_TYPE_DEMUXERS (1<<16)
+ // A virtual demuxer type for the network code
+diff -Naur MPlayer-1.0pre7.orig/libmpdemux/demux_mpc.c MPlayer-1.0pre7/libmpdemux/demux_mpc.c
+--- MPlayer-1.0pre7.orig/libmpdemux/demux_mpc.c	1970-01-01 01:00:00.000000000 +0100
++++ MPlayer-1.0pre7/libmpdemux/demux_mpc.c	2005-07-03 19:56:59.326844168 +0200
+@@ -0,0 +1,145 @@
++
++#include "config.h"
++
++#include <stdlib.h>
++#include <stdio.h>
++#include <string.h>
++#include "mp_msg.h"
++#include "bswap.h"
++#include "stream.h"
++#include "demuxer.h"
++#include "stheader.h"
++
++
++#define HDR_SIZE (6 * 4)
++
++typedef struct da_priv {
++  float last_pts;
++  uint32_t dword;
++  int pos;
++} da_priv_t;
++
++extern void free_sh_audio(sh_audio_t* sh);
++
++static uint32_t get_bits(da_priv_t* priv, stream_t* s, int bits) {
++  uint32_t out = priv->dword;
++  uint32_t mask = (1 << bits) - 1;
++  priv->pos += bits;
++  if (priv->pos < 32) {
++    out >>= (32 - priv->pos);
++  }
++  else {
++    stream_read(s, (void *)&priv->dword, 4);
++    le2me_32(priv->dword);
++    priv->pos -= 32;
++    if (priv->pos) {
++      out <<= priv->pos;
++      out |= priv->dword >> (32 - priv->pos);
++    }
++  }
++  return out & mask;
++}
++
++int demux_mpc_open(demuxer_t* demuxer) {
++  stream_t *s = demuxer->stream;
++  sh_audio_t* sh_audio;
++  uint8_t hdr[HDR_SIZE];
++  da_priv_t* priv;
++  int i;
++
++  if (stream_read(s, hdr, HDR_SIZE) != HDR_SIZE)
++    return 0;
++  for (i = 0; i < 30000 && !s->eof; i++) {
++    if (hdr[0] == 'M' && hdr[1] == 'P' && hdr[2] == '+')
++      break;
++    memmove(hdr, &hdr[1], HDR_SIZE - 1);
++    stream_read(s, &hdr[HDR_SIZE - 1], 1);
++  }
++
++  if (hdr[0] != 'M' || hdr[1] != 'P' || hdr[2] != '+')
++    return 0;
++
++  sh_audio = new_sh_audio(demuxer,0);
++
++  {
++    char *wf = (char *)calloc(1, sizeof(WAVEFORMATEX) + HDR_SIZE);
++    char *header = &wf[sizeof(WAVEFORMATEX)];
++    const int freqs[4] = {44100, 48000, 37800, 32000};
++    sh_audio->format = mmioFOURCC('M', 'P', 'C', ' ');
++    memcpy(header, hdr, HDR_SIZE);
++    sh_audio->wf = (WAVEFORMATEX *)wf;
++    sh_audio->wf->wFormatTag = sh_audio->format;
++    sh_audio->wf->nChannels = 2;
++    sh_audio->wf->nSamplesPerSec = freqs[header[10] & 3];
++    sh_audio->wf->nBlockAlign = 32 * 36;
++    sh_audio->wf->wBitsPerSample = 16;
++    sh_audio->wf->nAvgBytesPerSec = 128 * 1024; // dummy to make mencoder not hang
++    sh_audio->wf->cbSize = HDR_SIZE;
++    demuxer->movi_start = stream_tell(s);
++    demuxer->movi_end = s->end_pos;
++  }
++
++  priv = (da_priv_t *)malloc(sizeof(da_priv_t));
++  priv->last_pts = -1;
++  priv->dword = 0;
++  priv->pos = 0;
++  stream_read(s, (void *)&priv->dword, 4);
++  priv->pos = 8;
++  demuxer->priv = priv;
++  demuxer->audio->id = 0;
++  demuxer->audio->sh = sh_audio;
++  sh_audio->ds = demuxer->audio;
++  sh_audio->samplerate = sh_audio->wf->nSamplesPerSec;
++  sh_audio->i_bps = sh_audio->wf->nAvgBytesPerSec;
++  sh_audio->audio.dwSampleSize = 0;
++  sh_audio->audio.dwScale = 32 * 36;
++  sh_audio->audio.dwRate = sh_audio->samplerate;
++
++  return 1;
++}
++
++int demux_mpc_fill_buffer(demux_stream_t *ds) {
++  int l;
++  int bit_len;
++  demux_packet_t* dp;
++  sh_audio_t* sh_audio = ds->sh;
++  demuxer_t* demux = ds->demuxer;
++  da_priv_t* priv = demux->priv;
++  stream_t* s = demux->stream;
++  sh_audio = ds->sh;
++
++  if (s->eof)
++    return 0;
++
++  bit_len = get_bits(priv, s, 20);
++  dp = new_demux_packet((bit_len + 7) / 8);
++  for (l = 0; l < (bit_len / 8); l++)
++    dp->buffer[l] = get_bits(priv, s, 8);
++  bit_len %= 8;
++  if (bit_len)
++    dp->buffer[l] = get_bits(priv, s, bit_len) << (8 - bit_len);
++  if (priv->last_pts < 0)
++    priv->last_pts = 0;
++  else
++    priv->last_pts += (36 * 32) / (float)sh_audio->samplerate;
++  ds->pts = priv->last_pts - (ds_tell_pts(demux->audio) -
++              sh_audio->a_in_buffer_len)/(float)sh_audio->i_bps;
++  ds_add_packet(ds, dp);
++  return 1;
++}
++
++void demux_mpc_seek(demuxer_t *demuxer,float rel_seek_secs,int flags){
++// TODO
++}
++
++void demux_close_mpc(demuxer_t* demuxer) {
++  da_priv_t* priv = demuxer->priv;
++
++  if(!priv)
++    return;
++  free(priv);
++}
++
++int demux_mpc_control(demuxer_t *demuxer,int cmd, void *arg){
++  return DEMUXER_CTRL_NOTIMPL;
++}
+diff -Naur MPlayer-1.0pre7.orig/libmpdemux/Makefile MPlayer-1.0pre7/libmpdemux/Makefile
+--- MPlayer-1.0pre7.orig/libmpdemux/Makefile	2005-07-03 19:39:29.192488856 +0200
++++ MPlayer-1.0pre7/libmpdemux/Makefile	2005-07-03 19:57:25.530860552 +0200
+@@ -3,7 +3,7 @@
+ 
+ include ../config.mak
+ 
+-SRCS = mp3_hdr.c video.c mpeg_hdr.c cache2.c asfheader.c aviheader.c aviprint.c muxer.c muxer_avi.c muxer_mpeg.c demux_asf.c demux_avi.c demux_mov.c parse_mp4.c demux_mpg.c demux_ty.c demux_ty_osd.c demux_pva.c demux_viv.c demuxer.c dvdnav_stream.c open.c parse_es.c stream.c stream_file.c stream_netstream.c stream_vcd.c stream_null.c stream_ftp.c stream_vstream.c tv.c tvi_dummy.c tvi_v4l.c tvi_v4l2.c tvi_bsdbt848.c frequencies.c demux_fli.c demux_real.c demux_y4m.c yuv4mpeg.c yuv4mpeg_ratio.c demux_nuv.c demux_film.c demux_roq.c mf.c demux_mf.c demux_audio.c demux_demuxers.c demux_ogg.c cdda.c demux_rawaudio.c demux_rawvideo.c cddb.c cdinfo.c demux_rawdv.c ai_alsa.c ai_alsa1x.c ai_oss.c audio_in.c demux_smjpeg.c demux_lmlm4.c cue_read.c extension.c demux_gif.c demux_ts.c demux_realaud.c url.c muxer_rawvideo.c demux_lavf.c demux_nsv.c demux_vqf.c
++SRCS = mp3_hdr.c video.c mpeg_hdr.c cache2.c asfheader.c aviheader.c aviprint.c muxer.c muxer_avi.c muxer_mpeg.c demux_asf.c demux_avi.c demux_mov.c demux_mpc.c parse_mp4.c demux_mpg.c demux_ty.c demux_ty_osd.c demux_pva.c demux_viv.c demuxer.c dvdnav_stream.c open.c parse_es.c stream.c stream_file.c stream_netstream.c stream_vcd.c stream_null.c stream_ftp.c stream_vstream.c tv.c tvi_dummy.c tvi_v4l.c tvi_v4l2.c tvi_bsdbt848.c frequencies.c demux_fli.c demux_real.c demux_y4m.c yuv4mpeg.c yuv4mpeg_ratio.c demux_nuv.c demux_film.c demux_roq.c mf.c demux_mf.c demux_audio.c demux_demuxers.c demux_ogg.c cdda.c demux_rawaudio.c demux_rawvideo.c cddb.c cdinfo.c demux_rawdv.c ai_alsa.c ai_alsa1x.c ai_oss.c audio_in.c demux_smjpeg.c demux_lmlm4.c cue_read.c extension.c demux_gif.c demux_ts.c demux_realaud.c url.c muxer_rawvideo.c demux_lavf.c demux_nsv.c demux_vqf.c
+ ifeq ($(XMMS_PLUGINS),yes)
+ SRCS += demux_xmms.c
+ endif 
+diff -Naur MPlayer-1.0pre7.orig/Makefile MPlayer-1.0pre7/Makefile
+--- MPlayer-1.0pre7.orig/Makefile	2005-07-03 19:39:28.925529440 +0200
++++ MPlayer-1.0pre7/Makefile	2005-07-03 19:57:56.046221512 +0200
+@@ -32,7 +32,7 @@
+ 
+ VO_LIBS = $(AA_LIB) $(X_LIB) $(SDL_LIB) $(GGI_LIB) $(MP1E_LIB) $(MLIB_LIB) $(SVGA_LIB) $(DIRECTFB_LIB) $(CACA_LIB)
+ AO_LIBS = $(ARTS_LIB) $(ESD_LIB) $(JACK_LIB) $(NAS_LIB) $(SGIAUDIO_LIB) $(POLYP_LIB)
+-CODEC_LIBS = $(AV_LIB) $(FAME_LIB) $(MAD_LIB) $(VORBIS_LIB) $(THEORA_LIB) $(FAAD_LIB) $(LIBLZO_LIB) $(DECORE_LIB) $(XVID_LIB) $(DTS_LIB) $(PNG_LIB) $(Z_LIB) $(JPEG_LIB) $(ALSA_LIB) $(XMMS_LIB) $(X264_LIB)
++CODEC_LIBS = $(AV_LIB) $(FAME_LIB) $(MAD_LIB) $(VORBIS_LIB) $(THEORA_LIB) $(FAAD_LIB) $(LIBLZO_LIB) $(DECORE_LIB) $(XVID_LIB) $(DTS_LIB) $(PNG_LIB) $(Z_LIB) $(JPEG_LIB) $(ALSA_LIB) $(XMMS_LIB) $(X264_LIB) $(MUSEPACK_LIB)
+ COMMON_LIBS = libmpcodecs/libmpcodecs.a $(W32_LIB) $(DS_LIB) libaf/libaf.a libmpdemux/libmpdemux.a input/libinput.a postproc/libswscale.a osdep/libosdep.a $(DVDREAD_LIB) $(CODEC_LIBS) $(FREETYPE_LIB) $(TERMCAP_LIB) $(CDPARANOIA_LIB) $(MPLAYER_NETWORK_LIB) $(WIN32_LIB) $(GIF_LIB) $(MACOSX_FRAMEWORKS) $(SMBSUPPORT_LIB) $(FRIBIDI_LIB) $(FONTCONFIG_LIB) $(ENCA_LIB)
+ 
+ CFLAGS = $(OPTFLAGS) -I. $(FREETYPE_INC) $(EXTRA_INC) $(CDPARANOIA_INC) $(SDL_INC) $(X11_INC) $(FRIBIDI_INC) $(DVB_INC) $(XVID_INC) $(FONTCONFIG_INC) $(CACA_INC) # -Wall
