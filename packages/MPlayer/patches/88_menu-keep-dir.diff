@@ -9,7 +9,7 @@ diff -Naur MPlayer-1.0pre6.orig/libmenu/menu_filesel.c MPlayer-1.0pre6/libmenu/m
  #include <ctype.h>
  #include <unistd.h>
  #include <limits.h>
-@@ -126,6 +127,7 @@
+@@ -184,6 +185,7 @@
    struct dirent *dp;
    struct stat st;
    int n;
@@ -17,17 +17,67 @@ diff -Naur MPlayer-1.0pre6.orig/libmenu/menu_filesel.c MPlayer-1.0pre6/libmenu/m
    char* p = NULL;
    list_entry_t* e;
    DIR* dirp;
-@@ -146,6 +148,13 @@
+@@ -206,6 +208,13 @@
      return 0;
    }
  
 +  path_fp = open ("/var/mp_current_path", O_CREAT | O_WRONLY | O_TRUNC);
-+  if (path_fp)
++  if (path_fp >= 0)
 +    {
 +      write (path_fp, mpriv->dir, strlen (mpriv->dir));
 +      close (path_fp);
 +    }
 +
    namelist = (char **) malloc(sizeof(char *));
+   extensions = get_extensions (menu);
  
-   n=0;
+@@ -368,7 +377,7 @@
+ }
+ 
+ static int open_fs(menu_t* menu, char* args) {
+-  char *path = mpriv->path;
++  char *path = mpriv->path, *freepath = NULL;
+   int r = 0;
+   char wd[PATH_MAX+1];
+   args = NULL; // Warning kill
+@@ -378,6 +387,30 @@
+   menu->read_key = read_key;
+   menu->close = clos;
+ 
++  if (!path || path[0] == '\0') {
++    struct stat st;
++    int path_fp;
++
++    path_fp = open ("/var/mp_current_path", O_RDONLY);
++    if (path_fp >= 0)
++      {
++        if (!fstat(path_fp, &st) && st.st_size > 0 && (path = malloc(st.st_size+1)))
++          {
++            if (read(path_fp, path, st.st_size) == st.st_size && path[0] != '\0')
++              {
++                freepath = path;
++                path[st.st_size] = '\0';
++              }
++            else
++              {
++                free(path);
++                path = NULL;
++              }
++          }
++        close (path_fp);
++      }
++  }
++
+   getcwd(wd,PATH_MAX);
+   if(!path || path[0] == '\0') {
+     int l = strlen(wd) + 2;
+@@ -395,6 +428,9 @@
+     r = open_dir(menu,b);
+   } else
+     r = open_dir(menu,path);
++
++  if (freepath)
++    free(freepath);
+ 
+   return r;
+ }
