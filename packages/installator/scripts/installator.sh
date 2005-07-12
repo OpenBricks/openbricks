@@ -415,7 +415,7 @@ device_map=$grubdir/device.map
 
 rm -rf $grubdir
 mkdir -p $grubdir
-tar xjf "di/GEEXBOX/usr/share/grub-i386-pc.tar.bz2" -C $grubdir
+lzmacat "di/GEEXBOX/usr/share/grub-i386-pc.tar.lzma" | tar x -C $grubdir
 
 if [ -f "di/GEEXBOX/usr/share/grub-splash.xpm.gz" ]; then
   cp -f "di/GEEXBOX/usr/share/grub-splash.xpm.gz" $grubdir || exit 1
