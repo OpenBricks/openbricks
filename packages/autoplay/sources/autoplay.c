@@ -25,7 +25,7 @@ typedef struct _cd_drive
 }*cd_drive;
 
 
-char **
+static char **
 get_extensions (char *filename)
 {
   char **extensions, ext[32];
@@ -65,7 +65,7 @@ get_extensions (char *filename)
   return extensions;
 }
 
-void
+static void
 free_extensions (char **extensions)
 {
   if (extensions != NULL)
@@ -81,7 +81,7 @@ static char *fullname;
 static int fullname_maxlen;
 static int fullname_len;
 
-int
+static int
 is_playable (const struct dirent *dir)
 {
   char **str, *ext;
@@ -102,7 +102,7 @@ is_playable (const struct dirent *dir)
   return 0;
 }
 
-int
+static int
 build_playlist (char *dir, int fd)
 {
   struct dirent **namelist;
@@ -166,7 +166,7 @@ build_playlist (char *dir, int fd)
   return count;
 }
 
-int
+static int
 open_device(const char *dev)
 {
   int fd = open(dev, O_RDONLY | O_NONBLOCK);
