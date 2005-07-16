@@ -177,7 +177,7 @@ if [ "$1" = geexbox ]; then
   CFDISK=/usr/bin/cfdisk
   SFDISK=/usr/bin/sfdisk
   MKDOSFS=/usr/bin/mkdosfs
-  MKE2FS=/usr/bin/mke2fs
+  MKE2FS=/sbin/mke2fs
   GRUB=/usr/bin/grub
   SYSLINUX=/usr/bin/syslinux
 else
