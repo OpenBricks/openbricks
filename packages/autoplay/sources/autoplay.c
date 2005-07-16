@@ -167,6 +167,15 @@ build_playlist (char *dir, int fd)
 }
 
 int
+open_device(const char *dev)
+{
+  int fd = open(dev, O_RDONLY | O_NONBLOCK);
+  if (fd >= 0)
+    ioctl(fd, CDROM_LOCKDOOR, 0);
+  return fd;
+}
+
+int
 main (int argc, char **argv)
 {
   cd_drive drive, *drives, *ptr;
@@ -217,8 +226,7 @@ main (int argc, char **argv)
 
   for (ptr=drives, drive=*ptr; drive; ptr++, drive=*ptr)
     {
-      drive->fd = open(drive->dev, O_RDONLY | O_NONBLOCK);
-      if (drive->fd < 0)
+      if ((drive->fd = open_device(drive->dev)) < 0)
         return 3;
     }
 
@@ -231,15 +239,12 @@ main (int argc, char **argv)
           if (drive->status == CDS_NO_INFO)
             continue;
 
+          if (drive->fd < 0 && (drive->fd = open_device(drive->dev)) < 0)
+            continue;
+
           status = ioctl (drive->fd, CDROM_DRIVE_STATUS, CDSL_CURRENT);
           switch (status)
             {
-            case CDS_NO_INFO:
-              /* Drive do not support status request :-( */
-              drive->status = status;
-              close (drive->fd);
-              break;
-
             case CDS_DISC_OK:
               if (drive->status != status)
                 {
@@ -257,6 +262,9 @@ main (int argc, char **argv)
                       case CDS_DATA_1:
                       case CDS_DATA_2:
                         /* it's a data CD */
+                        close(drive->fd);
+                        drive->fd = -1;
+
                         sprintf (filename, "%s/video_ts", drive->mnt);
                         if (!stat (filename, &st) && S_ISDIR (st.st_mode))
                           {
@@ -325,6 +333,10 @@ main (int argc, char **argv)
                 }
               break;
 
+            case -1: /* close the fd on ioctl failure, should never happen */
+            case CDS_NO_INFO: /* Drive do not support status request :-( */
+              close(drive->fd);
+              drive->fd = -1;
             default:
               /* the media as been ejected */
               drive->status = status;
