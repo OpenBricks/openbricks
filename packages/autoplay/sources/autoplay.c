@@ -123,6 +123,8 @@ build_playlist (char *dir, int fd)
   strcat (fullname, "/");
   fullname_len = dirlen = strlen (fullname);
   n = scandir (fullname, &namelist, is_playable, alphasort);
+  if (n < 0)
+    return 0;
   for (i=0; i<n; i++)
     {
       len = dirlen + _D_EXACT_NAMLEN(namelist[i]) + 1;
