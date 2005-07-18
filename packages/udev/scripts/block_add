@@ -1,0 +1,58 @@
+#!/bin/sh
+
+DEVNAME=${DEVNAME#/mnt/ramfs}
+DEV=${DEVNAME##*/}
+KERN=${DEVPATH##*/}
+[ -n "`ls -d /sys$DEVPATH/$KERN* 2>/dev/null`" ] && exit 0
+
+PART_NUM=${DEVNAME##*part}
+[ "$PART_NUM" != "$DEVNAME" ] && PART=" part $PART_NUM"
+
+if [ -n "$PART" ]; then
+  DEVPATH=${DEVPATH%/*}
+  [ -z "`ls -d /sys$DEVPATH/${KERN%[1-9]}* | grep -v $KERN`" ] && PART=
+fi
+
+VENDOR=`cat /sys$DEVPATH/device/vendor 2>/dev/null`
+MODEL=`cat /sys$DEVPATH/device/model 2>/dev/null`
+MNT=`echo $VENDOR$MODEL | sed s/\ *$//`$PART
+
+if [ "`cat /sys$DEVPATH/removable`" = 1 \
+     -o -n "`echo $PHYSDEVPATH | grep -e usb -e ieee1394`" ]; then
+  REMOVABLE=true
+fi
+
+if [ "$REMOVABLE" != true -o "$MNT" = "$PART" ]; then
+  case $DEV in
+    cdrom*)
+      MNT="cdrom $((${DEV#cdrom}+1))"
+      ;;
+    disk*)
+      DEV=${DEV%part*}
+      MNT="disk $((${DEV#disk}+1))$PART"
+      ;;
+  esac
+fi
+
+MNT="/mnt/ramfs/mnt/$MNT"
+if [ -d "$MNT" ]; then
+  NUM=2
+  while [ -d "$MNT ($NUM)" ]; do
+    NUM=$(($NUM+1))
+  done
+  MNT="$MNT ($NUM)"
+fi
+mkdir "$MNT"
+
+case $DEV in
+  cdrom*)
+    mount -t supermount -o ro,dev=$DEVNAME,fs=auto,tray_lock=onwrite none "$MNT" || rmdir "$MNT"
+    ;;
+  disk*)
+    hdparm -c1 -S24 $DEVNAME >/dev/null
+    if [ -z "`grep installator /proc/cmdline`" ]; then
+      mount -o ro $DEVNAME "$MNT" || rmdir "$MNT"
+    fi
+    ;;
+esac
+test -d "$MNT" && echo "$DEVNAME	$MNT	auto	defaults,ro	0	0" >> /mnt/ramfs/etc/fstab

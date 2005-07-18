@@ -29,10 +29,13 @@ mkdir -p /mnt/ramfs/usr/sbin
 mkdir -p /mnt/ramfs/var/run
 mkdir -p /mnt/ramfs/var/log
 mkdir -p /mnt/ramfs/var/lock
-echo "" > /mnt/ramfs/etc/mtab
-echo "" > /mnt/ramfs/etc/fstab
 
-cp -a /dev/* /mnt/ramfs/dev
+echo -n "" > /mnt/ramfs/etc/mtab
+echo -n "" > /mnt/ramfs/etc/fstab
+
+udevstart
+echo /sbin/udevsend > /proc/sys/kernel/hotplug
+
 cp -a /usr/* /mnt/ramfs/usr
 cp -a /lib/* /mnt/ramfs/lib/
 ln -s libuClibc-*.so libc.so.6
@@ -60,79 +63,36 @@ if test "$BOOT" = nfs; then
   fi
 fi
 
+IFS='
+'
+
 progress 12000 "searching cdrom drives"
 echo 0 > /proc/sys/dev/cdrom/autoclose
 echo 0 > /proc/sys/dev/cdrom/lock
-echo -n 0 > /etc/last_cdrom
-IDENUM=0
-COUNT=`cut -f 5 /proc/scsi/sg/devices | grep -c 5`
-for DEV in /proc/ide/hd* /dev/sr*; do
-  if [ -n "`echo $DEV | grep '^/proc/ide'`" ]; then
-    [ "`cat $DEV/media`" != cdrom -o -n "`grep scsi $DEV/driver`" ] && continue
-    DEV=`echo $DEV | sed 's%/proc/ide%/dev%'`
-  else
-    NUM=`echo $DEV | sed 's%/dev/sr\(.*\)%\1%'`
-    test "$NUM" -ge "$COUNT" && break
-  fi
-  TYPE=`/usr/bin/iscd $DEV`
-  CDROM="/mnt/ramfs/mnt/cdrom $(($NUM+$IDENUM+1))"
-  mkdir "$CDROM"
-  if mount -t supermount -o ro,dev=$DEV,fs=auto,tray_lock=onwrite none "$CDROM" 2>/dev/null >/dev/null; then
-    if test "$BOOT" = cdrom -a -z "$GEEXBOX" -a -d "$CDROM/GEEXBOX"; then
+if [ "$BOOT" = cdrom ]; then
+  for DEV in `grep '^/dev/cdrom' /etc/fstab | cut -f1`; do
+    CDROM=`grep "^$DEV	" /etc/fstab | cut -f2`
+    if [ -d "$CDROM/GEEXBOX" ]; then
       GEEXBOX="$CDROM/GEEXBOX"
-      DEVICE=$DEV
-      test $TYPE = DVD && DVD_DEVICE=$DEV
+      ln -s "$DEV" /dev/cdrom;
+      break
     fi
-    test -z "$DEVICE" && DEVICE=$DEV
-    test -z "$DVD_DEVICE" -a "$TYPE" = DVD && DVD_DEVICE=$DEV
-    echo -n " $DEV '`echo $CDROM | sed s%/mnt/ramfs%%`'" >> /mnt/ramfs/tmp/autolaunchparam
-    echo -n $(($NUM+$IDENUM+1)) > /etc/last_cdrom
-  else
-    rmdir "$CDROM"
+  done
+fi
+
+if [ "$BOOT" != cdrom -a "$BOOT" != nfs ]; then
+  if [ "$INSTALLATOR" != yes ]; then
+    progress 17000 "boot device detection"
+    sleep 5
+    BOOT=`cd /dev; ls -l $BOOT | sed 's/.* \([^ ]*\)$/\1/'`
+    for DEV in `grep '^/dev/disk' /etc/fstab | cut -f1`; do
+      DIR=`grep "^$DEV	" /etc/fstab | cut -f2`
+      if [ -d "$DIR/GEEXBOX" ]; then
+        GEEXBOX="$DIR/GEEXBOX"
+        [ "/dev/$BOOT" = "$DEV" ] && break
+      fi
+    done
   fi
-  [ -n "`echo $DEV | grep '^/dev/hd'`" ] && IDENUM=$(($IDENUM+1))
-done
-
-if test -e /mnt/ramfs/tmp/autolaunchparam; then
-  echo -n "/usr/bin/autoplay" > /mnt/ramfs/usr/bin/autolaunch
-  cat /mnt/ramfs/tmp/autolaunchparam >> /mnt/ramfs/usr/bin/autolaunch
-  echo -n " 8" >> /mnt/ramfs/usr/bin/autolaunch
-  rm /mnt/ramfs/tmp/autolaunchparam
-fi
-
-if test "$BOOT" != cdrom -a "$BOOT" != nfs; then
-  progress 17000 "boot device detection"
-  while test -z "`grep $BOOT /proc/partitions`"; do
-    sleep 1
-  done
-fi
-
-if test "$INSTALLATOR" != yes; then
-  progress 20000 "mounting harddisks"
-  DISK_NAME=
-  DISK=0
-  for DEV in `sed -n "s/\ *[0-9][0-9]*\ *[0-9][0-9]*\ *[0-9][0-9][0-9]*\ \([a-z]*[0-9][0-9]*\)/\1/p" /proc/partitions`; do
-    NAME=`echo $DEV | sed 's/\([a-z]\{3\}\).*/\1/'`
-    if test "$NAME" != "$DISK_NAME"; then
-      DISK_NAME="$NAME"
-      DISK=$(($DISK+1))
-      PART=0
-      hdparm -c1 -S24 /dev/$NAME >/dev/null
-    fi
-    PART=$(($PART+1))
-    DIR="/mnt/ramfs/mnt/disk $DISK part $PART"
-    mkdir "$DIR"
-    mount -o ro /dev/$DEV "$DIR" >/dev/null 2>&1 || rmdir "$DIR"
-    if test "$BOOT" = "$DEV" -a -d "$DIR/GEEXBOX/sbin"; then
-      GEEXBOX="$DIR/GEEXBOX"
-    elif test "$BOOT" != cdrom -a -z "$GEEXBOX" -a -d "$DIR/GEEXBOX/sbin"; then
-      GEEXBOX="$DIR/GEEXBOX"
-    fi
-  done
-  echo -n $DISK > /etc/last_disk
-else
-  echo "" > /proc/sys/kernel/hotplug
-  echo -n 0 > /etc/last_disk
 fi
 
 if test -n "$GEEXBOX" ; then
@@ -149,8 +109,6 @@ if test -n "$GEEXBOX" ; then
   progress 42000 "copying system into ram"
   cp -a "$GEEXBOX/codecs" /mnt/ramfs
   progress 45000 "copying system into ram"
-  test -n "$DEVICE" && ln -s "$DEVICE" /mnt/ramfs/dev/cdrom;
-  test -n "$DVD_DEVICE" && ln -s "$DVD_DEVICE" /mnt/ramfs/dev/dvd;
   INIT=/sbin/init
   [ "$INSTALLATOR" = yes ] && INIT=/sbin/installator && export UID=0
 else
@@ -172,8 +130,6 @@ if test "$BOOT" = cdrom; then
   export CDROM="${GEEXBOX%/GEEXBOX}"
 fi
 export DEBUG
-
-echo > /tmp/geexbox_loaded
 
 if test "$DEBUG" = yes; then
   cp /sbin/console /mnt/ramfs/sbin
