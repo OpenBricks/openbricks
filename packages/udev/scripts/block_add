@@ -1,5 +1,6 @@
 #!/bin/sh
 
+MNTLOCK=/mnt/ramfs/tmp/mntlock
 DEVNAME=${DEVNAME#/mnt/ramfs}
 DEV=${DEVNAME##*/}
 KERN=${DEVPATH##*/}
@@ -34,6 +35,7 @@ if [ "$REMOVABLE" != true -o "$MNT" = "$PART" ]; then
   esac
 fi
 
+flock -e $MNTLOCK
 MNT="/mnt/ramfs/mnt/$MNT"
 if [ -d "$MNT" ]; then
   NUM=2
@@ -43,16 +45,25 @@ if [ -d "$MNT" ]; then
   MNT="$MNT ($NUM)"
 fi
 mkdir "$MNT"
+flock -u
 
 case $DEV in
   cdrom*)
     mount -o ro $DEVNAME "$MNT"
+    OK=1
     ;;
   disk*)
     hdparm -c1 -S24 $DEVNAME >/dev/null
     if ! grep -q installator /proc/cmdline; then
-      mount -o ro $DEVNAME "$MNT" || rmdir "$MNT"
+      mount -o ro $DEVNAME "$MNT" && OK=1
     fi
     ;;
 esac
-test -d "$MNT" && echo "$DEVNAME $MNT" >> /mnt/ramfs/etc/fstab
+
+flock -e $MNTLOCK
+if [ "$OK" = 1 ]; then
+  echo "$DEVNAME $MNT" >> /mnt/ramfs/etc/fstab
+else
+  rmdir "$MNT"
+fi
+flock -u

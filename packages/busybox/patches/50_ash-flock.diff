@@ -1,0 +1,74 @@
+diff -Nur busybox.orig/shell/ash.c busybox/shell/ash.c
+--- busybox.orig/shell/ash.c	Wed Jul  6 09:20:10 2005
++++ busybox/shell/ash.c	Wed Jul 20 09:59:39 2005
+@@ -73,6 +73,7 @@
+ #include <sys/stat.h>
+ #include <sys/time.h>
+ #include <sys/wait.h>
++#include <sys/file.h>
+ 
+ #include <stdio.h>
+ #include <stdlib.h>
+@@ -1256,6 +1257,7 @@
+ #ifdef JOBS
+ static int fgcmd(int, char **);
+ #endif
++static int flockcmd(int, char **);
+ #ifdef CONFIG_ASH_GETOPTS
+ static int getoptscmd(int, char **);
+ #endif
+@@ -1378,6 +1380,7 @@
+ #ifdef JOBS
+ 	{ BUILTIN_REGULAR       "fg", fgcmd },
+ #endif
++	{ BUILTIN_NOSPEC        "flock", flockcmd },
+ #ifdef CONFIG_ASH_GETOPTS
+ 	{ BUILTIN_REGULAR       "getopts", getoptscmd },
+ #endif
+@@ -6859,6 +6862,46 @@
+ 	jp->used = 0;
+ 	set_curjob(jp, CUR_DELETE);
+ 	INTON;
++}
++
++
++static int
++flockcmd(int argc, char **argv)
++{
++	static int fd = -1;
++	int operation = 0, c;
++
++	while ((c = nextopt("ensu")))
++		switch (c) {
++		case 'e':
++			operation |= LOCK_EX;
++			break;
++		case 'n':
++			operation |= LOCK_NB;
++			break;
++		case 's':
++			operation |= LOCK_SH;
++			break;
++		case 'u':
++			if (fd == -1 || flock(fd, LOCK_UN))
++				return 127;
++			close(fd);
++			fd = -1;
++			return 0;
++		}
++
++	c = 127;
++	if (fd == -1 && *argptr && (fd = open(*argptr, O_RDONLY | O_CREAT)) != -1)
++	{
++		if (!flock(fd, operation)) {
++			c = 0;
++		} else {
++			close(fd);
++			fd = -1;
++		}
++	}
++
++	return c;
+ }
+ 
+ 
