@@ -214,9 +214,30 @@ mntunlock(void)
 static int
 is_cdrom_mounted(cd_drive drive)
 {
-  char buf[100];
-  sprintf(buf, "grep -q \"^%s \" /proc/mounts", drive->dev);
-  return (system(buf) == 0);
+  char buf[PATH_MAX];
+  size_t devlen;
+  FILE *f;
+
+  devlen = strlen(drive->dev);
+
+  f = fopen("/proc/mounts", "r");
+  if (f)
+    {
+      while (!feof(f))
+        {
+          if (fgets(buf, sizeof(buf), f) &&
+              !strncmp(buf, drive->dev, devlen) &&
+              buf[devlen] == ' ')
+            {
+              fclose(f);
+              return 1;
+            }
+        }
+
+      fclose(f);
+    }
+
+  return 0;
 }
 
 static void
