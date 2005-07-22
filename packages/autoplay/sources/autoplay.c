@@ -12,6 +12,7 @@
 #include <limits.h>
 #include <errno.h>
 #include <sys/mount.h>
+#include <sys/file.h>
 
 
 #ifndef MNT_DETACH
@@ -182,6 +183,34 @@ open_device(const char *dev)
   return fd;
 }
 
+static int mntlock_fd = -1;
+
+static int
+mntlock(void)
+{
+  if (mntlock_fd != -1 ||
+     (mntlock_fd = open("/tmp/mntlock", O_RDONLY | O_CREAT)) != -1)
+    {
+      if (!flock(mntlock_fd, LOCK_EX))
+        return 1;
+
+      close(mntlock_fd); /* locking failed, try to reopen file next time */
+      mntlock_fd = -1;
+    }
+
+  return 0;
+}
+
+static void
+mntunlock(void)
+{
+  if (flock(mntlock_fd, LOCK_UN))
+    { /* freeing lock failed, close fd instand */
+      close(mntlock_fd);
+      mntlock_fd = -1;
+    }
+}
+
 static int
 is_cdrom_mounted(cd_drive drive)
 {
@@ -217,6 +246,9 @@ load_fstab(int init)
   char buf[PATH_MAX], *tmp;
   int n;
   FILE *f;
+
+  if (!mntlock())
+    return NULL;
 
   drives = NULL;
   n = 0;
@@ -265,6 +297,8 @@ load_fstab(int init)
           drives[n-1] = NULL;
         }
     }
+
+  mntunlock();
 
   return drives;
 }
