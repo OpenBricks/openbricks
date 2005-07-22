@@ -10,7 +10,13 @@
 #include <linux/cdrom.h>
 #include <dirent.h>
 #include <limits.h>
+#include <errno.h>
+#include <sys/mount.h>
 
+
+#ifndef MNT_DETACH
+#define MNT_DETACH	0x00000002	/* Just detach from the tree */
+#endif
 
 static char *xcd_exts[] = {"dat", NULL};
 static char **exts;
@@ -176,8 +182,36 @@ open_device(const char *dev)
   return fd;
 }
 
+static int
+is_cdrom_mounted(cd_drive drive)
+{
+  char buf[100];
+  sprintf(buf, "grep -q \"^%s \" /proc/mounts", drive->dev);
+  return (system(buf) == 0);
+}
+
+static void
+umount_cdrom(cd_drive drive)
+{
+  if (umount2(drive->mnt, MNT_DETACH) < 0 && errno == EBUSY)
+    {
+      do
+      {
+        usleep(1000000);
+      } while (umount(drive->mnt) < 0 && errno == EBUSY);
+    }
+}
+
+static int
+mount_cdrom(cd_drive drive)
+{
+  char buf[PATH_MAX*2];
+  sprintf(buf, "mount -o ro \"%s\" \"%s\"", drive->dev, drive->mnt);
+  return (system(buf) == 0);
+}
+
 static cd_drive *
-load_fstab(void)
+load_fstab(int init)
 {
   cd_drive drive, *drives;
   char buf[PATH_MAX], *tmp;
@@ -208,7 +242,17 @@ load_fstab(void)
           drive->mnt = malloc (strlen (tmp) + 1);
           strcpy(drive->mnt, tmp);
           drive->fd = -1;
-          drive->status = CDS_NO_DISC;
+
+          if (init)
+            {
+              if (is_cdrom_mounted(drive))
+                umount_cdrom(drive);
+              drive->status = CDS_NO_DISC;
+            }
+          else 
+            {
+              drive->status = is_cdrom_mounted(drive) ? CDS_DISC_OK : CDS_NO_DISC;
+            }
 
           drives = (cd_drive *)realloc(drives, ++n * sizeof(*drives));
           drives[n-1] = drive;
@@ -255,7 +299,7 @@ main (int argc, char **argv)
   else
     play_dvd_cmd = "play_dvd\nset_menu null\n";
 
-  drives = load_fstab();
+  drives = load_fstab(1);
   if (!drives)
     return 3;
 
@@ -278,7 +322,7 @@ main (int argc, char **argv)
               free(drives);
             }
 
-          drives = load_fstab();
+          drives = load_fstab(0);
           if (!drives)
             continue;
           last_mtime = st.st_mtime;
@@ -314,6 +358,9 @@ main (int argc, char **argv)
                         /* it's a data CD */
                         close(drive->fd);
                         drive->fd = -1;
+
+                        if (!mount_cdrom(drive))
+                          break;
 
                         sprintf (filename, "%s/video_ts", drive->mnt);
                         if (!stat (filename, &st) && S_ISDIR (st.st_mode))
@@ -389,7 +436,11 @@ main (int argc, char **argv)
               drive->fd = -1;
             default:
               /* the media as been ejected */
-              drive->status = status;
+              if (drive->status != status)
+                {
+                  drive->status = status;
+                  umount_cdrom(drive);
+                }
             }
         }
     }
