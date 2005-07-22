@@ -9,6 +9,7 @@
 #include <sys/ioctl.h>
 #include <linux/cdrom.h>
 #include <dirent.h>
+#include <limits.h>
 
 
 static char *xcd_exts[] = {"dat", NULL};
@@ -175,37 +176,67 @@ open_device(const char *dev)
   return fd;
 }
 
+static cd_drive *
+load_fstab(void)
+{
+  cd_drive drive, *drives;
+  char buf[PATH_MAX], *tmp;
+  int n;
+  FILE *f;
+
+  drives = NULL;
+  n = 0;
+
+  f = fopen("/etc/fstab", "r");
+  if (f)
+    {
+      while (!feof(f))
+        {
+          if (!fgets(buf, sizeof(buf), f))
+            continue;
+          if ((tmp = strchr(buf, '\n')))
+            *tmp = '\0';
+          if (!(tmp = strchr(buf, ' ')))
+            continue;
+          *tmp = '\0';
+          tmp += 1 + (sizeof("/mnt/ramfs")-1);
+          if (strncmp(buf, "/dev/cdrom", sizeof("/dev/cdrom")-1))
+            continue;
+          drive = (cd_drive) malloc(sizeof(*drive));
+          drive->dev = malloc (strlen (buf) + 1);
+          strcpy (drive->dev, buf);
+          drive->mnt = malloc (strlen (tmp) + 1);
+          strcpy(drive->mnt, tmp);
+          drive->fd = -1;
+          drive->status = CDS_NO_DISC;
+
+          drives = (cd_drive *)realloc(drives, ++n * sizeof(*drives));
+          drives[n-1] = drive;
+        }
+      fclose(f);
+
+      if (n)
+        {
+          drives = (cd_drive *)realloc(drives, ++n * sizeof(*drives));
+          drives[n-1] = NULL;
+        }
+    }
+
+  return drives;
+}
+
 int
 main (int argc, char **argv)
 {
   cd_drive drive, *drives, *ptr;
   char **file_exts, **playlist_exts, **img_exts;
-  char *filename, **params = argv+1;
+  char *filename;
   char *play_dvd_cmd;
   struct stat st;
-  int i, m, n, x, status, speed=0;
+  int n, status, speed=0;
+  time_t last_mtime = 0;
 
-  if (argc < 3)
-    return 1;
-
-  m = 0;
-  n = (argc-1) >> 1;
-  drives = (cd_drive *) malloc (n * sizeof (*drives));
-  for (i=0; i<n; i++)
-    {
-      drive = (cd_drive) malloc (sizeof (*drive));
-      drive->dev = malloc (strlen (params[(i<<1)|1]) + 1);
-      strcpy (drive->dev, argv[(i<<1)|1]);
-      x = strlen (argv[(i<<1)+2]);
-      drive->mnt = malloc (x + 1);
-      strcpy (drive->mnt, argv[(i<<1)+2]);
-      drive->status = CDS_NO_DISC;
-      drives[i] = drive;
-      if (x > m)
-        m = x;
-    }
-  drives[i] = NULL;
-  filename = (char *) malloc (m + 10);
+  filename = (char *) malloc (PATH_MAX + 10);
 
   fullname_maxlen = 1024;
   fullname = (char *) malloc (fullname_maxlen);
@@ -224,15 +255,34 @@ main (int argc, char **argv)
   else
     play_dvd_cmd = "play_dvd\nset_menu null\n";
 
-  for (ptr=drives, drive=*ptr; drive; ptr++, drive=*ptr)
-    {
-      if ((drive->fd = open_device(drive->dev)) < 0)
-        return 3;
-    }
+  drives = load_fstab();
+  if (!drives)
+    return 3;
 
   while (1)
     {
       usleep(1000000);
+
+      if (!stat("/etc/fstab", &st) && st.st_mtime != last_mtime)
+        {
+          if (drives)
+            {
+              for (ptr=drives, drive=*ptr; drive; ptr++, drive=*ptr)
+                {
+                  if (drive->fd >= 0)
+                    close(drive->fd);
+                  free(drive->dev);
+                  free(drive->mnt);
+                  free(drive);
+                }
+              free(drives);
+            }
+
+          drives = load_fstab();
+          if (!drives)
+            continue;
+          last_mtime = st.st_mtime;
+        }
 
       for (ptr=drives, drive=*ptr; drive; ptr++, drive=*ptr)
         {
