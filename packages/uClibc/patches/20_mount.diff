@@ -1,7 +1,7 @@
-diff -Naur uClibc-0.9.26.orig/libc/misc/mntent/mntent.c uClibc-0.9.26/libc/misc/mntent/mntent.c
---- uClibc-0.9.26.orig/libc/misc/mntent/mntent.c	2004-07-07 22:56:45.000000000 +0200
-+++ uClibc-0.9.26/libc/misc/mntent/mntent.c	2004-07-07 22:57:27.000000000 +0200
-@@ -13,12 +13,49 @@
+diff -Naur uClibc.orig/libc/misc/mntent/mntent.c uClibc/libc/misc/mntent/mntent.c
+--- uClibc.orig/libc/misc/mntent/mntent.c	Wed Jul  6 09:10:45 2005
++++ uClibc/libc/misc/mntent/mntent.c	Sat Jul 23 13:04:32 2005
+@@ -13,6 +13,54 @@
  # define UNLOCK
  #endif
  
@@ -10,22 +10,28 @@ diff -Naur uClibc-0.9.26.orig/libc/misc/mntent/mntent.c uClibc-0.9.26/libc/misc/
 +   by the strings "\040".  We undo the encoding when reading an entry.
 +   The decoding happens in place.  */
 +static char *
-+decode_name (char *buff)
++decode_name (char *buf)
 +{
-+  char *rp = buff;
-+  char *wp = buff;
++  char *rp = buf;
++  char *wp = buf;
 +
-+  do {
++  do
 +    if (rp[0] == '\\' && rp[1] == '0' && rp[2] == '4' && rp[3] == '0')
 +      {
 +	/* \040 is a SPACE.  */
 +	*wp++ = ' ';
 +	rp += 3;
 +      }
++    else if (rp[0] == '\\' && rp[1] == '0' && rp[2] == '1' && rp[3] == '1')
++      {
++	/* \011 is a TAB.  */
++	*wp++ = '\t';
++	rp += 3;
++      }
 +    else if (rp[0] == '\\' && rp[1] == '0' && rp[2] == '1' && rp[3] == '2')
 +      {
-+	/* \012 is a TAB.  */
-+	*wp++ = '\t';
++	/* \012 is a NEWLINE.  */
++	*wp++ = '\n';
 +	rp += 3;
 +      }
 +    else if (rp[0] == '\\' && rp[1] == '\\')
@@ -34,24 +40,23 @@ diff -Naur uClibc-0.9.26.orig/libc/misc/mntent/mntent.c uClibc-0.9.26/libc/misc/
 +	*wp++ = '\\';
 +	rp += 1;
 +      }
++    else if (rp[0] == '\\' && rp[1] == '1' && rp[2] == '3' && rp[3] == '4')
++      {
++	/* \134 is also \\.  */
++	*wp++ = '\\';
++	rp += 3;
++      }
 +    else
 +      *wp++ = *rp;
-+  } while (*rp++ != '\0');
++  while (*rp++ != '\0');
 +
-+  return buff;
++  return buf;
 +}
 +
  /* Reentrant version of getmntent.  */
  struct mntent *getmntent_r (FILE *filep, 
  	struct mntent *mnt, char *buff, int bufsize)
- {
- 	char *cp, *ptrptr;
- 	const char *sep = " \t\n";
-+        char *rp = buff, *wp = buff;
- 
- 	if (!filep || !mnt || !buff)
- 	    return NULL;
-@@ -37,19 +74,19 @@
+@@ -37,19 +85,19 @@
  		return NULL;
  
  	ptrptr = 0;
