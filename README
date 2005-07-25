@@ -15,7 +15,7 @@ GeeXboX is a kind of "divx box" software. In fact, it is a stand-alone boot
 CD which allows you to watch movies or listen to music. It supports many
 formats, such as avi, mpeg, divx, ogm, rm, mp3, ogg, dvd, vcd and cdda.
 It also supports some IR remote controllers and TV-Out for some graphic cards.
-This archive contain the needed scripts to rebuild an iso image of the GeeXboX.
+This archive contains the needed scripts to rebuild an iso image of GeeXboX.
 
 
 | REQUIREMENTS
@@ -53,7 +53,7 @@ it is quite easy to personalize it.
 
 You can add some proprietary codecs such a rv9 or wmv9, simply by adding
 them in the GEEXBOX/codecs directory. You can find those codecs in the
-package on http://www.geexbox.org/releases/geexbox-extra-codecs-nonfree.tar.gz
+package on http://www.geexbox.org/releases/extra-codecs-nonfree.tar.gz
 
 You can also modify many options. This can be done simply by editing some
 text files.
@@ -81,25 +81,30 @@ text files.
 
 * MPlayer :
     This is where you can do most of the configuration and tweaking.
-    The options take place in the file packages/MPlayer/mplayer.conf.
+    The options take place in the file packages/MPlayer/config/mplayer.conf.
     You may want to modify options such as OSD font size (subfont-text-scale).
+
     You can also add lots of options such as DVD default language
     (eg: alang=fr,en). The best place to find them is the MPlayer manpage
     for Linux users (man -l build/MPlayer-*/DOCS/mplayer.1). You should also
     have a look at the MPlayer documentation (in build/MPlayer-*/DOCS or at
-    http://mplayerhq.hu/DOCS/).
-    Another file you may modify is the packages/MPlayer/menu.conf. You can
-    remove items you don't need, or you can translate it in your own language
-    for example.
-    Then the last file you can look at is the packages/MPlayer/build which
-    contain the selection of options which are built into MPlayer.
+    http://www.mplayerhq.hu/DOCS/).
 
-* tvout :
+    Another file you may modify is the packages/i18n-texts/config/menu.conf.
+    You can remove items you don't need, or you can translate it in your
+    own language for example.
+
+    Then the last file you can look at is the packages/MPlayer/build which
+    contains the selection of options which are built into MPlayer.
+
+* TV-Out :
     Enabling the TV-Out is achieved with the help of multiple small programs
     dedicated to different video card brands. Currently we use atitvout
     for ATI cards, s3switch for S3 cards and nvtv for nVidia cards (and
     possibly intel i810 and 3dfx cards). The configuration of those programs
-    is done in config/tvout. There you can choose the TV standard you
+    is done in packages/tvout/config/tvout.
+
+    There you can choose the TV standard you
     want (pal, ntsc...) and you can also modify specific options for nvtv.
 
     # TV Output Standard (ntsc/pal/secam)
@@ -160,6 +165,13 @@ text files.
     address in the /etc/network file.
 
     * GATEWAY=""     # Gateway IP ("" for DHCP or no internet connection)
+
+* DNS server :
+    If you want to access to the Internet, GeeXboX may require a DNS server
+    IP address. If you're not using a DHCP server that will do this job, you'll
+    have to specify it by hand in the /etc/network file.
+
+    * DNS_SERVER=""              # DNS Server IP ("" for DHCP or none)
 
 * tv configuration :
     GeeXboX supports TV inputs and tuners. The system hardly tries to
@@ -491,8 +503,10 @@ or a pxe ready tree with :
     build/lirc-*/remotes (after doing a scripts/unpack lirc) and add it
     in packages/lirc/install. Then you should choose your device (default
     is /dev/ttyS0 (COM1)) and the lirc driver and put them in a file
-    called packages/lirc/lircd_$REMOTE. Then you can choose your key mapping in
-    the file packages/lirc/lircrc_$REMOTE. For each mapping you have to select
+    called packages/lirc/config/lircd_$REMOTE.
+
+    Then you can choose your key mapping in the file
+    packages/lirc/config/lircrc_$REMOTE. For each mapping you have to select
     a button (pike their names in the remote definition file) and associate an
     action to it. The action is one of MPlayer's actions (you can find a list
     in the html file build/MPlayer-*/DOCS/documentation.html#commands).
@@ -503,14 +517,20 @@ or a pxe ready tree with :
 
 The first thing you should look at is the initialization script.
 In fact there are two initialization scripts. The first one is in
-packages/initrd/linuxrc but you shouldn't need to modify it. The
-second one is in config/init and that's where you may put some
-customizations.
+packages/initrd/scripts/linuxrc but you shouldn't need to modify it.
+
+The second one is in config/options and that's where you may put some
+customizations. There you can first choose which is the architecture
+(i386 or PPC) you want to build GeeXboX for. After that, you can perform
+finnest tuning by specifying a certain kind of sub arch (386, pentium, athlon)
+in order to optimize the distribution for your specific CPU and gets the best
+perfomances off.
 
 Then the next thing which may interest you is the creation of a new
 "package". A package is just a bunch of scripts which have to follow
 some rules. All the scripts have to take place in a directory named as
 the program you want to "package", itself in the packages directory.
+
 Here is a list of the scripts you may create :
  - url : just a list of urls where to get the program sources.
  - unpack : what to do after unpacking the sources. For example, you can
@@ -537,7 +557,12 @@ In addition, the package main directory may contain extra subdirs :
  - init.d : contains initialization scripts to be launched at runtime.
 
 You also have to remember that software which run on the GeeXboX have to
-be compiled with the uClibc gcc wrapper.
+be compiled with the uClibc gcc wrapper. Fortunately, the GeeXboX toolchain is
+smart enough to automatically build all added packages using the uClibc gcc
+wrapper itself.
+
+Do not forget to ask for your package's compilation and installation by
+explicitely asking for it in the scripts/gentree build script.
 
 Finally, the best way to make a package is to look how other packages are done.
 
@@ -548,5 +573,6 @@ Finally, the best way to make a package is to look how other packages are done.
 All the programs used by the GeeXboX are protected by their respective
 license. They all are free software and most of them are covered by the
 GNU General Public License.
+
 The GeeXboX itself, meaning all the scripts which are used in the building
 process, are covered by the GNU General Public License.
