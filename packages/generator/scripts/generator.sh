@@ -50,7 +50,16 @@ if [ -e ~/.geexbox-generator ]; then
   . ~/.geexbox-generator.conf;
 fi
 
-OUTPUT=geexbox-`cat $GEEXBOX_DIR/VERSION`-$LANG.iso
+if [ -f "$GEEXBOX_DIR/iso/GEEXBOX/boot/isolinux.bin" ]; then
+  TARGET_ARCH=i386
+elif [ -f "$GEEXBOX_DIR/iso/GEEXBOX/boot/yaboot" ]; then
+  TARGET_ARCH=ppc
+else
+  echo "Failed to detect iso target arch"
+  exit 1
+fi
+
+OUTPUT=geexbox-`cat $GEEXBOX_DIR/VERSION`-$LANG.$TARGET_ARCH.iso
 W32CODECS_DIR=/usr/lib/win32
 
 . $GEEXBOX_DIR/i18n/lang.conf
@@ -167,7 +176,7 @@ cp $GEEXBOX_DIR/themes/$THEME/config $TMPDIR/iso/GEEXBOX/etc/theme.conf
 cp $GEEXBOX_DIR/themes/$THEME/*.ttf $TMPDIR/iso/GEEXBOX/usr/share/fonts/themefont.ttf
 cp $GEEXBOX_DIR/themes/$THEME/background.avi $TMPDIR/iso/GEEXBOX/usr/share/mplayer/
 [ -f $GEEXBOX_DIR/themes/$THEME/background-audio.avi ] && cp $GEEXBOX_DIR/themes/$THEME/background-audio.avi $TMPDIR/iso/GEEXBOX/usr/share/mplayer/
-[ -f $GEEXBOX_DIR/themes/$THEME/grub-splash.xpm.gz ] && cp $GEEXBOX_DIR/themes/$THEME/grub-splash.xpm.gz $TMPDIR/iso/GEEXBOX/usr/share/
+[ $TARGET_ARCH = i386 -a -f $GEEXBOX_DIR/themes/$THEME/grub-splash.xpm.gz ] && cp $GEEXBOX_DIR/themes/$THEME/grub-splash.xpm.gz $TMPDIR/iso/GEEXBOX/usr/share/
 
 cp $GEEXBOX_DIR/lirc/lircrc_$REMOTE $TMPDIR/iso/GEEXBOX/etc/lircrc
 cp $GEEXBOX_DIR/lirc/lircd_$RECEIVER $TMPDIR/iso/GEEXBOX/etc/lircd
@@ -189,13 +198,31 @@ rm -f $TMPDIR/iso/GEEXBOX/etc/lirc*
 
 cp -rf $TMPDIR/iso/GEEXBOX/boot/* $TMPDIR/ziso/GEEXBOX/boot
 [ -f $GEEXBOX_DIR/themes/$THEME/bootsplash.dat ] && cat $GEEXBOX_DIR/themes/$THEME/bootsplash.dat >> $TMPDIR/ziso/GEEXBOX/boot/initrd.gz
-[ -f $GEEXBOX_DIR/themes/$THEME/splash-isolinux.rle ] && cp $GEEXBOX_DIR/themes/$THEME/splash-isolinux.rle $TMPDIR/ziso/GEEXBOX/boot/splash.rle
+[ $TARGET_ARCH = i386 -a -f $GEEXBOX_DIR/themes/$THEME/splash-isolinux.rle ] && cp $GEEXBOX_DIR/themes/$THEME/splash-isolinux.rle $TMPDIR/ziso/GEEXBOX/boot/splash.rle
 
 for i in $TMPDIR/iso/*; do
   [ "$i" != $TMPDIR/iso/GEEXBOX ] && ln -s "../$i" $TMPDIR/ziso
 done
 
-mkisofs -quiet -no-pad -V GEEXBOX -volset GEEXBOX -publisher "The GeeXboX team (www.geexbox.org)" -p "The GeeXboX team (www.geexbox.org)" -A "MKISOFS ISO 9660/HFS FILESYSTEM BUILDER" -z -f -D -r -J -b GEEXBOX/boot/isolinux.bin -c GEEXBOX/boot/boot.catalog -sort $GEEXBOX_DIR/sort -no-emul-boot -boot-load-size 4 -boot-info-table $TMPDIR/ziso > $OUTPUT
+case $TARGET_ARCH in
+  i386)
+    MKISOFS_ARCH="-no-emul-boot \
+                  -boot-info-table \
+                  -boot-load-size 4 \
+                  -b GEEXBOX/boot/isolinux.bin \
+                  -c GEEXBOX/boot/boot.catalog"
+    ;;
+  ppc)
+    MKISOFS_ARCH="-hfs \
+                  -part \
+                  -no-desktop \
+                  -map $GEEXBOX_DIR/maps \
+                  -hfs-volid GEEXBOX \
+                  -hfs-bless $TMPDIR/ziso/GEEXBOX/boot"
+    ;;
+esac
+
+mkisofs -quiet -no-pad -V GEEXBOX -volset GEEXBOX -publisher "The GeeXboX team (www.geexbox.org)" -p "The GeeXboX team (www.geexbox.org)" -A "MKISOFS ISO 9660/HFS FILESYSTEM BUILDER" -z -D -r -J -sort $GEEXBOX_DIR/sort $MKISOFS_ARCH $TMPDIR/ziso > $OUTPUT
 
 if [ $TMPDIR = "." ]; then
   rm -rf $TMPDIR/ziso
