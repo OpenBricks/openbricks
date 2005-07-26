@@ -261,7 +261,7 @@ mount_cdrom(cd_drive drive)
 }
 
 static cd_drive *
-load_fstab(int init)
+load_mnts(int init)
 {
   cd_drive drive, *drives;
   char buf[PATH_MAX], *tmp;
@@ -274,7 +274,7 @@ load_fstab(int init)
   drives = NULL;
   n = 0;
 
-  f = fopen("/etc/fstab", "r");
+  f = fopen("/etc/mnts", "r");
   if (f)
     {
       while (!feof(f))
@@ -283,7 +283,7 @@ load_fstab(int init)
             continue;
           if ((tmp = strchr(buf, '\n')))
             *tmp = '\0';
-          if (!(tmp = strchr(buf, ' ')))
+          if (!(tmp = strchr(buf, '\t')))
             continue;
           *tmp = '\0';
           tmp += 1 + (sizeof("/mnt/ramfs")-1);
@@ -354,7 +354,7 @@ main (int argc, char **argv)
   else
     play_dvd_cmd = "play_dvd\nset_menu null\n";
 
-  drives = load_fstab(1);
+  drives = load_mnts(1);
   if (!drives)
     return 3;
 
@@ -362,7 +362,7 @@ main (int argc, char **argv)
     {
       usleep(1000000);
 
-      if (!stat("/etc/fstab", &st) && st.st_mtime != last_mtime)
+      if (!stat("/etc/mnts", &st) && st.st_mtime != last_mtime)
         {
           if (drives)
             {
@@ -377,7 +377,7 @@ main (int argc, char **argv)
               free(drives);
             }
 
-          drives = load_fstab(0);
+          drives = load_mnts(0);
           if (!drives)
             continue;
           last_mtime = st.st_mtime;
