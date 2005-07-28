@@ -475,9 +475,10 @@ main (int argc, char **argv)
                               }
                           }
                         break;
+                      case CDS_MIXED:
+                        printf("play_cdda\nset_menu null\n");
                       case CDS_XA_2_1:
                       case CDS_XA_2_2:
-                      case CDS_MIXED:
                         /* it's a special CD */
                         mount_cdrom(drive);
                         break;
