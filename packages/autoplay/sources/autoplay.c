@@ -479,6 +479,7 @@ main (int argc, char **argv)
                       case CDS_XA_2_2:
                       case CDS_MIXED:
                         /* it's a special CD */
+                        mount_cdrom(drive);
                         break;
                     }
                   fflush (stdout);
