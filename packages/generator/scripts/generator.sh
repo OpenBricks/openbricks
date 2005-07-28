@@ -226,7 +226,7 @@ mkisofs -quiet -no-pad -V GEEXBOX -volset GEEXBOX \
         -publisher "The GeeXboX team (www.geexbox.org)" \
         -p "The GeeXboX team (www.geexbox.org)" \
         -A "MKISOFS ISO 9660/HFS FILESYSTEM BUILDER" \
-        -z -D -r -J -sort $GEEXBOX_DIR/sort $MKISOFS_ARCH \
+        -z -f -D -r -J -sort $GEEXBOX_DIR/sort $MKISOFS_ARCH \
         $TMPDIR/ziso > $OUTPUT
 
 if [ $TMPDIR = "." ]; then
