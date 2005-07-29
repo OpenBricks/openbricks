@@ -5,7 +5,7 @@
 LANG=en
 
 # Subtitle charset (bg/br/ca/cs/de/en/es/et/fi/fr/gr/he/hu/it/ko/nl/no/pl/ro/ru/sk/sr/sv/zh_CN/zh_TW)
-# Can also be set to a charset code (iso-8859-{1,2,7,8,9}/cp125{0,1}/koi8r/gb2312/big5/euc-kr)
+# Can also be set to a charset code (iso-8859-{1,2,7,8,9}/windows-125{0,1}/koi8-r/gb2312/big5/euc-kr)
 # when empty default is to LANG
 SUB_CHARSET=
 
