@@ -1,5 +1,19 @@
 #!/bin/sh
 
+busybox mount -t ramfs none /ramfs
+IFS='
+'
+for i in `busybox find /`; do
+  if busybox test -d $i; then
+    busybox mkdir -p /ramfs$i
+  else
+    busybox ln -s /initrd$i /ramfs$i
+  fi
+done
+
+busybox mkdir /ramfs/initrd
+busybox pivot_root /ramfs /ramfs/initrd
+busybox mkdir -p /proc /sys /usr/bin /usr/sbin
 busybox mount -t proc none /proc
 busybox mount -t sysfs none /sys
 busybox --install -s
@@ -16,34 +30,19 @@ progress() {
 }
 
 progress 8000 "setting up ramfs tree"
-mount -t ramfs none /mnt/ramfs
-mkdir -p /mnt/ramfs/bin
-mkdir -p /mnt/ramfs/dev
-mkdir -p /mnt/ramfs/etc
-mkdir -p /mnt/ramfs/mnt
-mkdir -p /mnt/ramfs/proc
-mkdir -p /mnt/ramfs/sys
-mkdir -p /mnt/ramfs/lib
-mkdir -p /mnt/ramfs/sbin
-mkdir -p /mnt/ramfs/tmp
-mkdir -p /mnt/ramfs/usr/bin
-mkdir -p /mnt/ramfs/usr/sbin
-mkdir -p /mnt/ramfs/var/run
-mkdir -p /mnt/ramfs/var/log
-mkdir -p /mnt/ramfs/var/lock
+mkdir -p /dev
+mkdir -p /mnt
+mkdir -p /tmp
+mkdir -p /var/run
+mkdir -p /var/log
+mkdir -p /var/lock
 
-echo -n "" > /mnt/ramfs/etc/mtab
-echo -n "" > /mnt/ramfs/etc/fstab
-echo -n "" > /mnt/ramfs/etc/mnts
+echo -n "" > /etc/mtab
+echo -n "" > /etc/fstab
+echo -n "" > /etc/mnts
 
 udevstart
 echo /sbin/udevsend > /proc/sys/kernel/hotplug
-
-cp -a /usr/* /mnt/ramfs/usr
-cp -a /lib/* /mnt/ramfs/lib/
-ln -s libuClibc-*.so libc.so.6
-cp /bin/busybox /mnt/ramfs/bin
-ln -s busybox /mnt/ramfs/bin/sh
 
 grep -q installator /proc/cmdline && INSTALLATOR=yes
 grep -q debugging /proc/cmdline && DEBUG=yes
@@ -52,11 +51,7 @@ BOOT=`sed 's/.*boot=\([^\ ]*\).*/\1/' /proc/cmdline`
 if test "$BOOT" = nfs; then
   progress 11000 "getting nfs tree"
   NFS=`sed 's/.*nfsroot=\([^\ ]*\).*/\1/' /proc/cmdline`
-  if test "$INSTALLATOR" = yes; then
-    GEEXBOX=/mnt/ramfs/mnt/nfs
-  else
-    GEEXBOX=/mnt/nfs
-  fi
+  GEEXBOX=/nfs
   mkdir -p $GEEXBOX
   udhcpc -q -H geexbox -n && mount -t nfs -o ro,nolock,nfsvers=2 $NFS $GEEXBOX
   if [ ! -f "$GEEXBOX/bin.tar.lzma" ]; then
@@ -65,9 +60,6 @@ if test "$BOOT" = nfs; then
     GEEXBOX=
   fi
 fi
-
-IFS='
-'
 
 progress 12000 "searching cdrom drives"
 if [ "$BOOT" = cdrom ]; then
@@ -106,35 +98,33 @@ fi
 
 if test -n "$GEEXBOX" ; then
   progress 25000 "copying system into ram"
-  cp -a "$GEEXBOX/sbin" /mnt/ramfs/
+  cp -a "$GEEXBOX/sbin" /
   progress 27000 "copying system into ram"
-  cp -a "$GEEXBOX/etc" /mnt/ramfs/
+  cp -a "$GEEXBOX/etc" /
   progress 29000 "copying system into ram"
-  cp -a "$GEEXBOX/usr" /mnt/ramfs/
+  cp -a "$GEEXBOX/usr" /
   progress 30500 "copying system into ram"
-  cp -a "$GEEXBOX/var" /mnt/ramfs/
+  cp -a "$GEEXBOX/var" /
   progress 31000 "copying system into ram"
-  lzmacat "$GEEXBOX/bin.tar.lzma" | tar xf - -C /mnt/ramfs
+  lzmacat "$GEEXBOX/bin.tar.lzma" | tar xf - -C /
   progress 42000 "copying system into ram"
-  cp -a "$GEEXBOX/codecs" /mnt/ramfs
+  cp -a "$GEEXBOX/codecs" /
   progress 45000 "copying system into ram"
   INIT=/sbin/init
 else
-  cp /sbin/nosystem /mnt/ramfs/sbin
   INIT=/sbin/nosystem
   progress 65535 "cleaning ram disk"
 fi
 
 if test "$BOOT" = nfs; then
   if test "$INSTALLATOR" = yes; then
-    export NFS="${GEEXBOX#/mnt/ramfs}"
+    export NFS="$GEEXBOX"
   elif test -n "$GEEXBOX"; then
     umount "$GEEXBOX"
   fi
 fi
 
 if test "$BOOT" = cdrom; then
-  GEEXBOX="${GEEXBOX#/mnt/ramfs}"
   export CDROM="${GEEXBOX%/GEEXBOX}"
 fi
 
@@ -146,11 +136,9 @@ elif test "$DEBUG" = yes; then
 fi
 
 if test "$DEBUG" = yes; then
-  cp /sbin/console /mnt/ramfs/sbin
-  /usr/sbin/chroot /mnt/ramfs /sbin/console </dev/tty2 >/dev/tty2 2>&1 &
-  /sbin/console </dev/tty3 >/dev/tty3 2>&1 &
+  /sbin/console </dev/tty2 >/dev/tty2 2>&1 &
 fi
-/usr/sbin/chroot /mnt/ramfs /bin/sh $INIT $RUNLEVEL </dev/tty1 >/dev/tty1 2>&1
+/bin/sh $INIT $RUNLEVEL </dev/tty1 >/dev/tty1 2>&1
 
 if test "$INSTALLATOR" = yes; then
   reboot

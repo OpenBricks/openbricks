@@ -285,8 +285,7 @@ load_mnts(int init)
             *tmp = '\0';
           if (!(tmp = strchr(buf, '\t')))
             continue;
-          *tmp = '\0';
-          tmp += 1 + (sizeof("/mnt/ramfs")-1);
+          *tmp++ = '\0';
           if (strncmp(buf, "/dev/cdrom", sizeof("/dev/cdrom")-1))
             continue;
           drive = (cd_drive) malloc(sizeof(*drive));
