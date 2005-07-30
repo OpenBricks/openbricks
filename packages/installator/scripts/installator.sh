@@ -483,7 +483,7 @@ boot
 
 title	GeeXboX (debug)
 root	$rootdev_single
-kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME debugging
+kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME splash=0 vga=0x315 video=vesafb:ywrap,mtrr debugging
 initrd  /initrd.gz
 boot
 EOF
@@ -577,7 +577,7 @@ boot
 
 title	GeeXboX (debug)
 root	$rootdev
-kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME debugging
+kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME splash=0 vga=0x315 video=vesafb:ywrap,mtrr debugging
 initrd  /initrd.gz
 boot
 EOF
