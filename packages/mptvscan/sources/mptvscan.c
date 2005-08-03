@@ -206,7 +206,7 @@ v4l2_get_input_list (int fd)
   
   while (xioctl (fd, VIDIOC_ENUMINPUT, &input) == 0)
     {
-      if (strcmp (input.name, MPTVSCAN_DEBUG_INPUT))
+      if (strcmp ((char *) input.name, MPTVSCAN_DEBUG_INPUT))
         printf ("%s\n", input.name);
       input.index++;
     }
@@ -237,7 +237,7 @@ v4l2_set_input (int fd, char *input_id)
   else
     while (xioctl (fd, VIDIOC_ENUMINPUT, &input) == 0)
       {
-        if (!strcmp (input.name, input_id))
+        if (!strcmp ((char *) input.name, input_id))
           {
             if (xioctl (fd, VIDIOC_S_INPUT, &input) == -1)
               {
@@ -270,7 +270,7 @@ v4l2_set_standard (int fd, char *standard_id)
   else
     while (xioctl (fd, VIDIOC_ENUMSTD, &standard) == 0)
       {
-        if (!strcmp (standard.name, standard_id))
+        if (!strcmp ((char *) standard.name, standard_id))
           {
             if (xioctl (fd, VIDIOC_S_STD, &standard.id) == -1)
               {
@@ -303,7 +303,7 @@ v4l2_get_standard_list (int fd, char *in)
   else
     while (xioctl (fd, VIDIOC_ENUMINPUT, &input) == 0)
       {
-        if (!strcmp (input.name, in))
+        if (!strcmp ((char *) input.name, in))
           break;
         input.index++;
       }
