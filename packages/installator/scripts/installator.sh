@@ -216,6 +216,9 @@ if [ ! -d "/sys/block" ]; then
   exit 1
 fi
 
+# disable kernel messages to avoid screen corruption
+echo 0 > /proc/sys/kernel/printk
+
 while true; do
   if [ -e /dev/.devfsd ]; then
     DISKS=`cat /proc/partitions | sed -n "s/\ *[0-9][0-9]*\ *[0-9][0-9]*\ *\([0-9][0-9]*\)\ \([a-z0-9/]*disc\).*$/\2 (\1_blocks)/p"`
