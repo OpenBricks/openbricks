@@ -34,7 +34,7 @@ detect_os () {
         type=$(grep "^$partition " /proc/mounts | cut -d " " -f 3)
         detect_os_microsoft $partition tmpmnt $type
 
-        umount $partition >/dev/null 2>&1
+        umount tmpmnt >/dev/null || return
       fi
     else
       mpoint=$(grep "^$partition " /proc/mounts | cut -d " " -f 2)
@@ -44,7 +44,7 @@ detect_os () {
     fi
   done
 
-  rm -r tmpmnt
+  rmdir tmpmnt
 }
 
 # Usage: convert os_device
