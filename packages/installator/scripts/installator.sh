@@ -364,7 +364,7 @@ if [ "$FORMAT" = yes ]; then
   if [ -z "$MKFS" -o ! -x $MKFS ]; then
     if [ "$NEED_FORMAT" = yes ]; then
       $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\n'$DEV' must be formated. As you don't have formatting tool installed, I won't be able to format the partition.\n" 0 0
-      rm -r di
+      rmdir di
       exit 1
     else
       $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Warning" --msgbox "\n'$DEV' needs to be a $MKFS_TYPENAME partition. As you don't have formatting tool installed, I won't be able to format the partition. Hopefully it is already formatted.\n" 0 0
@@ -374,14 +374,14 @@ if [ "$FORMAT" = yes ]; then
   fi
 elif [ "$NEED_FORMAT" = yes ]; then
   $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\n'$DEV' needs to be a formated.\n" 0 0
-  rm -r di
+  rmdir di
   exit 1
 fi
 
 mount -t $MKFS_TYPE "$DEV" di
 if [ $? -ne 0 ]; then
   $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\nFailed to mount '$DEV' as $MKFS_TYPENAME partition.\n" 0 0
-  rm -r di
+  rmdir di
   exit 1
 fi
 
@@ -452,7 +452,7 @@ rootdev=$(convert $DEV)
 if [ -z "$rootdev" ]; then
   $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\nCouldn't find my GRUB partition representation\n" 0 0
   umount di
-  rm -r di
+  rmdir di
   exit 1
 fi
 
@@ -594,7 +594,7 @@ else
 fi
 
 umount di
-rm -r di
+rmdir di
 
 [ -n "$CDROM" ] && eject &
 
