@@ -100,19 +100,20 @@ static char *
 channels_table_list (struct channels_t *channels)
 {
   char *buffer = NULL, c[BUFSIZE];
+  size_t buffer_len = 0;
   int i;
   
-  buffer = (char *) malloc (BUFSIZE * sizeof (char));
   for (i = 0; i < channels->nr_channels; i++)
     {
       sprintf (c, "%s-%s,",
                channels->chans[i]->chan, channels->chans[i]->name);
-      buffer = realloc (buffer, strlen (buffer) + strlen (c));
-      strcat (buffer, c);
+      buffer = realloc (buffer, buffer_len + strlen(c) + 1);
+      strcpy (&buffer[buffer_len], c);
+      buffer_len += strlen(c);
     }
  
   if (channels->nr_channels)
-    buffer[strlen (buffer) - 1] = '\0'; /* erase trailing ',' char */
+    buffer[buffer_len - 1] = '\0'; /* erase trailing ',' char */
 
   return buffer;
 }
