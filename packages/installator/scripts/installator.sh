@@ -202,7 +202,7 @@ setup_dvbscan () {
 
     CITY=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "City Selection" --menu "\nBelow is the list of locations from your country with known DVB-T transponders frequencies. If you live in place not present in this list, please contact your DVB provider, asking him for your local transponders frequencies and send this information to the LinuxTV (http://www.linuxtv.org/) team. Otherwise, simply choose the nearest town from the place you live." 0 0 0 $CITIES`
 
-    $DVBSCAN $DVB_LIST/$DVB_TYPE/$COUNTRY/$CITY > $CHANNELS_CONF
+    $DVBSCAN -x 0 $DVB_LIST/$DVB_TYPE/$COUNTRY/$CITY > $CHANNELS_CONF
   fi
 
   if [ -f $CHANNELS_CONF -a -s $CHANNELS_CONF ]; then
