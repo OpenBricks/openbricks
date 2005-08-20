@@ -6,22 +6,28 @@
 
 echo "### Configuring MPlayer's DVB support ###"
 
+CHANNELS_CONF=/etc/mplayer/channels.conf
+
 if [ -f /var/dvbcard ]; then
   . /var/dvbcard
 
   # build DVB channels configuration file
-  if [ ! -f /etc/mplayer/channels.conf ]; then
+  if [ ! -f $CHANNELS_CONF ]; then
     if [ -f /etc/dvb.conf ]; then
-      dvbscan -x 0 /etc/dvb.conf > /etc/mplayer/channels.conf
+      dvbscan -x 0 /etc/dvb.conf > $CHANNELS_CONF
+
+      if [ -f $CHANNELS_CONF -a -s $CHANNELS_CONF ]; then
+        # remove non-coherent detected channels
+        grep -v "^\[.*\]:" $CHANNELS_CONF > /tmp/channels.conf
+        mv /tmp/channels.conf $CHANNELS_CONF
+      fi
     fi
   fi
 fi
 
 # no DVB card or no configured channels
-if [ ! -f /var/dvbcard \
-  -o ! -f /etc/mplayer/channels.conf \
-  -o ! -s /etc/mplayer/channels.conf ]; then
- # remove DVB options from menu
+if [ ! -f /var/dvbcard -o ! -f $CHANNELS_CONF -o ! -s $CHANNELS_CONF ]; then
+  # remove DVB options from menu
   sed -i 's/.*ok="set_menu dvb_sel".*//' /etc/mplayer/menu.conf
 fi
 
