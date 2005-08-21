@@ -173,6 +173,45 @@ setup_tvscan () {
   sed -i "s/^CHANLIST=.*/CHANLIST=$CHANLIST/" $1/etc/tvcard
 }
 
+# Configure DVB card and scan for channels.
+setup_dvbscan () {
+  DVB_LIST=/usr/share/dvb
+  DVB_FILE=/usr/share/dvb.tar.lzma
+  DVBSCAN=/usr/bin/dvbscan
+
+  TITLE="$BACKTITLE : Digital TV Channels Scanner"
+  CHANNELS_CONF="$1/etc/mplayer/channels.conf"
+
+  if [ -f $DVB_FILE -a ! -d $DVB_LIST ]; then
+    lzmacat $DVB_FILE | tar xf - -C /usr/share 
+  fi
+
+  DVB_TYPE=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "DVB Card Type Selection" --menu "\nBelow is the list of available DVB cards type. Please select the one you want to use for channels scan." 0 0 0 dvb-s "DVB Sattelite" dvb-t "DVB Terrestrial" dvb-c "DVB Cable"`
+
+  # DVB Terrestrial cards
+  if [ $DVB_TYPE = "dvb-t" ]; then
+    for i in `ls $DVB_LIST/$DVB_TYPE`; do
+      COUNTRIES="$COUNTRIES $i ''"
+    done
+
+    COUNTRY=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "Country Selection" --menu "\nBelow is the list of countries with known DVB-T transponders frequencies. Please select the one where you live." 0 0 0 $COUNTRIES`
+
+    for i in `ls $DVB_LIST/$DVB_TYPE/$COUNTRY`; do
+      CITIES="$CITIES $i ''"
+    done
+
+    CITY=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "City Selection" --menu "\nBelow is the list of locations from your country with known DVB-T transponders frequencies. If you live in place not present in this list, please contact your DVB provider, asking him for your local transponders frequencies and send this information to the LinuxTV (http://www.linuxtv.org/) team. Otherwise, simply choose the nearest town from the place you live." 0 0 0 $CITIES`
+
+    $DVBSCAN -x 0 $DVB_LIST/$DVB_TYPE/$COUNTRY/$CITY > $CHANNELS_CONF
+  fi
+
+  if [ -f $CHANNELS_CONF -a -s $CHANNELS_CONF ]; then
+    # remove non-coherent detected channels
+    grep -v "^\[.*\]:" $CHANNELS_CONF > /tmp/channels.conf
+    mv /tmp/channels.conf $CHANNELS_CONF
+  fi
+}
+
 /bin/busybox mount -t proc none /proc
 /bin/busybox mount -t sysfs none /sys
 /bin/busybox --install -s
@@ -417,6 +456,11 @@ if [ "$1" = geexbox ]; then
     /usr/bin/mptvscan -i >/dev/null 2>&1
     if [ `echo $?` = 0 ]; then
       $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Scan for Analog TV Channels ?" --yesno "\nDo you want to configure your analog tv card and scan for channels before installing GeeXboX to disk ?\n" 0 0 && setup_tvscan "di/GEEXBOX"
+    fi
+
+    # Only scan if a DVB card is detected
+    if [ -f /var/dvbcard ]; then
+      $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Scan for Digital (DVB) TV Channels ?" --yesno "\nDo you want to configure your digital (DVB) tv card and scan for channels before installing GeeXboX to disk ?\n" 0 0 && setup_dvbscan "di/GEEXBOX"
     fi
   fi
 fi
