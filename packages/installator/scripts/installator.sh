@@ -412,8 +412,12 @@ if [ "$1" = geexbox ]; then
   if test -n "`grep 'Class 0400:.*109e:' /proc/pci`" \
        -o -n "`grep 'Class 0480:.*1131:' /proc/pci`" \
        -o -n "`grep 'Class 0480:.*14f1:88' /proc/pci`"; then
+
     # Only scan if a TV card is detected
-    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Scan for Analog TV Channels ?" --yesno "\nDo you want to configure your analog tv card and scan for channels before installing GeeXboX to disk ?\n" 0 0 && setup_tvscan "di/GEEXBOX"
+    /usr/bin/mptvscan -i >/dev/null 2>&1
+    if [ `echo $?` = 0 ]; then
+      $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Scan for Analog TV Channels ?" --yesno "\nDo you want to configure your analog tv card and scan for channels before installing GeeXboX to disk ?\n" 0 0 && setup_tvscan "di/GEEXBOX"
+    fi
   fi
 fi
 
