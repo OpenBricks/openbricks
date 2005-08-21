@@ -97,11 +97,11 @@ while [ $# -ne 0 ]; do
   shift || true
 done
 
-[ -z "$THEME" ] && THEME=`cat themes/default`
-if [ ! -f "themes/$THEME/config" ]; then
+[ -z "$THEME" ] && THEME=`cat $GEEXBOX_DIR/themes/default`
+if [ ! -f "$GEEXBOX_DIR/themes/$THEME/config" ]; then
   OTHEME=$THEME
   THEME="theme-$THEME"
-  if [ ! -f "themes/$THEME/config" ]; then
+  if [ ! -f "$GEEXBOX_DIR/themes/$THEME/config" ]; then
     echo ""
     echo "**** GeeXboX theme '$OTHEME' not found. ****"
     echo ""
@@ -109,7 +109,7 @@ if [ ! -f "themes/$THEME/config" ]; then
   fi
 fi
 
-. themes/$THEME/config
+. $GEEXBOX_DIR/themes/$THEME/config
 [ -z "$FONT_CHARSETS" ] && FONT_CHARSETS="iso-8859-1"
 
 MENU_CHARSET=`lang2charset "$LANG"`
