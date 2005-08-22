@@ -6,16 +6,31 @@
 
 echo "### Setting up DVB card ###"
 
+if test -z "`grep 'Class 0400:.*109e:' /proc/pci`" \
+     -a -z "`grep 'Class 0480:.*1131:' /proc/pci`" \
+     -a -z "`grep 'Class 0480:.*14f1:88' /proc/pci`"; then
+  # No supported DVB card found
+  exit 1
+fi
+
+# DVB frontends drivers are auto-loaded by main device drivers
 if test -n "`grep 'Class 0400:.*109e:' /proc/pci`"; then
   # BT8x8 Card
   modprobe dvb-bt8xx >/dev/null 2>&1
+elif test -n "`grep 'Class 0480:.*1131:' /proc/pci`"; then
+  # SAA7134 Card
+  modprobe saa7134-dvb >/dev/null 2>&1
+elif test -n "`grep 'Class 0480:.*14f1:88' /proc/pci`"; then
+  # Conexant CX88 Card
+  modprobe cx88-blackbird.ko >/dev/null 2>&1
+  modprobe cx88-dvb >/dev/null 2>&1
+fi
 
-  # ensure that DVB card has been discovered
-  if test -n "`dmesg | grep 'DVB: registering new adapter'`"; then
-    # ensure frontend is present
-    if test -n "`dmesg | grep 'DVB: registering frontend'`"; then
-      echo -n "" > /var/dvbcard
-    fi
+# ensure that DVB card has been discovered
+if test -n "`dmesg | grep 'DVB: registering new adapter'`"; then
+  # ensure frontend is present
+  if test -n "`dmesg | grep 'DVB: registering frontend'`"; then
+    echo -n "" > /var/dvbcard
   fi
 fi
 
