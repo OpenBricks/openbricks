@@ -10,20 +10,27 @@ if test -x /usr/bin/smbmount -a -x /usr/bin/mount.cifs -a -f /etc/network; then
   . /etc/network
   OPT="-N"
   test -n "$SMB_USER" && OPT="-U$SMB_USER%$SMB_PWD"
+  saveifs=$IFS
   smbtree $OPT | while read mounts; do
     (
-    saveifs=$IFS
-    IFS='\'
-    for i in $mounts; do
-      IFS=$saveifs
-      mkdir -p "/mnt/shares/$i"
-      mount.cifs "//$i" "/mnt/shares/$i" -o ro,user=$SMB_USER,pass=$SMB_PWD >/dev/null 2>&1 || smbmount "//$i" "/mnt/shares/$i" -o ro,username=$SMB_USER,passwd=$SMB_PWD >/dev/null 2>&1 || rmdir -p "/mnt/shares/$i" >/dev/null 2>&1
-      IFS='\'
+    IFS=/
+    set $mounts
+    name=$1
+    ip=$2
+    shift 2
+    while [ $# -gt 0 ]; do
+      dir="/mnt/shares/$name/$1"
+      srv="//$name/$1"
+      mkdir -p "$dir"
+      mount.cifs "$srv" "$dir" -o ro,ip=$ip,user=$SMB_USER,pass=$SMB_PWD || \
+        smbmount "$srv" "$dir" -o ro,ip=$ip,username=$SMB_USER,passwd=$SMB_PWD || \
+        rmdir -p "$dir"
+      shift
     done
     IFS=$saveifs
     )&
   done
-  )&
+  )>/dev/null 2>&1 &
 fi
 
 exit 0
