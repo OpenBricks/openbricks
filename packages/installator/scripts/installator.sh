@@ -482,6 +482,7 @@ fi
 if [ "$1" = geexbox ]; then
   if test -n "`grep 'Class 0400:.*109e:' /proc/pci`" \
        -o -n "`grep 'Class 0480:.*1131:' /proc/pci`" \
+       -o -n "`grep 'Class 0480:.*13d0:' /proc/pci`" \
        -o -n "`grep 'Class 0480:.*14f1:88' /proc/pci`"; then
 
     # Only scan if a TV card is detected
