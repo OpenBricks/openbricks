@@ -482,7 +482,6 @@ fi
 if [ "$1" = geexbox ]; then
   if test -n "`grep 'Class 0400:.*109e:' /proc/pci`" \
        -o -n "`grep 'Class 0480:.*1131:' /proc/pci`" \
-       -o -n "`grep 'Class 0480:.*13d0:' /proc/pci`" \
        -o -n "`grep 'Class 0480:.*14f1:88' /proc/pci`"; then
 
     # Only scan if a TV card is detected
@@ -490,11 +489,15 @@ if [ "$1" = geexbox ]; then
     if [ `echo $?` = 0 ]; then
       $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Scan for Analog TV Channels ?" --yesno "\nDo you want to configure your analog tv card and scan for channels before installing GeeXboX to disk ?\n" 0 0 && setup_tvscan "di/GEEXBOX"
     fi
+  fi
+fi
 
-    # Only scan if a DVB card is detected
-    if [ -f /var/dvbcard ]; then
-      $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Scan for Digital (DVB) TV Channels ?" --yesno "\nDo you want to configure your digital (DVB) tv card and scan for channels before installing GeeXboX to disk ?\n" 0 0 && setup_dvbscan "di/GEEXBOX"
-    fi
+# Configure DVB card and scan for channels.
+# (only available when booting from GeeXboX).
+if [ "$1" = geexbox ]; then
+  # Only scan if a DVB card is detected
+  if [ -f /var/dvbcard ]; then
+    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Scan for Digital (DVB) TV Channels ?" --yesno "\nDo you want to configure your digital (DVB) tv card and scan for channels before installing GeeXboX to disk ?\n" 0 0 && setup_dvbscan "di/GEEXBOX"
   fi
 fi
 
