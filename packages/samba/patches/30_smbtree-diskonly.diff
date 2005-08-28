@@ -1,6 +1,31 @@
---- samba-3.0.8.orig/source/utils/smbtree.c	Fri Dec 24 14:28:46 2004
-+++ samba-3.0.8/source/utils/smbtree.c	Fri Dec 24 14:31:00 2004
-@@ -151,8 +151,6 @@
+--- samba-3.0.14a.orig/source/utils/smbtree.c	Fri Feb 25 19:59:41 2005
++++ samba-3.0.14a/source/utils/smbtree.c	Tue Aug 23 12:21:39 2005
+@@ -127,13 +127,15 @@
+         return True;
+ }
+ 
+-static BOOL get_shares(char *server_name, struct user_auth_info *user_info)
++static BOOL get_shares(char *server_name, struct in_addr *server_ip, struct user_auth_info *user_info)
+ {
+         struct cli_state *cli;
+ 
+         if (!(cli = get_ipc_connect(server_name, NULL, user_info)))
+                 return False;
+ 
++        *server_ip = cli->dest_ip;
++
+         if (!cli_RNetShareEnum(cli, add_name, &shares))
+                 return False;
+ 
+@@ -143,6 +145,7 @@
+ static BOOL print_tree(struct user_auth_info *user_info)
+ {
+         struct name_list *wg, *sv, *sh;
++        struct in_addr server_ip;
+ 
+         /* List workgroups */
+ 
+@@ -151,8 +154,6 @@
  
          for (wg = workgroups; wg; wg = wg->next) {
  
@@ -9,7 +34,7 @@
                  /* List servers */
  
                  free_name_list(servers);
-@@ -164,9 +162,6 @@
+@@ -164,22 +165,23 @@
  
                  for (sv = servers; sv; sv = sv->next) {
  
@@ -19,15 +44,19 @@
                          /* List shares */
  
                          free_name_list(shares);
-@@ -177,9 +172,13 @@
+                         shares = NULL;
+ 
+                         if (level == LEV_SERVER ||
+-                            !get_shares(sv->name, user_info))
++                            !get_shares(sv->name, &server_ip, user_info))
                                  continue;
  
++                        printf("%s/%s", sv->name, inet_ntoa(server_ip));
                          for (sh = shares; sh; sh = sh->next) {
 -                                printf("\t\t\\\\%s\\%-15s\t%s\n", 
 -				       sv->name, sh->name, sh->comment);
 +			    if (sh->server_type == STYPE_DISKTREE && sh->name[strlen(sh->name)-1] != '$')
-+                                printf("%s/%s\\\\",
-+				       sv->name, sh->name);
++                                printf("/%s", sh->name);
                          }
 +
 +                        fputc('\n', stdout);

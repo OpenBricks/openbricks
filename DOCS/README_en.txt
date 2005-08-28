@@ -79,6 +79,27 @@ text files.
     language/menu_LANG.conf and language/help_LANG.txt,
     and adding LANG to language/lang.conf.
 
+* Firmware auto-loader :
+
+    GeeXboX supports many free drivers but unfortunately some of them may
+    require an additionnal proprietary firmware (non-free and so not included
+    in GeeXboX ISO) to work properly. The firmware is a binary file that is
+    uploaded to the device (PCI or USB) when the driver is loaded. For each
+    driver, the firmware has to be a specific file with a pre-determined name.
+
+    If you have reluctant hardware that require additionnal firmware (in most
+    of the cases, it only concerns WiFi and DVB cards), you'll need to check
+    on the Internet for your Linux driver page to see how to check the firmware
+    file. Most of the time, you'll get a direct download link. Sometimes,
+    you'll need to extract it from your Windows drivers archive that was
+    shipped with your hardware.
+
+    Once you get the firmware file, simply put it into the /firmwares
+    directory. You can put in as many firmwares as you want, and GeeXboX will
+    automatically find them and use them with the right drivers if needed.
+    The only thing you then have to take care is to have the good firmwares
+    file and to generate a new ISO.
+
 * MPlayer :
     This is where you can do most of the configuration and tweaking.
     The options take place in the file packages/MPlayer/config/mplayer.conf.
