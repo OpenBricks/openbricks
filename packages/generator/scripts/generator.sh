@@ -50,6 +50,40 @@ if [ -e ~/.geexbox-generator ]; then
   . ~/.geexbox-generator.conf;
 fi
 
+case `uname -ms` in
+  Linux\ i[3456]86)
+    path=linux/i386
+    ext=
+    ;;
+  "Darwin Power Macintosh")
+    path=macosx
+    ext=
+    ;;
+  MINGW* | CYGWIN*)
+    path=win32
+    ext=.exe
+    ;;
+  *)
+    path=
+    ;;
+esac
+
+if [ -n "$path" ]; then
+  path="$GEEXBOX_DIR/tools/$path"
+  [ -z "$MKISOFS"  -a -x "$path/mkisofs$ext"  ] && MKISOFS="$path/mkisofs$ext"
+  [ -z "$MKZFTREE" -a -x "$path/mkzftree$ext" ] && MKZFTREE="$path/mkzftree$ext"
+fi
+
+[ -z "$MKISOFS"  ] && MKISOFS=`which mkisofs`
+[ -z "$MKZFTREE" ] && MKZFTREE=`which mkzftree`
+
+if [ -z "$MKISOFS" -o -z "$MKZFTREE" ]; then
+  echo ""
+  echo "**** You need to have mkisofs and mkzftree installed ****"
+  echo ""
+  exit 1
+fi
+
 if [ -f "$GEEXBOX_DIR/iso/GEEXBOX/boot/isolinux.bin" ]; then
   TARGET_ARCH=i386
 elif [ -f "$GEEXBOX_DIR/iso/GEEXBOX/boot/yaboot" ]; then
@@ -182,7 +216,7 @@ cp $GEEXBOX_DIR/lirc/lircrc_$REMOTE $TMPDIR/iso/GEEXBOX/etc/lircrc
 cp $GEEXBOX_DIR/lirc/lircd_$RECEIVER $TMPDIR/iso/GEEXBOX/etc/lircd
 cp $GEEXBOX_DIR/lirc/lircd_$REMOTE.conf $TMPDIR/iso/GEEXBOX/etc/lircd.conf
 [ -n "$W32CODECS" ] && ln -s $W32CODECS_DIR/* $TMPDIR/iso/GEEXBOX/codecs/
-mkzftree $TMPDIR/iso/GEEXBOX $TMPDIR/ziso/GEEXBOX
+"$MKZFTREE" $TMPDIR/iso/GEEXBOX $TMPDIR/ziso/GEEXBOX
 rm -f $TMPDIR/iso/GEEXBOX/usr/share/mplayer/help_$LANG.txt
 rm -f $TMPDIR/iso/GEEXBOX/etc/mplayer/menu_$LANG.conf
 rm -f $TMPDIR/iso/GEEXBOX/etc/lang.conf
@@ -222,7 +256,7 @@ case $TARGET_ARCH in
     ;;
 esac
 
-mkisofs -quiet -no-pad -V GEEXBOX -volset GEEXBOX \
+"$MKISOFS" -quiet -no-pad -V GEEXBOX -volset GEEXBOX \
         -publisher "The GeeXboX team (www.geexbox.org)" \
         -p "The GeeXboX team (www.geexbox.org)" \
         -A "MKISOFS ISO 9660/HFS FILESYSTEM BUILDER" \
