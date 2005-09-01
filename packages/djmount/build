@@ -1,0 +1,31 @@
+#!/bin/sh
+
+. config/options
+
+$SCRIPTS/build toolchain
+$SCRIPTS/build fuse
+
+TALLOC_LIB="-L../talloc -ltalloc"
+UPNP_DIR="`ls -d $ROOT/$BUILD/djmount*/libupnp/upnp`/bin"
+UPNP_LIB="-L$UPNP_DIR -L$UPNP_DIR/$TARGET_NAME -lupnp -lthreadutil -lixml"
+FUSE_DIR=`ls -d $ROOT/$BUILD/fuse*`
+
+cd $BUILD/djmount*/talloc
+./configure --host=$TARGET_NAME \
+            --build=$HOST_NAME
+make
+
+cd $ROOT/$BUILD/djmount*/libupnp/upnp
+make \
+    DEBUG=0 \
+    CLIENT=1 \
+    DEVICE=0 \
+    STATIC=1 \
+    TARGET=$TARGET_NAME
+
+cd $ROOT/$BUILD/djmount*/djmount
+make \
+    DEBUG=0 \
+    FUSEFLAGS="-D_FILE_OFFSET_BITS=64 -D_REENTRANT -DFUSE_USE_VERSION=24" \
+    INCLUDES="-I$FUSE_DIR/include" \
+    LIBS="$TALLOC_LIB $UPNP_LIB -L$FUSE_DIR/lib/.libs"
