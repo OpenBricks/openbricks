@@ -23,7 +23,10 @@ exec: iso
 	scripts/exec
 
 md5sum: iso generator dist fulldist
-	scripts/md5sum
+	scripts/sum md5sum
+
+sha1sum: iso generator dist fulldist
+	scripts/sum sha1sum
 
 clean:
 	scripts/clean
