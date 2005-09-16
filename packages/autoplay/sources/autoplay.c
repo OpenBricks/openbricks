@@ -481,6 +481,11 @@ main (int argc, char **argv)
                         /* it's a special CD */
                         mount_cdrom(drive);
                         break;
+                      default:
+                        drive->status = CDS_NO_DISC;
+                        close(drive->fd);
+                        drive->fd = -1;
+                        break;
                     }
                   fflush (stdout);
                 }
