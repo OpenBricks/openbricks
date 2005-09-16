@@ -252,12 +252,56 @@ umount_cdrom(cd_drive drive)
     }
 }
 
+static char **fstype_list = NULL;
+
+static void
+load_proc_filesystems(void)
+{
+  char buf[255], *fstype;
+  size_t n = 0, len;
+  FILE *f;
+
+  f = fopen("/proc/filesystems", "r");
+  if (f)
+    {
+      while (!feof(f))
+        {
+          if (fgets(buf, sizeof(buf), f) && buf[0] == '\t')
+            {
+              len = strlen(buf);
+              if (buf[len-1] == '\n')
+                buf[--len] = '\0';
+              fstype = (char*) malloc(len);
+              strcpy(fstype, &buf[1]); // skip the first tab char
+
+              fstype_list = (char **) realloc(fstype_list, ++n * sizeof(*fstype_list));
+              fstype_list[n-1] = fstype;
+            }
+        }
+      fclose(f);
+
+      if (n)
+        {
+          fstype_list = (char **)realloc(fstype_list, ++n * sizeof(*fstype_list));
+          fstype_list[n-1] = NULL;
+        }
+    }
+}
+
 static int
 mount_cdrom(cd_drive drive)
 {
-  char buf[PATH_MAX*2];
-  sprintf(buf, "mount -o ro \"%s\" \"%s\"", drive->dev, drive->mnt);
-  return (system(buf) == 0);
+  char **fstype;
+
+  for (fstype = fstype_list; *fstype; fstype++)
+    {
+      if (!mount(drive->dev, drive->mnt, *fstype,
+                 MS_RDONLY | MS_NOSUID | MS_NODEV | MS_NOEXEC,
+                 NULL))
+        return 1;
+    }
+
+  return 0;
 }
 
 static cd_drive *
@@ -342,10 +386,11 @@ main (int argc, char **argv)
   if (!(argc&1))
     speed = atoi (argv[argc-1]);
 
+  load_proc_filesystems ();
   file_exts = get_extensions ("/etc/file_ext");
   playlist_exts = get_extensions ("/etc/list_ext");
   img_exts = get_extensions ("/etc/img_ext");
-  if (!file_exts || !playlist_exts || !img_exts)
+  if (!fstype_list || !file_exts || !playlist_exts || !img_exts)
     return 2;
 
   if (!stat ("/var/use_dxr3", &st) && S_ISREG (st.st_mode))
