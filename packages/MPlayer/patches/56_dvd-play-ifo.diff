@@ -1,49 +1,31 @@
-diff -Naur MPlayer-1.0pre6.orig/libmpdemux/open.c MPlayer-1.0pre6/libmpdemux/open.c
---- MPlayer-1.0pre6.orig/libmpdemux/open.c	2004-12-03 15:14:29.000000000 +0100
-+++ MPlayer-1.0pre6/libmpdemux/open.c	2005-01-09 22:06:45.000000000 +0100
-@@ -6,6 +6,8 @@
- #include <unistd.h>
- #include <fcntl.h>
- #include <string.h>
-+#include <libgen.h>
-+#include <ctype.h>
+diff -Naur MPlayer-20050918.orig/libmpdemux/stream.c MPlayer-20050918/libmpdemux/stream.c
+--- MPlayer-20050918.orig/libmpdemux/stream.c	2005-09-19 01:16:34.000000000 +0200
++++ MPlayer-20050918/libmpdemux/stream.c	2005-09-19 01:32:10.000000000 +0200
+@@ -179,6 +179,13 @@
+   int i,j,l,r;
+   stream_info_t* sinfo;
+   stream_t* s;
++  char *ext;
++  int ifo = 0;
++  extern char *dvd_device;
++
++  ext = strrchr(filename, '.');
++  if (ext && !strcasecmp(ext, "ifo"))
++    ifo = 1;
  
- #include "config.h"
- #include "mp_msg.h"
-@@ -126,6 +128,13 @@
-    return NULL;
- }
- 
-+ int i; 
-+ char *base, *filepath; 
-+ filepath = dirname (strdup (filename));
-+ base = basename (strdup (filename));
-+ for (i = 0; i < strlen (base); i++)
-+   base[i] = tolower (base[i]);
-+
- // for opening of vcds in bincue files
- if(strncmp("cue://",filename,6) == 0){
-   int ret,ret2;
-@@ -180,7 +189,7 @@
- }
- #endif
- #ifdef USE_DVDREAD
--if(strncmp("dvd://",filename,6) == 0){
-+if(strncmp("dvd://",filename,6) == 0 || strstr (base, ".ifo")){
- //  int ret,ret2;
-     dvd_priv_t *d;
-     int ttn,pgc_id,pgn;
-@@ -190,6 +199,13 @@
-     tt_srpt_t *tt_srpt;
-     ifo_handle_t *vts_file;
-     dvd_title = filename[6] == '\0' ? 1 : strtol(filename + 6,NULL,0);
-+
-+    if (strstr (base, ".ifo"))
-+      {
-+        dvd_device = strdup (filepath);
-+        dvd_title = 1;
-+      }
-+
-     /**
-      * Open the disc.
-      */
+   for(i = 0 ; auto_open_streams[i] ; i++) {
+     sinfo = auto_open_streams[i];
+@@ -190,7 +197,12 @@
+       l = strlen(sinfo->protocols[j]);
+       // l == 0 => Don't do protocol matching (ie network and filenames)
+       if((l == 0) || ((strncmp(sinfo->protocols[j],filename,l) == 0) &&
+-		      (strncmp("://",filename+l,3) == 0))) {
++		      (strncmp("://",filename+l,3) == 0))
++                  || (ifo && (strcmp(sinfo->protocols[j],"dvd")))) {
++        if(ifo) {
++          dvd_device = strdup (filename);
++          dvd_title = 1;
++        }
+ 	*file_format = DEMUXER_TYPE_UNKNOWN;
+ 	s = open_stream_plugin(sinfo,filename,mode,options,file_format,&r);
+ 	if(s) return s;
