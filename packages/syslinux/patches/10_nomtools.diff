@@ -1,23 +1,22 @@
-diff -Naur syslinux-2.11.orig/syslinux.c syslinux-2.11/syslinux.c
---- syslinux-2.11.orig/syslinux.c	2004-08-15 21:40:45.000000000 +0200
-+++ syslinux-2.11/syslinux.c	2004-10-28 16:29:01.000000000 +0200
-@@ -114,13 +114,9 @@
+diff -Nur syslinux-3.09.orig/mtools/syslinux.c syslinux-3.09/mtools/syslinux.c
+--- syslinux-3.09.orig/mtools/syslinux.c	Tue Jan  4 05:27:43 2005
++++ syslinux-3.09/mtools/syslinux.c	Wed Aug 10 13:57:51 2005
+@@ -128,12 +128,8 @@
    static unsigned char sectbuf[512];
    int dev_fd;
    struct stat st;
 -  int status;
    char **argp, *opt;
    int force = 0;		/* -f (force) option */
-   off_t offset = 0;		/* -o (offset) option */
 -  char mtools_conf[] = "/tmp/syslinux-mtools-XXXXXX";
 -  int mtc_fd;
 -  FILE *mtc, *mtp;
- 
-   mypid = getpid();
-   program = argv[0];
-@@ -183,55 +179,6 @@
-   if(!syslinux_check_bootsect(sectbuf,device)) {
-     exit(1);
+   struct libfat_filesystem *fs;
+   libfat_sector_t s, *secp, sectors[65]; /* 65 is maximum possible */
+   int32_t ldlinux_cluster;
+@@ -198,54 +194,6 @@
+   if( (errmsg = syslinux_check_bootsect(sectbuf)) ) {
+     die(errmsg);
    }
 -
 -  /*
@@ -33,10 +32,10 @@ diff -Naur syslinux-2.11.orig/syslinux.c syslinux-2.11/syslinux.c
 -	  "MTOOLS_SKIP_CHECK=1\n" /* Needed for some flash memories */
 -	  "drive s:\n"
 -	  "  file=\"/proc/%lu/fd/%d\"\n"
--	  "  offset=%lld\n",
+-	  "  offset=%llu\n",
 -	  (unsigned long)mypid,
 -	  dev_fd,
--	  (unsigned long long)offset);
+-	  (unsigned long long)filesystem_offset);
 -  fclose(mtc);
 -  
 -  /*
@@ -55,19 +54,18 @@ diff -Naur syslinux-2.11.orig/syslinux.c syslinux-2.11/syslinux.c
 -       (fwrite(syslinux_ldlinux, 1, syslinux_ldlinux_len, mtp) 
 -	!= syslinux_ldlinux_len) ||
 -       (status = pclose(mtp), !WIFEXITED(status) || WEXITSTATUS(status)) ) {
--    fprintf(stderr, "%s: failed to create ldlinux.sys\n", program);
--    exit(1);
+-    die("failed to create ldlinux.sys");
 -  }
 -
--  status = system("mattrib +r s:ldlinux.sys");
+-  status = system("mattrib +r +h +s s:ldlinux.sys");
 -
 -  if ( !WIFEXITED(status) || WEXITSTATUS(status) ) {
 -    fprintf(stderr,
--	    "%s: warning: failed to set readonly bit on ldlinux.sys\n",
+-	    "%s: warning: failed to set system bit on ldlinux.sys\n",
 -	    program);
 -  }
 -
 -  unlink(mtools_conf);
  
    /*
-    * To finish up, write the boot sector
+    * Now, use libfat to create a block map

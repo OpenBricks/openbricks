@@ -269,11 +269,11 @@ while [ ! -b "$DEV" ]; do
   DISKS=""
   for i in `$SFDISK -l /dev/$DISK | grep ${DISK%disc} | cut -f1 -d' '`; do
     case `$SFDISK --print-id ${i%%[0-9]*} ${i#${i%%[0-9]*}}` in
-      1|11|6|e|16|1e) #FAT12/16 are supported both in syslinux and grub.
+      1|11|6|e|16|1e|b|c|1b|1c) #FAT12/16/32 are supported both in syslinux and grub.
         S=`$SFDISK -s "$i" | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
         DISKS="$DISKS $i ${S}MB"
         ;;
-      b|c|1b|1c|83) #FAT32 and Linux are supported only in grub.
+      83) #Linux is supported only in grub.
         if [ $BOOTLOADER = grub ]; then
           S=`$SFDISK -s "$i" | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
           DISKS="$DISKS $i ${S}MB"
