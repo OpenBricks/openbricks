@@ -1,0 +1,62 @@
+#!/bin/sh
+
+# MPlayer file loader : determines what to do with the chosen file
+# usage: mp_loader file_location key_binding
+
+cp_fifo=/var/cp_fifo
+mp_fifo=/var/mp_control
+
+filter_file=/etc/file_ext
+filter_playlist=/etc/list_ext
+filter_image=/etc/img_ext
+
+file=$1
+key=$2
+
+if test -e "$file"; then
+  ext=`echo "$file" | sed 's/.*\.\([^\.]*\)/\1/'`
+  # File Operations
+  if [ "$key" = "d" ]; then
+    echo "cd $file" > $cp_fifo
+  elif [ "$key" = "c" ]; then
+    echo "cp $file" > $cp_fifo
+  elif [ "$key" = "r" ]; then
+    echo "rm $file" > $cp_fifo
+  elif [ "$key" = "o" ]; then
+    echo "rmok $file" > $cp_fifo
+  elif [ -n "$ext" ]; then
+    # File Playback
+    if grep -iq "^$ext\$" $filter_file; then
+      if [ "$key" = "p" ]; then
+        playdir "$file"
+      else
+        file=`echo "$file" | sed 's%"%\\\\"%g'`
+        echo "loadfile \"$file\"" > $mp_fifo
+        echo "set_menu null" > $mp_fifo
+      fi
+    elif grep -iq "^$ext\$" $filter_playlist; then
+      file=`echo "$file" | sed 's%"%\\\\"%g'`
+      echo "loadlist \"$file\"" > $mp_fifo
+      echo "set_menu null" > $mp_fifo
+    elif grep -iq "^$ext\$" $filter_image; then
+      if [ "$key" = "p" ]; then
+        view_img -a "$file"
+      elif [ "$key" = "l" ]; then
+        view_img -r "$file"
+      else
+        view_img "$file"
+      fi
+    else
+      # Extension isn't supported in our extension file but might be
+      # playable as well, let's MPlayer figure it out ...
+      file=`echo "$file" | sed 's%"%\\\\"%g'`
+      echo "loadfile \"$file\"" > $mp_fifo
+      echo "set_menu null" > $mp_fifo
+    fi
+  else
+    # File do not have extension, try to play it aswell ...
+    file=`echo "$file" | sed 's%"%\\\\"%g'`
+    echo "loadfile \"$file\"" > $mp_fifo
+    echo "set_menu null" > $mp_fifo
+  fi
+fi
