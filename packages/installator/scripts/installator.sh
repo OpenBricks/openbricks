@@ -82,7 +82,7 @@ convert () {
 
 # Configure network interface and parameters before installing GeeXboX to disk.
 setup_network () {
-  local title phy_type wifi_mode wep essid host_ip gw_ip dns_ip smb_user smb_pwd val f
+  local title phy_type wifi_mode wep essid host_ip subnet gw_ip dns_ip smb_user smb_pwd val f
 
   title="$BACKTITLE : Network Configuration"
   f="$1/etc/network"
@@ -107,6 +107,9 @@ setup_network () {
 
   # do not get more settings if DHCP
   if [ ! -z $host_ip ]; then
+    val=`grep SUBNET $f | cut -d'"' -f2`
+    subnet=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "GeeXboX Subnet" --inputbox "\nYou may want to connect GeeXboX to the Internet. Please fill in the following input box with your network Subnet mask or let it blank if you do not want to set a subnet mask for this computer.\n" 0 0 "$val"` || exit 1
+
     val=`grep GATEWAY $f | cut -d'"' -f2`
     gw_ip=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "GeeXboX GateWay" --inputbox "\nYou may want to connect GeeXboX to the Internet. Please fill in the following input box with your gateway IP address or let it blank if you do not want to set a gateway for this computer.\n" 0 0 "$val"` || exit 1
 
@@ -127,6 +130,7 @@ setup_network () {
   sed -i "s%^WIFI_WEP=\".*\"\(.*\)%WIFI_WEP=\"$wep\"\1%" $f
   sed -i "s%^WIFI_ESSID=\".*\"\(.*\)%WIFI_ESSID=\"$essid\"\1%" $f
   sed -i "s%^HOST=.*%HOST=\"$host_ip\"%" $f
+  sed -i "s%^SUBNET=.*%SUBNET=\"$subnet\"%" $f
   sed -i "s%^GATEWAY=.*%GATEWAY=\"$gw_ip\"%" $f
   sed -i "s%^DNS_SERVER=.*%DNS_SERVER=\"$gw_ip\"%" $f
   sed -i "s%^SMB_USER=.*%SMB_USER=\"$smb_user\"%" $f
@@ -265,11 +269,11 @@ while [ ! -b "$DEV" ]; do
   DISKS=""
   for i in `$SFDISK -l /dev/$DISK | grep ${DISK%disc} | cut -f1 -d' '`; do
     case `$SFDISK --print-id ${i%%[0-9]*} ${i#${i%%[0-9]*}}` in
-      1|11|6|e|16|1e) #FAT12/16 are supported both in syslinux and grub.
+      1|11|6|e|16|1e|b|c|1b|1c) #FAT12/16/32 are supported both in syslinux and grub.
         S=`$SFDISK -s "$i" | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
         DISKS="$DISKS $i ${S}MB"
         ;;
-      b|c|1b|1c|83) #FAT32 and Linux are supported only in grub.
+      83) #Linux is supported only in grub.
         if [ $BOOTLOADER = grub ]; then
           S=`$SFDISK -s "$i" | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
           DISKS="$DISKS $i ${S}MB"

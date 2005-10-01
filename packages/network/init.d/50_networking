@@ -24,9 +24,9 @@ fi
 if test $PHY_TYPE = wifi -o $PHY_TYPE = auto; then
   DEV=$WIFI
   if test -n "$DEV"; then
-    test -n "$WIFI_MODE" && iwconfig "$DEV" mode $WIFI_MODE
-    test -n "$WIFI_ESSID" && iwconfig "$DEV" essid $WIFI_ESSID
-    test -n "$WIFI_WEP" && iwconfig "$DEV" key $WIFI_WEP
+    test -n "$WIFI_MODE" && iwconfig "$DEV" mode "$WIFI_MODE"
+    test -n "$WIFI_ESSID" && iwconfig "$DEV" essid "$WIFI_ESSID"
+    test -n "$WIFI_WEP" && iwconfig "$DEV" key "$WIFI_WEP"
   fi
 fi
 if test $PHY_TYPE = ethernet -o $PHY_TYPE = auto -a -z "$DEV"; then
@@ -34,13 +34,18 @@ if test $PHY_TYPE = ethernet -o $PHY_TYPE = auto -a -z "$DEV"; then
 fi
 test -n "$DEV" || exit 1
 
+[ -n "$SUBNET" ] && NETMASK="netmask $SUBNET"
+
 # bring interface up
-if ifconfig $DEV $HOST >/dev/null 2>&1; then
+if ifconfig $DEV $HOST $NETMASK >/dev/null 2>&1; then
   if test $HOST = 0.0.0.0; then
     udhcpc -H geexbox -n -i $DEV >/dev/null 2>&1 && NET=yes
-    test "$NET" != yes && ifconfig $DEV 192.168.0.54 && NET=yes
+    test "$NET" != yes && ifconfig $DEV 192.168.0.54 netmask 255.255.255.0 && NET=yes
   else
-    test -n "$GATEWAY" && route add default gw $GATEWAY
+    metric=0
+    for i in $GATEWAY; do
+      route add default gw $i dev $DEV metric $((metric++))
+    done
     NET=yes
   fi
 fi
@@ -50,7 +55,11 @@ ifconfig lo 127.0.0.1
 route add -net 239.0.0.0 netmask 255.0.0.0 $DEV
 
 # adding DNS server
-test "$NET" = yes -a -n "$DNS_SERVER" && echo "nameserver $DNS_SERVER" >> /etc/resolv.conf
+if [ "$NET" = yes ]; then
+  for i in $DNS_SERVER; do
+    echo "nameserver $i" >> /etc/resolv.conf
+  done
+fi
 
 test "$NET" = yes || exit 1
 
