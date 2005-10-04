@@ -30,7 +30,7 @@ clean:
 	scripts/clean
 
 distclean:
-	rm -rf .stamps build sources geexbox*
+	rm -rf .stamps build.* sources geexbox*
 
 
 .PHONY: iso burn dist fulldist generator installator exec clean distclean
