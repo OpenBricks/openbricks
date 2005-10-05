@@ -22,14 +22,15 @@ pxe:
 exec: iso
 	scripts/exec
 
-md5sum: iso generator dist fulldist
-	scripts/md5sum
+sum: iso generator dist fulldist
+	scripts/sum md5sum
+	scripts/sum sha1sum
 
 clean:
 	scripts/clean
 
 distclean:
-	rm -rf .stamps build sources geexbox*
+	rm -rf .stamps build.* sources geexbox*
 
 
 .PHONY: iso burn dist fulldist generator installator exec clean distclean

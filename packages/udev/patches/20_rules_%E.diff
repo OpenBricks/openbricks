@@ -1,26 +1,28 @@
-diff -Naur udev-067.orig/udev_rules.c udev-067/udev_rules.c
---- udev-067.orig/udev_rules.c	2005-08-13 20:10:50.000000000 +0300
-+++ udev-067/udev_rules.c	2005-08-14 08:20:38.000000000 +0300
-@@ -270,13 +270,16 @@
- /* finds the lowest positive N such that <name>N isn't present in the udevdb
-  * if <name> doesn't exist, 0 is returned, N otherwise
-  */
--static int find_free_number(const char *name)
-+static int find_free_number(const char *name, int zero)
- {
- 	char devpath[PATH_SIZE];
- 	char filename[PATH_SIZE];
- 	int num = 0;
+diff -Naur udev-069.orig/udev_rules.c udev-069/udev_rules.c
+--- udev-069.orig/udev_rules.c	2005-09-13 20:24:51.000000000 +0300
++++ udev-069/udev_rules.c	2005-09-14 10:34:06.000000000 +0300
+@@ -288,7 +288,7 @@
  
--	strlcpy(filename, name, sizeof(filename));
+ /* finds the lowest positive device number such that <name>N isn't present in the udevdb
+  * if <name> doesn't exist, 0 is returned, N otherwise */
+-static int find_free_number(const char *base, const char *devpath)
++static int find_free_number(const char *base, const char *devpath, int zero)
+ {
+ 	char db_devpath[PATH_SIZE];
+ 	char filename[PATH_SIZE];
+@@ -318,7 +318,10 @@
+ 	}
+ 
+ 	/* just search the database again and again until a free name is found */
+-	strlcpy(filename, base, sizeof(filename));
 +	if (zero)
-+		strlcpy(filename, name, sizeof(filename));
++		strlcpy(filename, base, sizeof(filename));
 +	else
-+		snprintf(filename, sizeof(filename), "%s%d", name, num);
++		snprintf(filename, sizeof(filename), "%s%d", base, num);
  	while (1) {
  		dbg("look for existing node '%s'", filename);
- 		if (udev_db_search_name(devpath, sizeof(devpath), filename) != 0) {
-@@ -372,6 +375,7 @@
+ 		if (udev_db_lookup_name(filename, db_devpath, sizeof(db_devpath)) != 0) {
+@@ -420,6 +423,7 @@
  		SUBST_RESULT,
  		SUBST_SYSFS,
  		SUBST_ENUM,
@@ -28,7 +30,7 @@ diff -Naur udev-067.orig/udev_rules.c udev-067/udev_rules.c
  		SUBST_PARENT,
  		SUBST_TEMP_NODE,
  		SUBST_ROOT,
-@@ -392,6 +396,7 @@
+@@ -440,6 +444,7 @@
  		{ .name = "result",		.fmt = 'c',	.type = SUBST_RESULT },
  		{ .name = "sysfs",		.fmt = 's',	.type = SUBST_SYSFS },
  		{ .name = "enum",		.fmt = 'e',	.type = SUBST_ENUM },
@@ -36,19 +38,19 @@ diff -Naur udev-067.orig/udev_rules.c udev-067/udev_rules.c
  		{ .name = "parent",		.fmt = 'P',	.type = SUBST_PARENT },
  		{ .name = "tempnode",		.fmt = 'N',	.type = SUBST_TEMP_NODE },
  		{ .name = "root",		.fmt = 'r',	.type = SUBST_ROOT },
-@@ -546,12 +551,17 @@
+@@ -596,12 +601,17 @@
  			dbg("substitute sysfs value '%s'", temp2);
  			break;
  		case SUBST_ENUM:
--			next_free_number = find_free_number(string);
-+			next_free_number = find_free_number(string, 1);
+-			next_free_number = find_free_number(string, udev->devpath);
++			next_free_number = find_free_number(string, udev->devpath, 1);
  			if (next_free_number > 0) {
  				sprintf(temp2, "%d", next_free_number);
  				strlcat(string, temp2, maxsize);
  			}
  			break;
 +		case SUBST_ENUM_ZERO:
-+			next_free_number = find_free_number(string, 0);
++			next_free_number = find_free_number(string, udev->devpath, 0);
 +			sprintf(temp2, "%d", next_free_number);
 +			strlcat(string, temp2, maxsize);
 +			break;

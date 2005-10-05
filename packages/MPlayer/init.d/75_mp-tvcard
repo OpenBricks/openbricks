@@ -27,13 +27,19 @@ if [ -f /var/tvcard ]; then
     TV_OPTIONS="$TV_OPTIONS:saturation=$TV_SATURATION"
   fi
 
+  for CHAN in `sed -n 's/^CHAN="\(.*\):\(.*\)"/\1-\2/p' /etc/tvcard | sed 'y/ /_/' `; do
+    mp_set_option tv=channels "$CHAN" concat
+  done
+
   echo "tv=driver=v4l2:norm=$TVIN_STANDARD:chanlist=$CHANLIST$TV_OPTIONS" >> /etc/mplayer/mplayer.conf
 
+  IFS='
+'
   # set mplayer TV channels list
   echo "<cmdlist name=\"tv_chan\" title=\"TV Channels\" ptr=\"<>\" >" >> /etc/mplayer/menu.conf
-  grep '^CHAN=' /etc/tvcard | sed 's/^CHAN="\([^:]*\):\(.*\)"/<e name=\"\2\" ok=\"loadfile tv:\/\/\1\"\/>/' >> /etc/mplayer/menu.conf
-  sed -n 's/tv=channels=\([^:]*\).*/\1/p' /etc/mplayer/mplayer.conf | sed 's/,/\n/g' | sed 's/\(.*\)-\(.*\)/<e name=\"\2\" ok=\"loadfile tv:\/\/\1\"\/>/g' >> /etc/mplayer/menu.conf
-  sed -i 's/^tv=channels=.*//' /etc/mplayer/mplayer.conf
+  for CHNAME in `sed -n 's/tv=channels=//p' /etc/mplayer/mplayer.conf | sed 's/,/\n/g' | sed 's/\(.*\)-\(.*\)/\2/'| sed 's/_/ /'`; do
+    echo "<e name=\"$CHNAME\" ok=\"loadfile tv://$((++n))\"/>" >> /etc/mplayer/menu.conf
+  done
   echo "</cmdlist>" >> /etc/mplayer/menu.conf
 else
   # remove tv options from menu
