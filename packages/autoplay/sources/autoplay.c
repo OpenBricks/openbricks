@@ -293,6 +293,11 @@ mount_cdrom(cd_drive drive)
 {
   char **fstype;
 
+  if (drive->fd != -1) {
+    close(drive->fd);
+    drive->fd = -1;
+  }
+
   for (fstype = fstype_list; *fstype; fstype++)
     {
       if (!mount(drive->dev, drive->mnt, *fstype,
@@ -456,9 +461,6 @@ main (int argc, char **argv)
                       case CDS_DATA_1:
                       case CDS_DATA_2:
                         /* it's a data CD */
-                        close(drive->fd);
-                        drive->fd = -1;
-
                         if (!mount_cdrom(drive))
                           break;
 
