@@ -452,6 +452,7 @@ main (int argc, char **argv)
                         /* it's an audio CD */
                         printf("set_option cdda-device %s save\nplay_cdda\nset_menu null\n", drive->dev);
                         break;
+                      case CDS_NO_INFO: /* no information, but try to mount and detect */
                       case CDS_DATA_1:
                       case CDS_DATA_2:
                         /* it's a data CD */
