@@ -527,6 +527,7 @@ main (int argc, char **argv)
                         /* it's a special CD */
                         mount_cdrom(drive);
                         break;
+                      case CDS_NO_DISC: /* no disc, refresh the drive. */
                       default:
                         drive->status = CDS_NO_DISC;
                         close(drive->fd);
