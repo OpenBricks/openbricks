@@ -1,0 +1,62 @@
+#!/bin/sh
+#
+# setup dvb cards
+#
+# runlevels: geexbox, debug, install
+
+echo "### Setting up DVB card ###"
+
+# DVB frontends drivers are auto-loaded by main device drivers
+
+# PCI DVB Devices
+if test -n "`grep 'Class 0400:.*109e:' /proc/pci`"; then
+  # BT8x8 Card
+  modprobe dvb-bt8xx >/dev/null 2>&1
+  modprobe dst >/dev/null 2>&1
+elif test -n "`grep 'Class 0480:.*1131:' /proc/pci`"; then
+  # SAA7134 Card
+  modprobe saa7134-dvb >/dev/null 2>&1
+  # SAA7146 Cards
+  modprobe saa7146 >/dev/null 2>&1
+  modprobe saa7146_vv >/dev/null 2>&1
+  modprobe dvb-ttpci >/dev/null 2>&1
+  modprobe budget >/dev/null 2>&1
+  modprobe budget-ci >/dev/null 2>&1
+  modprobe budget-av >/dev/null 2>&1
+elif test -n "`grep 'Class 0280:.*13d0:' /proc/pci`"; then
+  # B2C2 Cards
+  modprobe budget >/dev/null 2>&1
+  modprobe b2c2-flexcop-pci >/dev/null 2>&1
+  modprobe b2c2-flexcop >/dev/null 2>&1
+elif test -n "`grep 'Class 0480:.*14f1:88' /proc/pci`"; then
+  # Conexant CX88 Card
+  modprobe cx88-blackbird >/dev/null 2>&1
+  modprobe cx88-dvb >/dev/null 2>&1
+elif test -n "`grep 'Class 0480:.*0432:' /proc/pci`"; then
+  # SCM Pluto2 Card
+  modprobe pluto2 >/dev/null 2>&1
+fi
+
+# USB DVB Devices
+USB_DEV="/proc/bus/usb/devices"
+USB_MAP=`ls -d /lib/modules/*/modules.usbmap`
+if test -f $USB_DEV; then
+  for i in `cat $USB_MAP`; do
+    driver=`cut -d" " -f1 $i`
+    vendor=`cut -d" " -f19 $i | sed 's/0x\(.*\)/\1/`
+    product=`cut -d" " -f22 $i | sed 's/0x\(.*\)/\1/`
+    if test -n "`grep 'Vendor=$vendor ProdID=$product' $USB_DEV`"; then
+      modprobe $driver >/dev/null 2>&1
+    fi
+  done
+fi
+
+# not in USB map
+modprobe b2c2-flexcop-usb >/dev/null 2>&1
+
+# ensure that DVB card has been discovered
+if test -n "`dmesg | grep 'DVB: registering new adapter'`"; then
+  echo -n "" > /var/dvbcard
+fi
+
+exit 0
