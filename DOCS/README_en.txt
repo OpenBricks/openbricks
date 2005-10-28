@@ -327,7 +327,8 @@ text files.
     "dvb-c", "dvb-t" or "atsc" directories and ask for a scan.
 
     Then, simply copy the channels.conf file you've just created to
-    the /etc/mplayer directory in the GeeXboX generator tree, and rebuild away.
+    the /etc/mplayer directory in the GeeXboX generator tree, and
+    rebuild away.
 
     - using an existing transponder list : the procedure is highly similar to
     the one defined just before but with no scan. This time, the scan will be
@@ -343,22 +344,24 @@ text files.
     a new ISO using the generator.
 
     A bootup, if GeeXboX detects a valid transponder file in
-    /etc/mplayer/dvb.conf, it will be used to scan for DVB channels and will
+    /etc/dvb.conf, it will be used to scan for DVB channels and will
     generate the /etc/mplayer/channels.conf file itself.
 
     WARNING : Scanning can be slow according to the number of devices to be
     scanned and will be done each time you boot GeeXboX if using it as a
     LiveCD. It is highly recommended that you do it once only, then copy the
-    generated /etc/mplayer/channels.conf file somewhere else and rebuild an ISO
-    using generator, following the first method or to install it on disk.
+    generated /etc/mplayer/channels.conf file somewhere else and rebuild an
+    ISO using generator, following the first method or to install it on disk.
 
     - using installator : this is for sure the easiest solution but requires
-    you to install GeeXboX to disk. During the installation process, if a valid
-    DVB device is recognized by the system, the installator script will ask you
-    if you want to scan for DVB channels. The installator contains the complete
-    list of transponders frequencies. That way, you just have to select your
-    DVB device type and the transponder file you want to use for GeeXboX to
-    scan. The channels.list file will then be automatically generated.
+    you to install GeeXboX to disk. During the installation process, if a
+    valid DVB device is recognized by the system, the installator script will
+    ask you if you want to scan for DVB channels.
+
+    The installator contains the complete list of transponders frequencies.
+    That way, you just have to select your DVB device type and the transponder
+    file you want to use for GeeXboX to scan. The channels.list file will
+    then be automatically generated.
 
 
 | GENERATION
