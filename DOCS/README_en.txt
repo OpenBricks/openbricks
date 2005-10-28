@@ -282,6 +282,25 @@ text files.
     increased or decreased is Master volume. Before switching back to TV or
     video viewing, or music playing, the volume should be re-adjusted.
 
+* UPnP File Sharing :
+
+    UPnP stands for Universal Plug & Play and is a network protocol aiming at
+    providing the autodiscovery of devices and services of your Home Network.
+    The UPnP A/V (for Audio/Video) norms defines several profiles for devices
+    to easily share multimedia files and lets them being played. The UPnP
+    Media Server profiles represent all of the devices that are able to share
+    files to devices implementing the UPnP Media Player or UPnP Media Renderer
+    profiles.
+
+    The GeeXboX embeds a UPnP Control Point software that is able to
+    auto-discover all UPnP Media Servers from your Home network and it simply
+    mounts their contents to a dedicated mount point (/mnt/UPnP).
+
+    This way, you just have to share contents using a compliant UPnP Media
+    Server software and they'll be automatically accessible from GeeXboX.
+    For more info about UPnP and some media servers usage, please go to
+    http://www.geexbox.org/wiki/index.php/Accessing_to_UPnP_Contents
+
 
 | GENERATION
 | ~~~~~~~~~~
