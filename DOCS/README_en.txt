@@ -287,9 +287,9 @@ text files.
     UPnP stands for Universal Plug & Play and is a network protocol aiming at
     providing the autodiscovery of devices and services of your Home Network.
     The UPnP A/V (for Audio/Video) norms defines several profiles for devices
-    to easily share multimedia files and lets them being played. The UPnP Media
-    Server profiles represent all of the devices that are able to share files
-    to devices implementing the UPnP Media Player or UPnP Media Renderer
+    to easily share multimedia files and lets them being played. The UPnP
+    Media Server profiles represent all of the devices that are able to share
+    files to devices implementing the UPnP Media Player or UPnP Media Renderer
     profiles.
 
     The GeeXboX embeds a UPnP Control Point software that is able to
