@@ -74,6 +74,39 @@ textes.
     vous pouvez toujours traduire un menu. Il suffit de re-créer les fichiers
     language/menu_LANG.conf and language/help_LANG.txt.
 
+* Chargement des firmwares :
+
+    La GeeXboX supporte de nombreux pilotes de périphériques mais
+    malheureusement, certains d'entre eux requierent un firmware binaire
+    additionnel propriétaire (i.e. non-libre et donc non-inclus dans la
+    GeeXboX). Le firmware est un fichier binaire qui est envoyé au
+    périphérique (PCI ou USB) lorsque le pilote se charge. Pour chaque pilote,
+    le firmware se doit d'être un fichier spécifique avec un nom
+    pré-déterminé.
+
+    Si vous disposez de matériel à problème qui peut nécessiter la présence
+    d'un firmware additionnel (dans la plupart des cas, il s'agit de cartes
+    WiFi ou DVB), vous devrez chercher sur Internet une page concernant le
+    support de périphérique sous Linux et l'utilisation du firmware.
+    La plupart du temps, vous tomberez sur un lien de téléchargement direct.
+    Des fois, il vous sera nécessaire d'extraire ce firmware depuis une
+    archive de pilotes pour Windows qui ont été fourni par le fabricant du
+    périphérique.
+
+    Une fois que vous disposerez du fichier de firmware pour votre carte,
+    déposez le simplement dans le répertoire /firmwares. Vous pouvez y stocker
+    autant de firmwares que vous voudrez, la GeeXboX essaiera d'elle même de
+    les charger lorsqu'un pilote en aura besoin. La seule chose dont vous ayez
+    à vous soucier et de disposer des bons fichiers de firmwares avec les bons
+    noms avant de regénérer une nouvelle ISO.
+
+    Veuillez noter que vous pouvez également utiliser le générateur d'ISO de
+    la GeeXboX qui vous permettra de récupérer les firmwares pour vous.
+    Vous pouvez l'utiliser pour sélectionner tous les fichiers de firmware que
+    vous souhaiter et le générateur les téléchargera et ajoutera pour vous.
+    Assurez vous juste de disposer d'une connexion à Internet lors de
+    l'utilisation du générateur.
+
 * MPlayer :
     C'est ici que se font la plupart des configurations et modifications.
     Les options se situent dans le fichier packages/MPlayer/mplayer.conf
@@ -251,6 +284,126 @@ TV_TUNER=AUTO
     y a des contrôle de volume séparés pour la radio. Notez que le volume
     contrôlé est le volume principale. Il pourra donc être nécessaire de le
     réajuster avant de lancer la TV, une vidéo ou de la musique.
+
+* Partage de fichiers via UPnP :
+
+    UPnP est l'acronyme de Universal Plug & Play et peut se décrire comme un
+    protocole réseau permettant l'auto-découverte de périphériques ainsi que
+    des services qui leur sont associés au sein de votre réseau domestique.
+    La norme UPnP A/V (pour Audio/Video) définit un certains nombre de
+    profiles pour des périphériques permettant le partage et la lecture de
+    fichiers multimédias au sein d'un réseau. Le profile UPnP Media Server
+    permet regroupe tous les périphériques capables de partager des fichiers
+    à des périphériques de type UPnP Media Player ou UPnP Media Renderer,
+    qui sont en mesure de les restituer.
+
+    La GeeXboX embarque un logiciel de contrôle UPnP (UPnP Control Point) qui
+    permet l'auto-découverte de tous les périphériques de type Media Server de
+    votre réseau local et qui s'occupe de monter leur contenu en toute
+    transparence dans un point de montage dédié (/mnt/UPnP).
+
+    De cette manière, il vous suffit de disposer d'un PC ou autre périphérique
+    possédant un logiciel compatible avec le profile UPnP Media Server pour
+    que son contenu soit accessible depuis la GeeXboX. Pour plus d'infos sur
+    l'UPnP ainsi que l'utilsiation de quelques serveurs,
+    veuillez vous référer à la page suivante :
+    http://www.geexbox.org/wiki/index.php/Accessing_to_UPnP_Contents
+
+* Cartes DVB
+
+    La GeeXboX supporte un grand nombre de cartes DVB (Terrestre i.e. TNT,
+    Cable, ATSC et Satellite) et ce, aussi bien en PCI qu'en USB. Veuillez
+    cependant noter qu'il n'est pour l'instant possible d'utiliser qu'un
+    unique adaptateur DVB à la fois.
+
+    Certains péripéhriques DVB (particulièrement ceux en USB) peuvent
+    nécessiter un firmware propriétaire additionnel pour fonctionner
+    correctement. Il vous sera peut être utile de jeter un oeil au Wiki DVB de
+    LinuxTV (http://linuxtv.org/wiki/index.php/Main_Page) pour vous assurer
+    que votre carte nécessite un tel firmware ou non. Dans ce cas, le
+    générateur d'ISO pourra le télécharger pour vous.
+
+    Certains firmwares peuvent être récupérés directement depuis le site Web
+    de LinuxTV (http://linuxtv.org/download/firmware/), d'autres peuvent être
+    inclus dans l'archive de drivers Windows du constructeur de la carte.
+    Veuillez vous référer à la documentation sur le chargement des firmwares
+    dans la GeeXboX pour de plus amples informations.
+
+    Pour chaque carte, la liste des chaînes disponibles est disponible au sein
+    du menu de MPlayer. Il n'est cependant pas possible d'auto-découvrir ces
+    chaînes automatiquement.
+
+    De ce fait, la déclaration de chaînes accessibles par DVB dans la GeeXboX
+    peut être fait de différentes manières :
+
+    - utiliser une liste de chaîne existante : MPlayer a besoin d'un fichier
+    channels.conf valide et fonctionnel pour faire fonctionner la DVB. Ce
+    fichier peut être généré à l'aide d'utilitaire fournis par le paquetage
+    dvb-apps. Utilisez simplement une distribution Linux classique où votre
+    carte DVB a déjà été configurée, téléchargez l'archive linuxtv-dvb-apps
+    depuis le site http://www.linuxtv.org/download/dvb/, compilez le tout et
+    créez le fichier de configuration via l'utilitaire "scan", dans le format
+    "zap" (qui est le format par défaut).
+
+    Par exemple, pour une carte DVB-S (Satellite) utilisant le fournisseur
+    d'accès Astra-19.2E :
+
+      wget http://www.linuxtv.org/download/dvb/linuxtv-dvb-apps-1.1.0.tar.bz2
+      tar jxvf linuxtv-dvb-apps-1.1.0.tar.bz2
+      cd linuxtv-dvb-apps-1.1.0/util/scan
+      make
+      ./scan -x 0 dvb-s/Astra-19.2E > channels.conf
+
+    Le drapeau "-x 0" indique que le scan ne tentera pas de se connecter aux
+    chaînes cryptées (généralement payantes). Veuillez tout le temps procéder
+    de la sorte, MPlayer ne gérant de toutes façons pas les chaînes
+    DVB cryptées.
+
+    Selon votre type de carte DVB, choisissez un fichier de transponders
+    (fournisseur) depuis les répertoires "dvb-s", "dvb-c", "dvb-t" ou "atsc".
+
+    Ensuite, copiez simplement le fichier channels.conf que vous venez de
+    générer au sein du répertoire /etc/mplayer de l'arborescence GeeXboX
+    du générateur and recompilez une ISO.
+
+    - utiliser une liste de transpondeur existante : cette procédure est
+    relativement similaire à la précédente à la différence qu'il s'agit cette
+    fois de la GeeXboX qui va s'occuper de scanner les chaînes pour vous et
+    ce, à chaque démarrage. Vous n'aurez ainsi plus besoin d'une autre
+    distribution Linux pour générer le fichier channels.conf.
+
+    Pour ce faire, rendez-vous simplement sur :
+      http://linuxtv.org/cgi-bin/viewcvs.cgi/dvb-apps/util/scan/
+
+    Selon votre type de carte DVB (S/T/C/ATSC), sélectionnez le bon répertoire
+    et choisissez le fichier de liste de fréquences de transpondeurs qui
+    correspond à vos besoins ou votre localisation géographique. Renommez
+    ensuite simplement ce fichier en dvb.conf et copiez le dans le répertoire
+    /etc. Puis, reconstruisez une ISO via le générateur.
+
+    Au démarrage, si la GeeXboX détecte un fichier de transpondeur valide dans
+    le fichier /etc/dvb.conf, elle l'utilisera pour scanner les chaînes DVB
+    disponibles et générera le fichier /etc/mplayer/channels.conf d'elle-même.
+
+    ATTENTION : Le scan de chaînes peut être relativement lent selon le type
+    d'émetteur et le nombre de chaînes à découvrir. Ce processus est de plus
+    effectué à chaque démarrage de la GeeXboX si vous l'utilisez en tant que
+    LiveCD. Il est alors hautement recommandé qu'une fois le scan effectué,
+    vous copiez manuellement le fichier /etc/mplayer/channels.conf qui aura
+    été généré quelque part afin de pouvoir le ré-utiliser dans le générateur
+    d'ISO en suivant la première méthode, ou de faire une installation sur
+    disque dur.
+
+    - utiliser l'installator : il s'agit probablement là de la méthode la plus
+    simple mais recquiert une installation sur disque de la GeeXboX. Au cours
+    du processus d'installation, si un périphérique compatible DVB est reconnu
+    sur votre système, le script d'installation vous demandera de lui-même si
+    vous souhaitez rechercher les chaînes disponibles pour votre carte DVB.
+
+    L'installator contient la liste complète des fréquences des transpondeurs
+    du site LinuxTV. De ce fait, vous n'aurez qu'à sélectionner votre type de
+    carte ainsi que le transpondeur à utiliser et la GeeXboX s'occupera de
+    scanner letout et de générer le fichier /etc/mplayer/channels.conf.
 
 
 | GENERATION DE L'ISO
