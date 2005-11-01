@@ -32,7 +32,8 @@ Pour générer une iso GeeXboX vous devez posséder l'un des sytémes suivants:
 Pour installer la GeeXboX, vous aurez besoin :
   - un système GNU/Linux avec SysLinux.
 
-Pour construire votre propre GeeXboX, vous nécessiterez les outils classiques :
+Pour construire votre propre GeeXboX, vous nécessiterez les outils
+classiques :
   - un système GNU/Linux opérationnel.
   - Le compilateur C GCC.
   - GNU make
@@ -70,9 +71,9 @@ textes.
 * Langue :
     Choisissez la langue de vos menus en éditant le fichier generator.sh ou
     generator.bat (en fonction de votre OS). Cela n'as pas d'effets sur la
-    langue du DVD (voir section MPlayer). Si votre langue n'est pas disponible,
-    vous pouvez toujours traduire un menu. Il suffit de re-créer les fichiers
-    language/menu_LANG.conf and language/help_LANG.txt.
+    langue du DVD (voir section MPlayer). Si votre langue n'est pas
+    disponible, vous pouvez toujours traduire un menu. Il suffit de re-créer
+    les fichiers language/menu_LANG.conf and language/help_LANG.txt.
 
 * Chargement des firmwares :
 
@@ -124,10 +125,10 @@ textes.
     d'options de compilation de MPlayer.
 
 * Sortie TV :
-    Activer la sortie TV se fait au moyen de nombreux petits utilitaires dédiés
-    chacun à une marque carte graphique. Nous utilisons actuellement atitvout
-    pour les cartes ATI, s3switch pour les cartes S3 et nvtv pour les cartes
-    nVidia (ce qui peut aussi marcher abec les cartes i810 et 3dfx). La
+    Activer la sortie TV se fait au moyen de nombreux petits utilitaires
+    dédiés chacun à une marque carte graphique. Nous utilisons actuellement
+    atitvout pour les cartes ATI, s3switch pour les cartes S3 et nvtv pour les
+    cartes nVidia (ce qui peut aussi marcher abec les cartes i810 et 3dfx). La
     configuration de ces programmes se fait dans iso/GEEXBOX/etc/tvout.
     Vous pouvez y choisir le standard que vous utilisez (pal, secam...) et y
     modifier les options spécifiques de nvtv.
@@ -170,7 +171,7 @@ textes.
     la GeeXboX ne peut se connecter que sur des partages anonymes).
     Vous pouvez aussi déclarer des montages NFS dans GEEXBOX/etc/nfs.
 
-* wifi :
+* WiFi :
     Par defaut, le système tente de détecter automatiquement votre
     configuration réseau. Si vous disposez à la fois d'une carte réseau
     Ethernet classique et d'une carte WiFi, seule cette dernière sera
@@ -188,13 +189,13 @@ textes.
     permettra de choisir entre le mode managed et le mode de communication dit
     ad-hoc et de définir à la fois votre clé WEP et le SSID de votre réseau.
 
-* passerelle :
+* Passerelle :
     La GeeXboX supporte l'accès à Internet. Définissez simplement l'adresse IP
     de la passerelle dans le fichier /etc/network
 
     GATEWAY=""     # Gateway IP ("" for DHCP or no internet connection)
 
-* configuration TV :
+* Configuration TV :
     La GeeXboX supporte les entrées et tuners de cartes TV. Le système essaie
     avec peine de détecter automatiquement le type de carte et de tuners
     utilisés. Vous pouvez forcer les paramètres et ainsi éviter la tentative
@@ -232,9 +233,10 @@ TV_TUNER=AUTO
     la même syntaxe que décrit ci-dessus et les canaux TV devraient
     apparaître dans le menu principal.
 
-* configuration audio :
-    La GeeXboX supporte à la fois la restitution audio via la sortie analogique
-    ou numérique, en utilisant les connecteurs classiques JACK ou RCA SPDIF.
+* Configuration Audio :
+    La GeeXboX supporte à la fois la restitution audio via la sortie
+    analogique ou numérique, en utilisant les connecteurs classiques JACK
+    ou RCA SPDIF.
     Par défaut, la sortie est gérée de manière analogique. Ceci peut etre
     changé en modifiant le fichier /etc/audio :
 
@@ -248,13 +250,14 @@ TV_TUNER=AUTO
 * Post-Processing vidéo :
     Le Post-Processing est un moyen logiciel pour affiner une image, en la
     rendant plus nette et plus précise. Cela a par contre l'inconvénient de
-    consommer une partie du temps processeur afin de rendre l'image plus belle.
-    Via l'utilisation des filtres internes à MPlayer, la GeeXboX vous permet de
-    minimiser les effets de blocs horizontaux et verticaux, les effets
-    d'anneaux de dégradés et de corriger automatiquement la luminosité de votre
-    film. Par défaut, le Post-Processing est désactivé, pour éviter de saccader
-    sur de petites configurations matérielles. Il vous est possible de
-    l'activer très simplement en éditant le fichier /etc/mplayer/mplayer.conf :
+    consommer une partie du temps processeur afin de rendre l'image plus
+    belle. Via l'utilisation des filtres internes à MPlayer, la GeeXboX vous
+    permet de minimiser les effets de blocs horizontaux et verticaux, les
+    effets d'anneaux de dégradés et de corriger automatiquement la luminosité
+    de votre film. Par défaut, le Post-Processing est désactivé, pour éviter
+    de saccader sur de petites configurations matérielles. Il vous est
+    possible de l'activer très simplement en éditant le fichier
+    /etc/mplayer/mplayer.conf :
 
     # Set Post Processing (h deblock, v deblock, dering, auto luminance)
     # Consumes CPU power, disabled for low configs, uncomment to enable it.
@@ -432,9 +435,9 @@ polices asiatiques en particulier).
 
 * Fontes génériques :
 
-  Pour rajouter le support de nouvelles fontes, vous n'avez qu'à extraire votre
-  police dans le répertoire font et ajouter le nom de votre fonte à la variable
-  FONT du fichier language/lang.conf.
+  Pour rajouter le support de nouvelles fontes, vous n'avez qu'à extraire
+  votre police dans le répertoire font et ajouter le nom de votre fonte à la
+  variable FONT du fichier language/lang.conf.
 
 * Support du Chinois :
 
@@ -509,9 +512,9 @@ serve le répertoire /tftpboot et copier une arborescence GEEXBOX complète
 dans ce répertoire. Par exemple il est possible de copier le contenu d'un
 CD de GeeXboX depuis un linux AVEC L'OPTION CDROM TRANSPARENT DECOMPRESSION
 ACTIVE !! (pour vérifier cela, il suffit de regarder si le fichier sbin/init
-de l'arborescence GeeXboX ne contient pas de caractères totalement incohérents)
-Si vous avez compilé la GeeXboX vous même a partir des sources, il est aussi
-possible de générer l'arborescence GEEXBOX avec make pxe.
+de l'arborescence GeeXboX ne contient pas de caractères totalement
+incohérents). Si vous avez compilé la GeeXboX vous même a partir des sources,
+il est aussi possible de générer l'arborescence GEEXBOX avec make pxe.
 
 Ensuite il faut éditer le fichier /tftpboot/GEEXBOX/boot/pxelinux.cfg/default
 pour faire correspondre le nfsroot au bon chemin NFS vers l'arborescence
@@ -526,7 +529,8 @@ et un /etc/hosts.allow ressemblant à :
 
 ALL: ALL
 
-Ca devrait être bon. Reste a booter la machine PXE et a voir ce qu'il se passe.
+Ca devrait être bon.
+Reste a booter la machine PXE et a voir ce qu'il se passe.
 
 * Depuis un poste Microsoft Windows :
   ---------------------------------
@@ -601,7 +605,9 @@ Ou vous pouvez directement compiler et graver l'ISO via :
 Une fois cela fait, vous pouvez regagner de l'espace disque en effaçant
 l'arborescence de compilation via :
   make clean
-ou en effectant un nettoyage complet, éliminant même les sources téléchargées :
+ou en effectant un nettoyage complet, éliminant même les
+sources téléchargées :
+
   make distclean
 
 Il existe également des commandes plus avancées si vous désirez effectuer
@@ -613,7 +619,8 @@ des modifications en profondeur au niveau de la GeeXboX :
   scripts/clean package        # nettoie l'arborescence du paquetage
   scripts/clean --full package # nettoie les sources du paquetage
   make exec                    # lance la GeeXboX dans une cellule
-                               # ATTENTION: ceci est une fonction expérimentale
+                               # ATTENTION: ceci est une fonction
+                               # expérimentale.
                                # Utilisez là à vos propres risques.
 
 Si vous avez effectué une version modifiée de la GeeXboX, vous pouvez :
@@ -647,16 +654,19 @@ ou enfin une arborescence PXE :
 * Lirc :
     Lirc vous permet de contrôler la GeeXboX en utilisant une télécommande.
     En premier lieu, vous aurez à choisir le fichier correspondant à votre
-    télécommande dans build/lirc-*/remotes (après avoir effectué scripts/unpack
-    lirc) et l'ajouterez à packages/lirc/install. Puis, choisissez votre
-    périphérique (par défaut, il s'agit de /dev/ttyS0 (COM1)) et le pilote
-    lirc et mettez le tout dans un fichier nommé packages/lirc/lircd_$REMOTE.
+    télécommande dans build/lirc-*/remotes (après avoir effectué
+    scripts/unpack lirc) et l'ajouterez à packages/lirc/install.
+
+    Puis, choisissez votre périphérique (par défaut, il s'agit de /dev/ttyS0
+    (COM1)) et le pilote lirc et mettez le tout dans un fichier nommé
+    packages/lirc/lircd_$REMOTE.
+    
     Vous pourrez ensuite choisir l'affectation des touches dans le fichier
     packages/lirc/lircrc_$REMOTE. Pour chaque affectation, vous aurez à chosir
     un bouton (choisissez leurs noms dans le fichier de définitions de la
     télécommande) et associez lui une action. L'action sera une de celle
-    disponible dans MPlayer (vous pouvez trouver une liste dans le fichier html
-    build/MPlayer-*/DOCS/documentation.html#commands).
+    disponible dans MPlayer (vous pouvez trouver une liste dans le fichier
+    html build/MPlayer-*/DOCS/documentation.html#commands).
 
 
 | MODIFICATION
@@ -677,12 +687,12 @@ ajouter, lui-même dans le répertoire packages.
 Voici une liste de scripts que vous aurez à créer :
  - url : simple liste d'URLS où sont disponibles les sources.
  - unpack : que faire après avoir décompresser les sources. Par exemples, vous
-            pouvez modifier les fichiers de configuration. Ceci ne concerne pas
-            l'application de patchs.
+            pouvez modifier les fichiers de configuration. Ceci ne concerne
+            pas l'application de patchs.
  - need_build : appelé lorsque le paquetage a déjà été compilé, afin de
-                s'assurer qu'il n'aura plus besoin d'être recompilé. Il devrait
-                supprimer le fichier .stamps/"package name"/build si le
-                paquetage nécessite d'être reconstruit.
+                s'assurer qu'il n'aura plus besoin d'être recompilé.
+                Il devrait supprimer le fichier .stamps/"package name"/build
+                si le paquetage nécessite d'être reconstruit.
  - build : l'ensemble des étapes nécessaires pour compiler le programme.
  - install : l'ensemble des étapes nécessaires à l'installation du programme.
              Le préfixe d'installation devrait être $INSTALL.
@@ -694,7 +704,8 @@ sous-répertoires additionnels :
             compiler le paquetage, soit par le script install pour être copiés
             dans le répertoire /etc de destination.
  - scripts : ce sous-répertoire peut contenir des scripts d'initialisation lié
-             au paquetage courant et qui seront installés par le script install
+             au paquetage courant et qui seront installés par le script
+             install
  - patches : ce sous-répertoire peut contenir des patchs destinés à être
              appliqués aux sources du paquetage, au moment du script unpack.
  - sources : si des fichiers sont présents dans ce sous-répertoire, ils seront
