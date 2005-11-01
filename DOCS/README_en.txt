@@ -307,6 +307,87 @@ text files.
     For more info about UPnP and some media servers usage, please go to
     http://www.geexbox.org/wiki/index.php/Accessing_to_UPnP_Contents
 
+* DVB cards
+
+    GeeXboX has a support for various types of DVB cards (Terrestrial, Cable,
+    ATSC and Satellite) either in PCI or USB. Please note that for now, only
+    one DVB adapter is usable at a time.
+
+    Some DVB devices (especially USB ones) may require an external proprietary
+    firmware to be loaded in the mean time as the driver to be usable.
+    You may have a look at the LinuxTV DVB Wiki
+    (http://linuxtv.org/wiki/index.php/Main_Page) to see if you're card
+    requires one or not and if so, which one it is.
+
+    Some firmwares can be fetched directly from the LinuxTV website
+    (http://linuxtv.org/download/firmware/), otherwise may be included in the
+    Windows drivers archive. See the GeeXboX firmware loader documentation to
+    see how to get them loaded for you.
+
+    For each card, the list of channels is available through the MPlayer's
+    open menu. Nevertheless, there's no way to auto-discover these channels.
+
+    Thus, adding the list of DVB channels to GeeXboX can be done in
+    several ways :
+
+    - using an existing channel list : MPlayer needs to have a working
+    channels.conf file to use DVB. This file can be generated through the
+    utilities provided by the dvb-apps package. Simply use a Linux box that
+    has a DVB card configured, download the linuxtv-dvb-apps tarball from
+    http://www.linuxtv.org/download/dvb/ , compile it and create the config
+    file using the "scan" executable, in "zap" format (which is the default
+    as of dvb-apps 1.1.0). For example, for a DVB-S (Satellite) card using
+    Astra-19.2E as the provider:
+
+      wget http://www.linuxtv.org/download/dvb/linuxtv-dvb-apps-1.1.0.tar.bz2
+      tar jxvf linuxtv-dvb-apps-1.1.0.tar.bz2
+      cd linuxtv-dvb-apps-1.1.0/util/scan
+      make
+      ./scan -x 0 dvb-s/Astra-19.2E > channels.conf
+
+    The "-x 0" flag is here to restrict the scan to Free To Air channels only.
+    Please always do so, as MPlayer do not support encrypted DVB channels.
+
+    According to your type of DVB card, choose either a file from the "dvb-s"
+    "dvb-c", "dvb-t" or "atsc" directories and ask for a scan.
+
+    Then, simply copy the channels.conf file you've just created to
+    the /etc/mplayer directory in the GeeXboX generator tree, and
+    rebuild away.
+
+    - using an existing transponder list : the procedure is highly similar to
+    the one defined just before but with no scan. This time, the scan will be
+    done at GeeXboX boot but this way, you do no more require another Linux
+    system to generate the channels.conf file.
+
+    To do so, you simpy have to check at :
+      http://linuxtv.org/cgi-bin/viewcvs.cgi/dvb-apps/util/scan/
+
+    According to your DVB card type (S/T/C/ATSC), check for the good directory
+    and grab the transponder frequency list that fit your needs. Then simply
+    rename the file to dvb.conf and copy it to /etc/mplayer. Then, rebuild
+    a new ISO using the generator.
+
+    A bootup, if GeeXboX detects a valid transponder file in
+    /etc/dvb.conf, it will be used to scan for DVB channels and will
+    generate the /etc/mplayer/channels.conf file itself.
+
+    WARNING : Scanning can be slow according to the number of devices to be
+    scanned and will be done each time you boot GeeXboX if using it as a
+    LiveCD. It is highly recommended that you do it once only, then copy the
+    generated /etc/mplayer/channels.conf file somewhere else and rebuild an
+    ISO using generator, following the first method or to install it on disk.
+
+    - using installator : this is for sure the easiest solution but requires
+    you to install GeeXboX to disk. During the installation process, if a
+    valid DVB device is recognized by the system, the installator script will
+    ask you if you want to scan for DVB channels.
+
+    The installator contains the complete list of transponders frequencies.
+    That way, you just have to select your DVB device type and the transponder
+    file you want to use for GeeXboX to scan. The channels.list file will
+    then be automatically generated.
+
 
 | GENERATION
 | ~~~~~~~~~~
