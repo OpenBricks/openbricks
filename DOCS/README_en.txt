@@ -89,16 +89,22 @@ text files.
 
     If you have reluctant hardware that require additionnal firmware (in most
     of the cases, it only concerns WiFi and DVB cards), you'll need to check
-    on the Internet for your Linux driver page to see how to check the firmware
-    file. Most of the time, you'll get a direct download link. Sometimes,
-    you'll need to extract it from your Windows drivers archive that was
-    shipped with your hardware.
+    on the Internet for your Linux driver page to see how to check the
+    firmware file. Most of the time, you'll get a direct download link.
+    Sometimes, you'll need to extract it from your Windows drivers archive
+    that was shipped with your hardware.
 
     Once you get the firmware file, simply put it into the /firmwares
     directory. You can put in as many firmwares as you want, and GeeXboX will
     automatically find them and use them with the right drivers if needed.
     The only thing you then have to take care is to have the good firmwares
     file and to generate a new ISO.
+
+    Please note that you can also use the GeeXboX ISO generator to
+    automatically grab firmwares for you. You can select all of the extra
+    binary firmware files you want the generator to add for you. Simply note
+    that this feature will require you to have an Internet access when using
+    the GeeXboX generator.
 
 * MPlayer :
     This is where you can do most of the configuration and tweaking.
