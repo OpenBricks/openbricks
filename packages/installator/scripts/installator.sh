@@ -241,7 +241,7 @@ setup_dvbscan () {
     $DVBSCAN $SCAN_ARGS $DVB_LIST/$DVB_TYPE/$FREQ > $CHANNELS_CONF
   fi
 
-  if [ -f $CHANNELS_CONF -a -s $CHANNELS_CONF ]; then
+  if [ -s $CHANNELS_CONF ]; then
     # remove non-coherent detected channels
     grep -v "^\[.*\]:" $CHANNELS_CONF > /tmp/channels.conf
     mv /tmp/channels.conf $CHANNELS_CONF
