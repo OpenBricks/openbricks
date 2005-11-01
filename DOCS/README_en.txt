@@ -365,7 +365,7 @@ text files.
 
     According to your DVB card type (S/T/C/ATSC), check for the good directory
     and grab the transponder frequency list that fit your needs. Then simply
-    rename the file to dvb.conf and copy it to /etc/mplayer. Then, rebuild
+    rename the file to dvb.conf and copy it to /etc. Then, rebuild
     a new ISO using the generator.
 
     A bootup, if GeeXboX detects a valid transponder file in
@@ -385,7 +385,7 @@ text files.
 
     The installator contains the complete list of transponders frequencies.
     That way, you just have to select your DVB device type and the transponder
-    file you want to use for GeeXboX to scan. The channels.list file will
+    file you want to use for GeeXboX to scan. The channels.conf file will
     then be automatically generated.
 
 
