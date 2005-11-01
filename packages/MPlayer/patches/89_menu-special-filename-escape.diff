@@ -1,0 +1,77 @@
+fixes two bugs:
+1. doesn't add \ before spaces when showing dirname in interface title.
+2. when replace_path() string is to be parsed by input command,
+I assume that the path is to be run in shell,
+and I do special escaping of 'into \'\\\'\'
+
+diff -Naur MPlayer-1.0pre7.orig/libmenu/menu_filesel.c MPlayer-1.0pre7/libmenu/menu_filesel.c
+--- MPlayer-1.0pre7.orig/libmenu/menu_filesel.c	Tue Nov  1 16:46:27 2005
++++ MPlayer-1.0pre7/libmenu/menu_filesel.c	Tue Nov  1 17:28:19 2005
+@@ -77,7 +77,7 @@
+   free(entry);
+ }
+ 
+-static char* replace_path(char* title , char* dir) {
++static char* replace_path(char* title , char* dir , int escape) {
+   char *p = strstr(title,"%p");
+   if(p) {
+     int tl = strlen(title);
+@@ -88,15 +88,19 @@
+     char term = *(p-1);
+ 
+     do {
+-      if (*d == '\\' || *d == term)
+-        l++;
++      if (escape && *d == '\'') /* ' -> \'\\\'\' */
++        l+=7;
+     } while (*d++);
+     r = malloc(l + 1);
+     n = r + t1l;
+     memcpy(r,title,t1l);
+     do {
+-      if (*dir == '\\' || *dir == term)
++      if (escape && *dir == '\'') { /* ' -> \'\\\'\' */
++        *n++ = '\\'; *n++ = '\'';
++        *n++ = '\\'; *n++ = '\\';
++        *n++ = '\\'; *n++ = '\'';
+         *n++ = '\\';
++      }
+     } while ((*n++ = *dir++));
+     if(tl - t1l - 2 > 0)
+       strcpy(n-1,p+2);
+@@ -201,7 +205,7 @@
+     free(mpriv->p.title);
+   p = strstr(mpriv->title,"%p");
+ 
+-  mpriv->p.title = replace_path(mpriv->title,mpriv->dir);
++  mpriv->p.title = replace_path(mpriv->title,mpriv->dir,0);
+ 
+   if ((dirp = opendir (mpriv->dir)) == NULL){
+     printf("opendir error: %s", strerror(errno));
+@@ -303,7 +307,7 @@
+ 	char filename[fname_len];
+ 	char* str;
+ 	sprintf(filename,"%s%s",mpriv->dir,mpriv->p.current->p.txt);
+-	str = replace_path(mpriv->dir_action,filename);
++	str = replace_path(mpriv->dir_action,filename,1);
+ 	c = mp_input_parse_cmd(str);
+ 	if(str != mpriv->dir_action)
+ 	  free(str);
+@@ -333,7 +337,7 @@
+       char filename[fname_len];
+       char *str;
+       sprintf(filename,"%s%s",mpriv->dir,mpriv->p.current->p.txt);
+-      str = replace_path(mpriv->file_action,filename);
++      str = replace_path(mpriv->file_action,filename,1);
+       c = mp_input_parse_cmd(str);
+       if(str != mpriv->file_action)
+ 	free(str);
+@@ -349,7 +353,7 @@
+     char filename[fname_len];
+     char *str;
+     sprintf(filename,"%s%s",mpriv->dir,mpriv->p.current->p.txt);
+-    str = replace_path(action, filename);
++    str = replace_path(action, filename, 1);
+     mp_input_queue_cmd(mp_input_parse_cmd(str));
+     if(str != action)
+       free(str);
