@@ -1,7 +1,7 @@
-diff -Naur MPlayer-1.0pre6.orig/cfg-mplayer.h MPlayer-1.0pre6/cfg-mplayer.h
---- MPlayer-1.0pre6.orig/cfg-mplayer.h	2004-12-30 19:39:19.514811608 +0100
-+++ MPlayer-1.0pre6/cfg-mplayer.h	2004-12-30 19:44:22.649728096 +0100
-@@ -374,6 +374,8 @@
+diff -Naur MPlayer-20051016.orig/cfg-mplayer.h MPlayer-20051016/cfg-mplayer.h
+--- MPlayer-20051016.orig/cfg-mplayer.h	2005-10-17 00:35:12.000000000 +0200
++++ MPlayer-20051016/cfg-mplayer.h	2005-10-17 00:35:36.000000000 +0200
+@@ -356,6 +356,8 @@
  	{"guiwid", &guiWinID, CONF_TYPE_INT, 0, 0, 0, NULL},
  #endif
  
@@ -10,10 +10,10 @@ diff -Naur MPlayer-1.0pre6.orig/cfg-mplayer.h MPlayer-1.0pre6/cfg-mplayer.h
  	{"noloop", &loop_times, CONF_TYPE_FLAG, 0, 0, -1, NULL},
  	{"loop", &loop_times, CONF_TYPE_INT, CONF_RANGE, -1, 10000, NULL},
  	{"playlist", NULL, CONF_TYPE_STRING, 0, 0, 0, NULL},
-diff -Naur MPlayer-1.0pre6.orig/mplayer.c MPlayer-1.0pre6/mplayer.c
---- MPlayer-1.0pre6.orig/mplayer.c	2004-12-30 19:39:19.518811000 +0100
-+++ MPlayer-1.0pre6/mplayer.c	2004-12-30 19:44:22.651727792 +0100
-@@ -250,6 +250,9 @@
+diff -Naur MPlayer-20051016.orig/mplayer.c MPlayer-20051016/mplayer.c
+--- MPlayer-20051016.orig/mplayer.c	2005-10-17 00:35:12.000000000 +0200
++++ MPlayer-20051016/mplayer.c	2005-10-17 00:36:54.000000000 +0200
+@@ -266,6 +266,9 @@
  char* filename=NULL; //"MI2-Trailer.avi";
  int forced_subs_only=0;
  
@@ -23,7 +23,7 @@ diff -Naur MPlayer-1.0pre6.orig/mplayer.c MPlayer-1.0pre6/mplayer.c
  // cache2:
         int stream_cache_size=-1;
  #ifdef USE_STREAM_CACHE
-@@ -410,6 +413,13 @@
+@@ -427,6 +430,13 @@
  	free_demuxer(demuxer);
      }
      demuxer=NULL;
@@ -37,7 +37,7 @@ diff -Naur MPlayer-1.0pre6.orig/mplayer.c MPlayer-1.0pre6/mplayer.c
    }
  
    // kill the cache process:
-@@ -1738,6 +1748,34 @@
+@@ -1859,6 +1869,34 @@
  sh_audio=d_audio->sh;
  sh_video=d_video->sh;
  
@@ -72,24 +72,7 @@ diff -Naur MPlayer-1.0pre6.orig/mplayer.c MPlayer-1.0pre6/mplayer.c
  if(sh_video){
  
    current_module="video_read_properties";
-@@ -2197,7 +2235,15 @@
- 
-     if(play_n_frames>=0){
-       --play_n_frames;
--      if(play_n_frames<0) eof = PT_NEXT_ENTRY;
-+      if(play_n_frames<0) {
-+	if(bg_demuxer) {
-+	  if(!demux_seek(bg_demuxer,0,1))
-+	    eof = PT_NEXT_ENTRY;
-+	  else
-+	    play_n_frames = play_n_frames_mf;
-+	} else
-+	  eof = PT_NEXT_ENTRY;
-+      }
-     }
- 
- /*========================== PLAY AUDIO ============================*/
-@@ -2248,6 +2294,8 @@
+@@ -2373,6 +2411,8 @@
    break;
  } // while(sh_audio)
  
@@ -98,7 +81,7 @@ diff -Naur MPlayer-1.0pre6.orig/mplayer.c MPlayer-1.0pre6/mplayer.c
  if(!sh_video) {
    // handle audio-only case:
    if(!quiet) {
-@@ -2274,7 +2322,16 @@
+@@ -2399,7 +2439,16 @@
  	// get it!
  	current_module="video_read_frame";
          in_size=video_read_frame(sh_video,&next_frame_time,&start,force_fps);
@@ -116,7 +99,23 @@ diff -Naur MPlayer-1.0pre6.orig/mplayer.c MPlayer-1.0pre6/mplayer.c
  	if(in_size>max_framesize) max_framesize=in_size; // stats
  	sh_video->timer+=frame_time;
  	if(sh_audio) sh_audio->delay-=frame_time;
-@@ -2480,6 +2537,13 @@
+@@ -2603,6 +2652,15 @@
+ 	   if(vo_config_count) video_out->flip_page();
+ 	   if (play_n_frames >= 0) {
+ 	     --play_n_frames;
++	     if(play_n_frames<0) {
++		if(bg_demuxer) {
++		   if(!demux_seek(bg_demuxer,0,1))
++			eof = PT_NEXT_ENTRY;
++		   else
++			play_n_frames = play_n_frames_mf;
++		} else
++		   eof = PT_NEXT_ENTRY;
++	     }
+ 	     if (play_n_frames <= 0) eof = PT_NEXT_ENTRY;
+ 	   }
+ 
+@@ -2624,6 +2682,13 @@
    current_module="av_sync";
  
    if(sh_audio){
@@ -130,7 +129,7 @@ diff -Naur MPlayer-1.0pre6.orig/mplayer.c MPlayer-1.0pre6/mplayer.c
      float a_pts=0;
      float v_pts=0;
  
-@@ -2551,7 +2615,7 @@
+@@ -2695,7 +2760,7 @@
          if(!quiet)
            print_status(a_pts - audio_delay - delay, AV_delay, c_total);
        }
@@ -139,7 +138,7 @@ diff -Naur MPlayer-1.0pre6.orig/mplayer.c MPlayer-1.0pre6/mplayer.c
    } else {
      // No audio:
      
-@@ -3840,6 +3904,7 @@
+@@ -4090,6 +4155,7 @@
    if(osd_level>=1 && sh_video){
        int pts=sh_video->pts;
        char osd_text_tmp[64];
