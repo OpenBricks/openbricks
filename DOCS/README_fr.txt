@@ -32,7 +32,8 @@ Pour générer une iso GeeXboX vous devez posséder l'un des sytémes suivants:
 Pour installer la GeeXboX, vous aurez besoin :
   - un système GNU/Linux avec SysLinux.
 
-Pour construire votre propre GeeXboX, vous nécessiterez les outils classiques :
+Pour construire votre propre GeeXboX, vous nécessiterez les outils
+classiques :
   - un système GNU/Linux opérationnel.
   - Le compilateur C GCC.
   - GNU make
@@ -70,9 +71,42 @@ textes.
 * Langue :
     Choisissez la langue de vos menus en éditant le fichier generator.sh ou
     generator.bat (en fonction de votre OS). Cela n'as pas d'effets sur la
-    langue du DVD (voir section MPlayer). Si votre langue n'est pas disponible,
-    vous pouvez toujours traduire un menu. Il suffit de re-créer les fichiers
-    language/menu_LANG.conf and language/help_LANG.txt.
+    langue du DVD (voir section MPlayer). Si votre langue n'est pas
+    disponible, vous pouvez toujours traduire un menu. Il suffit de re-créer
+    les fichiers language/menu_LANG.conf and language/help_LANG.txt.
+
+* Chargement des firmwares :
+
+    La GeeXboX supporte de nombreux pilotes de périphériques mais
+    malheureusement, certains d'entre eux requierent un firmware binaire
+    additionnel propriétaire (i.e. non-libre et donc non-inclus dans la
+    GeeXboX). Le firmware est un fichier binaire qui est envoyé au
+    périphérique (PCI ou USB) lorsque le pilote se charge. Pour chaque pilote,
+    le firmware se doit d'être un fichier spécifique avec un nom
+    pré-déterminé.
+
+    Si vous disposez de matériel à problème qui peut nécessiter la présence
+    d'un firmware additionnel (dans la plupart des cas, il s'agit de cartes
+    WiFi ou DVB), vous devrez chercher sur Internet une page concernant le
+    support de périphérique sous Linux et l'utilisation du firmware.
+    La plupart du temps, vous tomberez sur un lien de téléchargement direct.
+    Des fois, il vous sera nécessaire d'extraire ce firmware depuis une
+    archive de pilotes pour Windows qui ont été fourni par le fabricant du
+    périphérique.
+
+    Une fois que vous disposerez du fichier de firmware pour votre carte,
+    déposez le simplement dans le répertoire /firmwares. Vous pouvez y stocker
+    autant de firmwares que vous voudrez, la GeeXboX essaiera d'elle même de
+    les charger lorsqu'un pilote en aura besoin. La seule chose dont vous ayez
+    à vous soucier et de disposer des bons fichiers de firmwares avec les bons
+    noms avant de regénérer une nouvelle ISO.
+
+    Veuillez noter que vous pouvez également utiliser le générateur d'ISO de
+    la GeeXboX qui vous permettra de récupérer les firmwares pour vous.
+    Vous pouvez l'utiliser pour sélectionner tous les fichiers de firmware que
+    vous souhaiter et le générateur les téléchargera et ajoutera pour vous.
+    Assurez vous juste de disposer d'une connexion à Internet lors de
+    l'utilisation du générateur.
 
 * MPlayer :
     C'est ici que se font la plupart des configurations et modifications.
@@ -91,10 +125,10 @@ textes.
     d'options de compilation de MPlayer.
 
 * Sortie TV :
-    Activer la sortie TV se fait au moyen de nombreux petits utilitaires dédiés
-    chacun à une marque carte graphique. Nous utilisons actuellement atitvout
-    pour les cartes ATI, s3switch pour les cartes S3 et nvtv pour les cartes
-    nVidia (ce qui peut aussi marcher abec les cartes i810 et 3dfx). La
+    Activer la sortie TV se fait au moyen de nombreux petits utilitaires
+    dédiés chacun à une marque carte graphique. Nous utilisons actuellement
+    atitvout pour les cartes ATI, s3switch pour les cartes S3 et nvtv pour les
+    cartes nVidia (ce qui peut aussi marcher abec les cartes i810 et 3dfx). La
     configuration de ces programmes se fait dans iso/GEEXBOX/etc/tvout.
     Vous pouvez y choisir le standard que vous utilisez (pal, secam...) et y
     modifier les options spécifiques de nvtv.
@@ -137,7 +171,7 @@ textes.
     la GeeXboX ne peut se connecter que sur des partages anonymes).
     Vous pouvez aussi déclarer des montages NFS dans GEEXBOX/etc/nfs.
 
-* wifi :
+* WiFi :
     Par defaut, le système tente de détecter automatiquement votre
     configuration réseau. Si vous disposez à la fois d'une carte réseau
     Ethernet classique et d'une carte WiFi, seule cette dernière sera
@@ -155,13 +189,13 @@ textes.
     permettra de choisir entre le mode managed et le mode de communication dit
     ad-hoc et de définir à la fois votre clé WEP et le SSID de votre réseau.
 
-* passerelle :
+* Passerelle :
     La GeeXboX supporte l'accès à Internet. Définissez simplement l'adresse IP
     de la passerelle dans le fichier /etc/network
 
     GATEWAY=""     # Gateway IP ("" for DHCP or no internet connection)
 
-* configuration TV :
+* Configuration TV :
     La GeeXboX supporte les entrées et tuners de cartes TV. Le système essaie
     avec peine de détecter automatiquement le type de carte et de tuners
     utilisés. Vous pouvez forcer les paramètres et ainsi éviter la tentative
@@ -199,9 +233,10 @@ TV_TUNER=AUTO
     la même syntaxe que décrit ci-dessus et les canaux TV devraient
     apparaître dans le menu principal.
 
-* configuration audio :
-    La GeeXboX supporte à la fois la restitution audio via la sortie analogique
-    ou numérique, en utilisant les connecteurs classiques JACK ou RCA SPDIF.
+* Configuration Audio :
+    La GeeXboX supporte à la fois la restitution audio via la sortie
+    analogique ou numérique, en utilisant les connecteurs classiques JACK
+    ou RCA SPDIF.
     Par défaut, la sortie est gérée de manière analogique. Ceci peut etre
     changé en modifiant le fichier /etc/audio :
 
@@ -215,13 +250,14 @@ TV_TUNER=AUTO
 * Post-Processing vidéo :
     Le Post-Processing est un moyen logiciel pour affiner une image, en la
     rendant plus nette et plus précise. Cela a par contre l'inconvénient de
-    consommer une partie du temps processeur afin de rendre l'image plus belle.
-    Via l'utilisation des filtres internes à MPlayer, la GeeXboX vous permet de
-    minimiser les effets de blocs horizontaux et verticaux, les effets
-    d'anneaux de dégradés et de corriger automatiquement la luminosité de votre
-    film. Par défaut, le Post-Processing est désactivé, pour éviter de saccader
-    sur de petites configurations matérielles. Il vous est possible de
-    l'activer très simplement en éditant le fichier /etc/mplayer/mplayer.conf :
+    consommer une partie du temps processeur afin de rendre l'image plus
+    belle. Via l'utilisation des filtres internes à MPlayer, la GeeXboX vous
+    permet de minimiser les effets de blocs horizontaux et verticaux, les
+    effets d'anneaux de dégradés et de corriger automatiquement la luminosité
+    de votre film. Par défaut, le Post-Processing est désactivé, pour éviter
+    de saccader sur de petites configurations matérielles. Il vous est
+    possible de l'activer très simplement en éditant le fichier
+    /etc/mplayer/mplayer.conf :
 
     # Set Post Processing (h deblock, v deblock, dering, auto luminance)
     # Consumes CPU power, disabled for low configs, uncomment to enable it.
@@ -252,6 +288,126 @@ TV_TUNER=AUTO
     contrôlé est le volume principale. Il pourra donc être nécessaire de le
     réajuster avant de lancer la TV, une vidéo ou de la musique.
 
+* Partage de fichiers via UPnP :
+
+    UPnP est l'acronyme de Universal Plug & Play et peut se décrire comme un
+    protocole réseau permettant l'auto-découverte de périphériques ainsi que
+    des services qui leur sont associés au sein de votre réseau domestique.
+    La norme UPnP A/V (pour Audio/Video) définit un certains nombre de
+    profiles pour des périphériques permettant le partage et la lecture de
+    fichiers multimédias au sein d'un réseau. Le profile UPnP Media Server
+    permet regroupe tous les périphériques capables de partager des fichiers
+    à des périphériques de type UPnP Media Player ou UPnP Media Renderer,
+    qui sont en mesure de les restituer.
+
+    La GeeXboX embarque un logiciel de contrôle UPnP (UPnP Control Point) qui
+    permet l'auto-découverte de tous les périphériques de type Media Server de
+    votre réseau local et qui s'occupe de monter leur contenu en toute
+    transparence dans un point de montage dédié (/mnt/UPnP).
+
+    De cette manière, il vous suffit de disposer d'un PC ou autre périphérique
+    possédant un logiciel compatible avec le profile UPnP Media Server pour
+    que son contenu soit accessible depuis la GeeXboX. Pour plus d'infos sur
+    l'UPnP ainsi que l'utilsiation de quelques serveurs,
+    veuillez vous référer à la page suivante :
+    http://www.geexbox.org/wiki/index.php/Accessing_to_UPnP_Contents
+
+* Cartes DVB
+
+    La GeeXboX supporte un grand nombre de cartes DVB (Terrestre i.e. TNT,
+    Cable, ATSC et Satellite) et ce, aussi bien en PCI qu'en USB. Veuillez
+    cependant noter qu'il n'est pour l'instant possible d'utiliser qu'un
+    unique adaptateur DVB à la fois.
+
+    Certains péripéhriques DVB (particulièrement ceux en USB) peuvent
+    nécessiter un firmware propriétaire additionnel pour fonctionner
+    correctement. Il vous sera peut être utile de jeter un oeil au Wiki DVB de
+    LinuxTV (http://linuxtv.org/wiki/index.php/Main_Page) pour vous assurer
+    que votre carte nécessite un tel firmware ou non. Dans ce cas, le
+    générateur d'ISO pourra le télécharger pour vous.
+
+    Certains firmwares peuvent être récupérés directement depuis le site Web
+    de LinuxTV (http://linuxtv.org/download/firmware/), d'autres peuvent être
+    inclus dans l'archive de drivers Windows du constructeur de la carte.
+    Veuillez vous référer à la documentation sur le chargement des firmwares
+    dans la GeeXboX pour de plus amples informations.
+
+    Pour chaque carte, la liste des chaînes disponibles est disponible au sein
+    du menu de MPlayer. Il n'est cependant pas possible d'auto-découvrir ces
+    chaînes automatiquement.
+
+    De ce fait, la déclaration de chaînes accessibles par DVB dans la GeeXboX
+    peut être fait de différentes manières :
+
+    - utiliser une liste de chaîne existante : MPlayer a besoin d'un fichier
+    channels.conf valide et fonctionnel pour faire fonctionner la DVB. Ce
+    fichier peut être généré à l'aide d'utilitaire fournis par le paquetage
+    dvb-apps. Utilisez simplement une distribution Linux classique où votre
+    carte DVB a déjà été configurée, téléchargez l'archive linuxtv-dvb-apps
+    depuis le site http://www.linuxtv.org/download/dvb/, compilez le tout et
+    créez le fichier de configuration via l'utilitaire "scan", dans le format
+    "zap" (qui est le format par défaut).
+
+    Par exemple, pour une carte DVB-S (Satellite) utilisant le fournisseur
+    d'accès Astra-19.2E :
+
+      wget http://www.linuxtv.org/download/dvb/linuxtv-dvb-apps-1.1.0.tar.bz2
+      tar jxvf linuxtv-dvb-apps-1.1.0.tar.bz2
+      cd linuxtv-dvb-apps-1.1.0/util/scan
+      make
+      ./scan -x 0 dvb-s/Astra-19.2E > channels.conf
+
+    Le drapeau "-x 0" indique que le scan ne tentera pas de se connecter aux
+    chaînes cryptées (généralement payantes). Veuillez tout le temps procéder
+    de la sorte, MPlayer ne gérant de toutes façons pas les chaînes
+    DVB cryptées.
+
+    Selon votre type de carte DVB, choisissez un fichier de transponders
+    (fournisseur) depuis les répertoires "dvb-s", "dvb-c", "dvb-t" ou "atsc".
+
+    Ensuite, copiez simplement le fichier channels.conf que vous venez de
+    générer au sein du répertoire /etc/mplayer de l'arborescence GeeXboX
+    du générateur and recompilez une ISO.
+
+    - utiliser une liste de transpondeur existante : cette procédure est
+    relativement similaire à la précédente à la différence qu'il s'agit cette
+    fois de la GeeXboX qui va s'occuper de scanner les chaînes pour vous et
+    ce, à chaque démarrage. Vous n'aurez ainsi plus besoin d'une autre
+    distribution Linux pour générer le fichier channels.conf.
+
+    Pour ce faire, rendez-vous simplement sur :
+      http://linuxtv.org/cgi-bin/viewcvs.cgi/dvb-apps/util/scan/
+
+    Selon votre type de carte DVB (S/T/C/ATSC), sélectionnez le bon répertoire
+    et choisissez le fichier de liste de fréquences de transpondeurs qui
+    correspond à vos besoins ou votre localisation géographique. Renommez
+    ensuite simplement ce fichier en dvb.conf et copiez le dans le répertoire
+    /etc. Puis, reconstruisez une ISO via le générateur.
+
+    Au démarrage, si la GeeXboX détecte un fichier de transpondeur valide dans
+    le fichier /etc/dvb.conf, elle l'utilisera pour scanner les chaînes DVB
+    disponibles et générera le fichier /etc/mplayer/channels.conf d'elle-même.
+
+    ATTENTION : Le scan de chaînes peut être relativement lent selon le type
+    d'émetteur et le nombre de chaînes à découvrir. Ce processus est de plus
+    effectué à chaque démarrage de la GeeXboX si vous l'utilisez en tant que
+    LiveCD. Il est alors hautement recommandé qu'une fois le scan effectué,
+    vous copiez manuellement le fichier /etc/mplayer/channels.conf qui aura
+    été généré quelque part afin de pouvoir le ré-utiliser dans le générateur
+    d'ISO en suivant la première méthode, ou de faire une installation sur
+    disque dur.
+
+    - utiliser l'installator : il s'agit probablement là de la méthode la plus
+    simple mais recquiert une installation sur disque de la GeeXboX. Au cours
+    du processus d'installation, si un périphérique compatible DVB est reconnu
+    sur votre système, le script d'installation vous demandera de lui-même si
+    vous souhaitez rechercher les chaînes disponibles pour votre carte DVB.
+
+    L'installator contient la liste complète des fréquences des transpondeurs
+    du site LinuxTV. De ce fait, vous n'aurez qu'à sélectionner votre type de
+    carte ainsi que le transpondeur à utiliser et la GeeXboX s'occupera de
+    scanner letout et de générer le fichier /etc/mplayer/channels.conf.
+
 
 | GENERATION DE L'ISO
 | ~~~~~~~~~~~~~~~~~~~
@@ -279,9 +435,9 @@ polices asiatiques en particulier).
 
 * Fontes génériques :
 
-  Pour rajouter le support de nouvelles fontes, vous n'avez qu'à extraire votre
-  police dans le répertoire font et ajouter le nom de votre fonte à la variable
-  FONT du fichier language/lang.conf.
+  Pour rajouter le support de nouvelles fontes, vous n'avez qu'à extraire
+  votre police dans le répertoire font et ajouter le nom de votre fonte à la
+  variable FONT du fichier language/lang.conf.
 
 * Support du Chinois :
 
@@ -356,9 +512,9 @@ serve le répertoire /tftpboot et copier une arborescence GEEXBOX complète
 dans ce répertoire. Par exemple il est possible de copier le contenu d'un
 CD de GeeXboX depuis un linux AVEC L'OPTION CDROM TRANSPARENT DECOMPRESSION
 ACTIVE !! (pour vérifier cela, il suffit de regarder si le fichier sbin/init
-de l'arborescence GeeXboX ne contient pas de caractères totalement incohérents)
-Si vous avez compilé la GeeXboX vous même a partir des sources, il est aussi
-possible de générer l'arborescence GEEXBOX avec make pxe.
+de l'arborescence GeeXboX ne contient pas de caractères totalement
+incohérents). Si vous avez compilé la GeeXboX vous même a partir des sources,
+il est aussi possible de générer l'arborescence GEEXBOX avec make pxe.
 
 Ensuite il faut éditer le fichier /tftpboot/GEEXBOX/boot/pxelinux.cfg/default
 pour faire correspondre le nfsroot au bon chemin NFS vers l'arborescence
@@ -373,7 +529,8 @@ et un /etc/hosts.allow ressemblant à :
 
 ALL: ALL
 
-Ca devrait être bon. Reste a booter la machine PXE et a voir ce qu'il se passe.
+Ca devrait être bon.
+Reste a booter la machine PXE et a voir ce qu'il se passe.
 
 * Depuis un poste Microsoft Windows :
   ---------------------------------
@@ -448,7 +605,9 @@ Ou vous pouvez directement compiler et graver l'ISO via :
 Une fois cela fait, vous pouvez regagner de l'espace disque en effaçant
 l'arborescence de compilation via :
   make clean
-ou en effectant un nettoyage complet, éliminant même les sources téléchargées :
+ou en effectant un nettoyage complet, éliminant même les
+sources téléchargées :
+
   make distclean
 
 Il existe également des commandes plus avancées si vous désirez effectuer
@@ -460,7 +619,8 @@ des modifications en profondeur au niveau de la GeeXboX :
   scripts/clean package        # nettoie l'arborescence du paquetage
   scripts/clean --full package # nettoie les sources du paquetage
   make exec                    # lance la GeeXboX dans une cellule
-                               # ATTENTION: ceci est une fonction expérimentale
+                               # ATTENTION: ceci est une fonction
+                               # expérimentale.
                                # Utilisez là à vos propres risques.
 
 Si vous avez effectué une version modifiée de la GeeXboX, vous pouvez :
@@ -494,16 +654,19 @@ ou enfin une arborescence PXE :
 * Lirc :
     Lirc vous permet de contrôler la GeeXboX en utilisant une télécommande.
     En premier lieu, vous aurez à choisir le fichier correspondant à votre
-    télécommande dans build/lirc-*/remotes (après avoir effectué scripts/unpack
-    lirc) et l'ajouterez à packages/lirc/install. Puis, choisissez votre
-    périphérique (par défaut, il s'agit de /dev/ttyS0 (COM1)) et le pilote
-    lirc et mettez le tout dans un fichier nommé packages/lirc/lircd_$REMOTE.
+    télécommande dans build/lirc-*/remotes (après avoir effectué
+    scripts/unpack lirc) et l'ajouterez à packages/lirc/install.
+
+    Puis, choisissez votre périphérique (par défaut, il s'agit de /dev/ttyS0
+    (COM1)) et le pilote lirc et mettez le tout dans un fichier nommé
+    packages/lirc/lircd_$REMOTE.
+    
     Vous pourrez ensuite choisir l'affectation des touches dans le fichier
     packages/lirc/lircrc_$REMOTE. Pour chaque affectation, vous aurez à chosir
     un bouton (choisissez leurs noms dans le fichier de définitions de la
     télécommande) et associez lui une action. L'action sera une de celle
-    disponible dans MPlayer (vous pouvez trouver une liste dans le fichier html
-    build/MPlayer-*/DOCS/documentation.html#commands).
+    disponible dans MPlayer (vous pouvez trouver une liste dans le fichier
+    html build/MPlayer-*/DOCS/documentation.html#commands).
 
 
 | MODIFICATION
@@ -524,12 +687,12 @@ ajouter, lui-même dans le répertoire packages.
 Voici une liste de scripts que vous aurez à créer :
  - url : simple liste d'URLS où sont disponibles les sources.
  - unpack : que faire après avoir décompresser les sources. Par exemples, vous
-            pouvez modifier les fichiers de configuration. Ceci ne concerne pas
-            l'application de patchs.
+            pouvez modifier les fichiers de configuration. Ceci ne concerne
+            pas l'application de patchs.
  - need_build : appelé lorsque le paquetage a déjà été compilé, afin de
-                s'assurer qu'il n'aura plus besoin d'être recompilé. Il devrait
-                supprimer le fichier .stamps/"package name"/build si le
-                paquetage nécessite d'être reconstruit.
+                s'assurer qu'il n'aura plus besoin d'être recompilé.
+                Il devrait supprimer le fichier .stamps/"package name"/build
+                si le paquetage nécessite d'être reconstruit.
  - build : l'ensemble des étapes nécessaires pour compiler le programme.
  - install : l'ensemble des étapes nécessaires à l'installation du programme.
              Le préfixe d'installation devrait être $INSTALL.
@@ -541,7 +704,8 @@ sous-répertoires additionnels :
             compiler le paquetage, soit par le script install pour être copiés
             dans le répertoire /etc de destination.
  - scripts : ce sous-répertoire peut contenir des scripts d'initialisation lié
-             au paquetage courant et qui seront installés par le script install
+             au paquetage courant et qui seront installés par le script
+             install
  - patches : ce sous-répertoire peut contenir des patchs destinés à être
              appliqués aux sources du paquetage, au moment du script unpack.
  - sources : si des fichiers sont présents dans ce sous-répertoire, ils seront
