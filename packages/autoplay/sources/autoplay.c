@@ -92,7 +92,7 @@ static int fullname_len;
 static void
 escape_playlist (const char *str, int second_level)
 {
-  const char *orig_str = str;
+  int is_playlist_str = (str == playlist);
   char *new_str;
   int new_len, len;
 
@@ -113,14 +113,15 @@ escape_playlist (const char *str, int second_level)
       break;
     }
 
-  if (new_len == len && orig_str == playlist)
+  if (new_len == len && is_playlist_str)
     return;
 
   if (playlist_len < new_len + 1)
     {
       playlist_len = new_len + 1;
       playlist = (char *) realloc (playlist, playlist_len);
-      str = &orig_str[len];
+      if (is_playlist_str)
+        str = &playlist[len];
     }
   new_str = &playlist[new_len];
 
