@@ -89,6 +89,53 @@ static char *fullname;
 static int fullname_maxlen;
 static int fullname_len;
 
+static void
+escape_playlist (void)
+{
+  char *new_str, *str;
+  int new_len, len;
+
+  if (!playlist || !*playlist)
+    return;
+
+  for (new_len = 0, len = 0, str = playlist; *str; str++)
+    switch (*str)
+    {
+    case '\'':
+    case '\\':
+      new_len++;
+    default:
+      new_len++;
+      len++;
+      break;
+    }
+
+  if (new_len == len)
+    return;
+
+  if (playlist_len < new_len + 1)
+    {
+      playlist_len = new_len + 1;
+      playlist = (char *) realloc (playlist, playlist_len);
+      str = &playlist[len];
+    }
+  new_str = &playlist[new_len];
+
+  len++; /* for null character */
+  while (len--)
+    switch (*str)
+    {
+      case '\'':
+      case '\\':
+        *new_str-- = *str--;
+        *new_str-- = '\\';
+	break;
+      default:
+        *new_str-- = *str--;
+	break;
+    }
+}
+
 static int
 is_playable (const struct dirent *dir)
 {
@@ -491,7 +538,8 @@ main (int argc, char **argv)
                         exts=playlist_exts;
                         if (build_playlist (drive->mnt, -1) == 1)
                           {
-                            printf ("loadlist %s hide_menu\n", playlist);
+                            escape_playlist();
+                            printf ("loadlist '%s' hide_menu\n", playlist);
                           }
                         else
                           {
