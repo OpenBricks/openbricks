@@ -90,18 +90,21 @@ static int fullname_maxlen;
 static int fullname_len;
 
 static void
-escape_playlist (void)
+escape_playlist (const char *str, int second_level)
 {
-  char *new_str, *str;
+  const char *orig_str = str;
+  char *new_str;
   int new_len, len;
 
-  if (!playlist || !*playlist)
+  if (!str)
     return;
 
-  for (new_len = 0, len = 0, str = playlist; *str; str++)
+  for (new_len = 0, len = 0; *str; str++)
     switch (*str)
     {
     case '\'':
+      if (second_level)
+        new_len+=6;
     case '\\':
       new_len++;
     default:
@@ -110,14 +113,14 @@ escape_playlist (void)
       break;
     }
 
-  if (new_len == len)
+  if (new_len == len && orig_str == playlist)
     return;
 
   if (playlist_len < new_len + 1)
     {
       playlist_len = new_len + 1;
       playlist = (char *) realloc (playlist, playlist_len);
-      str = &playlist[len];
+      str = &orig_str[len];
     }
   new_str = &playlist[new_len];
 
@@ -126,6 +129,12 @@ escape_playlist (void)
     switch (*str)
     {
       case '\'':
+        if (second_level)
+	  { /* ' -> \'\\\'\' */
+	    *new_str-- = '\''; *new_str-- = '\\'; /* \' */
+	    *new_str-- = '\''; *new_str-- = '\\'; /* \' */
+	    *new_str-- = '\\'; *new_str-- = '\\'; /* \\ */
+	  }
       case '\\':
         *new_str-- = *str--;
         *new_str-- = '\\';
@@ -538,7 +547,7 @@ main (int argc, char **argv)
                         exts=playlist_exts;
                         if (build_playlist (drive->mnt, -1) == 1)
                           {
-                            escape_playlist();
+                            escape_playlist(playlist, 0);
                             printf ("loadlist '%s' hide_menu\n", playlist);
                           }
                         else
@@ -558,8 +567,9 @@ main (int argc, char **argv)
                                 exts=img_exts;
                                 if (build_playlist (drive->mnt, -1) > 0)
                                   {
+                                    escape_playlist(drive->mnt, 1);
                                     printf ("run 'view_img -r \\'%s\\''\n",
-                                            drive->mnt);
+                                            playlist);
                                   }
                                 else
                                   {
