@@ -1,8 +1,16 @@
 #!/bin/sh
 
-if [ -n "`echo $1 | grep '/mnt/..*'`" ]; then
-  MNT=`echo $1 | sed "s%\(/mnt/[^/]*\)/.*%\1%"`
-  DEV=`mount | sed -n "s%\(.*\) on ${MNT}.*%\1%p"`
+if [ "${1#/mnt/}" != "$1" ]; then
+  DEV=
+  for TMPDEV in `cut -f1 /etc/mnts`; do
+    MNT=`grep "^$TMPDEV	" /etc/mnts | cut -f2-`
+    if [ "${1#$MNT}" != "$1" ]; then
+      DEV=$TMPDEV
+      break
+    fi
+  done
+  [ -z "$DEV" ] && exit 1  
+
   if [ "$2" = ro ]; then
     COUNT=`sed -n "s%\([0-9]*\)\ $DEV%\1%p" /var/rw`
     [ "$COUNT" -lt "1" ] && exit 1
