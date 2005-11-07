@@ -160,7 +160,7 @@ setup_tvscan () {
 
     NORM=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "TV Norm Selection" --menu "\nBelow is the list of your TV card's supported video standards. Please select the one you want to use, according to your localization." 0 0 0 $NORMS`
 
-    CHANLIST=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "TV Chanlist Selection" --menu "\nBelow is the list of pre-configured chanlists for scan. Select the one corresponding to your location or choose 'all' for a deep scan (scanning all existing frequencies)." 0 0 0 "all channels" '' $CHANLISTS`
+    CHANLIST=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "TV Chanlist Selection" --menu "\nBelow is the list of pre-configured chanlists for scan. Select the one corresponding to your location or choose 'all' for a deep scan (scanning all existing frequencies)." 0 0 0 $CHANLISTS`
 
     $MPTVSCAN "-i$INPUT" "-s$NORM" "-c$CHANLIST" -p 2>/tmp/chans | $DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "Scanning Channels" --gauge "\nGeeXboX is currently scanning your channels. This operation may take a while. Please wait while processing ..." 0 0
 
