@@ -171,7 +171,7 @@ setup_tvscan () {
   if [ -s /tmp/chans ]; then
     echo -n "tv=" | cat - /tmp/chans >> $MPLAYER_CONF
   fi
-  rm /tmp/chans
+  rm -f /tmp/chans
 
   sed -i "s/^TVIN_STANDARD=.*/TVIN_STANDARD=$NORM/" $1/etc/tvcard
   sed -i "s/^CHANLIST=.*/CHANLIST=$CHANLIST/" $1/etc/tvcard
