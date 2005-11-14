@@ -22,13 +22,6 @@ THEME=
 
 # You should not have to modify the rest of this file
 
-if [ -z "`which mkisofs`" -o -z "`which mkzftree`" ]; then
-  echo ""
-  echo "**** You need to have mkisofs and mkzftree installed ****"
-  echo ""
-  exit 1
-fi
-
 if [ -d ./iso -a -d ./lirc -a -d ./i18n ]; then
   TMPDIR="."
   GEEXBOX_DIR="."
@@ -48,6 +41,61 @@ fi
 
 if [ -e ~/.geexbox-generator ]; then
   . ~/.geexbox-generator.conf;
+fi
+
+
+[ -d $W32CODECS_DIR ] && W32CODECS_USAGE=" [-w|--with-w32codecs]"
+
+usage()
+{
+cat << EOF
+Usage:
+    $0 [-h|--help]$W32CODECS_USAGE [-o file.iso]
+
+EOF
+exit 1
+}
+
+while [ $# -ne 0 ]; do
+  case $1 in
+    --help|-h)
+      usage
+      ;;
+    --with-w32codecs|-w)
+      [ -d /usr/lib/win32 ] && W32CODECS=1
+      ;;
+    --arch|-a)
+      TARGET_ARCH=$2
+      shift
+      ;;
+    -o)
+      OUTPUT=$2
+      shift
+      ;;
+    *)
+      echo "Invalid option: $1" >&2
+      exit 1
+      ;;
+  esac
+  shift || true
+done
+
+if [ "$GEEXBOX_DIR" != "." ]; then
+# non distribution classic generator
+  if [ -z "$TARGET_ARCH" ]; then
+  # try to get arch from dpkg-architecture, or assign a default value
+    if [ -x "/usr/bin/dpkg-architecture" ]; then
+      TARGET_ARCH=$(/usr/bin/dpkg-architecture -qDEB_HOST_ARCH 2>/dev/null)
+    else
+      TARGET_ARCH=i386
+    fi
+  fi
+fi
+if [ -d "$GEEXBOX_DIR/$TARGET_ARCH" ]; then
+  GEEXBOX_DIR=$GEEXBOX_DIR/$TARGET_ARCH
+else
+  # wrong arch, force delete variable 
+  TARGET_ARCH=""
 fi
 
 case `uname -ms` in
@@ -84,13 +132,15 @@ if [ -z "$MKISOFS" -o -z "$MKZFTREE" ]; then
   exit 1
 fi
 
-if [ -f "$GEEXBOX_DIR/iso/GEEXBOX/boot/isolinux.bin" ]; then
-  TARGET_ARCH=i386
-elif [ -f "$GEEXBOX_DIR/iso/GEEXBOX/boot/yaboot" ]; then
-  TARGET_ARCH=ppc
-else
-  echo "Failed to detect iso target arch"
-  exit 1
+if [ -z "$TARGET_ARCH" ]; then
+  if [ -f "$GEEXBOX_DIR/iso/GEEXBOX/boot/isolinux.bin" ]; then
+    TARGET_ARCH=i386
+  elif [ -f "$GEEXBOX_DIR/iso/GEEXBOX/boot/yaboot" ]; then
+    TARGET_ARCH=ppc
+  else
+    echo "Failed to detect iso target arch"
+    exit 1
+  fi
 fi
 
 OUTPUT=geexbox-`cat $GEEXBOX_DIR/VERSION`-$LANG.$TARGET_ARCH.iso
@@ -98,38 +148,6 @@ W32CODECS_DIR=/usr/lib/win32
 
 . $GEEXBOX_DIR/i18n/lang.conf
 . $GEEXBOX_DIR/i18n/lang.funcs
-
-[ -d $W32CODECS_DIR ] && W32CODECS_USAGE=" [-w|--with-w32codecs]"
-
-usage()
-{
-cat << EOF
-Usage:
-    $0 [-h|--help]$W32CODECS_USAGE [-o file.iso]
-
-EOF
-exit 1
-}
-
-while [ $# -ne 0 ]; do
-  case $1 in
-    --help|-h)
-      usage
-      ;;
-    --with-w32codecs|-w)
-      [ -d /usr/lib/win32 ] && W32CODECS=1
-      ;;
-    -o)
-      OUTPUT=$2
-      shift
-      ;;
-    *)
-      echo "Invalid option: $1" >&2
-      exit 1
-      ;;
-  esac
-  shift || true
-done
 
 [ -z "$THEME" ] && THEME=`cat $GEEXBOX_DIR/themes/default`
 if [ ! -f "$GEEXBOX_DIR/themes/$THEME/config" ]; then
