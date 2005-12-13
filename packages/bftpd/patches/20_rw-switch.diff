@@ -1,30 +1,65 @@
 diff -Naur bftpd-1.0.24.orig/commands.c bftpd-1.0.24/commands.c
---- bftpd-1.0.24.orig/commands.c	2004-12-30 02:01:59.497716048 +0100
-+++ bftpd-1.0.24/commands.c	2004-12-30 02:02:03.341131760 +0100
-@@ -83,6 +83,22 @@
+--- bftpd-1.0.24.orig/commands.c	2005-10-11 19:42:32.000000000 +0200
++++ bftpd-1.0.24/commands.c	2005-11-06 18:18:31.000000000 +0200
+@@ -83,6 +83,57 @@
      bftpd_statuslog(3, success, "%s", buffer);
  }
  
-+void rw(char *path)
++static void rw_ro(char *script, char *path)
 +{
-+    char *cmd = malloc(strlen(path)+31);
-+    sprintf(cmd, "/usr/bin/rw \'%s\' >/dev/null 2>&1", path);
-+    system(cmd);
-+    free(cmd);
++    pid_t pid;
++    sighandler_t save_quit, save_int, save_chld;
++
++    save_quit = signal(SIGQUIT, SIG_IGN);
++    save_int = signal(SIGINT, SIG_IGN);
++    save_chld = signal(SIGCHLD, SIG_DFL);
++
++    if ((pid = vfork()) < 0) {
++    	signal(SIGQUIT, save_quit);
++	signal(SIGINT, save_int);
++	signal(SIGCHLD, save_chld);
++	return;
++    }
++    if (pid == 0) {
++	char *const argv[] = { script, path };
++
++	signal(SIGQUIT, SIG_DFL);
++	signal(SIGINT, SIG_DFL);
++	signal(SIGCHLD, SIG_DFL);
++
++	execv(script, argv);
++	_exit(127);
++    }
++
++    /* Signals are not absolutly guarenteed with vfork */
++    signal(SIGQUIT, SIG_IGN);
++    signal(SIGINT, SIG_IGN);
++
++    do {
++	pid = wait4(pid, NULL, 0, NULL);
++    } while (pid == -1 && errno == EINTR);
++
++    signal(SIGQUIT, save_quit);
++    signal(SIGINT, save_int);
++    signal(SIGCHLD, save_chld);
++
++    return;
 +}
 +
-+void ro(char *path)
++static inline void rw(char *path)
 +{
-+    char *cmd = malloc(strlen(path)+31);
-+    sprintf(cmd, "/usr/bin/ro \'%s\' >/dev/null 2>&1", path);
-+    system(cmd);
-+    free(cmd);
++    rw_ro("/usr/bin/rw", path);
++}
++
++static inline void ro(char *path)
++{
++    rw_ro("/usr/bin/ro", path);
 +}
 +
  void new_umask()
  {
      int um;
-@@ -425,18 +441,25 @@
+@@ -425,18 +476,25 @@
      struct timeval tv;
      char *p, *pp;
  	char *mapped = bftpd_cwd_mappath(filename);
@@ -52,7 +87,7 @@ diff -Naur bftpd-1.0.24.orig/commands.c bftpd-1.0.24/commands.c
      alarm(0);
      buffer = malloc(xfer_bufsize);
  	lseek(fd, offset, SEEK_SET);
-@@ -454,6 +477,7 @@
+@@ -454,6 +512,7 @@
          if (!select(max, &rfds, NULL, NULL, &tv)) {
              close(sock);
              close(fd);
@@ -60,7 +95,7 @@ diff -Naur bftpd-1.0.24.orig/commands.c bftpd-1.0.24/commands.c
              control_printf(SL_FAILURE, "426 Kicked due to data transmission timeout.");
              bftpd_log("Kicked due to data transmission timeout.\n");
              exit(0);
-@@ -462,6 +486,9 @@
+@@ -462,6 +521,9 @@
              test_abort(0, fd, sock);
  			if (buffer)
  				free(buffer);
@@ -70,7 +105,7 @@ diff -Naur bftpd-1.0.24.orig/commands.c bftpd-1.0.24/commands.c
              return;
          }
  		if (!((i = recv(sock, buffer, xfer_bufsize - 1, 0))))
-@@ -484,6 +511,8 @@
+@@ -484,6 +546,8 @@
  	free(buffer);
  	close(fd);
  	close(sock);
@@ -79,7 +114,7 @@ diff -Naur bftpd-1.0.24.orig/commands.c bftpd-1.0.24/commands.c
      alarm(control_timeout);
      offset = 0;
  	control_printf(SL_SUCCESS, "226 File transmission successful.");
-@@ -792,6 +821,7 @@
+@@ -792,6 +856,7 @@
  void command_dele(char *filename)
  {
  	char *mapped = bftpd_cwd_mappath(filename);
@@ -87,7 +122,7 @@ diff -Naur bftpd-1.0.24.orig/commands.c bftpd-1.0.24/commands.c
  	if (unlink(mapped)) {
  		bftpd_log("Error: '%s' while trying to delete file '%s'.\n",
  				  strerror(errno), filename);
-@@ -800,12 +830,14 @@
+@@ -800,12 +865,14 @@
  		bftpd_log("Deleted file '%s'.\n", filename);
  		control_printf(SL_SUCCESS, "200 OK");
  	}
@@ -102,7 +137,7 @@ diff -Naur bftpd-1.0.24.orig/commands.c bftpd-1.0.24/commands.c
  	if (mkdir(mapped, 0755)) {
  		bftpd_log("Error: '%s' while trying to create directory '%s'.\n",
  				  strerror(errno), dirname);
-@@ -814,12 +846,14 @@
+@@ -814,12 +881,14 @@
  		bftpd_log("Created directory '%s'.\n", dirname);
  		control_printf(SL_SUCCESS, "257 \"%s\" has been created.", dirname);
  	}
@@ -117,7 +152,7 @@ diff -Naur bftpd-1.0.24.orig/commands.c bftpd-1.0.24/commands.c
  	if (rmdir(mapped)) {
  		bftpd_log("Error: '%s' while trying to remove directory '%s'.\n",
  				  strerror(errno), dirname);
-@@ -828,6 +862,7 @@
+@@ -828,6 +897,7 @@
  		bftpd_log("Removed directory '%s'.\n", dirname);
  		control_printf(SL_SUCCESS, "250 OK");
  	}
@@ -125,7 +160,7 @@ diff -Naur bftpd-1.0.24.orig/commands.c bftpd-1.0.24/commands.c
  	free(mapped);
  }
  
-@@ -856,6 +891,8 @@
+@@ -856,6 +926,8 @@
  void command_rnto(char *newname)
  {
  	char *mapped = bftpd_cwd_mappath(newname);
@@ -134,7 +169,7 @@ diff -Naur bftpd-1.0.24.orig/commands.c bftpd-1.0.24/commands.c
  	if (rename(philename, mapped)) {
  		bftpd_log("Error: '%s' while trying to rename '%s' to '%s'.\n",
  				  strerror(errno), philename, bftpd_cwd_mappath(newname));
-@@ -867,6 +904,8 @@
+@@ -867,6 +939,8 @@
  	}
  	free(philename);
  	free(mapped);
@@ -143,7 +178,7 @@ diff -Naur bftpd-1.0.24.orig/commands.c bftpd-1.0.24/commands.c
  	philename = NULL;
  }
  
-@@ -914,6 +953,7 @@
+@@ -914,6 +988,7 @@
  		return;
  	}
  	mapped = bftpd_cwd_mappath(strdup(strchr(params, ' ') + 1));
@@ -151,7 +186,7 @@ diff -Naur bftpd-1.0.24.orig/commands.c bftpd-1.0.24/commands.c
  	*strchr(params, ' ') = '\0';
  	sscanf(params, "%o", &permissions);
  	if (chmod(mapped, permissions))
-@@ -923,6 +963,7 @@
+@@ -923,6 +998,7 @@
  				  permissions);
  		control_printf(SL_SUCCESS, "200 CHMOD successful.");
  	}
@@ -159,7 +194,7 @@ diff -Naur bftpd-1.0.24.orig/commands.c bftpd-1.0.24/commands.c
  	free(mapped);
  }
  
-@@ -953,6 +994,7 @@
+@@ -953,6 +1029,7 @@
  			return;
  		}
  	mapped = bftpd_cwd_mappath(filename);
@@ -167,7 +202,7 @@ diff -Naur bftpd-1.0.24.orig/commands.c bftpd-1.0.24/commands.c
  	if (chown(mapped, uid, gid))
  		control_printf(SL_FAILURE, "550 Error: %s.", strerror(errno));
  	else {
-@@ -960,6 +1002,7 @@
+@@ -960,6 +1037,7 @@
  				  gid);
  		control_printf(SL_SUCCESS, "200 CHOWN successful.");
  	}

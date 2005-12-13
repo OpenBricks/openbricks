@@ -89,6 +89,63 @@ static char *fullname;
 static int fullname_maxlen;
 static int fullname_len;
 
+static void
+escape_playlist (const char *str, int second_level)
+{
+  int is_playlist_str = (str == playlist);
+  char *new_str;
+  int new_len, len;
+
+  if (!str)
+    return;
+
+  for (new_len = 0, len = 0; *str; str++)
+    switch (*str)
+    {
+    case '\'':
+      if (second_level)
+        new_len+=6;
+    case '\\':
+      new_len++;
+    default:
+      new_len++;
+      len++;
+      break;
+    }
+
+  if (new_len == len && is_playlist_str)
+    return;
+
+  if (playlist_len < new_len + 1)
+    {
+      playlist_len = new_len + 1;
+      playlist = (char *) realloc (playlist, playlist_len);
+      if (is_playlist_str)
+        str = &playlist[len];
+    }
+  new_str = &playlist[new_len];
+
+  len++; /* for null character */
+  while (len--)
+    switch (*str)
+    {
+      case '\'':
+        if (second_level)
+	  { /* ' -> \'\\\'\' */
+	    *new_str-- = '\''; *new_str-- = '\\'; /* \' */
+	    *new_str-- = '\''; *new_str-- = '\\'; /* \' */
+	    *new_str-- = '\\'; *new_str-- = '\\'; /* \\ */
+	  }
+      case '\\':
+        *new_str-- = *str--;
+        *new_str-- = '\\';
+	break;
+      default:
+        *new_str-- = *str--;
+	break;
+    }
+}
+
 static int
 is_playable (const struct dirent *dir)
 {
@@ -401,7 +458,7 @@ main (int argc, char **argv)
   if (!stat ("/var/use_dxr3", &st) && S_ISREG (st.st_mode))
     play_dvd_cmd = "set_option dvd-device %s save\nquit 167\n";
   else
-    play_dvd_cmd = "set_option dvd-device %s save\nplay_dvd\nset_menu null\n";
+    play_dvd_cmd = "set_option dvd-device %s save\nplay_dvd hide_menu\n";
 
   drives = load_mnts(1);
   if (!drives)
@@ -455,7 +512,7 @@ main (int argc, char **argv)
                     {
                       case CDS_AUDIO:
                         /* it's an audio CD */
-                        printf("set_option cdda-device %s save\nplay_cdda\nset_menu null\n", drive->dev);
+                        printf("set_option cdda-device %s save\nplay_cdda hide_menu\n", drive->dev);
                         break;
                       case CDS_NO_INFO: /* no information, but try to mount and detect */
                       case CDS_DATA_1:
@@ -479,19 +536,20 @@ main (int argc, char **argv)
                         sprintf (filename, "%s/vcd", drive->mnt);
                         if (!stat (filename, &st) && S_ISDIR (st.st_mode))
                           {
-                            printf("set_option vcd-device %s save\nplay_vcd\nset_menu null\n", drive->dev);
+                            printf("set_option vcd-device %s save\nplay_vcd hide_menu\n", drive->dev);
                             break;
                           }
                         sprintf (filename, "%s/svcd", drive->mnt);
                         if (!stat (filename, &st) && S_ISDIR (st.st_mode))
                           {
-                            printf("set_option vcd-device %s save\nplay_vcd\nset_menu null\n", drive->dev);
+                            printf("set_option vcd-device %s save\nplay_vcd hide_menu\n", drive->dev);
                             break;
                           }
                         exts=playlist_exts;
                         if (build_playlist (drive->mnt, -1) == 1)
                           {
-                            printf ("loadlist %s\nset_menu null\n", playlist);
+                            escape_playlist(playlist, 0);
+                            printf ("loadlist '%s' hide_menu\n", playlist);
                           }
                         else
                           {
@@ -503,27 +561,28 @@ main (int argc, char **argv)
                             exts=file_exts;
                             n = build_playlist (drive->mnt, fd);
                             if (n > 0)
-                              printf ("loadlist %s\nset_menu null\n",playlist);
+                              printf ("loadlist %s hide_menu\n",playlist);
                             close (fd);
                             if (n <= 0)
                               {
                                 exts=img_exts;
                                 if (build_playlist (drive->mnt, -1) > 0)
                                   {
+                                    escape_playlist(drive->mnt, 1);
                                     printf ("run 'view_img -r \\'%s\\''\n",
-                                            drive->mnt);
+                                            playlist);
                                   }
                                 else
                                   {
                                     exts=xcd_exts;
                                     if (build_playlist (drive->mnt, -1) >= 1)
-                                      printf ("set_option vcd-device %s save\nplay_vcd\nset_menu null\n", drive->dev);
+                                      printf ("set_option vcd-device %s save\nplay_vcd hide_menu\n", drive->dev);
                                   }
                               }
                           }
                         break;
                       case CDS_MIXED:
-                        printf("set_option cdda-device %s save\nplay_cdda\nset_menu null\n", drive->dev);
+                        printf("set_option cdda-device %s save\nplay_cdda hide_menu\n", drive->dev);
                       case CDS_XA_2_1:
                       case CDS_XA_2_2:
                         /* it's a special CD */

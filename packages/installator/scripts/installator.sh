@@ -160,9 +160,9 @@ setup_tvscan () {
 
     NORM=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "TV Norm Selection" --menu "\nBelow is the list of your TV card's supported video standards. Please select the one you want to use, according to your localization." 0 0 0 $NORMS`
 
-    CHANLIST=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "TV Chanlist Selection" --menu "\nBelow is the list of pre-configured chanlists for scan. Select the one corresponding to your location or choose 'all' for a deep scan (scanning all existing frequencies)." 0 0 0 "all channels" ' ' $CHANLISTS`
+    CHANLIST=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "TV Chanlist Selection" --menu "\nBelow is the list of pre-configured chanlists for scan. Select the one corresponding to your location or choose 'all' for a deep scan (scanning all existing frequencies)." 0 0 0 $CHANLISTS`
 
-    $MPTVSCAN -i$INPUT -s$NORM -c$CHANLIST -p 2>/tmp/chans | $DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "Scanning Channels" --gauge "\nGeeXboX is currently scanning your channels. This operation may take a while. Please wait while processing ..." 0 0
+    $MPTVSCAN "-i$INPUT" "-s$NORM" "-c$CHANLIST" -p 2>/tmp/chans | $DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "Scanning Channels" --gauge "\nGeeXboX is currently scanning your channels. This operation may take a while. Please wait while processing ..." 0 0
 
     CHANNELS=`sed 's/channels=//' /tmp/chans | sed 's/-/ - /g' | sed 's/,/\\\\n/g'`
     $DIALOG --aspect 12 --stdout --yes-label "Accept" --no-label "Retry" --backtitle "$title" --title "Scan Done ..." --yesno "\nCongratulations, the TV channels scan is done. The following channels has been discoverd (if no channel has been found, you can then try again with new card/tuner/norm/chanlist settings).\n\n$CHANNELS" 0 0 && DONE=true
@@ -171,7 +171,7 @@ setup_tvscan () {
   if [ -s /tmp/chans ]; then
     echo -n "tv=" | cat - /tmp/chans >> $MPLAYER_CONF
   fi
-  rm /tmp/chans
+  rm -f /tmp/chans
 
   sed -i "s/^TVIN_STANDARD=.*/TVIN_STANDARD=$NORM/" $1/etc/tvcard
   sed -i "s/^CHANLIST=.*/CHANLIST=$CHANLIST/" $1/etc/tvcard
@@ -484,9 +484,9 @@ fi
 # Configure TV card and scan for channels.
 # (only available when booting from GeeXboX).
 if [ "$1" = geexbox ]; then
-  if test -n "`grep 'Class 0400:.*109e:' /proc/pci`" \
-       -o -n "`grep 'Class 0480:.*1131:' /proc/pci`" \
-       -o -n "`grep 'Class 0480:.*14f1:88' /proc/pci`"; then
+  if grep -q 'Class 0400:.*109e:' /proc/pci ||
+     grep -q 'Class 0480:.*1131:' /proc/pci ||
+     grep -q 'Class 0480:.*14f1:88' /proc/pci; then
 
     # Only scan if a TV card is detected
     /usr/bin/mptvscan -i >/dev/null 2>&1
