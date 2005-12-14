@@ -549,7 +549,7 @@ main (int argc, char **argv)
                         if (build_playlist (drive->mnt, -1) == 1)
                           {
                             escape_playlist(playlist, 0);
-                            printf ("loadlist '%s' hide_menu\n", playlist);
+                            printf ("loadlist '%s' 0 hide_menu\n", playlist);
                           }
                         else
                           {
@@ -561,7 +561,7 @@ main (int argc, char **argv)
                             exts=file_exts;
                             n = build_playlist (drive->mnt, fd);
                             if (n > 0)
-                              printf ("loadlist %s hide_menu\n",playlist);
+                              printf ("loadlist %s 0 hide_menu\n",playlist);
                             close (fd);
                             if (n <= 0)
                               {
