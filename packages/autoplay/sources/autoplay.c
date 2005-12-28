@@ -220,7 +220,7 @@ build_playlist (char *dir, int fd)
             }
           else
             {
-              write (fd, fullname, len);
+              write (fd, fullname, len-1);
               write (fd, "\n", 1);
             }
           count++;
