@@ -561,7 +561,7 @@ main (int argc, char **argv)
                             exts=file_exts;
                             n = build_playlist (drive->mnt, fd);
                             if (n > 0)
-                              printf ("menu hide ;loadlist %s\n",playlist);
+                              printf ("menu hide ;loadlist %s\n", playlist);
                             close (fd);
                             if (n <= 0)
                               {
