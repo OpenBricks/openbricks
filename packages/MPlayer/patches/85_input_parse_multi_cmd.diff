@@ -1,41 +1,48 @@
---- MPlayer-20051213/input/input.c	2005-12-24 14:47:18.000000000 +0800
-+++ MPlayer-20051213.new/input/input.c	2005-12-24 14:45:41.000000000 +0800
-@@ -601,13 +600,17 @@
- mp_input_parse_cmd(char* str) {
-   int i,l;
+diff -Naur MPlayer-20051213.orig/input/input.c MPlayer-20051213/input/input.c
+--- MPlayer-20051213.orig/input/input.c	2006-01-06 00:05:50.000000000 +0100
++++ MPlayer-20051213/input/input.c	2006-01-06 00:19:04.000000000 +0100
+@@ -592,6 +592,7 @@
    int pausing = 0;
--  char *ptr,*e;
-+  char *ptr,*e,*next_cmd=NULL;
+   char *ptr,*e;
    mp_cmd_t *cmd, *cmd_def;
++  mp_cmd_t *cmd_ret = NULL;
  
  #ifdef MP_DEBUG
    assert(str != NULL);
- #endif
- 
-+  next_cmd=strchr(str, ';');
-+  if (next_cmd && strlen(next_cmd) > 1)
-+    mp_input_queue_cmd(mp_input_parse_cmd(next_cmd+1));
-+
-   if (strncmp(str, "pausing ", 8) == 0) {
-     pausing = 1;
+@@ -602,6 +603,8 @@
      str = &str[8];
---- MPlayer-20051213/subopt-helper.c	2005-10-17 06:31:18.000000000 +0800
-+++ MPlayer-20051213.new/subopt-helper.c	2005-12-24 14:27:21.000000000 +0800
-@@ -37,7 +37,7 @@
- /**
-  * \brief Try to parse all options in str and fail if it was not possible.
-  *
-- * \param str Pointer to the zero terminated string to be parsed.
-+ * \param str Pointer to the zero or ';' terminated string to be parsed.
-  * \param opts Pointer to a options array. The array must be terminated
-  *             with an element having set name to NULL in its opt_t structure.
-  *
-@@ -59,7 +59,7 @@
+   }
  
-   if ( str )
-   {
--    while ( str[parse_pos] && !parse_err )
-+    while ( str[parse_pos] && !parse_err && strcmp(str[parse_pos],';'))
-     {
-       int next = 0;
++ do {
++
+   for(ptr = str ; ptr[0] != '\0'  && ptr[0] != '\t' && ptr[0] != ' ' ; ptr++)
+     /* NOTHING */;
+   if(ptr[0] != '\0')
+@@ -633,6 +636,11 @@
+     ptr = strchr(ptr,' ');
+     if(!ptr) break;
+     while(ptr[0] == ' ' || ptr[0] == '\t') ptr++;
++    if (ptr[0] == ';')
++      {
++        str = ptr + 1;
++        break;
++      }
+     if(ptr[0] == '\0') break;
+     cmd->args[i].type = cmd_def->args[i].type;
+     switch(cmd_def->args[i].type) {
+@@ -711,7 +719,14 @@
+   if(i < MP_CMD_MAX_ARGS)
+     cmd->args[i].type = -1;
  
+-  return cmd;
++  if(!cmd_ret)
++    cmd_ret = cmd;
++  else
++    mp_input_queue_cmd(cmd);
++
++ } while (ptr && ptr[0] == ';');
++
++  return cmd_ret;
+ }
+ 
+ static int
