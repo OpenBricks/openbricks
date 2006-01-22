@@ -10,11 +10,13 @@ LANG=en
 SUB_CHARSET=
 
 # Remote to Use (pctv/logitech/hauppauge/realmagic/creative/leadtek/RM-S6/
-# RX-V850/animax/askey/avermedia/packard_bell/atiusb/LG/D-10/digimatrix/mceusb)
+# RX-V850/animax/askey/avermedia/packard_bell/atiusb/LG/D-10/digimatrix/
+# mceusb/streamzap)
 REMOTE=atiusb
 
 # Remote receiver to use (animax/askey/avermedia/atiusb/creative/hauppauge/
-# homemade/irman/leadtek/logitech/pctv/realmagic/digimatrix/mceusb/mceusb2)
+# homemade/irman/leadtek/logitech/pctv/realmagic/digimatrix/mceusb/
+# mceusb2/streamzap)
 RECEIVER=atiusb
 
 # Theme
