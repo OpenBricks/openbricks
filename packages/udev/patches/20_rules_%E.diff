@@ -1,7 +1,7 @@
-diff -Naur udev-070.orig/udev_rules.c udev-070/udev_rules.c
---- udev-070.orig/udev_rules.c	2005-09-15 02:19:07.000000000 +0300
-+++ udev-070/udev_rules.c	2005-09-28 13:45:09.000000000 +0300
-@@ -288,12 +288,11 @@
+diff -Naur udev-084.orig/udev_rules.c udev-084/udev_rules.c
+--- udev-084.orig/udev_rules.c	2006-01-30 09:51:38.000000000 +0200
++++ udev-084/udev_rules.c	2006-02-04 13:54:26.000000000 +0200
+@@ -284,12 +284,11 @@
  
  /* finds the lowest positive device number such that <name>N isn't present in the udevdb
   * if <name> doesn't exist, 0 is returned, N otherwise */
@@ -10,12 +10,12 @@ diff -Naur udev-070.orig/udev_rules.c udev-070/udev_rules.c
  {
  	char db_devpath[PATH_SIZE];
  	char filename[PATH_SIZE];
- 	struct udevice udev_db;
+ 	struct udevice *udev_db;
 -	int num = 0;
  
  	/* check if the device already owns a matching name */
- 	udev_init_device(&udev_db, NULL, NULL, NULL);
-@@ -318,7 +317,10 @@
+ 	udev_db = udev_device_init();
+@@ -316,7 +315,10 @@
  	}
  
  	/* just search the database again and again until a free name is found */
@@ -27,7 +27,7 @@ diff -Naur udev-070.orig/udev_rules.c udev-070/udev_rules.c
  	while (1) {
  		dbg("look for existing node '%s'", filename);
  		if (udev_db_lookup_name(filename, db_devpath, sizeof(db_devpath)) != 0) {
-@@ -420,6 +422,7 @@
+@@ -382,6 +384,7 @@
  		SUBST_RESULT,
  		SUBST_SYSFS,
  		SUBST_ENUM,
@@ -35,7 +35,7 @@ diff -Naur udev-070.orig/udev_rules.c udev-070/udev_rules.c
  		SUBST_PARENT,
  		SUBST_TEMP_NODE,
  		SUBST_ROOT,
-@@ -440,6 +443,7 @@
+@@ -402,6 +405,7 @@
  		{ .name = "result",		.fmt = 'c',	.type = SUBST_RESULT },
  		{ .name = "sysfs",		.fmt = 's',	.type = SUBST_SYSFS },
  		{ .name = "enum",		.fmt = 'e',	.type = SUBST_ENUM },
@@ -43,22 +43,22 @@ diff -Naur udev-070.orig/udev_rules.c udev-070/udev_rules.c
  		{ .name = "parent",		.fmt = 'P',	.type = SUBST_PARENT },
  		{ .name = "tempnode",		.fmt = 'N',	.type = SUBST_TEMP_NODE },
  		{ .name = "root",		.fmt = 'r',	.type = SUBST_ROOT },
-@@ -596,12 +600,17 @@
- 			dbg("substitute sysfs value '%s'", temp2);
+@@ -560,12 +564,17 @@
+ 			}
  			break;
  		case SUBST_ENUM:
--			next_free_number = find_free_number(string, udev->devpath);
-+			next_free_number = find_free_number(string, udev->devpath, 0);
+-			next_free_number = find_free_number(string, udev->dev->devpath);
++			next_free_number = find_free_number(string, udev->dev->devpath, 0);
  			if (next_free_number > 0) {
  				sprintf(temp2, "%d", next_free_number);
  				strlcat(string, temp2, maxsize);
  			}
  			break;
 +		case SUBST_ENUM_ONE:
-+			next_free_number = find_free_number(string, udev->devpath, 1);
++			next_free_number = find_free_number(string, udev->dev->devpath, 1);
 +			sprintf(temp2, "%d", next_free_number);
 +			strlcat(string, temp2, maxsize);
 +			break;
  		case SUBST_PARENT:
- 			if (!class_dev)
- 				break;
+ 			{
+ 				struct sysfs_device *dev_parent;
