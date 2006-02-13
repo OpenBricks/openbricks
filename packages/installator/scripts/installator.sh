@@ -132,7 +132,7 @@ setup_network () {
   sed -i "s%^HOST=.*%HOST=\"$host_ip\"%" $f
   sed -i "s%^SUBNET=.*%SUBNET=\"$subnet\"%" $f
   sed -i "s%^GATEWAY=.*%GATEWAY=\"$gw_ip\"%" $f
-  sed -i "s%^DNS_SERVER=.*%DNS_SERVER=\"$gw_ip\"%" $f
+  sed -i "s%^DNS_SERVER=.*%DNS_SERVER=\"$dns_ip\"%" $f
   sed -i "s%^SMB_USER=.*%SMB_USER=\"$smb_user\"%" $f
   sed -i "s%^SMB_PWD=.*%SMB_PWD=\"$smb_pwd\"%" $f
 }
