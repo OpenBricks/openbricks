@@ -1,0 +1,119 @@
+diff -Naur busybox-1.1.0.old/include/usage.h busybox-1.1.0/include/usage.h
+--- busybox-1.1.0.old/include/usage.h	2006-01-11 06:44:14.000000000 +0100
++++ busybox-1.1.0/include/usage.h	2006-02-19 15:36:56.000000000 +0100
+@@ -3397,7 +3397,8 @@
+ 
+ #define wget_trivial_usage \
+ 	"[-c|--continue] [-q|--quiet] [-O|--output-document file]\n" \
+-	"\t\t[--header 'header: value'] [-Y|--proxy on/off] [-P DIR] url"
++	"\t\t[--header 'header: value'] [-Y|--proxy on/off] [-P DIR]\n" \
++	"\t\t[-T|--read-timeout value] [-R|--tries value] url"
+ #define wget_full_usage \
+ 	"wget retrieves files via HTTP or FTP\n\n" \
+ 	"Options:\n" \
+@@ -3405,7 +3406,9 @@
+ 	"\t-q\tquiet mode - do not print\n" \
+ 	"\t-P\tSet directory prefix to DIR\n" \
+ 	"\t-O\tsave to filename ('-' for stdout)\n" \
+-	"\t-Y\tuse proxy ('on' or 'off')"
++	"\t-Y\tuse proxy ('on' or 'off')\n" \
++        "\t-T\tdelay before timeout and shutdown\n" \
++        "\t-R\tnumber of retry"
+ 
+ #define which_trivial_usage \
+ 	"[COMMAND ...]"
+diff -Naur busybox-1.1.0.old/networking/wget.c busybox-1.1.0/networking/wget.c
+--- busybox-1.1.0.old/networking/wget.c	2006-01-11 06:43:51.000000000 +0100
++++ busybox-1.1.0/networking/wget.c	2006-02-19 16:17:28.000000000 +0100
+@@ -146,6 +146,8 @@
+ #define WGET_OPT_HEADER	16
+ #define WGET_OPT_PREFIX	32
+ #define WGET_OPT_PROXY	64
++#define WGET_OPT_TIMEOUT 128
++#define WGET_OPT_RETRY	256
+ 
+ static const struct option wget_long_options[] = {
+ 	{ "continue",        0, NULL, 'c' },
+@@ -155,9 +157,28 @@
+ 	{ "header",	         1, NULL, 131 },
+ 	{ "directory-prefix",1, NULL, 'P' },
+ 	{ "proxy",           1, NULL, 'Y' },
++    { "read-timeout",    1, NULL, 'T' },
++    { "tries",           1, NULL, 'R' },
+ 	{ 0,                 0, 0, 0 }
+ };
+ 
++static void
++timeout_reached (int ignore)
++{
++   if (filesize == 0) /* still haven't been able to talk with server */
++      exit (-1);
++}
++
++static void
++alarm_timeout (int wait)
++{
++    struct itimerval itv;
++
++	itv.it_value.tv_sec = wait;
++	itv.it_value.tv_usec = 0;
++	setitimer (ITIMER_REAL, &itv, NULL);
++}
++
+ int wget_main(int argc, char **argv)
+ {
+ 	int n, try=5, status;
+@@ -173,7 +194,8 @@
+ 	struct host_info server, target;
+ 	struct sockaddr_in s_in;
+ 	llist_t *headers_llist = NULL;
+-
++    struct sigaction sa;
++    
+ 	FILE *sfp = NULL;		/* socket to web/ftp server	    */
+ 	FILE *dfp = NULL;		/* socket to ftp server (data)	    */
+ 	char *fname_out = NULL;		/* where to direct output (-O)	    */
+@@ -184,15 +206,17 @@
+ 	int quiet_flag = FALSE;		/* Be verry, verry quiet...	    */
+ 	int use_proxy = 1;		/* Use proxies if env vars are set  */
+ 	char *proxy_flag = "on";	/* Use proxies if env vars are set  */
+-
++	char *timeout = "900";		/* Read Timeout duration (-T) */
++    char *nr_tries = NULL;		/* Number of retries (-R) */
++    
+ 	/*
+ 	 * Crack command line.
+ 	 */
+ 	bb_opt_complementally = "-1:\203::";
+ 	bb_applet_long_options = wget_long_options;
+-	opt = bb_getopt_ulflags(argc, argv, "cq\213O:\203:P:Y:", 
++	opt = bb_getopt_ulflags(argc, argv, "cq\213O:\203:P:Y:T:R:", 
+ 					&fname_out, &headers_llist, 
+-					&dir_prefix, &proxy_flag);
++					&dir_prefix, &proxy_flag, &timeout, &nr_tries);
+ 	if (opt & WGET_OPT_CONTINUE) {
+ 		++do_continue;
+ 	}
+@@ -217,6 +241,8 @@
+ 			headers_llist = headers_llist->link;
+ 		}
+ 	}
++    if (opt & WGET_OPT_RETRY)
++       try = atoi (nr_tries);
+ 	
+ 	parse_url(argv[optind], &target);
+ 	server.host = target.host;
+@@ -295,6 +321,13 @@
+ 				server.host, inet_ntoa(s_in.sin_addr), ntohs(server.port));
+ 	}
+ 
++    /* starting timer */
++    sa.sa_handler = timeout_reached;
++    sigemptyset (&sa.sa_mask);
++    sa.sa_flags = SA_RESTART;
++    sigaction (SIGALRM, &sa, NULL);
++    alarm_timeout (atoi (timeout));
++        
+ 	if (use_proxy || !target.is_ftp) {
+ 		/*
+ 		 *  HTTP session
