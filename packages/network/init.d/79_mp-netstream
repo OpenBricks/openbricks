@@ -1,0 +1,106 @@
+#!/bin/sh
+#
+# Network Stream Setting
+#
+# runlevels: geexbox, debug
+
+echo "### Network Stream Configuration ###"
+
+[ -f /etc/network -a -f /etc/netstream ] || exit 1
+. /etc/network
+
+# Disable streams if not utilized.
+[ `grep -c ^STREAM /etc/netstream` -eq 0 -a `grep -c ^EXTM3U /etc/netstream` -eq 0 -a "$NETSTREAM" = "yes" ] && NETSTREAM="no"
+
+test "$SHOUTCAST" = "no" -a "$SHOUTCASTTV" = "no" -a "$NETSTREAM" = "no" && sed -i 's/.*ok="set_menu netstream_sel".*//' /etc/mplayer/menu.conf && exit 1
+
+DAY=$(date '+%d')
+MONTH=$(date '+%m')
+YEAR=$(date '+%Y')
+year=$(date '+%y')
+
+if [ "$SHOUTCAST" = "yes" ]; then
+    # set shoutcast network stream menu list
+    echo "<cmdlist name=\"shoutcast_list\" title=\"Shoutcast Radio Network Stream\" ptr=\"<>\" >" >> /etc/mplayer/menu.conf
+    wget -q --read-timeout=$TIMEOUT --tries=$TRIES -O /tmp/streamtmp `sed -n -e "s/\"//g" -e "s/^SHOUTCAST_URI=\(.*\)/\1/p" /etc/netstream` || ( sed -i 's/.*ok="set_menu shoutcast_list".*//' /etc/mplayer/menu.conf && echo "" > /tmp/streamtmp )
+    grep -e "Playstring" -e "Name>" /tmp/streamtmp | sed -e "s/\&amp\;/\&/g" -e "s/^.*\<entry Playstring\=\"/\<e ok\=\"menu hide ;loadlist /g" -e "s/\"\>/\"/g" -e "s/<Name>/name\=\"/g" -e "s/<\/Name>/\"\/>/g" -e "s/\">/\"/g" >> /etc/mplayer/menu.conf
+    echo "</cmdlist>" >> /etc/mplayer/menu.conf
+else
+    # remove shoutcast network stream from menu if is not specified
+    sed -i 's/.*ok="set_menu shoutcast_list".*//' /etc/mplayer/menu.conf
+fi
+
+# SHOUTcastTV content filter
+if [ -n "$BLACKLIST" ]; then
+	BL="-v -e \<Genre\>.*ESS -e \<Genre\>.*SWCTV -e \<Genre\>.*SWPTV -e
+\<Genre\>.*Subscription"
+	for I in $BLACKLIST; do
+		BL="$BL -e \<Genre\>.*$I"
+	done
+else # Accept all Genre
+	BL="-e \<Genre\>.*"
+fi
+
+if [ -n "$WHITELIST" ]; then
+    for I in $WHITELIST; do
+        WL="$WL -e \<Genre\>.*$I"
+    done
+else # Accept all Genre
+    WL="-e \<Genre\>.*"
+fi
+
+if [ "$SHOUTCASTTV" = "yes" ]; then
+    # set shoutcast tv network stream menu
+    echo "<cmdlist name=\"shoutcasttv_list\" title=\"Shoutcast TV Network Stream\" ptr=\"<>\" >" >> /etc/mplayer/menu.conf
+    wget -q --read-timeout=$TIMEOUT --tries=$TRIES -O /tmp/streamtmp `sed -n -e "s/\"//g" -e "s/^SHOUTCASTTV_URI=\(.*\)/\1/p" /etc/netstream` || ( sed -i 's/.*ok="set_menu shoutcasttv_list".*//' /etc/mplayer/menu.conf && echo "" > /tmp/streamtmp )
+	grep -i $BL /tmp/streamtmp | grep -i -B 3 $WL | grep -e "Playstring" -e "Name>" | sed -e "s/\&amp\;/\&/g" -e "s/^.*\<entry Playstring\=\"/\<e ok\=\"menu hide ;loadlist /g" -e "s/\"\>/\"/g" -e "s/<Name>/name\=\"/g" -e "s/<\/Name>/\"\/>/g" -e "s/\">/\"/g" >> /etc/mplayer/menu.conf
+    echo "</cmdlist>" >> /etc/mplayer/menu.conf
+else
+    # remove shoutcast network stream from menu if is not specified
+    sed -i 's/.*ok="set_menu shoutcasttv_list".*//' /etc/mplayer/menu.conf
+fi
+
+if [ "$NETSTREAM" = "yes" ]; then
+    # set network stream menu list
+    if [ `grep -c "^STREAM" /etc/netstream` != 0 ]; then
+        echo "<cmdlist name=\"netstream_list\" title=\"Custom Defined Network Stream\" ptr=\"<>\" >" >> /etc/mplayer/menu.conf
+        sed -n 's/^STREAM=\"\(.*\)\":\(.*\)/<e name=\"\2\" ok=\"menu hide ;loadfile \1\"\/>/p' /etc/netstream | sed -e "s/%DD/${DAY}/g" -e "s/%MM/${MONTH}/g" -e "s/%YY/${YEAR}/g" -e "s/%yy/${year}/g" >> /etc/mplayer/menu.conf
+        echo "</cmdlist>" >> /etc/mplayer/menu.conf
+    else
+        # remove network stream from menu if is not specified
+        sed -i 's/.*ok="set_menu netstream_list".*//' /etc/mplayer/menu.conf
+    fi
+
+    ENTRIES=0
+    # set extended m3u network playlist menu list
+    echo "<cmdlist name=\"extm3u_list\" title=\"Extended M3U Network Stream\" ptr=\"<>\" >" >> /etc/mplayer/menu.conf
+    for J in `sed -n -e "s/^EXTM3U=\".*\":\(.*\)/\1/p" /etc/netstream | sed -e "s/ /_/g"`; do
+        echo "<e ok=\"set_menu ${J}_list\" " >> /etc/mplayer/menu.conf
+        J=$(echo ${J} | sed -e "s/_/ /g")
+        echo "name=\"${J}\"/>" >> /etc/mplayer/menu.conf
+    done
+    echo "</cmdlist>" >> /etc/mplayer/menu.conf
+    # set extended m3u network stream menu list
+    for J in `sed -n -e "s/^EXTM3U=\".*\":\(.*\)/\1/p" /etc/netstream | sed -e "s/ /_/g"`; do
+        echo "<cmdlist name=\"${J}_list\" " >> /etc/mplayer/menu.conf
+        J=$(echo ${J} | sed -e "s/_/ /g")
+        echo "title=\"${J}\" ptr=\"<>\" >" >> /etc/mplayer/menu.conf
+        for I in `sed -n -e "s/^EXTM3U=\"\(.*\)\":${J}/\1/p" /etc/netstream`; do
+            wget -q --read-timeout=$TIMEOUT --tries=$TRIES -O /tmp/streamtmp $I || continue
+            ENTRIES=$((ENTRIES+1))
+            grep -e "#EXTINF" -e "://" /tmp/streamtmp | sed -e "s/^#EXTINF:[-]*[[:digit:]]*,\(.*\)\>/<e name=\"\1\"/g" -e "s/%DD/${DAY}/g" -e "s/%MM/${MONTH}/g" -e "s/%YY/${YEAR}/g" -e "s/%yy/${year}/g" -e "s/\(.*\):\/\/\(.*\)\>/ok\=\"menu hide ;loadfile \1:\/\/\2\"\/>/g" >> /etc/mplayer/menu.conf
+        done
+        echo "</cmdlist>" >> /etc/mplayer/menu.conf
+    done
+    if [ $ENTRIES = 0 ]; then
+        # remove extended m3u network playlist from menu if 0 stream exist
+        sed -i 's/.*ok="set_menu extm3u_list".*//' /etc/mplayer/menu.conf
+    fi
+else
+    # remove network stream from menu if is not specified
+    sed -i 's/.*ok="set_menu netstream_list".*//' /etc/mplayer/menu.conf
+    # remove extended m3u network playlist from menu if network stream is not specified
+    sed -i 's/.*ok="set_menu extm3u_list".*//' /etc/mplayer/menu.conf
+fi
+
+exit 0
