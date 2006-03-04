@@ -1,0 +1,213 @@
+diff -Naur MPlayer-20051213.orig/libmenu/menu_param.c MPlayer-20051213/libmenu/menu_param.c
+--- MPlayer-20051213.orig/libmenu/menu_param.c	2006-03-04 13:25:31.000000000 +0100
++++ MPlayer-20051213/libmenu/menu_param.c	2006-03-04 13:25:53.000000000 +0100
+@@ -30,6 +30,17 @@
+ #include "input/input.h"
+ #include "osdep/keycodes.h"
+ 
++#include "codec-cfg.h"
++#include "libmpdemux/stream.h"
++#include "libmpdemux/demuxer.h"
++#include "libmpdemux/stheader.h"
++
++extern char *filename;
++extern sh_video_t *sh_video;
++extern sh_audio_t *sh_audio;
++extern demuxer_t *demuxer;
++extern demuxer_t *bg_demuxer;
++
+ struct list_entry_s {
+   struct list_entry p;
+   m_option_t* opt;
+@@ -95,6 +106,79 @@
+   return size;
+ }
+ 
++#define OPT_IP "ip"
++#define OPT_NAME "name"
++
++#define OPT_VCODEC "Video Codec"
++#define OPT_VBITRATE "Video Bitrate"
++#define OPT_RESOLUTION "Resolution"
++
++#define OPT_ACODEC "Audio Codec"
++#define OPT_ABITRATE "Audio Bitrate"
++#define OPT_SAMPLES "Audio Samples"
++
++#define OPT_INFO_TITLE "Title"
++#define OPT_INFO_ARTIST "Artist"
++#define OPT_INFO_ALBUM "Album"
++#define OPT_INFO_YEAR "Year"
++#define OPT_INFO_COMMENT "Comment"
++#define OPT_INFO_TRACK "Track"
++#define OPT_INFO_GENRE "Genre"
++
++static int
++is_valid_video_property (char *prop)
++{
++  if (!prop || !sh_video)
++    return 0;
++
++  if (bg_demuxer && bg_demuxer->video && bg_demuxer->video->sh
++      && sh_video == bg_demuxer->video->sh)
++    return 0;
++  
++  if (strcmp (prop, OPT_VCODEC) != 0 &&
++      strcmp (prop, OPT_VBITRATE) != 0 &&
++      strcmp (prop, OPT_RESOLUTION) != 0)
++    return 0;
++  
++  return 1;
++}
++
++static int
++is_valid_audio_property (char *prop)
++{
++  if (!prop || !sh_audio)
++    return 0;
++
++  if (strcmp (prop, OPT_ACODEC) != 0 &&
++      strcmp (prop, OPT_ABITRATE) != 0 &&
++      strcmp (prop, OPT_SAMPLES) != 0)
++    return 0;
++  
++  return 1;
++}
++
++static int
++is_valid_info_property (char *prop)
++{
++  if (!prop || !demuxer)
++    return 0;
++
++  if (!bg_demuxer || !bg_demuxer->video || !bg_demuxer->video->sh
++      || sh_video != bg_demuxer->video->sh)
++    return 0;
++  
++  if (strcmp (prop, OPT_INFO_TITLE) != 0 &&
++      strcmp (prop, OPT_INFO_ARTIST) != 0 &&
++      strcmp (prop, OPT_INFO_ALBUM) != 0 &&
++      strcmp (prop, OPT_INFO_YEAR) != 0 &&
++      strcmp (prop, OPT_INFO_COMMENT) != 0 &&
++      strcmp (prop, OPT_INFO_TRACK) != 0 &&
++      strcmp (prop, OPT_INFO_GENRE) != 0)
++    return 0;
++  
++  return 1;
++}
++
+ static int parse_args(menu_t* menu,char* args) {
+   char *element,*body, **attribs, *name, *ok, *cancel;
+   list_entry_t* m = NULL;
+@@ -118,7 +202,7 @@
+     // Has it a name ?
+     name = asx_get_attrib("name",attribs);
+     opt = name ? m_config_get_option(mconfig,name) : NULL;
+-    if(!opt && (!name || (strcmp(name, "ip") && !is_part(name)))) {
++    if(!opt && (!name || (strcmp(name, "ip") && strcmp(name, "name") && !is_valid_video_property (name) && !is_valid_audio_property (name) && !is_valid_info_property (name) && !is_part(name)))) {
+       printf("Pref menu entry definitions need a valid name attribut (line %d)\n",parser->line);
+       free(element);
+       if(name) free(name);
+@@ -152,6 +236,22 @@
+     free(mpriv->edit);
+ }
+ 
++static char *
++grab_demuxer_info (char *tag)
++{
++  char **info = demuxer->info;
++  int n;
++
++  if (!info || !tag)
++    return strdup ("");
++
++  for (n = 0; info[2*n] != NULL ; n++)
++    if (!strcmp (info[2*n], tag))
++      break;
++
++  return info[2*n+1] ? strdup (info[2*n+1]) : strdup ("");
++}
++
+ static int openMenu(menu_t* menu, char* args) {
+   list_entry_t* e;
+   char *txt;
+@@ -181,7 +281,7 @@
+       printf("Can't get value of option %s\n",e->opt->name);
+       continue;
+     } else if(!val) {
+-      if (!strcmp(e->p.txt, "ip")) {
++      if (!strcmp(e->p.txt, OPT_IP)) {
+         struct if_nameindex *ifs, *ifp;
+         struct ifreq ifr;
+         int fd, ip;
+@@ -207,7 +307,46 @@
+           if_freenameindex (ifs);
+           close (fd);
+         }
+-      } else if (is_part(e->p.txt)) {
++      }
++      else if (!strcmp (e->p.txt, OPT_NAME))
++        val = strdup (filename);
++      else if (!strcmp (e->p.txt, OPT_VCODEC))
++      {
++        val = (char *) malloc (4);
++        sprintf (val, "%.4s", (char *) &sh_video->format);
++      }
++      else if (!strcmp (e->p.txt, OPT_VBITRATE))
++      {
++        val = (char *) malloc (16);
++        sprintf (val, "%d kbps", (int) (sh_video->i_bps * 8 / 1024)); 
++      }
++      else if (!strcmp (e->p.txt, OPT_RESOLUTION))
++      {
++        val = (char *) malloc (16);
++        sprintf (val, "%d x %d", sh_video->disp_w, sh_video->disp_h);
++      }
++      else if (!strcmp (e->p.txt, OPT_ACODEC))
++        val = strdup (sh_audio->codec->name);
++      else if (!strcmp (e->p.txt, OPT_ABITRATE))
++      {
++        val = (char *) malloc (16);
++        sprintf (val, "%d kbps", (int) (sh_audio->i_bps * 8 / 1000)); 
++      }
++      else if (!strcmp (e->p.txt, OPT_SAMPLES))
++      {
++        val = (char *) malloc (16);
++        sprintf (val, "%d Hz, %d ch.",
++                 sh_audio->samplerate, sh_audio->channels);
++      }
++      else if (!strcmp (e->p.txt, OPT_INFO_TITLE) ||
++               !strcmp (e->p.txt, OPT_INFO_ARTIST) ||
++               !strcmp (e->p.txt, OPT_INFO_ALBUM) ||
++               !strcmp (e->p.txt, OPT_INFO_YEAR) ||
++               !strcmp (e->p.txt, OPT_INFO_COMMENT) ||
++               !strcmp (e->p.txt, OPT_INFO_TRACK) ||
++               !strcmp (e->p.txt, OPT_INFO_GENRE))
++        val = grab_demuxer_info (e->p.txt);
++      else if (is_part(e->p.txt)) {
+         val = strdup(part_size(e->p.txt));
+       } else
+         val = strdup("NULL");
+diff -Naur MPlayer-20051213.orig/mplayer.c MPlayer-20051213/mplayer.c
+--- MPlayer-20051213.orig/mplayer.c	2006-03-04 13:25:31.000000000 +0100
++++ MPlayer-20051213/mplayer.c	2006-03-04 13:35:25.000000000 +0100
+@@ -275,7 +275,7 @@
+ int forced_subs_only=0;
+ 
+ static char* bg_video = NULL;
+-static demuxer_t *bg_demuxer = NULL;
++demuxer_t *bg_demuxer = NULL;
+ 
+ // cache2:
+        int stream_cache_size=-1;
+@@ -351,8 +351,8 @@
+ 
+ stream_t* stream=NULL;
+ demuxer_t *demuxer=NULL;
+-static sh_audio_t *sh_audio=NULL;
+-static sh_video_t *sh_video=NULL;
++sh_audio_t *sh_audio=NULL;
++sh_video_t *sh_video=NULL;
+ 
+ char* current_module=NULL; // for debugging
+ 
