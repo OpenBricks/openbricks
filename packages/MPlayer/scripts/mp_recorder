@@ -1,0 +1,74 @@
+#!/bin/sh
+
+# MEncoder/MPlayer stream recorder
+# usage: mp_recorder start/stop file_location position_in_stream
+
+MENCODER=/usr/bin/mencoder
+CFG=/etc/mplayer/mencoder
+
+RECORD_SOURCE=/var/record_source
+RECORD_PROFILE=/var/record_profile
+RECORDER_CFG=/etc/recorder
+
+mp_fifo=/var/mp_control
+
+command=$1
+file=$2
+pos=$3
+
+if [ "$command" = "start" ]; then
+  [ "$file" == "" ] && exit 1 # No source to record from.
+  [ "$pos" == "" ] && exit 1 # No position given.
+
+  . $RECORDER_CFG
+  if [ "$SAVE_PATH" = "/tmp" ]; then
+    # default configuration : won't save to RAMdisk.
+    exit 1
+  fi
+
+  if [ ! -d "$SAVE_PATH" ]; then
+    # not a valid directory : bails out
+    exit 1
+  fi
+
+  # Remounts the required disk RW in order to write to
+  rw "$SAVE_PATH"
+
+  # Set recording destination filename
+  DATE=$(date '+%F')
+  HOUR=$(date '+%H')
+  MIN=$(date '+%M')
+  OUTPUT=record-$DATE-$HOUR-$MIN.avi
+
+  # Start Recording
+  sed -i -e "s|^o=\".*\"|o=\"$SAVE_PATH/$OUTPUT\"|" $CFG
+  PROFILE=`cat $RECORD_PROFILE`
+  $MENCODER -profile $PROFILE -ss $pos $file 2>&1 > /dev/null &
+
+  # Gives MEncoder a few time to be start and plays recording file.
+  sleep 2
+  echo "loadfile \"$SAVE_PATH/$OUTPUT\"" > $mp_fifo
+
+  # Displays recording message.
+  sleep 1
+  echo "osd_show_text \"Recording ...\"" > $mp_fifo
+
+  # Keep trace of original stream source in order to restore it at
+  # the end of recording session
+  echo "SOURCE=\"$file\"" > $RECORD_SOURCE
+elif [ "$command" = "stop" ]; then
+  # Stop MEncoder recording
+  killall -9 mencoder
+
+  # Remounts the required disk RO for safety.
+  ro "$SAVE_PATH"
+
+  # Reload the original source.
+  . $RECORD_SOURCE
+  echo "loadfile $SOURCE" > $mp_fifo
+  echo "seek 2 $pos" > $mp_fifo
+
+  # Displays recorded file name.
+  echo "osd_show_text \"$file\"" > $mp_fifo
+fi
+
