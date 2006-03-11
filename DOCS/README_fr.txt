@@ -312,6 +312,31 @@ TV_TUNER=AUTO
     veuillez vous référer à la page suivante :
     http://www.geexbox.org/wiki/index.php/Accessing_to_UPnP_Contents
 
+* Streaming réseau :
+
+    Geexbox permet de rajouter les listes de streams SHOUTcast Radio et TV
+    tout autant que vos propres listes de lecture. (locales et distantes.)
+
+    L'activation de SHOUTcast se déclare dans le fichier de configuration
+    "GEEXBOX/etc/network". SHOUTcast TV étant succeptible de diffuser des
+    streams à caractère pornographique, une liste noire et une liste
+    blanche peuvent être complétées afin de filtrer le contenu selon vos
+    critères (par défaut, les mots clefs définis pour la liste noire sont
+    "adult xxx porn").
+
+    Vous pouvez créer vos listes de lecture locales et distantes dans le
+    fichier de configuration "GEEXBOX/etc/netstream" (Des exemples sont
+    contenus dans ce fichier). Les listes de lecture distantes concernent
+    uniquement les fichiers M3U Etendus.
+
+    Note aux utilisateurs (Français uniquement) :
+    Il est possible de receptionner un flux "FreeboxTV" grâce à ce fichier.
+    Pour y parvenir, veuillez suivre la procédure suivante :
+    - dé-commentez l'entrée EXTM3U ad-hoc.
+    - utilisez une version de GeeXboX compilée avec le support de la
+      librairie "LIVE555".
+    (ces deux conditions étant nécessaires à la visualisation du flux) 
+
 * Cartes DVB
 
     La GeeXboX supporte un grand nombre de cartes DVB (Terrestre i.e. TNT,
