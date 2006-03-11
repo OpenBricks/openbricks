@@ -307,6 +307,26 @@ text files.
     For more info about UPnP and some media servers usage, please go to
     http://www.geexbox.org/wiki/index.php/Accessing_to_UPnP_Contents
 
+* Network streaming  :
+
+    Geexbox now gives you the possibility to add some SHOUTcast Radio/TV 
+    official playlist as easily as personal playlists (local and remote).
+
+    SHOUTcast activation is set in "GEEXBOX/etc/network" config file.
+    As SHOUTcast TV sometimes may contain pornographic streams, you can 
+    define a "black list" and a "white list" to allow/deny any streams 
+    you choose (default keywords for "black list" are : "adult xxx porn").
+
+    "GEEXBOX/etc/netstream" config file can be set to create local and
+    remote playlists (some examples are located in this file). "Remote 
+    playlists" refer to "Extended M3U" files.
+
+    For French users only :
+    You can get "FreeboxTV" thanks to this file, using the following process :
+    - uncomment EXTM3U ad hoc entry.
+    - use a GeeXboX version that have to be compiled with "LIVE555 library"
+      support (otherwise you won't be able to decode the stream).
+
 * DVB cards
 
     GeeXboX has a support for various types of DVB cards (Terrestrial, Cable,
