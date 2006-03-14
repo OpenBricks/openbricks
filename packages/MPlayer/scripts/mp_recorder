@@ -12,6 +12,7 @@ RECORD_STATUS=/var/record_status
 RECORDER_CFG=/etc/recorder
 
 mp_fifo=/var/mp_control
+record_fifo=/var/record_fifo
 
 file=$1
 
@@ -32,27 +33,31 @@ if [ ! -f $RECORD_STATUS ]; then
   # Remounts the required disk RW in order to write to
   rw "$SAVE_PATH"
 
+  # Get profile and file extension.
+  PROFILE=`cat $RECORD_PROFILE`
+  EXT="mpg"
+  [ "$PROFILE" == "mpeg4" -o "$PROFILE" == "mpeg4-hq" ] && EXT="avi"
+
   # Set recording destination filename
   DATE=$(date '+%F')
   HOUR=$(date '+%H')
   MIN=$(date '+%M')
   OUTPUT=record-$DATE-$HOUR-$MIN
 
-  # Start Recording
+  # Edit MEncoder configuration with the correct destination filename.
   sed -i -e "s|^o=\".*\.\(.*\)\"|o=\"$SAVE_PATH/$OUTPUT\.\1\"|" $CFG
 
-  PROFILE=`cat $RECORD_PROFILE`
+  # Start Recording in background
   $MENCODER -profile $PROFILE "$file" 2>&1 > /dev/null &
 
-  # Gives MEncoder a few time to be start and plays recording file.
+  # Gives MEncoder a few time to be start.
   sleep 5
-  EXT="mpg"
-  [ "$PROFILE" == "mpeg4" -o "$PROFILE" == "mpeg4-hq" ] && EXT="avi"
-  echo "loadfile \"$SAVE_PATH/$OUTPUT.$EXT\"" > $mp_fifo
 
-  # Displays recording message.
-  sleep 1
-  echo "osd_show_text \"Recording ...\"" > $mp_fifo
+  # Create a FIFO, dump recording to and ask MPlayer to play from there.
+  [ -f $record_fifo ] && rm $record_fifo
+  mkfifo $record_fifo
+  tail -f "$SAVE_PATH/$OUTPUT.$EXT" > $record_fifo &
+  echo "loadfile $record_fifo" > $mp_fifo
 
   # Keep trace of original stream source in order to restore it at
   # the end of recording session
@@ -64,6 +69,10 @@ elif [ -f $RECORD_STATUS ]; then
   # Stop MEncoder recording
   killall -9 mencoder
 
+  # Stop output to FIFO and remove it.
+  killall -9 tail
+  rm $record_fifo
+
   # Remounts the required disk RO for safety.
   . $RECORDER_CFG
   ro "$SAVE_PATH"
@@ -71,9 +80,6 @@ elif [ -f $RECORD_STATUS ]; then
   # Reload the original source.
   . $RECORD_SOURCE
   echo "loadfile $SOURCE" > $mp_fifo
-
-  # Displays recorded file name.
-  echo "osd_show_text \"$file\"" > $mp_fifo
 
   # Remove recorder status file
   rm $RECORD_STATUS
