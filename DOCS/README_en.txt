@@ -313,9 +313,11 @@ text files.
     official playlist as easily as personal playlists (local and remote).
 
     SHOUTcast activation is set in "GEEXBOX/etc/network" config file.
-    As SHOUTcast TV sometimes may contain pornographic streams, you can 
-    define a "black list" and a "white list" to allow/deny any streams 
-    you choose (default keywords for "black list" are : "adult xxx porn").
+    As SHOUTcast TV sometimes may contain pornographic and
+    subscription-only streams, you can define a "black list" and a "white 
+    list" to allow/deny any streams you choose (default keywords for "black 
+    list" are : "adult xxx porn ESS SWCTV SWPTV Subscription"). The
+    black/white lists are case-insensitive.
 
     "GEEXBOX/etc/netstream" config file can be set to create local and
     remote playlists (some examples are located in this file). "Remote 
