@@ -1,0 +1,168 @@
+diff -Naur MPlayer-20060223.orig/libmenu/menu_cmdlist.c MPlayer-20060223/libmenu/menu_cmdlist.c
+--- MPlayer-20060223.orig/libmenu/menu_cmdlist.c	2006-03-12 19:04:03.000000000 +0100
++++ MPlayer-20060223/libmenu/menu_cmdlist.c	2006-03-16 20:34:32.000000000 +0100
+@@ -4,7 +4,11 @@
+ #include <stdlib.h>
+ #include <stdio.h>
+ #include <ctype.h>
++#define _GNU_SOURCE
+ #include <string.h>
++#include <sys/types.h>
++#include <sys/stat.h>
++#include <unistd.h>
+ 
+ #include "img_format.h"
+ #include "mp_image.h"
+@@ -79,12 +83,37 @@
+   free(entry);
+ }
+ 
+-static void close(menu_t* menu) {
++static void close2(menu_t* menu) {
+   menu_list_uninit(menu,free_entry);
+ }
+ 
++#define OPT_RECORDER_STATUS "recorder-status"
++#define OPT_RECORDER_PROFILE "recorder-profile"
++#define OPT_RECORDER_PATH "recorder-path"
++#define RECORDER_FILE "/etc/recorder"
++#define RECORDER_STATUS "/var/record_status"
++#define RECORDER_STATE_ON "On"
++#define RECORDER_STATE_OFF "Off"
++#define RECORDER_STATE_UNKNOWN "Unknown"
++#define PROP_RECORDER_PATH "SAVE_PATH="
++#define PROP_RECORDER_PROFILE "RECORD_PROFILE="
++
++static int
++is_valid_recorder_property (char *prop)
++{
++  if (!prop)
++    return 0;
++
++  if (strcmp (prop, OPT_RECORDER_STATUS) != 0 &&
++      strcmp (prop, OPT_RECORDER_PROFILE) != 0 &&
++      strcmp (prop, OPT_RECORDER_PATH) != 0)
++    return 0;
++  
++  return 1;
++}
++
+ static int parse_args(menu_t* menu,char* args) {
+-  char *element,*body, **attribs, *name, *ok, *cancel;
++  char *element,*body, **attribs, *name, *ok, *cancel, *prop;
+   list_entry_t* m = NULL;
+   int r;
+   ASX_Parser_t* parser = asx_parser_new();
+@@ -112,8 +141,102 @@
+     }
+     ok = asx_get_attrib("ok",attribs);
+     cancel = asx_get_attrib("cancel",attribs);
++    prop = asx_get_attrib("prop",attribs);
+     m = calloc(1,sizeof(struct list_entry_s));
+-    m->p.txt = name;
++
++    if (!prop)
++      m->p.txt = name;
++    else if (!is_valid_recorder_property (prop))
++      m->p.txt = name;
++    else
++    {
++      if (!strcmp (prop, OPT_RECORDER_STATUS))
++      {
++        struct stat st;
++        m->p.txt = (char *) malloc (256);
++        if (stat (RECORDER_STATUS, &st) == 0)
++          sprintf (m->p.txt, "%s: %s", name, RECORDER_STATE_ON);
++        else
++          sprintf (m->p.txt, "%s: %s", name, RECORDER_STATE_OFF);
++        free (name);
++        free (prop);
++      }
++      else if (!strcmp (prop, OPT_RECORDER_PATH))
++      {
++        struct stat st;
++        m->p.txt = (char *) malloc (256);
++        if (stat (RECORDER_FILE, &st) == 0)
++        {
++          FILE *f = NULL;
++          char *path = NULL;
++          
++          f = fopen (RECORDER_FILE, "r");
++          while (!feof (f))
++          {
++            char line[1024];
++            int len = strlen (PROP_RECORDER_PATH);
++            fgets (line, 1024, f);
++            if (!strncmp (line, PROP_RECORDER_PATH, len))
++            {
++              path = strndup (line + len + 1);
++              path[strlen (path) - 2] = '\0';
++              break;
++            }
++          }
++          fclose (f);
++
++          if (path)
++          {
++            sprintf (m->p.txt, "%s: %s", name, path);
++            free (path);
++          }
++          else
++            sprintf (m->p.txt, "%s: %s", name, RECORDER_STATE_UNKNOWN);
++        }
++        else
++          sprintf (m->p.txt, "%s: %s", name, RECORDER_STATE_UNKNOWN);
++        free (name);
++        free (prop);
++      }
++      else if (!strcmp (prop, OPT_RECORDER_PROFILE))
++      {
++        struct stat st;
++        m->p.txt = (char *) malloc (256);
++        if (stat (RECORDER_FILE, &st) == 0)
++        {
++          FILE *f = NULL;
++          char *profile = NULL;
++          
++          f = fopen (RECORDER_FILE, "r");
++          while (!feof (f))
++          {
++            char line[1024];
++            int len = strlen (PROP_RECORDER_PROFILE);
++            fgets (line, 1024, f);
++            if (!strncmp (line, PROP_RECORDER_PROFILE, len))
++            {
++              profile = strndup (line + len);
++              profile[strlen (profile) - 1] = '\0';
++              break;
++            }
++          }
++          fclose (f);
++
++          if (profile)
++          {
++            sprintf (m->p.txt, "%s: %s", name, profile);
++            free (profile);
++          }
++          else
++            sprintf (m->p.txt, "%s: %s", name, RECORDER_STATE_UNKNOWN);
++        }
++        else
++          sprintf (m->p.txt, "%s: %s", name, RECORDER_STATE_UNKNOWN);
++        free (name);
++        free (prop);
++      }
++    }
++    
+     m->ok = ok;
+     m->cancel = cancel;
+     menu_list_add_entry(menu,m);
+@@ -128,7 +251,7 @@
+   menu->draw = menu_list_draw;
+   menu->read_cmd = read_cmd;
+   menu->read_key = read_key;
+-  menu->close = close;
++  menu->close = close2;
+ 
+   if(!args) {
+     printf("List menu need an argument\n");
