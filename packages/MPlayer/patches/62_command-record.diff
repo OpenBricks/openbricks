@@ -1,0 +1,63 @@
+diff -Naur MPlayer-20060223.orig/input/input.c MPlayer-20060223/input/input.c
+--- MPlayer-20060223.orig/input/input.c	2006-03-12 19:04:03.000000000 +0100
++++ MPlayer-20060223/input/input.c	2006-03-12 19:05:49.000000000 +0100
+@@ -120,6 +120,7 @@
+   { MP_CMD_FILE_FILTER, "file_filter", 1, { { MP_CMD_ARG_INT, {0}}, {-1,{0}}}},
+   { MP_CMD_VO_ROOTWIN, "vo_rootwin", 0, { {-1,{0}} } },
+   { MP_CMD_VO_BORDER, "vo_border", 0, { {-1,{0}} } },
++  { MP_CMD_RECORD, "record", 0, { {-1,{0}} } },
+   { MP_CMD_SCREENSHOT, "screenshot", 0, { {-1,{0}} } },
+   { MP_CMD_PANSCAN, "panscan",1,  { {MP_CMD_ARG_FLOAT,{0}}, {MP_CMD_ARG_INT,{0}}, {-1,{0}} } },
+   { MP_CMD_SWITCH_VSYNC, "switch_vsync", 0, { {MP_CMD_ARG_INT,{0}}, {-1,{0}} } },
+diff -Naur MPlayer-20060223.orig/input/input.h MPlayer-20060223/input/input.h
+--- MPlayer-20060223.orig/input/input.h	2006-03-12 19:04:03.000000000 +0100
++++ MPlayer-20060223/input/input.h	2006-03-12 19:05:06.000000000 +0100
+@@ -77,6 +77,8 @@
+ 
+ #define MP_CMD_SET_OPTION 90
+ 
++#define MP_CMD_RECORD 95
++
+ #define MP_CMD_GUI_EVENTS       5000
+ #define MP_CMD_GUI_LOADFILE     5001
+ #define MP_CMD_GUI_LOADSUBTITLE 5002
+diff -Naur MPlayer-20060223.orig/mplayer.c MPlayer-20060223/mplayer.c
+--- MPlayer-20060223.orig/mplayer.c	2006-03-12 19:04:03.000000000 +0100
++++ MPlayer-20060223/mplayer.c	2006-03-12 19:07:13.000000000 +0100
+@@ -89,6 +89,8 @@
+ extern int verbose;
+ int identify=0;
+ int quiet=0;
++static int record=0;
++static int old_index_mode=0;
+ 
+ #ifdef WIN32
+ char * proc_priority=NULL;
+@@ -4085,6 +4087,27 @@
+ 	video_out->control(VOCTRL_SCREENSHOT, NULL);
+       }
+       break;
++    case MP_CMD_RECORD:
++    {
++      extern int index_mode;
++      char cmd[1024];
++      
++      if (record == 0)
++      {
++        record = 1;
++        old_index_mode = index_mode;
++        index_mode = 0; /* do _NOT_ try to rebuild the index */
++        
++        sprintf (cmd, "/usr/bin/mp_recorder \"%s\"", filename);
++      }
++      else
++      {
++        record = 0;
++        sprintf (cmd, "/usr/bin/mp_recorder \"%s\"", filename);
++        index_mode = old_index_mode; /* restore previous index mode */
++      }
++      system (cmd);
++    } break;
+     case MP_CMD_VF_CHANGE_RECTANGLE:
+ 	set_rectangle(sh_video, cmd->args[0].v.i, cmd->args[1].v.i);
+ 	break;
