@@ -1,0 +1,90 @@
+#!/bin/sh
+
+# MEncoder/MPlayer stream recorder
+# usage: mp_recorder file_location
+
+MENCODER=/usr/bin/mencoder
+CFG=/etc/mplayer/mencoder.conf
+
+RECORD_SOURCE=/var/record_source
+RECORD_PROFILE=/var/record_profile
+RECORD_STATUS=/var/record_status
+RECORDER_CFG=/etc/recorder
+
+mp_fifo=/var/mp_control
+record_fifo=/var/record_fifo
+
+file=$1
+
+if [ ! -f $RECORD_STATUS ]; then
+  [ "$file" == "" ] && exit 1 # No source to record from.
+
+  . $RECORDER_CFG
+  if [ "$SAVE_PATH" = "/tmp" ]; then
+    # default configuration : won't save to RAMdisk.
+    exit 1
+  fi
+
+  if [ ! -d "$SAVE_PATH" ]; then
+    # not a valid directory : bails out
+    exit 1
+  fi
+
+  # Remounts the required disk RW in order to write to
+  rw "$SAVE_PATH"
+
+  # Check file extension against profile type.
+  EXT="mpg"
+  [ "$RECORD_PROFILE" == "mpeg4" -o "$RECORD_PROFILE" == "mpeg4-hq" ] && EXT="avi"
+
+  # Set recording destination filename
+  DATE=$(date '+%F')
+  HOUR=$(date '+%H')
+  MIN=$(date '+%M')
+  OUTPUT=record-$DATE-$HOUR-$MIN
+
+  # Edit MEncoder configuration with the correct destination filename.
+  sed -i -e "s|^o=\".*\.\(.*\)\"|o=\"$SAVE_PATH/$OUTPUT\.\1\"|" $CFG
+
+  # Start Recording in background
+  $MENCODER -profile $RECORD_PROFILE "$file" 2>&1 > /dev/null &
+
+  # Gives MEncoder a few time to be start.
+  sleep 5
+
+  # Test if MEncoder really has started (no bail out, whatever the reason)
+  pidof mencoder
+  [ $? != 0 ] && exit 1
+
+  # Create a FIFO, dump recording to and ask MPlayer to play from there.
+  [ -f $record_fifo ] && rm $record_fifo
+  mkfifo $record_fifo
+  tail -f "$SAVE_PATH/$OUTPUT.$EXT" > $record_fifo &
+  echo "loadfile $record_fifo" > $mp_fifo
+
+  # Keep trace of original stream source in order to restore it at
+  # the end of recording session
+  echo "SOURCE=\"$file\"" > $RECORD_SOURCE
+
+  # Create recorder status file.
+  echo "" > $RECORD_STATUS
+elif [ -f $RECORD_STATUS ]; then
+  # Stop MEncoder recording
+  killall mencoder
+
+  # Stop output to FIFO and remove it.
+  killall tail
+  rm $record_fifo
+
+  # Remounts the required disk RO for safety.
+  . $RECORDER_CFG
+  ro "$SAVE_PATH"
+
+  # Reload the original source.
+  . $RECORD_SOURCE
+  echo "loadfile $SOURCE" > $mp_fifo
+
+  # Remove recorder status file
+  rm $RECORD_STATUS
+fi
+
