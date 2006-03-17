@@ -97,7 +97,7 @@ channels_table_add_new (struct channels_t *channels, struct channel_t *chan)
 }
 
 static char *
-channels_table_list (struct channels_t *channels)
+channels_table_list (struct channels_t *channels, int format)
 {
   char *buffer = NULL, c[BUFSIZE];
   size_t buffer_len = 0;
@@ -105,7 +105,11 @@ channels_table_list (struct channels_t *channels)
   
   for (i = 0; i < channels->nr_channels; i++)
     {
-      sprintf (c, "%s-%s,",
+      if (format)
+        sprintf (c, "CHAN=\"%s:%s\"\n",
+               channels->chans[i]->chan, channels->chans[i]->name);
+      else
+        sprintf (c, "%s-%s,",
                channels->chans[i]->chan, channels->chans[i]->name);
       buffer = realloc (buffer, buffer_len + strlen(c) + 1);
       strcpy (&buffer[buffer_len], c);
@@ -388,7 +392,7 @@ v4l2_get_all_channels_list (struct CHANLIST **list)
 
 static void
 v4l2_scan_channels (int fd, char *list,
-                    struct channels_t *channels, int progress)
+                    struct channels_t *channels, int progress, int format)
 {
   int tuned, i, j;
   float f;
@@ -424,7 +428,10 @@ v4l2_scan_channels (int fd, char *list,
               struct channel_t *chan;
               char chan_name[128];
 
-              sprintf (chan_name, "Channel_%s", clist[j]->name);
+              if (format)
+                sprintf (chan_name, "Channel %s", clist[j]->name);
+              else
+                sprintf (chan_name, "Channel_%s", clist[j]->name);
               chan = chan_new (clist[j]->name, chan_name);
               channels_table_add_new (channels, chan);
             }
@@ -452,7 +459,10 @@ v4l2_scan_channels (int fd, char *list,
                   struct channel_t *chan;
                   char chan_name[128];
                   
-                  sprintf (chan_name, "Channel_%s", chanlists[i].list[j].name);
+                  if (format)
+                    sprintf (chan_name, "Channel %s", chanlists[i].list[j].name);
+                  else
+                    sprintf (chan_name, "Channel_%s", chanlists[i].list[j].name);
                   chan = chan_new (chanlists[i].list[j].name, chan_name);
                   channels_table_add_new (channels, chan);
                 }
@@ -487,6 +497,7 @@ print_usage (void)
   printf ("MPlayer Analog TV Channels scanner\n");
   printf ("-h : Display this help message\n");
   printf ("-p : Display scan progression (interface with dialog)\n");
+  printf ("-a : Alternate output file format (default is mplayer.conf)\n");
   printf ("-d device : Video device to use\n");
   printf ("-i[input] : Use specified input X (default is 0)\n");
   printf ("-s[standard] : Set to specified standard X\n");
@@ -502,11 +513,11 @@ main (int argc, char **argv)
   char *std = NULL, *input = NULL, *list_id = NULL;
   struct channels_t *channels = NULL;
   char *channels_list = NULL;
-  int done = 0, progress = 0;
+  int done = 0, progress = 0, format = 0;
 
   while (1)
     {
-      c = getopt (argc, argv, "hd:i::s::c::p");
+      c = getopt (argc, argv, "hd:i::s::c::pa");
       if (c == -1)
         break;
 
@@ -515,6 +526,10 @@ main (int argc, char **argv)
         case 'h':
           print_usage ();
           return 0;
+
+        case 'a':
+          format=1;
+          break;
 
         case 'd':
           dev = optarg;
@@ -568,10 +583,13 @@ main (int argc, char **argv)
       v4l2_set_standard (fd, std);
       channels = channels_table_new ();
       list = set_chanlist (list_id);
-      v4l2_scan_channels (fd, list, channels, progress);
-      channels_list = channels_table_list (channels);
+      v4l2_scan_channels (fd, list, channels, progress, format);
+      channels_list = channels_table_list (channels, format);
       if (channels_list && *channels_list)
-        fprintf (progress ? stderr : stdout, "channels=%s\n", channels_list);
+        if (format)
+          fprintf (progress ? stderr : stdout, "%s\n", channels_list);
+        else
+          fprintf (progress ? stderr : stdout, "channels=%s\n", channels_list);
       break;
 
     case MPTVSCAN_ACTION_INPUTS:
