@@ -141,7 +141,6 @@ setup_network () {
 setup_tvscan () {
   MPTVSCAN=/usr/bin/mptvscan
   title="$BACKTITLE : Analog TV Channels Scanner"
-  MPLAYER_CONF="$1/etc/mplayer/mplayer.conf"
 
   for i in `$MPTVSCAN -i`; do
     INPUTS="$INPUTS $i ''"
@@ -162,14 +161,14 @@ setup_tvscan () {
 
     CHANLIST=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "TV Chanlist Selection" --menu "\nBelow is the list of pre-configured chanlists for scan. Select the one corresponding to your location or choose 'all' for a deep scan (scanning all existing frequencies)." 0 0 0 $CHANLISTS`
 
-    $MPTVSCAN "-i$INPUT" "-s$NORM" "-c$CHANLIST" -p 2>/tmp/chans | $DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "Scanning Channels" --gauge "\nGeeXboX is currently scanning your channels. This operation may take a while. Please wait while processing ..." 0 0
+    $MPTVSCAN "-a -i$INPUT" "-s$NORM" "-c$CHANLIST" -p 2>/tmp/chans | $DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "Scanning Channels" --gauge "\nGeeXboX is currently scanning your channels. This operation may take a while. Please wait while processing ..." 0 0
 
-    CHANNELS=`sed 's/channels=//' /tmp/chans | sed 's/-/ - /g' | sed 's/,/\\\\n/g'`
+    CHANNELS=`sed sed -e 's/CHAN=//g' -e 's/:/ - /g' -e 's/\"//g' -e 's/$/\\\\n/g' /tmp/chan`
     $DIALOG --aspect 12 --stdout --yes-label "Accept" --no-label "Retry" --backtitle "$title" --title "Scan Done ..." --yesno "\nCongratulations, the TV channels scan is done. The following channels has been discoverd (if no channel has been found, you can then try again with new card/tuner/norm/chanlist settings).\n\n$CHANNELS" 0 0 && DONE=true
   done
 
   if [ -s /tmp/chans ]; then
-    echo -n "tv=" | cat - /tmp/chans >> $MPLAYER_CONF
+    cat /tmp/chans >> $1/etc/tvcard
   fi
   rm -f /tmp/chans
 
