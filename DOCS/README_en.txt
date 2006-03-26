@@ -410,6 +410,30 @@ text files.
     file you want to use for GeeXboX to scan. The channels.conf file will
     then be automatically generated.
 
+* DVD Navigation Menus
+
+    GeeXboX allows 2 DVD playback mode:
+     - Direct movie playback (default).
+     - DVD Navigation Menu support (fairly experimental).
+
+    The first one can be safely trusted for playing any kind of DVD. Once
+    inserted, the disc is automatically detected and MPlayer tries to play the
+    title it consider as the movie one. The major advantage is that all
+    copyright, advertisement and menu parts are skipped to allow a direct
+    playback. However, in some situations (like DVDs with enhanced menus or
+    most of the series DVD, containing multiple titles to be played) this
+    method is inaccurate and you'll not be able to watch your DVD correctly.
+
+    The second one, while still experimental (but has really good chances to
+    works fine) supports the regular DVD Navigation Menus and let you control
+    your DVD the same way you'll do it using a regular commercial DVD player.
+
+    You can use the GeeXboX options menu to switch between the DVD playback
+    methods, according to the DVD disc you're trying to watch.
+
+    You can also make use of the GeeXboX ISO generator to select the default
+    DVD playback method you want.
+
 
 | GENERATION
 | ~~~~~~~~~~

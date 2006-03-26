@@ -433,6 +433,35 @@ TV_TUNER=AUTO
     carte ainsi que le transpondeur à utiliser et la GeeXboX s'occupera de
     scanner letout et de générer le fichier /etc/mplayer/channels.conf.
 
+* Menus de Navigation DVD
+
+    La GeeXboX propose 2 méthodes de lecture des DVD :
+     - Lecture directe du film (defaut).
+     - Lecture avec support des menus de Navigation DVD (expérimental).
+
+    La première permet une lecture quasi-assurée de la plupart des DVDs. Une
+    fois inséré, le disque est automatiquement détecté et MPlayer va essayer
+    de lire le chapitre qu'il jugera correspondre au film. Le principal
+    avantage réside dans le fait que toutes les scènes de droit d'auteur,
+    publicités ou menus seront sautées pour permettre une lecture instantannée
+    du film. Néanmoins, dans certaines situations (comme les DVD avec des
+    menus très sophistiqués ou encore les DVD de séries TV, contenant de
+    multiples épisodes et donc chapitres), cette méthode n'est pas précise
+    et vous pourriez ne pas être en mesure de lire votre film correctement.
+
+    La seconde, bien qu'encore expérimentale avec MPlayer (mais qui a
+    néanmoins de très fortes chances de fonctionner), apporte le support des
+    menus de navigation DVD, vous permettant donc de le lire comme vous le
+    feriez avec n'importe quel lecteur DVD du commerce, avec les avantages et
+    inconvénients qui en découlent.
+
+    Il vous est bien entendu possible de basculer d'un mode de lecture DVD
+    à un autre au moyen du menu d'options de la GeeXboX, selon le DVD que vous
+    êtes amener à visionner.
+
+    Il vous est également possible de spécifier la méthode de lecture par
+    défaut au moyen du générateur d'ISO de la GeeXboX.
+
 
 | GENERATION DE L'ISO
 | ~~~~~~~~~~~~~~~~~~~
