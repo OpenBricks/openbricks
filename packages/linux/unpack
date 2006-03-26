@@ -8,21 +8,22 @@ $SCRIPTS/unpack lzma
 
 LINUX=`ls -d $BUILD/$1*`
 
+case $TARGET_ARCH in
+  ppc)
+    TARGET_LINUX_ARCH=powerpc
+    ;;
+  *)
+    TARGET_LINUX_ARCH=$TARGET_ARCH
+    ;;
+esac
+
 sed -i -e "s|^HOSTCC[[:space:]]*=.*$|HOSTCC = $HOST_CC|" \
        -e "s|^HOSTCXX[[:space:]]*=.*$|HOSTCXX = $HOST_CXX|" \
-       -e "s|^ARCH[[:space:]]*?=.*$|ARCH = $TARGET_ARCH|" \
+       -e "s|^ARCH[[:space:]]*?=.*$|ARCH = $TARGET_LINUX_ARCH|" \
        -e "s|^CROSS_COMPILE[[:space:]]*?=.*$|CROSS_COMPILE = $TARGET_PREFIX|" \
        $LINUX/Makefile
 
 sed "s/CONFIG_BLK_DEV_RAM_SIZE=.*/CONFIG_BLK_DEV_RAM_SIZE=$RAMDISK_SIZE/" $PACKAGES/$1/config/$1.$TARGET_ARCH.conf > $LINUX/.config
-
-# Temporary hack until linux has migrated to asm-powerpc
-# (instead of asm-ppc and asm-ppc64)
-if [ $TARGET_ARCH = ppc ]; then
-  for i in $LINUX/include/asm-powerpc/*; do
-    test -e $LINUX/include/asm-ppc/${i##*/} || cp -r $i $LINUX/include/asm-ppc/
-  done
-fi
 
 cp $BUILD/lzma*/SRC/7zip/Compress/LZMA_C/LzmaDecode.[ch] $LINUX/lib/
 sed -i "s%^int Lzma%static int Lzma%g" $LINUX/lib/LzmaDecode.[ch]
