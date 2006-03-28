@@ -434,6 +434,82 @@ text files.
     You can also make use of the GeeXboX ISO generator to select the default
     DVD playback method you want.
 
+* Recording Capabilities
+
+    GeeXboX allows you to record the stream you're watching and even
+    proceed with live pause (a.k.a. Time-Shifting). Unfortunately, this
+    operation is CPU-time consuming (realtime encoding and playback of a
+    stream) and so, you may require a fairly recent computer to be able
+    to fully make use of this feature.
+
+    The control menu comes with a recorder-dedicated sub-menu that allows you
+    to monitor the recording status (on/off), check for the recorded files
+    destination, but also start/stop the record process and select the
+    encoding profile you want to use. The record process can also be started
+    (or stopped) from the keyboard, using the "i" key, or from the remote
+    controller.
+
+    There's unfortunately a requirement to the use of recording capabilities :
+    you need to be able to store the recorded files somewhere. This can be
+    an internal/external hard drive or a remote NFS/Samba share. The only
+    thing that matters is that the filesystem has to be Linux-writable (i.e.
+    NTFS disk aren't supported). Be aware while recording that your disk will
+    be remounted R/W to allow file storage. Once the record process has ended,
+    GeeXboX should remount your disk as R/O for safety measure but this might
+    not work. It is then highly recommended when making use of the recording
+    capabilities that you perform a clean shutdown of the computer to avoid a
+    potential filesystem or data corruption. We won't take any responsibility
+    for data loss.
+
+    The recorded files destination path has to be specified at installation or
+    ISO generation in the /etc/recorder configuration file. Simply replace the
+    following setting with your own one :
+
+    SAVE_PATH="/tmp"
+
+    The default behavior is to save to /tmp but as it's a RAMdisk, GeeXboX is
+    smart enough to not proceed so. Considering that, there's no way GeeXboX
+    will try to record or store files to your computer unless you'd
+    explicitely specify a destination path.
+
+    In the same way, you can also specify the default encoding profile to be
+    used when recording. You can always change to another one at runtime
+    through the recorder option menu. A few profiles are available (see the
+    /etc/mplayer/mencoder.conf file for a complete list and details) and they
+    all feature different level of quality or encoding speed. You might choose
+    one over another, according to your CPU power. According to the input
+    stream (low-resolution WebTV, regular analog TV, digital HDTV ...), one
+    profile might fit better than another. Below is a short non-exhaustive
+    list of available encoding profiles :
+
+     - MPEG 1
+     - MPEG 2
+     - Video CD (PAL/NTSC)
+     - Super Video CD (PAL/NTSC)
+     - DVD Video (PAL/NTSC)
+     - Stream Dump (can be safely used on DVB MPEG-TS streams for example
+       to avoid a re-encoding process).
+
+    The default encoding profile has to be specified in the /etc/recorder
+    configuration file, as below :
+
+    RECORD_PROFILE="mpeg1"
+
+    Unless you know exactly what you're doing, it is highly recommended that
+    you use the ISO generator to select the default profile.
+
+    When watching a TV stream and starting the record process, GeeXboX image
+    might freeze a few seconds (time for MEncoder to start recording) and will
+    start playing back the currently recording file. If you're CPU is too
+    slow, the playback will lag, waiting for the frames to be encoded. If this
+    happens, you only have 2 solutions :
+
+     - use a more powerful HTPC.
+     - use a fastest (i.e. less quality) encoding profile.
+
+    When stopping the recording process, GeeXboX will stop MEncoder and will
+    reload the original input stream.
+
 
 | GENERATION
 | ~~~~~~~~~~
