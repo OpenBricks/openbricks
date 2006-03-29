@@ -188,7 +188,7 @@ setup_dvbscan () {
   CHANNELS_CONF="$1/etc/mplayer/channels.conf"
 
   if [ -f $DVB_FILE -a ! -d $DVB_LIST ]; then
-    lzmacat $DVB_FILE | tar xf - -C /usr/share 
+    tar xaf $DVB_FILE -C /usr/share
   fi
 
   DVB_TYPE=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "DVB Card Type Selection" --menu "\nBelow is the list of available DVB cards type. Please select the one you want to use for channels scan." 0 0 0 dvb-s "DVB Sattelite" dvb-t "DVB Terrestrial" dvb-c "DVB Cable" atsc "ATSC (US)"`
@@ -510,7 +510,7 @@ device_map=$grubdir/device.map
 
 rm -rf $grubdir
 mkdir -p $grubdir
-lzmacat "di/GEEXBOX/usr/share/grub-i386-pc.tar.lzma" | tar xf - -C $grubdir
+tar xaf "di/GEEXBOX/usr/share/grub-i386-pc.tar.lzma" -C $grubdir
 
 if [ -f "di/GEEXBOX/usr/share/grub-splash.xpm.gz" ]; then
   cp -f "di/GEEXBOX/usr/share/grub-splash.xpm.gz" $grubdir || exit 1
