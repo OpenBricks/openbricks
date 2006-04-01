@@ -319,10 +319,12 @@ TV_TUNER=AUTO
 
     L'activation de SHOUTcast se déclare dans le fichier de configuration
     "GEEXBOX/etc/network". SHOUTcast TV étant succeptible de diffuser des
-    streams à caractère pornographique, une liste noire et une liste
-    blanche peuvent être complétées afin de filtrer le contenu selon vos
-    critères (par défaut, les mots clefs définis pour la liste noire sont
-    "adult xxx porn").
+    streams nécessitant une inscription particulière ainsi que des streams
+    à caractère pornographique, une liste noire et une liste blanche
+    peuvent être complétées afin de filtrer le contenu selon vos critères
+    (par défaut, les mots clefs définis pour la liste noire sont :
+    "adult xxx porn ESS SWCTV SWPTV Subscription"). La liste noire et la
+    liste blanche sont insensibles à la casse.
 
     Vous pouvez créer vos listes de lecture locales et distantes dans le
     fichier de configuration "GEEXBOX/etc/netstream" (Des exemples sont
