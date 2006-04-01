@@ -586,10 +586,12 @@ main (int argc, char **argv)
       v4l2_scan_channels (fd, list, channels, progress, format);
       channels_list = channels_table_list (channels, format);
       if (channels_list && *channels_list)
+      {
         if (format)
           fprintf (progress ? stderr : stdout, "%s\n", channels_list);
         else
           fprintf (progress ? stderr : stdout, "channels=%s\n", channels_list);
+      }
       break;
 
     case MPTVSCAN_ACTION_INPUTS:
