@@ -254,6 +254,11 @@ cp -rf $TMPDIR/iso/GEEXBOX/boot/* $TMPDIR/ziso/GEEXBOX/boot
 [ -f $GEEXBOX_DIR/themes/$THEME/bootsplash.dat ] && cat $GEEXBOX_DIR/themes/$THEME/bootsplash.dat >> $TMPDIR/ziso/GEEXBOX/boot/initrd.gz
 [ $TARGET_ARCH = i386 -a -f $GEEXBOX_DIR/themes/$THEME/splash-isolinux.rle ] && cp $GEEXBOX_DIR/themes/$THEME/splash-isolinux.rle $TMPDIR/ziso/GEEXBOX/boot/splash.rle
 
+if [ $TARGET_ARCH = i386 -a -e $GEEXBOX_DIR/iso/GEEXBOX/etc/fb ]; then
+  . $GEEXBOX_DIR/iso/GEEXBOX/etc/fb
+  sed -e "s/vga=789/vga=$((VESA_RES+VESA_DEPTH))/g" -e "s/splash=silent/splash=$SPLASH/" -i $TMPDIR/ziso/GEEXBOX/boot/isolinux.cfg
+fi
+
 for i in $TMPDIR/iso/*; do
   [ "$i" != $TMPDIR/iso/GEEXBOX ] && ln -s "../$i" $TMPDIR/ziso
 done
