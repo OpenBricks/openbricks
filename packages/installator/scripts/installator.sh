@@ -504,6 +504,15 @@ if [ "$1" = geexbox ]; then
   fi
 fi
 
+VESA_RES=`$DIALOG --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Screen Resolution" --menu "Select from options below" 000 0 0 0 "640x480" 1 "800x600" 2 "1024x768" 3 "1280x1024" 4 "1600x1200"`
+
+VESA_DEPTH=`$DIALOG --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Screen Color Depth" --menu "Select from options below" 000 0 0 0 "15 bit" 1 "16 bit" 2 "24 bit"`
+
+VESA_MODE=$((784 + VESA_RES*3 + VESA_DEPTH))
+[ $VESA_MODE -ge 796 ] && VESA_MODE=$((VESA_MODE + 1))
+
+$DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Bootsplash" --yesno "\nDo you want to enable bootsplash?\n" 0 0 && SPLASH="silent" || SPLASH="0"
+
 grubprefix=/boot/grub
 grubdir=di$grubprefix
 device_map=$grubdir/device.map
@@ -543,16 +552,6 @@ if [ -z "$rootdev" ]; then
   rmdir di
   exit 1
 fi
-
-VESA_RES=`$DIALOG --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Screen Resolution" --menu "Select from options below" 000 0 0 0 "640x480" 1 "800x600" 2 "1024x768" 3 "1280x1024" 4 "1600x1200"`
-
-VESA_DEPTH=`$DIALOG --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Screen Color Depth" --menu "Select from options below" 000 0 0 0 "15 bit" 1 "16 bit" 2 "24 bit"`
-
-VESA_MODE=$((784 + VESA_RES*3 + VESA_DEPTH))
-[ $VESA_MODE -ge 796 ] && VESA_MODE=$((VESA_MODE + 1))
-
-$DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Bootsplash" --yesno "\nDo
-you want to enable bootsplash?\n" 0 0 && SPLASH="silent" || SPLASH="0"
 
 if [ $BOOTLOADER = syslinux ]; then
   umount di
