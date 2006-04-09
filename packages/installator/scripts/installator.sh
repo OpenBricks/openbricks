@@ -504,10 +504,10 @@ if [ "$1" = geexbox ]; then
   fi
 fi
 
-VESA_MODE=`grep vga= di/isolinux.cfg | head -1 | sed "s%.*vga=\([^ ]*\).*%\1%"`
+VESA_MODE_OLD=`grep vga= di/isolinux.cfg | head -1 | sed "s%.*vga=\([^ ]*\).*%\1%"`
 
-VESA_RES=$((($VESA_MODE - 784) / 3))
-VESA_DEPTH=$((($VESA_MODE - 784) % 3))
+VESA_RES=$((($VESA_MODE_OLD - 784) / 3))
+VESA_DEPTH=$((($VESA_MODE_OLD - 784) % 3))
 
 if [ $VESA_DEPTH != 0 -a $VESA_DEPTH != 1 -a $VESA_DEPTH != 2 ] ||
    [ $VESA_RES != 0 -a $VESA_RES != 1 -a $VESA_RES != 2 -a $VESA_RES != 3 ]; then
@@ -524,8 +524,10 @@ VESA_MODE=$((784 + VESA_RES*3 + VESA_DEPTH))
 
 if grep -q "splash=silent" di/isolinux.cfg; then
   SPLASH_ARGUMENT=""
+  SPLASH_OLD="silent"
 else
   SPLASH_ARGUMENT="--defaultno"
+  SPLASH_OLD="0"
 fi
 
 $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Bootsplash" $SPLASH_ARGUMENT --yesno "\nDo you want to enable bootsplash?\n" 0 0 && SPLASH="silent" || SPLASH="0"
@@ -548,7 +550,7 @@ splashimage="$grubprefix/grub-splash.xpm.gz"
 
 if [ $BOOTLOADER = syslinux ]; then
   cp "di/GEEXBOX/usr/share/ldlinux.sys" di
-  sed "s/boot=cdrom/boot=${DEV#/dev/}/" di/isolinux.cfg > di/syslinux.cfg
+  sed -e "s/boot=cdrom/boot=${DEV#/dev/}/" -e "s/vga=$VESA_MODE_OLD/vga=$VESA_MODE/" -e "s/splash=$SPLASH_OLD/splash=$SPLASH/" di/isolinux.cfg > di/syslinux.cfg
   rm di/isolinux.cfg
 elif [ $BOOTLOADER = grub ]; then
   cp $grubdir/stage2 $grubdir/stage2_single
