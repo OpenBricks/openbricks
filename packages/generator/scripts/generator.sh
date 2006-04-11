@@ -22,6 +22,9 @@ RECEIVER=atiusb
 # Theme
 THEME=
 
+# Resolution (640x480, 800x600, 1024x768, 1280x1024 or 1600x1200)
+RESOLUTION=800x600
+
 # You should not have to modify the rest of this file
 
 if [ -d ./iso -a -d ./lirc -a -d ./i18n ]; then
@@ -251,7 +254,7 @@ rm -f $TMPDIR/iso/GEEXBOX/usr/share/grub-splash.xpm.gz
 rm -f $TMPDIR/iso/GEEXBOX/etc/lirc*
 
 cp -rf $TMPDIR/iso/GEEXBOX/boot/* $TMPDIR/ziso/GEEXBOX/boot
-[ -f $GEEXBOX_DIR/themes/$THEME/bootsplash.dat ] && cat $GEEXBOX_DIR/themes/$THEME/bootsplash.dat >> $TMPDIR/ziso/GEEXBOX/boot/initrd.gz
+[ -f $GEEXBOX_DIR/themes/$THEME/bootsplash-$RESOLUTION.dat ] && cat $GEEXBOX_DIR/themes/$THEME/bootsplash-$RESOLUTION.dat >> $TMPDIR/ziso/GEEXBOX/boot/initrd.gz
 [ $TARGET_ARCH = i386 -a -f $GEEXBOX_DIR/themes/$THEME/splash-isolinux.rle ] && cp $GEEXBOX_DIR/themes/$THEME/splash-isolinux.rle $TMPDIR/ziso/GEEXBOX/boot/splash.rle
 
 for i in $TMPDIR/iso/*; do
