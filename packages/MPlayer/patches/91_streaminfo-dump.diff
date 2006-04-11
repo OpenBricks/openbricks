@@ -1,0 +1,101 @@
+--- MPlayer-20060223/mplayer.c.orig    2006-04-10 18:53:36.000000000 +0200
++++ MPlayer-20060223/mplayer.c        2006-04-10 18:56:40.000000000 +0200
+@@ -755,6 +755,80 @@
+ #define mp_basename2(s) (strrchr(s,'/')==NULL?(char*)s:(strrchr(s,'/')+1))
+ #define mp_basename(s) (strrchr(s,'\\')==NULL?(mp_basename2(s)):(strrchr(s,'\\')+1))
+ 
++void dump_stream_info(demuxer_t *demuxer, char* log_filename)
++{
++  int fd;
++  FILE * log_file;
++  sh_video_t *sh_video = demuxer->video->sh;
++  sh_audio_t *sh_audio = demuxer->audio->sh;
++
++  fd = open(log_filename, O_RDWR | O_NONBLOCK);
++  log_file = fdopen(fd, "w");
++
++  fprintf(log_file, "ID_VIDEO_PERCENT=0\n");
++  fprintf(log_file, "ID_FILENAME=%s\n", mp_basename(filename));
++  fprintf(log_file, "ID_DEMUXER=%s\n", demuxer->desc->name);
++
++  if (sh_video) {
++    /* Assume FOURCC if all bytes >= 0x20 (' ') */
++    if (sh_video->format >= 0x20202020)
++        fprintf(log_file, "ID_VIDEO_FORMAT=%.4s\n", (char *)&sh_video->format);
++    else
++        fprintf(log_file, "ID_VIDEO_FORMAT=0x%08X\n", sh_video->format);
++    fprintf(log_file, "ID_VIDEO_BITRATE=%d\n", sh_video->i_bps*8);
++    fprintf(log_file, "ID_VIDEO_WIDTH=%d\n", sh_video->disp_w);
++    fprintf(log_file, "ID_VIDEO_HEIGHT=%d\n", sh_video->disp_h);
++    fprintf(log_file, "ID_VIDEO_FPS=%5.3f\n", sh_video->fps);
++    fprintf(log_file, "ID_VIDEO_ASPECT=%1.4f\n", sh_video->aspect);
++  }
++  if (sh_audio) {
++    char *info;
++    if ((info = demux_info_get(demuxer, "Title")) != NULL)
++      fprintf(log_file, "ID_AUDIO_TITLE=%s\n", info );
++    if ((info = demux_info_get(demuxer, "Artist")) != NULL)
++      fprintf(log_file, "ID_AUDIO_ARTIST=%s\n", info );
++    if ((info = demux_info_get(demuxer, "Album")) != NULL)
++      fprintf(log_file, "ID_AUDIO_ALBUM=%s\n", info );
++    if ((info = demux_info_get(demuxer, "Year")) != NULL)
++      fprintf(log_file, "ID_AUDIO_YEAR=%s\n", info );
++    if ((info = demux_info_get(demuxer, "Comment")) != NULL)
++      fprintf(log_file, "ID_AUDIO_COMMENT=%s\n", info );
++    if ((info = demux_info_get(demuxer, "Track")) != NULL)
++      fprintf(log_file, "ID_AUDIO_TRACK=%s\n", info );
++    if ((info = demux_info_get(demuxer, "Genre")) != NULL)
++      fprintf(log_file, "ID_AUDIO_GENRE=%s\n", info );
++    if (sh_audio->codec)
++      fprintf(log_file, "ID_AUDIO_CODEC=%s\n", sh_audio->codec->name);
++    /* Assume FOURCC if all bytes >= 0x20 (' ') */
++    if (sh_audio->format >= 0x20202020)
++      fprintf(log_file, "ID_AUDIO_FORMAT=%.4s\n", (char *)&sh_audio->format);
++    else
++      fprintf(log_file, "ID_AUDIO_FORMAT=%d\n", sh_audio->format);
++    fprintf(log_file, "ID_AUDIO_BITRATE=%d\n", sh_audio->i_bps*8);
++    fprintf(log_file, "ID_AUDIO_RATE=%d\n", sh_audio->samplerate);
++    fprintf(log_file, "ID_AUDIO_NCH=%d\n", sh_audio->channels);
++  }
++  fprintf(log_file, "ID_LENGTH=%.2lf\n", demuxer_get_time_length(demuxer));
++  fclose(log_file);
++}
++
++void dump_stream_position(demuxer_t *demuxer, char* log_filename)
++{
++  int fd, percent;
++  FILE * log_file;
++
++  fd = open(log_filename, O_RDWR | O_NONBLOCK);
++  log_file = fdopen(fd, "w");
++
++  off_t len = ( demuxer->movi_end - demuxer->movi_start );
++  off_t pos = ( demuxer->file_format == DEMUXER_TYPE_AUDIO ? stream->pos : demuxer->filepos );
++  percent = (len <= 0 ? 0 : ( pos - demuxer->movi_start ) * 100 / len );
++
++  fprintf(log_file, "ID_VIDEO_PERCENT=%i\n", percent);
++
++  fclose(log_file);
++}
++
+ int playtree_add_playlist(play_tree_t* entry)
+ {
+   play_tree_add_bpf(entry,filename);
+@@ -2425,6 +2501,8 @@
+   mp_msg(MSGT_GLOBAL,MSGL_INFO,"ID_LENGTH=%.2lf\n", demuxer_get_time_length(demuxer));
+ }
+ 
++dump_stream_info(demuxer, "/tmp/mp_streaminfo");
++
+ if(!sh_video) goto main; // audio-only
+ 
+ //================== Init VIDEO (codec & libvo) ==========================
+@@ -4877,6 +4955,8 @@
+     loop_seek = 1;
+   }
+ 
++  dump_stream_position(demuxer, "/tmp/mp_streaminfo");
++
+ if(rel_seek_secs || abs_seek_pos){
+   current_module="seek";
+   if(demux_seek(demuxer,rel_seek_secs,audio_delay,abs_seek_pos)){
