@@ -568,7 +568,7 @@ else
   SPLASH_OLD="0"
 fi
 
-$DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Bootsplash" $SPLASH_ARGUMENT --yesno "\nDo you want to enable bootsplash?\n" 0 0 && SPLASH="silent" || SPLASH="0"
+$DIALOG --aspect 15 --backtitle "$BACKTITLE" --defaultno --title "Bootsplash" $SPLASH_ARGUMENT --yesno "\nDo you want to disable bootsplash?\n" 0 0 && SPLASH="0" || SPLASH="silent"
 
 grubprefix=/boot/grub
 grubdir=di$grubprefix
