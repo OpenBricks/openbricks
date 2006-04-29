@@ -16,6 +16,14 @@ record_fifo=/var/record_fifo
 
 file="$1"
 
+# Test for special input sources, given by $1 (with :// removed)
+file_test () 
+{ 
+  [ -z $1 ] && return 1
+  file_strp=`echo $file | sed "s/^$1\:\/\///"`
+  [ $(( ${#file}-${#file_strp} )) -eq $(( ${#1} + 3 )) ]&& return 0
+}
+
 [ ! -f $RECORDER_CFG ] && exit 1
 . $RECORDER_CFG
 
@@ -39,11 +47,12 @@ if [ ! -f $RECORD_STATUS ]; then
   sed -i -e "s|^o=\".*\.\(.*\)\"|o=\"$SAVE_PATH/$OUTPUT\.\1\"|" $CFG
 
   # Check if dvb source, and if so force dump stream.
-  dvb_chk=`echo $file |sed "s/dvb\:\/\///"`
-  [ $(( ${#file}-${#dvb_chk} )) -eq 6 ] && RECORD_PROFILE=dump
+  file_test dvb && RECORD_PROFILE=dump
 
   # Force release of (possibly) locked v4l/dvb devices
   echo "loadfile $bg_file" > $mp_fifo &
+
+  [ `file_test dvb` -o `file_test tv` ] && sleep 1
 
   # Start Recording in background
   $MENCODER -profile $RECORD_PROFILE "$file" 2>&1 > /dev/null &
