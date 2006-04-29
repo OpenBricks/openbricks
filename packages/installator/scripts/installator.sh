@@ -88,7 +88,8 @@ setup_network () {
   f="$1/etc/network"
 
   # Get type of physical interface
-  phy_type=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "Network Physical Interface" --menu "\nGeeXboX can only use one network physical interface at a time. If you have more than one NIC, GeeXboX will use the first one. If you have both a traditional Ethernet adapter and a Wireless card, GeeXboX will use the wireless card by default. It is recommended to keep physical interface auto-detection but you may also want to force the use of one kind of interface.\n" 0 0 0 auto "Auto detection (recommended)" ethernet "Force using Ethernet card" wifi "Force using Wireless card"` || exit 1
+  val=`grep PHY_TYPE $f | cut -d'"' -f2`
+  phy_type=`$DIALOG --no-cancel --aspect 15 --default-item $val --stdout --backtitle "$title" --title "Network Physical Interface" --menu "\nGeeXboX can only use one network physical interface at a time. If you have more than one NIC, GeeXboX will use the first one. If you have both a traditional Ethernet adapter and a Wireless card, GeeXboX will use the wireless card by default. It is recommended to keep physical interface auto-detection but you may also want to force the use of one kind of interface.\n" 0 0 0 auto "Auto detection (recommended)" ethernet "Force using Ethernet card" wifi "Force using Wireless card"` || exit 1
 
   # Get wireless settings only if required
   if [ $phy_type = "auto" -o $phy_type = "wifi" ]; then
