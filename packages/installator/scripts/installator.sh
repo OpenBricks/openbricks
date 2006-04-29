@@ -259,7 +259,7 @@ setup_recorder () {
   $DIALOG --aspect 12 --stdout --backtitle "$title" --title "Recording Capabilities (EXPERIMENTAL) ..." --yesno "\nGeeXboX allows you to record different kinds of media (TV, DVB, NetStreams ...) to disk, according to various encoding profiles (MPEG 1/2, DVD ...). You may want to use this feature and thus, need to specify an HDD location where to save the records.\n\nWARNING: This is an _EXPERIMENTAL_ feature. Be aware that your HDD will be mounted R/W while recording streams to it, leading to a potential risk of disk data corruption.\n\nWould you still configure GeeXboX recording capabilities ?\n" 0 0 || return
 
   # get list of encoding profiles
-  for profile in `grep "^\[" $mencoder_cfg | grep -v common | sed 's/\[//' | sed 's/\]//'`; do
+  for profile in `grep "^\[" $mencoder_cfg | grep -v common | grep -v dump | sed -e 's/\[//' -e 's/\]//'`; do
     profiles="$profiles $profile ''"
   done
 
