@@ -19,40 +19,42 @@ MONTH=$(date '+%m')
 YEAR=$(date '+%Y')
 year=$(date '+%y')
 
+SC_TUNE=$(sed -n -e "s/\"//g" -e "s/^SHOUTCASTTUNE_URI=\(.*\)/\1/p" /etc/netstream | sed -e "s/\//\\\\\//g")
+
 if [ "$SHOUTCAST" = "yes" ]; then
   # set shoutcast network stream menu list
-  echo "<cmdlist name=\"shoutcast_list\" title=\"Shoutcast Radio Network Stream\" ptr=\"<>\" >" >> /etc/mplayer/menu.conf
+  echo "<cmdlist name=\"shoutcast_list\" title=\"Shoutcast Radio Network Stream\" ptr=\"<>\" auto-close=\"yes\" >" >> /etc/mplayer/menu.conf
   wget -q --read-timeout=$TIMEOUT --tries=$TRIES -O /tmp/streamtmp `sed -n -e "s/\"//g" -e "s/^SHOUTCAST_URI=\(.*\)/\1/p" /etc/netstream` || ( sed -i 's/.*ok="set_menu shoutcast_list".*//' /etc/mplayer/menu.conf && echo "" > /tmp/streamtmp )
-  grep -e "Playstring" -e "Name>" /tmp/streamtmp | sed -e "s/\&amp\;/\&/g" -e "s/^.*\<entry Playstring\=\"/\<e ok\=\"menu hide ;loadlist /g" -e "s/\"\>/\"/g" -e "s/<Name>/name\=\"/g" -e "s/<\/Name>/\"\/>/g" -e "s/\">/\"/g" >> /etc/mplayer/menu.conf
+  grep -e "station>" /tmp/streamtmp | sed -e "s/\&amp\;/\&/g" -e "s/^.*name=\"\([^\"]*\)\".*id=\"\([^\"]*\)\".*/\  \<e name=\"\1\" ok=\"loadlist $SC_TUNE?id=\2\"\/\>/g" >> /etc/mplayer/menu.conf
   echo "</cmdlist>" >> /etc/mplayer/menu.conf
 else
   # remove shoutcast network stream from menu if is not specified
   sed -i 's/.*ok="set_menu shoutcast_list".*//' /etc/mplayer/menu.conf
 fi
 
-# SHOUTcastTV content filter
-if [ -n "$BLACKLIST" ]; then
-  BL="-v"
-  for I in $BLACKLIST; do
-    BL="$BL -e \<Genre\>.*$I"
-  done
-else # Accept all Genre
-  BL="-B 3 -e \<Genre\>.*"
-fi
-
-if [ -n "$WHITELIST" ]; then
-  for I in $WHITELIST; do
-    WL="$WL -e \<Genre\>.*$I"
-  done
-else # Accept all Genre
-  WL="-e \<Genre\>.*"
-fi
-
 if [ "$SHOUTCASTTV" = "yes" ]; then
+  # SHOUTcastTV content filter
+  if [ -n "$BLACKLIST" ]; then
+    BL="-v"
+    for I in $BLACKLIST; do
+      BL="$BL -e genre=\"[^\"]*$I[^\"]*\""
+    done
+  else # Accept all Genre
+    BL="-e genre=\"[^\"]*\""
+  fi
+
+  if [ -n "$WHITELIST" ]; then
+    for I in $WHITELIST; do
+      WL="$WL -e genre=\"[^\"]*$I[^\"]*\""
+    done
+  else # Accept all Genre
+    WL="-e genre=\"[^\"]*\""
+  fi
+
   # set shoutcast tv network stream menu
-  echo "<cmdlist name=\"shoutcasttv_list\" title=\"Shoutcast TV Network Stream\" ptr=\"<>\" >" >> /etc/mplayer/menu.conf
+  echo "<cmdlist name=\"shoutcasttv_list\" title=\"Shoutcast TV Network Stream\" ptr=\"<>\" auto-close=\"yes\" >" >> /etc/mplayer/menu.conf
   wget -q --read-timeout=$TIMEOUT --tries=$TRIES -O /tmp/streamtmp `sed -n -e "s/\"//g" -e "s/^SHOUTCASTTV_URI=\(.*\)/\1/p" /etc/netstream` || ( sed -i 's/.*ok="set_menu shoutcasttv_list".*//' /etc/mplayer/menu.conf && echo "" > /tmp/streamtmp )
-  grep -i $BL /tmp/streamtmp | grep -i -B 3 $WL | grep -e "Playstring" -e "Name>" | sed -e "s/\&amp\;/\&/g" -e "s/^.*\<entry Playstring\=\"/\<e ok\=\"menu hide ;loadlist /g" -e "s/\"\>/\"/g" -e "s/<Name>/name\=\"/g" -e "s/<\/Name>/\"\/>/g" -e "s/\">/\"/g" >> /etc/mplayer/menu.conf
+  grep -i $BL /tmp/streamtmp | grep -i $WL | grep -e "station>" | sed -e "s/\&amp\;/\&/g" -e "s/^.*name=\"\([^\"]*\)\".*id=\"\([^\"]*\)\".*/\  \<e name=\"\1\" ok=\"loadlist $SC_TUNE?id=\2\"\/\>/g" >> /etc/mplayer/menu.conf
   echo "</cmdlist>" >> /etc/mplayer/menu.conf
 else
   # remove shoutcast network stream from menu if is not specified
@@ -62,8 +64,8 @@ fi
 if [ "$NETSTREAM" = "yes" ]; then
   # set network stream menu list
   if [ `grep -c "^STREAM" /etc/netstream` != 0 ]; then
-    echo "<cmdlist name=\"netstream_list\" title=\"Custom Defined Network Stream\" ptr=\"<>\" >" >> /etc/mplayer/menu.conf
-    sed -n 's/^STREAM=\"\(.*\)\":\(.*\)/<e name=\"\2\" ok=\"menu hide ;loadfile \1\"\/>/p' /etc/netstream | sed -e "s/%DD/${DAY}/g" -e "s/%MM/${MONTH}/g" -e "s/%YY/${YEAR}/g" -e "s/%yy/${year}/g" >> /etc/mplayer/menu.conf
+    echo "<cmdlist name=\"netstream_list\" title=\"Custom Defined Network Stream\" ptr=\"<>\" auto-close=\"yes\" >" >> /etc/mplayer/menu.conf
+    sed -n "s/^STREAM=\"\(.*\)\":\(.*\)/<e name=\"\2\" ok=\"loadfile '\1'\"\/>/p" /etc/netstream | sed -e "s/%DD/${DAY}/g" -e "s/%MM/${MONTH}/g" -e "s/%YY/${YEAR}/g" -e "s/%yy/${year}/g" >> /etc/mplayer/menu.conf
     echo "</cmdlist>" >> /etc/mplayer/menu.conf
   else
     # remove network stream from menu if is not specified
@@ -83,11 +85,11 @@ if [ "$NETSTREAM" = "yes" ]; then
   for J in `sed -n -e "s/^EXTM3U=\".*\":\(.*\)/\1/p" /etc/netstream | sed -e "s/ /_/g"`; do
     echo "<cmdlist name=\"${J}_list\" " >> /etc/mplayer/menu.conf
     J=$(echo ${J} | sed -e "s/_/ /g")
-    echo "title=\"${J}\" ptr=\"<>\" >" >> /etc/mplayer/menu.conf
+    echo "title=\"${J}\" ptr=\"<>\" auto-close=\"yes\">" >> /etc/mplayer/menu.conf
     for I in `sed -n -e "s/^EXTM3U=\"\(.*\)\":${J}/\1/p" /etc/netstream`; do
       wget -q --read-timeout=$TIMEOUT --tries=$TRIES -O /tmp/streamtmp $I || continue
       ENTRIES=$((ENTRIES+1))
-      grep -e "#EXTINF" -e "://" /tmp/streamtmp | sed -e "s/^#EXTINF:[-]*[[:digit:]]*,\(.*\)\>/<e name=\"\1\"/g" -e "s/%DD/${DAY}/g" -e "s/%MM/${MONTH}/g" -e "s/%YY/${YEAR}/g" -e "s/%yy/${year}/g" -e "s/\(.*\):\/\/\(.*\)\>/ok\=\"menu hide ;loadfile \1:\/\/\2\"\/>/g" >> /etc/mplayer/menu.conf
+      grep -e "#EXTINF" -e "://" /tmp/streamtmp | sed -e "s/^#EXTINF:[-]*[[:digit:]]*,\(.*\)\>/<e name=\"\1\"/g" -e "s/%DD/${DAY}/g" -e "s/%MM/${MONTH}/g" -e "s/%YY/${YEAR}/g" -e "s/%yy/${year}/g" -e "s/\(.*\):\/\/\(.*\)\>/ok\=\"loadfile '\1:\/\/\2'\"\/>/g" >> /etc/mplayer/menu.conf
     done
     echo "</cmdlist>" >> /etc/mplayer/menu.conf
   done
