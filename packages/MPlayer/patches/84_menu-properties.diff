@@ -1,10 +1,26 @@
-diff -Naur MPlayer-20051213.orig/libmenu/menu_param.c MPlayer-20051213/libmenu/menu_param.c
---- MPlayer-20051213.orig/libmenu/menu_param.c	2006-03-04 13:25:31.000000000 +0100
-+++ MPlayer-20051213/libmenu/menu_param.c	2006-03-04 13:25:53.000000000 +0100
-@@ -30,6 +30,17 @@
+diff -r 84218a4f7167 libmenu/menu_param.c
+--- a/libmenu/menu_param.c	Sun Apr 30 16:54:40 2006 +0200
++++ b/libmenu/menu_param.c	Sun Apr 30 16:54:41 2006 +0200
+@@ -9,6 +9,14 @@
+ #include <sys/types.h>
+ #include <sys/stat.h>
+ #include <ctype.h>
++#include <sys/socket.h>
++#include <sys/ioctl.h>
++#include <net/if.h>
++#include <net/if_arp.h>
++#include <netinet/in.h>
++#include <mntent.h>
++#include <sys/vfs.h>
++#include <libgen.h>
+ 
+ #include "mp_msg.h"
+ #include "help_mp.h"
+@@ -25,6 +33,16 @@
+ #include "menu_list.h"
  #include "input/input.h"
  #include "osdep/keycodes.h"
- 
++
 +#include "codec-cfg.h"
 +#include "libmpdemux/stream.h"
 +#include "libmpdemux/demuxer.h"
@@ -14,15 +30,18 @@ diff -Naur MPlayer-20051213.orig/libmenu/menu_param.c MPlayer-20051213/libmenu/m
 +extern sh_video_t *sh_video;
 +extern sh_audio_t *sh_audio;
 +extern demuxer_t *demuxer;
-+extern demuxer_t *bg_demuxer;
-+
+ 
  struct list_entry_s {
    struct list_entry p;
-   m_option_t* opt;
-@@ -95,6 +106,76 @@
- #define OPT_MAC "mac"
- #define OPT_NAME "name"
-
+@@ -59,6 +77,26 @@ static m_option_t cfg_fields[] = {
+ };
+ 
+ #define mpriv (menu->priv)
++
++#define OPT_IP "ip"
++#define OPT_MAC "mac"
++#define OPT_NAME "name"
++
 +#define OPT_VCODEC "Video Codec"
 +#define OPT_VBITRATE "Video Bitrate"
 +#define OPT_RESOLUTION "Resolution"
@@ -38,68 +57,50 @@ diff -Naur MPlayer-20051213.orig/libmenu/menu_param.c MPlayer-20051213/libmenu/m
 +#define OPT_INFO_COMMENT "Comment"
 +#define OPT_INFO_TRACK "Track"
 +#define OPT_INFO_GENRE "Genre"
-+
-+static int
-+is_valid_video_property (char *prop)
-+{
-+  if (!prop || !sh_video)
-+    return 0;
-+
-+  if (bg_demuxer && bg_demuxer->video && bg_demuxer->video->sh
-+      && sh_video == bg_demuxer->video->sh)
-+    return 0;
-+  
-+  if (strcmp (prop, OPT_VCODEC) != 0 &&
-+      strcmp (prop, OPT_VBITRATE) != 0 &&
-+      strcmp (prop, OPT_RESOLUTION) != 0)
-+    return 0;
-+  
-+  return 1;
-+}
-+
-+static int
-+is_valid_audio_property (char *prop)
-+{
-+  if (!prop || !sh_audio)
-+    return 0;
-+
-+  if (strcmp (prop, OPT_ACODEC) != 0 &&
-+      strcmp (prop, OPT_ABITRATE) != 0 &&
-+      strcmp (prop, OPT_SAMPLES) != 0)
-+    return 0;
-+  
-+  return 1;
-+}
-+
-+static int
-+is_valid_info_property (char *prop)
-+{
-+  if (!prop || !demuxer)
-+    return 0;
-+
-+  if (!bg_demuxer || !bg_demuxer->video || !bg_demuxer->video->sh
-+      || sh_video != bg_demuxer->video->sh)
-+    return 0;
-+  
-+  if (strcmp (prop, OPT_INFO_TITLE) != 0 &&
-+      strcmp (prop, OPT_INFO_ARTIST) != 0 &&
-+      strcmp (prop, OPT_INFO_ALBUM) != 0 &&
-+      strcmp (prop, OPT_INFO_YEAR) != 0 &&
-+      strcmp (prop, OPT_INFO_COMMENT) != 0 &&
-+      strcmp (prop, OPT_INFO_TRACK) != 0 &&
-+      strcmp (prop, OPT_INFO_GENRE) != 0)
-+    return 0;
-+  
-+  return 1;
-+}
-+
- static int is_part(char *name) {
-   if(*name != 'h' && *name != 's')
-     return 0;
-@@ -152,6 +236,22 @@
-     free(mpriv->edit);
+ 
+ m_option_t*  mp_property_find(char* name);
+ 
+@@ -86,12 +124,66 @@ static void update_entries(menu_t* menu)
+     if(e->opt) entry_set_text(menu,e);
  }
  
++static int is_part(char *name) {
++  if(*name != 'h' && *name != 's')
++    return 0;
++  name++;
++  if(*name != 'd')
++    return 0;
++  name++;
++  if(*name < 'a' || *name > 'z')
++    return 0;
++  name++;
++  if(*name < '0' || *name > '9')
++    return 0;
++  return 1;
++}
++
++static char *part_size(char *part) {
++  static char size[32];
++  char name[] = "/dev/xdxx";
++  struct mntent *mpoint;
++  struct statfs buf;
++  FILE *mtab;
++
++  strcpy(name+5, part);
++  mtab = setmntent("/proc/mounts", "r");
++  while((mpoint = getmntent(mtab)) != NULL)
++    if(!strcmp(mpoint->mnt_fsname, name))
++      {
++        endmntent(mtab);
++        statfs(mpoint->mnt_dir, &buf);
++        sprintf(size, "%lld M", (buf.f_bsize * (long long)buf.f_bfree) >> 20);
++        return size;
++      }
++  endmntent(mtab);
++  sprintf(size, "unkown");
++  return size;
++}
++
 +static char *
 +grab_demuxer_info (char *tag)
 +{
@@ -116,76 +117,124 @@ diff -Naur MPlayer-20051213.orig/libmenu/menu_param.c MPlayer-20051213/libmenu/m
 +  return info[2*n+1] ? strdup (info[2*n+1]) : strdup ("");
 +}
 +
- static int openMenu(menu_t* menu, char* args) {
-   list_entry_t* e;
-   char *txt;
-@@ -181,7 +281,7 @@
-       printf("Can't get value of option %s\n",e->opt->name);
-       continue;
-     } else if(!val) {
--      if (!strcmp(e->p.txt, "ip")) {
-+      if (!strcmp(e->p.txt, OPT_IP)) {
-         struct if_nameindex *ifs, *ifp;
-         struct ifreq ifr;
-         int fd, ip;
-@@ -207,6 +307,42 @@
-       }
-       else if (!strcmp (e->p.txt, OPT_NAME))
-         val = strdup (basename (filename));
--      } else if (is_part(e->p.txt)) {
-+      else if (!strcmp (e->p.txt, OPT_VCODEC))
-+      {
+ static int parse_args(menu_t* menu,char* args) {
+   char *element,*body, **attribs, *name;
+   list_entry_t* m = NULL;
+   int r;
+   m_option_t* opt;
+   ASX_Parser_t* parser = asx_parser_new();
++  char *val;
+   
+ 
+   while(1) {
+@@ -125,6 +217,103 @@ static int parse_args(menu_t* menu,char*
+     }
+ 
+     name = asx_get_attrib("property",attribs);
++    val = NULL;
++    if(name) {
++      if(!strcmp(name, OPT_IP)) {
++        struct if_nameindex *ifs, *ifp;
++        struct ifreq ifr;
++        int fd, ip;
++
++        fd = socket(AF_INET, SOCK_DGRAM, 0);
++        if (fd >= 0) {
++          for (ifp = ifs = if_nameindex (); ifp->if_index != 0; ifp++) {
++            if (strcmp (ifp->if_name, "lo") && strcmp (ifp->if_name, "sit0")) {
++              strcpy(ifr.ifr_name, ifp->if_name);
++              ifr.ifr_addr.sa_family = AF_INET;
++              if (ioctl(fd, SIOCGIFADDR, &ifr) == 0) {
++                val = (char *) malloc (16);
++                ip = ((struct sockaddr_in *) &ifr.ifr_addr)->sin_addr.s_addr;
++                ip = ntohl (ip);
++                sprintf (val, "%d.%d.%d.%d",
++                         (ip>>24)&0xFF, (ip>>16)&0xFF, (ip>>8)&0xFF, ip&0xFF);
++              } else {
++                val = strdup("NULL");
++              }
++              break;
++            }
++          }
++          if_freenameindex (ifs);
++          close (fd);
++        }
++      } else if (!strcmp(name, OPT_MAC)) {
++        struct if_nameindex *ifs, *ifp;
++        struct ifreq ifr;
++        int fd;
++
++        fd = socket(AF_INET, SOCK_DGRAM, 0);
++        if (fd >= 0) {
++          for (ifp = ifs = if_nameindex (); ifp->if_index != 0; ifp++) {
++            if (strcmp (ifp->if_name, "lo") && strcmp (ifp->if_name, "sit0")) {
++              strcpy(ifr.ifr_name, ifp->if_name);
++              ifr.ifr_addr.sa_family = AF_INET;
++              if (ioctl(fd, SIOCGIFHWADDR, &ifr) == 0) {
++                val = (char *) malloc (20);
++                unsigned char *hwaddr = (unsigned char *)ifr.ifr_hwaddr.sa_data;
++                sprintf (val, "%02X:%02X:%02X:%02X:%02X:%02X",
++                         hwaddr[0],hwaddr[1],hwaddr[2],hwaddr[3],hwaddr[4],hwaddr[5]);
++              } else {
++                val = strdup("NULL");
++              }
++              break;
++            }
++          }
++          if_freenameindex (ifs);
++          close (fd);
++        }
++      } else if (!strcmp (name, OPT_NAME)) {
++        val = strdup (basename (filename));
++
++      } else if (!strcmp (name, OPT_VCODEC)) {
 +        val = (char *) malloc (4);
 +        sprintf (val, "%.4s", (char *) &sh_video->format);
-+      }
-+      else if (!strcmp (e->p.txt, OPT_VBITRATE))
-+      {
++      } else if (!strcmp (name, OPT_VBITRATE)) {
 +        val = (char *) malloc (16);
-+        sprintf (val, "%d kbps", (int) (sh_video->i_bps * 8 / 1024)); 
-+      }
-+      else if (!strcmp (e->p.txt, OPT_RESOLUTION))
-+      {
++        sprintf (val, "%d kbps", (int) (sh_video->i_bps * 8 / 1024));
++      } else if (!strcmp (name, OPT_RESOLUTION)) {
 +        val = (char *) malloc (16);
 +        sprintf (val, "%d x %d", sh_video->disp_w, sh_video->disp_h);
-+      }
-+      else if (!strcmp (e->p.txt, OPT_ACODEC))
++      } else if (!strcmp (name, OPT_ACODEC)) {
 +        val = strdup (sh_audio->codec->name);
-+      else if (!strcmp (e->p.txt, OPT_ABITRATE))
-+      {
++      } else if (!strcmp (name, OPT_ABITRATE)) {
 +        val = (char *) malloc (16);
-+        sprintf (val, "%d kbps", (int) (sh_audio->i_bps * 8 / 1000)); 
-+      }
-+      else if (!strcmp (e->p.txt, OPT_SAMPLES))
-+      {
++        sprintf (val, "%d kbps", (int) (sh_audio->i_bps * 8 / 1000));
++      } else if (!strcmp (name, OPT_SAMPLES)) {
 +        val = (char *) malloc (16);
 +        sprintf (val, "%d Hz, %d ch.",
 +                 sh_audio->samplerate, sh_audio->channels);
++      } else if (!strcmp (name, OPT_INFO_TITLE) ||
++                 !strcmp (name, OPT_INFO_ARTIST) ||
++                 !strcmp (name, OPT_INFO_ALBUM) ||
++                 !strcmp (name, OPT_INFO_YEAR) ||
++                 !strcmp (name, OPT_INFO_COMMENT) ||
++                 !strcmp (name, OPT_INFO_TRACK) ||
++                 !strcmp (name, OPT_INFO_GENRE)) {
++        val = grab_demuxer_info (name);
++
++
++      } else if (is_part(name)) {
++        val = strdup(part_size(name));
 +      }
-+      else if (!strcmp (e->p.txt, OPT_INFO_TITLE) ||
-+               !strcmp (e->p.txt, OPT_INFO_ARTIST) ||
-+               !strcmp (e->p.txt, OPT_INFO_ALBUM) ||
-+               !strcmp (e->p.txt, OPT_INFO_YEAR) ||
-+               !strcmp (e->p.txt, OPT_INFO_COMMENT) ||
-+               !strcmp (e->p.txt, OPT_INFO_TRACK) ||
-+               !strcmp (e->p.txt, OPT_INFO_GENRE))
-+        val = grab_demuxer_info (e->p.txt);
-+      else if (is_part(e->p.txt)) {
-         val = strdup(part_size(e->p.txt));
-       } else
-         val = strdup("NULL");
-diff -Naur MPlayer-20051213.orig/mplayer.c MPlayer-20051213/mplayer.c
---- MPlayer-20051213.orig/mplayer.c	2006-03-04 13:25:31.000000000 +0100
-+++ MPlayer-20051213/mplayer.c	2006-03-04 13:35:25.000000000 +0100
-@@ -275,7 +275,7 @@
- int forced_subs_only=0;
- 
- static char* bg_video = NULL;
--static demuxer_t *bg_demuxer = NULL;
-+demuxer_t *bg_demuxer = NULL;
- 
- // cache2:
-        int stream_cache_size=-1;
-@@ -351,8 +351,8 @@
++    }
++    if (val) {
++      int l = strlen(name) + 2 + strlen(val) + 1;
++      m = calloc(1,sizeof(struct list_entry_s));
++      m->p.txt = malloc(l);
++      sprintf(m->p.txt,"%s: %s",name,val);
++      free(val);
++      menu_list_add_entry(menu,m);
++      goto next_element;
++    }
+     opt = name ? mp_property_find(name) : NULL;
+     if(!opt) {
+       mp_msg(MSGT_OSD_MENU,MSGL_WARN,MSGTR_LIBMENU_PrefMenuEntryDefinitionsNeed,parser->line);
+diff -r 84218a4f7167 mplayer.c
+--- a/mplayer.c	Sun Apr 30 16:54:40 2006 +0200
++++ b/mplayer.c	Sun Apr 30 16:54:41 2006 +0200
+@@ -363,8 +363,8 @@ extern int mp_msg_level_all;
  
  stream_t* stream=NULL;
  demuxer_t *demuxer=NULL;
@@ -193,6 +242,6 @@ diff -Naur MPlayer-20051213.orig/mplayer.c MPlayer-20051213/mplayer.c
 -static sh_video_t *sh_video=NULL;
 +sh_audio_t *sh_audio=NULL;
 +sh_video_t *sh_video=NULL;
- 
- char* current_module=NULL; // for debugging
- 
+ static demux_stream_t *d_audio=NULL;
+ static demux_stream_t *d_video=NULL;
+ static demux_stream_t *d_dvdsub=NULL;

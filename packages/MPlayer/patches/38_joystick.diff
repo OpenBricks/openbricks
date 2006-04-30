@@ -1,17 +1,17 @@
-diff -Naur MPlayer-20051212.orig/input/joystick.c MPlayer-20051212/input/joystick.c
---- MPlayer-20051212.orig/input/joystick.c	2005-12-13 00:22:28.000000000 +0100
-+++ MPlayer-20051212/input/joystick.c	2005-12-13 00:32:12.000000000 +0100
-@@ -33,6 +33,9 @@
- int axis[10];
- int btns = 0;
+diff -r e9742d85360a input/joystick.c
+--- a/input/joystick.c	Sun Apr 30 16:54:31 2006 +0200
++++ b/input/joystick.c	Sun Apr 30 16:54:32 2006 +0200
+@@ -32,6 +32,9 @@
  
+ int axis[256];
+ int btns = 0;
++
 +// Callback to allow the menu filter to grab the incoming joystick event
 +void (*mp_input_joy_cb)(int code) = NULL;
-+
+ 
  int mp_input_joystick_init(char* dev) {
    int fd,l=0;
-   int inited = 0;
-@@ -125,7 +128,14 @@
+@@ -125,7 +128,14 @@ int mp_input_joystick_read(int fd) {
      btns &= ~(1 << ev.number);
      btns |= (ev.value << ev.number);
      if(ev.value == 1)
@@ -27,7 +27,7 @@ diff -Naur MPlayer-20051212.orig/input/joystick.c MPlayer-20051212/input/joystic
      else
        return (JOY_BTN0+ev.number); 
    } else if(ev.type & JS_EVENT_AXIS) {
-@@ -138,6 +148,11 @@
+@@ -138,6 +148,11 @@ int mp_input_joystick_read(int fd) {
      } else if(ev.value <= JOY_AXIS_DELTA && ev.value >= -JOY_AXIS_DELTA && axis[ev.number] != 0) {
        int r = axis[ev.number] == 1 ? JOY_AXIS0_PLUS+(2*ev.number) : JOY_AXIS0_MINUS+(2*ev.number);
        axis[ev.number] = 0;
@@ -39,29 +39,29 @@ diff -Naur MPlayer-20051212.orig/input/joystick.c MPlayer-20051212/input/joystic
        return r;
      } else
        return MP_INPUT_NOTHING;
-diff -Naur MPlayer-20051212.orig/input/joystick.h MPlayer-20051212/input/joystick.h
---- MPlayer-20051212.orig/input/joystick.h	2005-12-13 00:22:28.000000000 +0100
-+++ MPlayer-20051212/input/joystick.h	2005-12-13 00:32:12.000000000 +0100
-@@ -37,3 +37,5 @@
+diff -r e9742d85360a input/joystick.h
+--- a/input/joystick.h	Sun Apr 30 16:54:31 2006 +0200
++++ b/input/joystick.h	Sun Apr 30 16:54:32 2006 +0200
+@@ -37,3 +37,5 @@ int mp_input_joystick_init(char* dev);
  
  int mp_input_joystick_read(int fd);
  
 +// Set this to grab all incoming key codes
 +extern void (*mp_input_joy_cb)(int code);
-diff -Naur MPlayer-20051212.orig/libmenu/menu.c MPlayer-20051212/libmenu/menu.c
---- MPlayer-20051212.orig/libmenu/menu.c	2005-12-13 00:22:28.000000000 +0100
-+++ MPlayer-20051212/libmenu/menu.c	2005-12-13 00:32:32.000000000 +0100
-@@ -19,6 +19,9 @@
+diff -r e9742d85360a libmenu/menu.c
+--- a/libmenu/menu.c	Sun Apr 30 16:54:31 2006 +0200
++++ b/libmenu/menu.c	Sun Apr 30 16:54:32 2006 +0200
+@@ -20,6 +20,9 @@
+ #include "m_option.h"
  #include "m_struct.h"
  #include "menu.h"
- 
++
 +#include "input/input.h"
 +#include "input/joystick.h"
-+
+ 
  extern menu_info_t menu_info_cmdlist;
  extern menu_info_t menu_info_pt;
- extern menu_info_t menu_info_filesel;
-@@ -179,17 +182,23 @@
+@@ -181,21 +184,27 @@ void menu_dflt_read_key(menu_t* menu,int
  void menu_dflt_read_key(menu_t* menu,int cmd) {
    switch(cmd) {
    case KEY_UP:
@@ -73,22 +73,26 @@ diff -Naur MPlayer-20051212.orig/libmenu/menu.c MPlayer-20051212/libmenu/menu.c
      menu->read_cmd(menu,MENU_CMD_DOWN);
      break;
    case KEY_LEFT:
-   case KEY_ESC:
 +  case JOY_AXIS0_MINUS:
+     menu->read_cmd(menu,MENU_CMD_LEFT);
+     break;
+   case KEY_ESC:
 +  case JOY_BTN1:
      menu->read_cmd(menu,MENU_CMD_CANCEL);
      break;
    case KEY_RIGHT:
-   case KEY_ENTER:
 +  case JOY_AXIS0_PLUS:
+     menu->read_cmd(menu,MENU_CMD_RIGHT);
+     break;
+   case KEY_ENTER:
 +  case JOY_BTN0:
      menu->read_cmd(menu,MENU_CMD_OK);
      break;
    }
-diff -Naur MPlayer-20051212.orig/libmenu/vf_menu.c MPlayer-20051212/libmenu/vf_menu.c
---- MPlayer-20051212.orig/libmenu/vf_menu.c	2005-12-13 00:22:28.000000000 +0100
-+++ MPlayer-20051212/libmenu/vf_menu.c	2005-12-13 00:32:12.000000000 +0100
-@@ -19,6 +19,7 @@
+diff -r e9742d85360a libmenu/vf_menu.c
+--- a/libmenu/vf_menu.c	Sun Apr 30 16:54:31 2006 +0200
++++ b/libmenu/vf_menu.c	Sun Apr 30 16:54:32 2006 +0200
+@@ -21,6 +21,7 @@
  #include "libvo/video_out.h"
  #include "libvo/font_load.h"
  #include "input/input.h"
@@ -96,7 +100,7 @@ diff -Naur MPlayer-20051212.orig/libmenu/vf_menu.c MPlayer-20051212/libmenu/vf_m
  #include "m_struct.h"
  #include "menu.h"
  
-@@ -206,6 +207,14 @@
+@@ -212,6 +213,14 @@ static int put_image(struct vf_instance_
    if(mp_input_key_cb && !vf->priv->current->show)
      mp_input_key_cb = NULL;
  
@@ -111,7 +115,7 @@ diff -Naur MPlayer-20051212.orig/libmenu/vf_menu.c MPlayer-20051212/libmenu/vf_m
    if(mpi->flags&MP_IMGFLAG_DIRECT)
      dmpi = mpi->priv;
    else {
-@@ -219,6 +228,10 @@
+@@ -225,6 +234,10 @@ static int put_image(struct vf_instance_
    } else {
      if(mp_input_key_cb)
        mp_input_key_cb = NULL;
