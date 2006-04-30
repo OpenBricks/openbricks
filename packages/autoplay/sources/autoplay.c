@@ -437,10 +437,9 @@ main (int argc, char **argv)
   char *filename;
   char *play_dvd_cmd;
   struct stat st;
+  struct stat st_ap;
   int n, status, speed=0, off_silent=0;
   time_t last_mtime = 0;
-  FILE *config;
-  char off_str[4];
 
   filename = (char *) malloc (PATH_MAX + 10);
 
@@ -460,7 +459,7 @@ main (int argc, char **argv)
   if (!stat ("/var/use_dxr3", &st) && S_ISREG (st.st_mode))
     play_dvd_cmd = "set_option dvd-device %s save\nquit 167\n";
   else
-    play_dvd_cmd = "set_option dvd-device %s save\nmenu hide ;play_dvd\n";
+    play_dvd_cmd = "set_option dvd-device %s save\nmenu hide\nplay_dvd\n";
 
   drives = load_mnts(1);
   if (!drives)
@@ -470,16 +469,10 @@ main (int argc, char **argv)
     {
       usleep(1000000);
 
-      if ((config=fopen("/var/autoplay_state","r"))!=NULL) 
-        {
-          if (fgets(off_str, 4, config) && strncmp("off",off_str,3)==0)
-            off_silent=1;
-          else
-            off_silent=0;
-          fclose(config);
-        }
-      else
+      if (!stat("/var/autoplay", &st_ap)) 
         off_silent=0;
+      else
+        off_silent=1;
 
       if (!stat("/etc/mnts", &st) && st.st_mtime != last_mtime)
         {
@@ -526,7 +519,7 @@ main (int argc, char **argv)
                       case CDS_AUDIO:
                         /* it's an audio CD */
                         if (!off_silent)
-                          printf("set_option cdda-device %s save\nmenu hide ;play_cdda\n", drive->dev);
+                          printf("set_option cdda-device %s save\nmenu hide\nplay_cdda\n", drive->dev);
                         break;
                       case CDS_NO_INFO: /* no information, but try to mount and detect */
                       case CDS_DATA_1:
@@ -553,14 +546,14 @@ main (int argc, char **argv)
                         if (!stat (filename, &st) && S_ISDIR (st.st_mode))
                           {
                             if (!off_silent)
-                              printf("set_option vcd-device %s save\nmenu hide ;play_vcd\n", drive->dev);
+                              printf("set_option vcd-device %s save\nmenu hide\nplay_vcd\n", drive->dev);
                             break;
                           }
                         sprintf (filename, "%s/svcd", drive->mnt);
                         if (!stat (filename, &st) && S_ISDIR (st.st_mode))
                           {
                             if (!off_silent)
-                              printf("set_option vcd-device %s save\nmenu hide ;play_vcd\n", drive->dev);
+                              printf("set_option vcd-device %s save\nmenu hide\nplay_vcd\n", drive->dev);
                             break;
                           }
                         exts=playlist_exts;
@@ -568,7 +561,7 @@ main (int argc, char **argv)
                           {
                             escape_playlist(playlist, 0);
                             if (!off_silent)
-                              printf ("menu hide ;loadlist '%s'\n", playlist);
+                              printf ("menu hide\nloadlist '%s'\n", playlist);
                           }
                         else
                           {
@@ -581,7 +574,7 @@ main (int argc, char **argv)
                             n = build_playlist (drive->mnt, fd);
                             if (n > 0)
                               if (!off_silent)
-                                printf ("menu hide ;loadlist %s\n", playlist);
+                                printf ("menu hide\nloadlist %s\n", playlist);
                             close (fd);
                             if (n <= 0)
                               {
@@ -598,14 +591,14 @@ main (int argc, char **argv)
                                     exts=xcd_exts;
                                     if (build_playlist (drive->mnt, -1) >= 1)
                                       if (!off_silent)
-                                        printf ("set_option vcd-device %s save\nhide menu ;play_vcd\n", drive->dev);
+                                        printf ("set_option vcd-device %s save\nmenu hide\nplay_vcd\n", drive->dev);
                                   }
                               }
                           }
                         break;
                       case CDS_MIXED:
                         if (!off_silent)
-                          printf("set_option cdda-device %s save\nmenu hide ;play_cdda\n", drive->dev);
+                          printf("set_option cdda-device %s save\nmenu hide\nplay_cdda\n", drive->dev);
                       case CDS_XA_2_1:
                       case CDS_XA_2_2:
                         /* it's a special CD */

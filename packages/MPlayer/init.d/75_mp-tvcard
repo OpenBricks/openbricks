@@ -33,17 +33,19 @@ if [ -f /var/tvcard ]; then
 
   echo "tv=driver=v4l2:norm=$TVIN_STANDARD:chanlist=$CHANLIST$TV_OPTIONS" >> /etc/mplayer/mplayer.conf
 
-  if [ -f /usr/bin/mencoder ]; then
+  if [ -x /usr/bin/mencoder ]; then
     AUDIO_OPTIONS=`cat /var/recorder_alsa`
-    sed -i "s/^#tv=.*/tv=driver=v4l2:norm=$TVIN_STANDARD:chanlist=$CHANLIST$TV_OPTIONS$AUDIO_OPTIONS/" /etc/mplayer/mencoder.conf
+    sed -i "s/^#tv=tv_options.*/tv=driver=v4l2:norm=$TVIN_STANDARD:chanlist=$CHANLIST$TV_OPTIONS$AUDIO_OPTIONS/" /etc/mplayer/mencoder.conf
+    TV_CHANNELS=`grep -e tv=channels /etc/mplayer/mplayer.conf`
+    sed -i "s/^#tv=tv_channels.*/$TV_CHANNELS/" /etc/mplayer/mencoder.conf
   fi
 
   IFS='
 '
   # set mplayer TV channels list
-  echo "<cmdlist name=\"tv_chan\" title=\"TV Channels\" ptr=\"<>\" >" >> /etc/mplayer/menu.conf
-  for CHNAME in `sed -n 's/^tv=channels=//p' /etc/mplayer/mplayer.conf | sed -e 's/,/\n/g' -e 's/_/ /' | sed 's/\(.*\)-\(.*\)/\2/'`; do
-    echo "<e name=\"$CHNAME\" ok=\"menu hide ;loadfile tv://$((++n))\"/>" >> /etc/mplayer/menu.conf
+  echo "<cmdlist name=\"tv_chan\" title=\"TV Channels\" ptr=\"<>\" auto-close=\"yes\" >" >> /etc/mplayer/menu.conf
+  for CHNAME in `sed -n 's/^tv=channels=//p' /etc/mplayer/mplayer.conf | sed -e 's/,/\n/g' -e 's/_/ /g' | sed 's/\(.*\)-\(.*\)/\2/'`; do
+    echo "<e name=\"$CHNAME\" ok=\"loadfile tv://$((++n))\"/>" >> /etc/mplayer/menu.conf
   done
   echo "</cmdlist>" >> /etc/mplayer/menu.conf
 else
@@ -51,6 +53,9 @@ else
   sed -i 's/.*ok="set_menu tv_settings".*//' /etc/mplayer/menu.conf
   sed -i 's/.*ok="set_menu tv_norm".*//' /etc/mplayer/menu.conf
 fi
+
+
+[ -f /var/digimatrix ] && sed -i 's/set_menu radio_settings/set_menu digimatrix_radio/' /etc/mplayer/menu.conf
 
 [ -f /etc/radio ] && . /etc/radio
 

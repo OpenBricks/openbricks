@@ -1,7 +1,6 @@
-diff -Naur bftpd-1.0.24.orig/commands.c bftpd-1.0.24/commands.c
---- bftpd-1.0.24.orig/commands.c	2005-10-11 19:42:32.000000000 +0200
-+++ bftpd-1.0.24/commands.c	2005-11-06 18:18:31.000000000 +0200
-@@ -83,6 +83,57 @@
+--- bftpd-1.3/commands.c.orig	2006-04-11 22:42:34.000000000 +0800
++++ bftpd-1.3/commands.c	2006-04-11 22:51:46.000000000 +0800
+@@ -85,6 +85,57 @@
      bftpd_statuslog(3, success, "%s", buffer);
  }
  
@@ -59,43 +58,52 @@ diff -Naur bftpd-1.0.24.orig/commands.c bftpd-1.0.24/commands.c
  void new_umask()
  {
      int um;
-@@ -425,18 +476,25 @@
+@@ -484,6 +535,7 @@
      struct timeval tv;
      char *p, *pp;
  	char *mapped = bftpd_cwd_mappath(filename);
-+	rw(mapped);
- 	fd = open(mapped, flags, 00666);
--	if (mapped)
--		free(mapped);
- 	if (fd == -1) {
++    rw(mapped);
+ 
+     int my_buffer_size;    /* total transfer buffer size divided by number of clients */
+     int num_clients;       /* number of clients connected to the server */
+@@ -532,12 +584,13 @@
+         if (! attempt_gzip)
+         {        
+ 	  fd = open(mapped, flags, 00666);
+-	  if (mapped)
+-	 	free(mapped);
+ 	  if (fd == -1) {
  		bftpd_log("Error: '%s' while trying to store file '%s'.\n",
  				  strerror(errno), filename);
  		control_printf(SL_FAILURE, "553 Error: %s.", strerror(errno));
-+		close(fd);
-+		ro(mapped);
-+		free(mapped);
++        close(fd);
++        ro(mapped);
++        free(mapped);
  		return;
+           }
  	}
+@@ -560,7 +613,12 @@
+ 
  	bftpd_log("Client is storing file '%s'.\n", filename);
  	if (dataconn())
-+	{
-+		close(fd);
-+		ro(mapped);
-+		free(mapped);
++    {
++        close(fd);
++        ro(mapped);
++        free(mapped);
  		return;
-+	}
-     alarm(0);
-     buffer = malloc(xfer_bufsize);
- 	lseek(fd, offset, SEEK_SET);
-@@ -454,6 +512,7 @@
++    }
+ 
+     /* Figure out how big the transfer buffer should be.
+        This will be the total size divided by the number of clients connected.
+@@ -597,6 +655,7 @@
          if (!select(max, &rfds, NULL, NULL, &tv)) {
              close(sock);
              close(fd);
 +            ro(mapped);
              control_printf(SL_FAILURE, "426 Kicked due to data transmission timeout.");
              bftpd_log("Kicked due to data transmission timeout.\n");
-             exit(0);
-@@ -462,6 +521,9 @@
+             /* Before we exit, let's remove our entry in the log file. -- Jesse */
+@@ -607,6 +666,9 @@
              test_abort(0, fd, sock);
  			if (buffer)
  				free(buffer);
@@ -104,17 +112,17 @@ diff -Naur bftpd-1.0.24.orig/commands.c bftpd-1.0.24/commands.c
 +            free(mapped);
              return;
          }
- 		if (!((i = recv(sock, buffer, xfer_bufsize - 1, 0))))
-@@ -484,6 +546,8 @@
- 	free(buffer);
- 	close(fd);
+ 
+@@ -663,6 +725,8 @@
+         #endif
+ 
  	close(sock);
 +	ro(mapped);
 +	free(mapped);
      alarm(control_timeout);
      offset = 0;
  	control_printf(SL_SUCCESS, "226 File transmission successful.");
-@@ -792,6 +856,7 @@
+@@ -1128,6 +1192,7 @@
  void command_dele(char *filename)
  {
  	char *mapped = bftpd_cwd_mappath(filename);
@@ -122,7 +130,7 @@ diff -Naur bftpd-1.0.24.orig/commands.c bftpd-1.0.24/commands.c
  	if (unlink(mapped)) {
  		bftpd_log("Error: '%s' while trying to delete file '%s'.\n",
  				  strerror(errno), filename);
-@@ -800,12 +865,14 @@
+@@ -1136,12 +1201,14 @@
  		bftpd_log("Deleted file '%s'.\n", filename);
  		control_printf(SL_SUCCESS, "200 OK");
  	}
@@ -137,7 +145,7 @@ diff -Naur bftpd-1.0.24.orig/commands.c bftpd-1.0.24/commands.c
  	if (mkdir(mapped, 0755)) {
  		bftpd_log("Error: '%s' while trying to create directory '%s'.\n",
  				  strerror(errno), dirname);
-@@ -814,12 +881,14 @@
+@@ -1150,12 +1217,14 @@
  		bftpd_log("Created directory '%s'.\n", dirname);
  		control_printf(SL_SUCCESS, "257 \"%s\" has been created.", dirname);
  	}
@@ -152,7 +160,7 @@ diff -Naur bftpd-1.0.24.orig/commands.c bftpd-1.0.24/commands.c
  	if (rmdir(mapped)) {
  		bftpd_log("Error: '%s' while trying to remove directory '%s'.\n",
  				  strerror(errno), dirname);
-@@ -828,6 +897,7 @@
+@@ -1164,6 +1233,7 @@
  		bftpd_log("Removed directory '%s'.\n", dirname);
  		control_printf(SL_SUCCESS, "250 OK");
  	}
@@ -160,7 +168,7 @@ diff -Naur bftpd-1.0.24.orig/commands.c bftpd-1.0.24/commands.c
  	free(mapped);
  }
  
-@@ -856,6 +926,8 @@
+@@ -1192,6 +1262,8 @@
  void command_rnto(char *newname)
  {
  	char *mapped = bftpd_cwd_mappath(newname);
@@ -169,7 +177,7 @@ diff -Naur bftpd-1.0.24.orig/commands.c bftpd-1.0.24/commands.c
  	if (rename(philename, mapped)) {
  		bftpd_log("Error: '%s' while trying to rename '%s' to '%s'.\n",
  				  strerror(errno), philename, bftpd_cwd_mappath(newname));
-@@ -867,6 +939,8 @@
+@@ -1203,6 +1275,8 @@
  	}
  	free(philename);
  	free(mapped);
@@ -178,7 +186,7 @@ diff -Naur bftpd-1.0.24.orig/commands.c bftpd-1.0.24/commands.c
  	philename = NULL;
  }
  
-@@ -914,6 +988,7 @@
+@@ -1252,6 +1326,7 @@
  		return;
  	}
  	mapped = bftpd_cwd_mappath(strdup(strchr(params, ' ') + 1));
@@ -186,7 +194,7 @@ diff -Naur bftpd-1.0.24.orig/commands.c bftpd-1.0.24/commands.c
  	*strchr(params, ' ') = '\0';
  	sscanf(params, "%o", &permissions);
  	if (chmod(mapped, permissions))
-@@ -923,6 +998,7 @@
+@@ -1261,6 +1336,7 @@
  				  permissions);
  		control_printf(SL_SUCCESS, "200 CHMOD successful.");
  	}
@@ -194,7 +202,7 @@ diff -Naur bftpd-1.0.24.orig/commands.c bftpd-1.0.24/commands.c
  	free(mapped);
  }
  
-@@ -953,6 +1029,7 @@
+@@ -1291,6 +1367,7 @@
  			return;
  		}
  	mapped = bftpd_cwd_mappath(filename);
@@ -202,7 +210,7 @@ diff -Naur bftpd-1.0.24.orig/commands.c bftpd-1.0.24/commands.c
  	if (chown(mapped, uid, gid))
  		control_printf(SL_FAILURE, "550 Error: %s.", strerror(errno));
  	else {
-@@ -960,6 +1037,7 @@
+@@ -1298,6 +1375,7 @@
  				  gid);
  		control_printf(SL_SUCCESS, "200 CHOWN successful.");
  	}

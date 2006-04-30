@@ -7,35 +7,42 @@ MENCODER=/usr/bin/mencoder
 CFG=/etc/mplayer/mencoder.conf
 
 RECORD_SOURCE=/var/record_source
-RECORD_PROFILE=/var/record_profile
 RECORD_STATUS=/var/record_status
 RECORDER_CFG=/etc/recorder
 
 mp_fifo=/var/mp_control
+bg_file=/usr/share/mplayer/background.avi
 record_fifo=/var/record_fifo
 
-file=$1
+file="$1"
+
+# Test for special input sources, given by $1 (with :// removed)
+file_test () 
+{ 
+  [ -z $1 ] && echo 0
+  [ $1 = "file" -a -f "$file" ] && echo 1
+  [ -f "$file"  -a ! $1 = "file" ] && echo 0
+  [ ! -f "$file" -a $1 = "file" ]&& echo 0
+    file_strp=`echo $file | sed "s/^$1\:\/\///"`
+  if [ $(( ${#file}-${#file_strp} )) -eq $(( ${#1} + 3 )) ]; then
+    echo 1
+  else
+    echo 0
+  fi
+}
+
+[ ! -f $RECORDER_CFG ] && exit 1
+. $RECORDER_CFG
 
 if [ ! -f $RECORD_STATUS ]; then
-  [ "$file" == "" ] && exit 1 # No source to record from.
+  [ -z "$file" ] && exit 1 # No source to record from.
 
-  . $RECORDER_CFG
-  if [ "$SAVE_PATH" = "/tmp" ]; then
-    # default configuration : won't save to RAMdisk.
-    exit 1
-  fi
+  [ -z "$SAVE_PATH" ] && exit 1 # No save directory specified.
 
-  if [ ! -d "$SAVE_PATH" ]; then
-    # not a valid directory : bails out
-    exit 1
-  fi
+  [ ! -d "$SAVE_PATH" ] && exit 1 # not a valid directory.
 
   # Remounts the required disk RW in order to write to
   rw "$SAVE_PATH"
-
-  # Check file extension against profile type.
-  EXT="mpg"
-  [ "$RECORD_PROFILE" == "mpeg4" -o "$RECORD_PROFILE" == "mpeg4-hq" ] && EXT="avi"
 
   # Set recording destination filename
   DATE=$(date '+%F')
@@ -46,6 +53,15 @@ if [ ! -f $RECORD_STATUS ]; then
   # Edit MEncoder configuration with the correct destination filename.
   sed -i -e "s|^o=\".*\.\(.*\)\"|o=\"$SAVE_PATH/$OUTPUT\.\1\"|" $CFG
 
+  # Check if dvb source, and if so force dump stream.
+  [ `file_test dvb` -eq 1 ] && RECORD_PROFILE=dump
+
+  # Force release of (possibly) locked v4l/dvb devices
+  if [ `file_test dvb` -eq 1 -o `file_test tv` -eq 1 ]; then
+    echo "loadfile $bg_file" > $mp_fifo &
+    sleep 1
+  fi
+
   # Start Recording in background
   $MENCODER -profile $RECORD_PROFILE "$file" 2>&1 > /dev/null &
 
@@ -53,14 +69,13 @@ if [ ! -f $RECORD_STATUS ]; then
   sleep 5
 
   # Test if MEncoder really has started (no bail out, whatever the reason)
-  pidof mencoder
-  [ $? != 0 ] && exit 1
+  pidof mencoder || exit 1
 
   # Create a FIFO, dump recording to and ask MPlayer to play from there.
   [ -f $record_fifo ] && rm $record_fifo
   mkfifo $record_fifo
-  tail -f "$SAVE_PATH/$OUTPUT.$EXT" > $record_fifo &
-  echo "loadfile $record_fifo" > $mp_fifo
+  tail -f "$SAVE_PATH/$OUTPUT.mpg" > $record_fifo &
+  echo "loadfile $record_fifo" > $mp_fifo &
 
   # Keep trace of original stream source in order to restore it at
   # the end of recording session
@@ -77,12 +92,11 @@ elif [ -f $RECORD_STATUS ]; then
   rm $record_fifo
 
   # Remounts the required disk RO for safety.
-  . $RECORDER_CFG
   ro "$SAVE_PATH"
 
   # Reload the original source.
-  . $RECORD_SOURCE
-  echo "loadfile $SOURCE" > $mp_fifo
+  [ -f $RECORD_SOURCE ] && . $RECORD_SOURCE && rm $RECORD_SOURCE
+  echo "loadfile \"$SOURCE\"" > $mp_fifo &
 
   # Remove recorder status file
   rm $RECORD_STATUS
