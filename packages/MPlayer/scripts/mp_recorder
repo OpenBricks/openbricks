@@ -5,6 +5,7 @@
 
 MENCODER=/usr/bin/mencoder
 CFG=/etc/mplayer/mencoder.conf
+FAILSAFE_TIMEOUT=2
 
 RECORD_SOURCE=/var/record_source
 RECORD_STATUS=/var/record_status
@@ -69,7 +70,10 @@ if [ ! -f $RECORD_STATUS ]; then
   sleep 1
 
   # Allow more time for network streaming sources
-  [ `file_test mms` -eq 1 -o `file_test mmst` -eq 1 -o `file_test http` -eq 1 -o `file_test http_proxy` -eq 1 -o `file_test rtp` -eq 1 -o `file_test rtsp` -eq 1 -o `file_test ftp` -eq 1 -o `file_test udp` -eq 1 -o `file_test unsv` -eq 1 ] && sleep 10
+  if [ `file_test mms` -eq 1 -o `file_test mmst` -eq 1 -o `file_test http` -eq 1 -o `file_test http_proxy` -eq 1 -o `file_test rtp` -eq 1 -o `file_test rtsp` -eq 1 -o `file_test ftp` -eq 1 -o `file_test udp` -eq 1 -o `file_test unsv` -eq 1 ]; then
+    sleep 10
+    FAILSAFE_TIMEOUT=10
+  fi
 
   # Test if MEncoder really has started (no bail out, whatever the reason)
   [ -z "`pidof mencoder`" ] && exit 1
@@ -86,6 +90,18 @@ if [ ! -f $RECORD_STATUS ]; then
 
   # Create recorder status file.
   echo "" > $RECORD_STATUS
+
+  # Start failsafe procedure.
+  sleep 1
+  FILESIZE_OLD=`ls -l "$SAVE_PATH/$OUTPUT.mpg" | sed "s/.* 0 *0 *\([0-9]*\) \/.*/\1/"`
+  while [ ! -z "`pidof tail`" ]; do
+    sleep $FAILSAFE_TIMEOUT
+    [ -z "`pidof mencoder`" ] && mp_recorder &
+    FILESIZE=`ls -l "$SAVE_PATH/$OUTPUT.mpg" | sed "s/.* 0 *0 *\([0-9]*\) \/.*/\1/"`
+    # If no size increase assume failure and exit recording process.
+    [ $FILESIZE_OLD -eq $FILESIZE ] && mp_recorder &
+    FILESIZE_OLD=$FILESIZE
+  done
 elif [ -f $RECORD_STATUS ]; then
   # Stop MEncoder recording
   [ -z "`pidof mencoder`" ] || killall mencoder
