@@ -63,7 +63,7 @@ if [ ! -f $RECORD_STATUS ]; then
   fi
 
   # Start Recording in background
-  $MENCODER -profile $RECORD_PROFILE "$file" 2>&1 > /dev/null &
+  $MENCODER -profile $RECORD_PROFILE "$file" &> /dev/null &
 
   # Give MEncoder some time to start.
   sleep 1
@@ -72,7 +72,7 @@ if [ ! -f $RECORD_STATUS ]; then
   [ `file_test mms` -eq 1 -o `file_test mmst` -eq 1 -o `file_test http` -eq 1 -o `file_test http_proxy` -eq 1 -o `file_test rtp` -eq 1 -o `file_test rtsp` -eq 1 -o `file_test ftp` -eq 1 -o `file_test udp` -eq 1 -o `file_test unsv` -eq 1 ] && sleep 10
 
   # Test if MEncoder really has started (no bail out, whatever the reason)
-  pidof mencoder || exit 1
+  pidof mencoder &>/dev/null || exit 1
 
   # Create a FIFO, dump recording to and ask MPlayer to play from there.
   [ -f $record_fifo ] && rm $record_fifo
@@ -88,11 +88,12 @@ if [ ! -f $RECORD_STATUS ]; then
   echo "" > $RECORD_STATUS
 elif [ -f $RECORD_STATUS ]; then
   # Stop MEncoder recording
-  killall mencoder
+  pidof mencoder &>/dev/null && killall mencoder
+  pidof mencoder &>/dev/null && killall -9 mencoder
 
   # Stop output to FIFO and remove it.
-  killall tail
-  rm $record_fifo
+  pidof tail &>/dev/null && killall tail
+  [ -f $record_fifo ] && rm $record_fifo
 
   # Remounts the required disk RO for safety.
   ro "$SAVE_PATH"
