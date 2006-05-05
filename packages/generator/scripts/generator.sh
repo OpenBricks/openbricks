@@ -259,7 +259,7 @@ rm -f $TMPDIR/iso/GEEXBOX/etc/lirc*
 cp -rf $TMPDIR/iso/GEEXBOX/boot/* $TMPDIR/ziso/GEEXBOX/boot
 [ -f $GEEXBOX_DIR/themes/$THEME/bootsplash-$RESOLUTION.dat ] && cat $GEEXBOX_DIR/themes/$THEME/bootsplash-$RESOLUTION.dat >> $TMPDIR/ziso/GEEXBOX/boot/initrd.gz
 [ $TARGET_ARCH = i386 -a -f $GEEXBOX_DIR/themes/$THEME/splash-isolinux.rle ] && cp $GEEXBOX_DIR/themes/$THEME/splash-isolinux.rle $TMPDIR/ziso/GEEXBOX/boot/splash.rle
-sed -e "s/video=vesafb:\([^@, ]*\)/video=vesafb:$RESOLUTION-$DEPTH/g" $TMPDIR/iso/GEEXBOX/boot/isolinux.cfg > $TMPDIR/ziso/GEEXBOX/boot/isolinux.cfg
+sed -e "s/video=vesafb:[^@, ]*/video=vesafb:$RESOLUTION-$DEPTH/g" $TMPDIR/iso/GEEXBOX/boot/isolinux.cfg > $TMPDIR/ziso/GEEXBOX/boot/isolinux.cfg
 
 for i in $TMPDIR/iso/*; do
   [ "$i" != $TMPDIR/iso/GEEXBOX ] && ln -s "../$i" $TMPDIR/ziso
