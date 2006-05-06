@@ -1,8 +1,7 @@
-Index: MPlayer-20051213/libmenu/menu_pt.c
-===================================================================
---- MPlayer-20051213.orig/libmenu/menu_pt.c	2006-02-23 10:49:34.000000000 +0100
-+++ MPlayer-20051213/libmenu/menu_pt.c	2006-02-23 10:52:07.000000000 +0100
-@@ -31,11 +31,13 @@
+diff -r cc4b9cfa9112 libmenu/menu_pt.c
+--- a/libmenu/menu_pt.c	Sun Apr 30 16:54:41 2006 +0200
++++ b/libmenu/menu_pt.c	Sun Apr 30 16:54:42 2006 +0200
+@@ -33,11 +33,13 @@ struct menu_priv_s {
  struct menu_priv_s {
    menu_list_priv_t p;
    char* title;
@@ -17,7 +16,7 @@ Index: MPlayer-20051213/libmenu/menu_pt.c
  };
  
  #define ST_OFF(m) M_ST_OFF(struct menu_priv_s,m)
-@@ -43,27 +45,77 @@
+@@ -45,28 +47,78 @@ static m_option_t cfg_fields[] = {
  static m_option_t cfg_fields[] = {
    MENU_LIST_PRIV_FIELDS,
    { "title", ST_OFF(title),  CONF_TYPE_STRING, 0, 0, 0, NULL },
@@ -35,13 +34,13 @@ Index: MPlayer-20051213/libmenu/menu_pt.c
 +
 +  mpriv->p.title = mpriv->title;
 +
-+  if(playtree_iter->tree->parent != playtree_iter->root) {
++  if(playtree_iter->tree->parent) {
 +    e = calloc(1,sizeof(list_entry_t));
 +    e->p.txt = "..";
 +    e->pt = playtree_iter->tree->parent;
 +    menu_list_add_entry(menu,e);
 +  }
-+  
++
 +  for(i = playtree_iter->tree ; i->prev != NULL ; i = i->prev)
 +    /* NOP */;
 +  for( ; i != NULL ; i = i->next ) {
@@ -65,7 +64,7 @@ Index: MPlayer-20051213/libmenu/menu_pt.c
 +        e->p.txt = mp_basename(i->files[0]);
 +    }
 +    else
-+      e->p.txt = "Group ...";
++      e->p.txt = "Initial Playlist ...";
 +    e->pt = i;
 +    menu_list_add_entry(menu,e);
 +  }
@@ -75,6 +74,7 @@ Index: MPlayer-20051213/libmenu/menu_pt.c
 +
  static void read_cmd(menu_t* menu,int cmd) {
    switch(cmd) {
+   case MENU_CMD_RIGHT:
    case MENU_CMD_OK: {
 -    int d = 1;
 +    int d = 0;
@@ -103,29 +103,27 @@ Index: MPlayer-20051213/libmenu/menu_pt.c
  	if(i == mpriv->p.current->pt)
  	  break;
  	d++;
-@@ -81,12 +133,16 @@
+@@ -84,12 +136,14 @@ static void read_cmd(menu_t* menu,int cm
  	}
        }
        snprintf(str,15,"pt_step %d",d);
-+
 +      c = mp_input_parse_cmd(str);
-+      if(c){
++      if(c) {
 +        if(mpriv->auto_close)
 +          mp_input_queue_cmd(mp_input_parse_cmd("menu hide"));
 +        mp_input_queue_cmd(c);
-+      }
-+      else
-+        printf("Failed to build command %s\n",str);
++      } else
++        mp_msg(MSGT_GLOBAL,MSGL_WARN,MSGTR_LIBMENU_FailedToBuildCommand,str);
      }
 -    c = mp_input_parse_cmd(str);
 -    if(c)
 -      mp_input_queue_cmd(c);
 -    else
--      printf("Failed to build command %s\n",str);
+-      mp_msg(MSGT_GLOBAL,MSGL_WARN,MSGTR_LIBMENU_FailedToBuildCommand,str);
    } break;
    default:
      menu_list_read_cmd(menu,cmd);
-@@ -102,8 +158,6 @@
+@@ -105,8 +159,6 @@ static void close(menu_t* menu) {
  }
  
  static int op(menu_t* menu, char* args) {
@@ -134,7 +132,7 @@ Index: MPlayer-20051213/libmenu/menu_pt.c
    args = NULL; // Warning kill
  
    menu->draw = menu_list_draw;
-@@ -111,30 +165,7 @@
+@@ -114,30 +166,7 @@ static int op(menu_t* menu, char* args) 
    menu->read_key = read_key;
    menu->close = close;
  
@@ -166,11 +164,10 @@ Index: MPlayer-20051213/libmenu/menu_pt.c
  }
  
  const menu_info_t menu_info_pt = {
-Index: MPlayer-20051213/mplayer.c
-===================================================================
---- MPlayer-20051213.orig/mplayer.c	2006-02-23 10:51:58.000000000 +0100
-+++ MPlayer-20051213/mplayer.c	2006-02-23 10:52:07.000000000 +0100
-@@ -3362,7 +3362,7 @@
+diff -r cc4b9cfa9112 mplayer.c
+--- a/mplayer.c	Sun Apr 30 16:54:41 2006 +0200
++++ b/mplayer.c	Sun Apr 30 16:54:42 2006 +0200
+@@ -4440,7 +4440,7 @@ if (stream->type==STREAMTYPE_DVDNAV && d
        grab_frames=2;
      } break;
      case MP_CMD_PLAY_TREE_STEP : {
@@ -179,11 +176,10 @@ Index: MPlayer-20051213/mplayer.c
        int force = cmd->args[1].v.i;
  
  #ifdef HAVE_NEW_GUI
-Index: MPlayer-20051213/playtree.c
-===================================================================
---- MPlayer-20051213.orig/playtree.c	2006-02-23 10:50:38.000000000 +0100
-+++ MPlayer-20051213/playtree.c	2006-02-23 10:52:07.000000000 +0100
-@@ -249,7 +249,6 @@
+diff -r cc4b9cfa9112 playtree.c
+--- a/playtree.c	Sun Apr 30 16:54:41 2006 +0200
++++ b/playtree.c	Sun Apr 30 16:54:42 2006 +0200
+@@ -252,7 +252,6 @@ play_tree_add_file(play_tree_t* pt,char*
  
  #ifdef MP_DEBUG
    assert(pt != NULL);
@@ -191,7 +187,7 @@ Index: MPlayer-20051213/playtree.c
    assert(file != NULL);
  #endif
  
-@@ -659,9 +658,6 @@
+@@ -662,9 +661,6 @@ play_tree_is_valid(play_tree_t* pt) {
  #endif
  
    if(pt->entry_type != PLAY_TREE_ENTRY_NODE) {
@@ -201,7 +197,7 @@ Index: MPlayer-20051213/playtree.c
      return 1;
    }
    else if (pt->child != NULL) {
-@@ -721,7 +717,6 @@
+@@ -724,7 +720,6 @@ play_tree_iter_down_step(play_tree_iter_
  play_tree_iter_down_step(play_tree_iter_t* iter, int d,int with_nodes) {
  
  #ifdef MP_DEBUG
@@ -209,11 +205,10 @@ Index: MPlayer-20051213/playtree.c
    assert(iter->tree->child != NULL);
    assert(iter->tree->child->parent == iter->tree);
    //printf("PT : Go DOWN\n");
-Index: MPlayer-20051213/playtreeparser.c
-===================================================================
---- MPlayer-20051213.orig/playtreeparser.c	2006-02-23 10:49:34.000000000 +0100
-+++ MPlayer-20051213/playtreeparser.c	2006-02-23 10:52:07.000000000 +0100
-@@ -681,6 +681,7 @@
+diff -r cc4b9cfa9112 playtreeparser.c
+--- a/playtreeparser.c	Sun Apr 30 16:54:41 2006 +0200
++++ b/playtreeparser.c	Sun Apr 30 16:54:42 2006 +0200
+@@ -684,6 +684,7 @@ parse_playlist_file(char* file) {
    free_stream(stream);
  
    play_tree_add_bpf(ret, file);

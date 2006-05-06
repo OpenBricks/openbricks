@@ -1,8 +1,7 @@
-Index: MPlayer-20051213/cfg-mplayer.h
-===================================================================
---- MPlayer-20051213.orig/cfg-mplayer.h	2006-02-23 10:49:35.000000000 +0100
-+++ MPlayer-20051213/cfg-mplayer.h	2006-02-23 10:50:53.000000000 +0100
-@@ -363,6 +363,8 @@
+diff -r 3f43ce128995 cfg-mplayer.h
+--- a/cfg-mplayer.h	Sun Apr 30 16:54:32 2006 +0200
++++ b/cfg-mplayer.h	Sun Apr 30 17:12:13 2006 +0200
+@@ -344,6 +344,8 @@ m_option_t mplayer_opts[]={
  	{"guiwid", &guiWinID, CONF_TYPE_INT, 0, 0, 0, NULL},
  #endif
  
@@ -11,21 +10,20 @@ Index: MPlayer-20051213/cfg-mplayer.h
  	{"noloop", &loop_times, CONF_TYPE_FLAG, 0, 0, -1, NULL},
  	{"loop", &loop_times, CONF_TYPE_INT, CONF_RANGE, -1, 10000, NULL},
  	{"playlist", NULL, CONF_TYPE_STRING, 0, 0, 0, NULL},
-Index: MPlayer-20051213/mplayer.c
-===================================================================
---- MPlayer-20051213.orig/mplayer.c	2006-02-23 10:49:35.000000000 +0100
-+++ MPlayer-20051213/mplayer.c	2006-02-23 10:50:53.000000000 +0100
-@@ -274,6 +274,9 @@
+diff -r 3f43ce128995 mplayer.c
+--- a/mplayer.c	Sun Apr 30 16:54:32 2006 +0200
++++ b/mplayer.c	Sun Apr 30 17:12:13 2006 +0200
+@@ -281,6 +281,9 @@ static char* spudec_ifo=NULL;
+ static char* spudec_ifo=NULL;
  char* filename=NULL; //"MI2-Trailer.avi";
  int forced_subs_only=0;
- 
++
 +static char* bg_video = NULL;
 +static demuxer_t *bg_demuxer = NULL;
-+
+ 
  // cache2:
         int stream_cache_size=-1;
- #ifdef USE_STREAM_CACHE
-@@ -439,6 +442,13 @@
+@@ -447,6 +450,13 @@ static void uninit_player(unsigned int m
  	free_demuxer(demuxer);
      }
      demuxer=NULL;
@@ -39,7 +37,7 @@ Index: MPlayer-20051213/mplayer.c
    }
  
    // kill the cache process:
-@@ -1228,7 +1238,7 @@
+@@ -1247,7 +1257,7 @@ void set_osd_bar(int type,char* name,dou
   * 
   */
  
@@ -48,7 +46,7 @@ Index: MPlayer-20051213/mplayer.c
      mp_osd_msg_t *msg;
      static char osd_text[64] = "";
      static char osd_text_timer[64];
-@@ -1259,6 +1269,7 @@
+@@ -1278,6 +1288,7 @@ static void update_osd_msg(void) {
              char percentage_text[10];
              static int last_pts = -303;
              int pts = sh_video->pts;
@@ -56,7 +54,7 @@ Index: MPlayer-20051213/mplayer.c
              if(pts==last_pts-1) ++pts; else last_pts=pts;
              
              if (osd_show_percentage)
-@@ -2123,6 +2134,34 @@
+@@ -3163,6 +3174,34 @@ sh_audio=d_audio->sh;
  sh_audio=d_audio->sh;
  sh_video=d_video->sh;
  
@@ -91,7 +89,16 @@ Index: MPlayer-20051213/mplayer.c
  if(sh_video){
  
    current_module="video_read_properties";
-@@ -2637,6 +2676,8 @@
+@@ -3501,7 +3540,7 @@ int was_paused=0;
+ // Make sure old OSD does not stay around,
+ // e.g. with -fixed-vo and same-resolution files
+ clear_osd_msgs();
+-update_osd_msg();
++update_osd_msg(d_audio);
+ 
+ //================ SETUP AUDIO ==========================
+ 
+@@ -3675,6 +3714,8 @@ while(sh_audio){
    break;
  } // while(sh_audio)
  
@@ -100,7 +107,7 @@ Index: MPlayer-20051213/mplayer.c
  if(!sh_video) {
    // handle audio-only case:
    if(!quiet) {
-@@ -2663,7 +2704,16 @@
+@@ -3701,7 +3742,16 @@ if(!sh_video) {
  	// get it!
  	current_module="video_read_frame";
          in_size=video_read_frame(sh_video,&next_frame_time,&start,force_fps);
@@ -118,7 +125,7 @@ Index: MPlayer-20051213/mplayer.c
  	if(in_size>max_framesize) max_framesize=in_size; // stats
  	sh_video->timer+=frame_time;
  	if(sh_audio) sh_audio->delay-=frame_time;
-@@ -2867,6 +2917,15 @@
+@@ -3901,6 +3951,15 @@ if(time_frame>0.001 && !(vo_flags&256)){
  	   if(vo_config_count) video_out->flip_page();
  	   if (play_n_frames >= 0) {
  	     --play_n_frames;
@@ -134,21 +141,21 @@ Index: MPlayer-20051213/mplayer.c
  	     if (play_n_frames <= 0) eof = PT_NEXT_ENTRY;
  	   }
  
-@@ -2888,6 +2947,13 @@
+@@ -3922,6 +3981,13 @@ if(time_frame>0.001 && !(vo_flags&256)){
    current_module="av_sync";
  
    if(sh_audio){
-+   if(bg_demuxer) {
-+     if(!quiet) mp_msg(MSGT_AVSYNC,MSGL_STATUS,"A:%6.1f %4.1f%% %d%%   \r"
-+		       ,sh_audio->delay-audio_out->get_delay()
-+		       ,(sh_audio->delay>0.5)?100.0*audio_time_usage/(double)sh_audio->delay:0
-+		       ,cache_fill_status
-+		       );
-+   } else {
-     float a_pts=0;
-     float v_pts=0;
++    if(bg_demuxer) {
++      if(!quiet) mp_msg(MSGT_AVSYNC,MSGL_STATUS,"A:%6.1f %4.1f%% %d%%   \r"
++ 		       ,sh_audio->delay-audio_out->get_delay()
++ 		       ,(sh_audio->delay>0.5)?100.0*audio_time_usage/(double)sh_audio->delay:0
++ 		       ,cache_fill_status
++ 		       );
++    } else {
+     double a_pts=0;
+     double v_pts=0;
  
-@@ -2959,7 +3025,7 @@
+@@ -3986,7 +4052,7 @@ if(time_frame>0.001 && !(vo_flags&256)){
          if(!quiet)
            print_status(a_pts - audio_delay - delay, AV_delay, c_total);
        }
@@ -157,7 +164,7 @@ Index: MPlayer-20051213/mplayer.c
    } else {
      // No audio:
      
-@@ -3016,7 +3082,7 @@
+@@ -4046,7 +4112,7 @@ if(auto_quality>0){
  	  int mlen = strlen(msg);
  	  msg[mlen-1] = '\0';
  	  set_osd_msg(OSD_MSG_PAUSE,1,0,"%s",msg+1);
@@ -165,10 +172,10 @@ Index: MPlayer-20051213/mplayer.c
 +	  update_osd_msg(d_audio);
  	} else
  	  mp_msg(MSGT_CPLAYER,MSGL_STATUS,MSGTR_Paused);
-         if (identify)
-@@ -4380,7 +4446,7 @@
- //  vo_osd_text=osd_text_buffer;
- #endif /* USE_OSD */
+         mp_msg(MSGT_IDENTIFY, MSGL_INFO, "ID_PAUSED\n");
+@@ -4948,7 +5014,7 @@ if ((user_muted | edl_muted) != mixer.mu
+ 
+ //================= Update OSD ====================
    
 -  update_osd_msg();
 +  update_osd_msg(d_audio);
