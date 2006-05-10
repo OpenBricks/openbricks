@@ -61,7 +61,7 @@ diff -r 84218a4f7167 libmenu/menu_param.c
  
  m_option_t*  mp_property_find(char* name);
  
-@@ -86,12 +124,120 @@ static void update_entries(menu_t* menu)
+@@ -86,12 +124,131 @@ static void update_entries(menu_t* menu)
      if(e->opt) entry_set_text(menu,e);
  }
  
@@ -134,6 +134,15 @@ diff -r 84218a4f7167 libmenu/menu_param.c
 +  return 1;
 +}
 +
++static int is_cdrom(char *name) {
++  if(strncmp(name, "cdrom", 5))
++    return 0;
++  name += 5;
++  if(*name < '0' || *name > '9')
++    return 0;
++  return 1;
++}
++
 +static char *part_size(char *part) {
 +  static char size[32];
 +  char name[] = "/dev/diskNpartN";
@@ -147,8 +156,10 @@ diff -r 84218a4f7167 libmenu/menu_param.c
 +    if(!strcmp(mpoint->mnt_fsname, name))
 +      {
 +        endmntent(mtab);
-+        statfs(mpoint->mnt_dir, &buf);
-+        sprintf(size, "%lld M", (buf.f_bsize * (long long)buf.f_bfree) >> 20);
++        if(!statfs(mpoint->mnt_dir, &buf))
++          sprintf(size, "%lld M / %lld M", (buf.f_bsize * (long long)buf.f_bfree) >> 20, (buf.f_bsize * (long long)buf.f_blocks) >> 20);
++        else
++          sprintf(size, "unknown");
 +        return size;
 +      }
 +  endmntent(mtab);
@@ -300,7 +311,7 @@ diff -r 84218a4f7167 libmenu/menu_param.c
 +                 strcmp(grab_demuxer_info(name), "") ) {
 +        val = grab_demuxer_info (name);
 +
-+      } else if (is_part(name)) {
++      } else if (is_part(name) || is_cdrom(name)) {
 +        val = strdup(part_size(name));
 +      }
 +    }
