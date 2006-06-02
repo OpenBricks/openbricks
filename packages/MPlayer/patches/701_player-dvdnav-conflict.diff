@@ -1,0 +1,71 @@
+continuation of 700_player-dvdnav.diff (see it for more information)
+which conflicted with geexbox patches.
+
+diff -Nur MPlayer-20060519.orig/mplayer.c MPlayer-20060519/mplayer.c
+--- MPlayer-20060519.orig/mplayer.c	2006-06-02 19:16:27.000000000 +0300
++++ MPlayer-20060519/mplayer.c	2006-06-02 19:18:50.000000000 +0300
+@@ -1621,7 +1621,7 @@
+     
+     switch(action) {
+     case M_PROPERTY_SET:
+-        if(edl_muted) return M_PROPERTY_DISABLED;
++        if(edl_muted || sw_muted) return M_PROPERTY_DISABLED;
+         if(!arg) return 0;
+         if((!!*(int*)arg) != mixer.muted) {
+             mixer_mute(&mixer);
+@@ -1630,7 +1630,7 @@
+         return 1;
+     case M_PROPERTY_STEP_UP:
+     case M_PROPERTY_STEP_DOWN:
+-        if(edl_muted) return M_PROPERTY_DISABLED;
++        if(edl_muted || sw_muted) return M_PROPERTY_DISABLED;
+         mixer_mute(&mixer);
+         user_muted = !user_muted;
+         return 1;
+@@ -3384,7 +3384,11 @@
+ 
+ //================== Read SUBTITLES (DVD & TEXT) ==========================
+ if(vo_spudec==NULL && sh_video &&
+-     (stream->type==STREAMTYPE_DVD || demuxer->type==DEMUXER_TYPE_MATROSKA)){
++     (stream->type==STREAMTYPE_DVD || demuxer->type==DEMUXER_TYPE_MATROSKA
++#ifdef USE_MPDVDNAV
++      || stream->type==STREAMTYPE_DVDNAV
++#endif
++      )){
+ 
+ if (spudec_ifo) {
+   unsigned int palette[16], width, height;
+@@ -3908,6 +3912,23 @@
+ 	// get it!
+ 	current_module="video_read_frame";
+         in_size=video_read_frame(sh_video,&next_frame_time,&start,force_fps);
++#ifdef USE_MPDVDNAV
++	if (stream->type==STREAMTYPE_DVDNAV)
++	  {
++	  if (dvdnav_reallyeof((dvdnav_priv_t*)(stream->priv)))
++	    {
++	    eof=1;
++	    break;
++	    }
++	  if (in_size<0)
++	    {
++	    sh_video->num_frames++;
++	    sh_video->num_frames_decoded++;
++	    sh_video->pts+=next_frame_time;
++	    }
++	  sh_video->config_lock=1;
++	  } else {
++#endif
+ 	if(in_size<0){
+ 	  if(bg_demuxer) {
+ 	    if(!demux_seek(bg_demuxer,0,0,1))
+@@ -3918,6 +3939,9 @@
+ 	    eof=1;
+ 	  break;
+ 	}
++#ifdef USE_MPDVDNAV
++	}
++#endif
+ 	if(in_size>max_framesize) max_framesize=in_size; // stats
+ 	sh_video->timer+=frame_time;
+ 	if(sh_audio) sh_audio->delay-=frame_time;
