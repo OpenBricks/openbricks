@@ -127,7 +127,7 @@ static void my_mplayer(RESULT * result, RESULT * arg1)
     val = hash_get(&mplayer, key, NULL);
 
     if (strcmp(val, "background.avi") == 0)
-        val = "GeeXBoX Open Media Center";
+        val = "GeeXboX Open Media Center";
     if (val == NULL)
         val = "";
 
