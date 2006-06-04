@@ -42,7 +42,7 @@ classiques :
   - bzip2 et gzip.
   - mkfs.ext2 et mkfs.vfat
   - L'outil de téléchargement wget (non nécessaire pour le paquetage
-  GeeXboX complet).
+    GeeXboX complet).
   - mkisofs et mkzftree pour construire l'image ISO.
   - mkzftree pour compresser les fichiers de l'image ISO.
   - cdrecord (pour graver l'image).
@@ -69,6 +69,7 @@ Vous pouvez modifier d'autres options en éditant simplement des fichiers
 textes.
 
 * Langue :
+
     Choisissez la langue de vos menus en éditant le fichier generator.sh ou
     generator.bat (en fonction de votre OS). Cela n'as pas d'effets sur la
     langue du DVD (voir section MPlayer). Si votre langue n'est pas
@@ -109,6 +110,7 @@ textes.
     l'utilisation du générateur.
 
 * MPlayer :
+
     C'est ici que se font la plupart des configurations et modifications.
     Les options se situent dans le fichier packages/MPlayer/mplayer.conf
     Il est possible de changer des options comme la taille des police de l'OSD
@@ -125,6 +127,7 @@ textes.
     d'options de compilation de MPlayer.
 
 * Sortie TV :
+
     Activer la sortie TV se fait au moyen de nombreux petits utilitaires
     dédiés chacun à une marque carte graphique. Nous utilisons actuellement
     atitvout pour les cartes ATI, s3switch pour les cartes S3 et nvtv pour les
@@ -157,6 +160,7 @@ textes.
     #monitor-vfreq=50-90
 
 * Lirc :
+
     Choisissez la télécommande supporté en éditant le fichier generator.sh ou
     generator.bat (en fonction de votre OS). Faite également attention à
     bien choisir le récepteur infrarouge correspondant dans le même fichier.
@@ -164,6 +168,7 @@ textes.
     lirc/lircrc_REMOTE.
 
 * Réseau :
+
     Le réseau est configurable au niveau du fichier iso/GEEXBOX/etc/network.
     Ici vous reglerez l'adresse IP de la GeeXboX (qui par défaut cherche un
     serveur DCHP ou prend l'IP 192.168.0.54 si elle n'en trouve pas). Il est
@@ -172,6 +177,7 @@ textes.
     Vous pouvez aussi déclarer des montages NFS dans GEEXBOX/etc/nfs.
 
 * WiFi :
+
     Par defaut, le système tente de détecter automatiquement votre
     configuration réseau. Si vous disposez à la fois d'une carte réseau
     Ethernet classique et d'une carte WiFi, seule cette dernière sera
@@ -190,23 +196,25 @@ textes.
     ad-hoc et de définir à la fois votre clé WEP et le SSID de votre réseau.
 
 * Passerelle :
+
     La GeeXboX supporte l'accès à Internet. Définissez simplement l'adresse IP
     de la passerelle dans le fichier /etc/network
 
     GATEWAY=""     # Gateway IP ("" for DHCP or no internet connection)
 
 * Configuration TV :
+
     La GeeXboX supporte les entrées et tuners de cartes TV. Le système essaie
     avec peine de détecter automatiquement le type de carte et de tuners
     utilisés. Vous pouvez forcer les paramètres et ainsi éviter la tentative
     de détection automatique. Veuillez modifier le fichier /etc/tvcard
     tel qu'il suit :
 
-# TV CARD/TUNER Model (AUTO for autodetection or look at the following urls)
-# http://www.linuxhq.com/kernel/v2.6/2/Documentation/video4linux/CARDLIST.bttv
-# http://www.linuxhq.com/kernel/v2.6/2/Documentation/video4linux/CARDLIST.tuner
-TV_CARD=AUTO
-TV_TUNER=AUTO
+    # TV CARD/TUNER Model (AUTO for autodetection or look at the following urls)
+    # http://www.linuxhq.com/kernel/v2.6/2/Documentation/video4linux/CARDLIST.bttv
+    # http://www.linuxhq.com/kernel/v2.6/2/Documentation/video4linux/CARDLIST.tuner
+    TV_CARD=AUTO
+    TV_TUNER=AUTO
 
     Laissez le paramètre AUTO si vous souahitez conserver la détection
     automatique, ou remplacez le par le numéro de la carte et du tuner,
@@ -234,6 +242,7 @@ TV_TUNER=AUTO
     apparaître dans le menu principal.
 
 * Configuration Audio :
+
     La GeeXboX supporte à la fois la restitution audio via la sortie
     analogique ou numérique, en utilisant les connecteurs classiques JACK
     ou RCA SPDIF.
@@ -248,6 +257,7 @@ TV_TUNER=AUTO
     externe pour décoder des flux AC3/DTS (en utilisant le mode passthrough).
 
 * Post-Processing vidéo :
+
     Le Post-Processing est un moyen logiciel pour affiner une image, en la
     rendant plus nette et plus précise. Cela a par contre l'inconvénient de
     consommer une partie du temps processeur afin de rendre l'image plus
@@ -263,8 +273,8 @@ TV_TUNER=AUTO
     # Consumes CPU power, disabled for low configs, uncomment to enable it.
     #vf=pp=hb:a/vb:a/dr:a/al:a
 
-
 * DXR3/Hollywood+ cards :
+
     Les utilisateurs de ce type de cartes de décompression n'ont pas besoin
     d'avoir une carte vidéo ou une carte son dans leur ordinateur. Parmi les
     inconvénients, on notera néanmoins que seule la sortie TV peut etre
@@ -272,8 +282,8 @@ TV_TUNER=AUTO
     Vous pouvez etre amené à définir la norme d'image souhaitée (PAL/NTSC)
     via le fichier /etc/tvout ainsi que le type de sortie audio à utiliser
     (Analogique ou SPDIF) via le fichier /etc/audio.
-    
-* configuration de la radio:
+
+* Configuration de la radio :
 
     Si vôtre carte TV dispose d'un tuner radio FM intégré, la GeeXboX vous
     permet d'écouter la radio. Pour cela, il vous faudra modifier le fichier
@@ -314,7 +324,7 @@ TV_TUNER=AUTO
 
 * Streaming réseau :
 
-    Geexbox permet de rajouter les listes de streams SHOUTcast Radio et TV
+    GeeXboX permet de rajouter les listes de streams SHOUTcast Radio et TV
     tout autant que vos propres listes de lecture. (locales et distantes.)
 
     L'activation de SHOUTcast se déclare dans le fichier de configuration
@@ -339,7 +349,7 @@ TV_TUNER=AUTO
       librairie "LIVE555".
     (ces deux conditions étant nécessaires à la visualisation du flux) 
 
-* Cartes DVB
+* Cartes DVB :
 
     La GeeXboX supporte un grand nombre de cartes DVB (Terrestre i.e. TNT,
     Cable, ATSC et Satellite) et ce, aussi bien en PCI qu'en USB. Veuillez
@@ -435,7 +445,7 @@ TV_TUNER=AUTO
     carte ainsi que le transpondeur à utiliser et la GeeXboX s'occupera de
     scanner letout et de générer le fichier /etc/mplayer/channels.conf.
 
-* Menus de Navigation DVD
+* Menus de Navigation DVD :
 
     La GeeXboX propose 2 méthodes de lecture des DVD :
      - Lecture directe du film (defaut).
@@ -464,7 +474,7 @@ TV_TUNER=AUTO
     Il vous est également possible de spécifier la méthode de lecture par
     défaut au moyen du générateur d'ISO de la GeeXboX.
 
-* Capacités d'enregistrement
+* Capacités d'enregistrement :
 
     La GeeXboX permet l'enregistrement en cours de lecture, de même que la
     fonctionnalité de "pause en direct" (également connue sous le nom anglais
@@ -744,11 +754,13 @@ ou enfin une arborescence PXE :
 | ~~~~~~~~~~~~~
 
 * Options Globales :
+
     C'est la première chose dont vous aurez à vous soucier avant d'essayer de
     compiler la GeeXboX. Elles sont contenues dans le fichier config/options,
     et devraient être suffisamment explicites.
 
 * Linux :
+
     Il s'agit d'une configuration Linux classique (packages/linux/linux.conf).
     Vous pouvez éditer le fichier à la main, ou via scripts/unpack linux
     suivi de make menuconfig -C build/linux-* (ou utiliser votre méthode
@@ -756,6 +768,7 @@ ou enfin une arborescence PXE :
     votre fichier build/linux-*/.config dans packages/linux/linux.conf.
 
 * Lirc :
+
     Lirc vous permet de contrôler la GeeXboX en utilisant une télécommande.
     En premier lieu, vous aurez à choisir le fichier correspondant à votre
     télécommande dans build/lirc-*/remotes (après avoir effectué
@@ -764,7 +777,7 @@ ou enfin une arborescence PXE :
     Puis, choisissez votre périphérique (par défaut, il s'agit de /dev/ttyS0
     (COM1)) et le pilote lirc et mettez le tout dans un fichier nommé
     packages/lirc/lircd_$REMOTE.
-    
+
     Vous pourrez ensuite choisir l'affectation des touches dans le fichier
     packages/lirc/lircrc_$REMOTE. Pour chaque affectation, vous aurez à chosir
     un bouton (choisissez leurs noms dans le fichier de définitions de la
