@@ -68,11 +68,11 @@ static int parse_mplayer_info(char *tmpfile)
 {
     int age;
     FILE *mplayer_stream;
-    char line[100];
+    char line[200];
 
-    /* reread every 200msec only */
+    /* reread every 100msec only */
     age = hash_age(&mplayer, NULL);
-    if (age >= 0 && age <= 200)
+    if (age >= 0 && age <= 100)
 	return 0;
 
     /* Open Filestream for tmpfile */
