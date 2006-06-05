@@ -2,11 +2,11 @@
 
 # Menu language (bg/br/ca/cs/de/en/es/et/fi/fr/gr/he/hu/it/ko/nl/no/pl/ro/ru/sk/sr/sv/zh_CN/zh_TW)
 # This have no effect on DVD language. See iso/GEEXBOX/etc/mplayer/mplayer.conf
-LANGUAGE=en
+MENU_LANG=en
 
 # Subtitle charset (bg/br/ca/cs/de/en/es/et/fi/fr/gr/he/hu/it/ko/nl/no/pl/ro/ru/sk/sr/sv/zh_CN/zh_TW)
 # Can also be set to a charset code (iso-8859-{1,2,7,8,9}/windows-125{0,1}/koi8-r/gb2312/big5/euc-kr)
-# when empty default is to LANGUAGE
+# when empty default is to MENU_LANG
 SUB_CHARSET=
 
 # Remote to Use (pctv/logitech/hauppauge/realmagic/creative/leadtek/RM-S6/
@@ -148,7 +148,7 @@ if [ -z "$TARGET_ARCH" ]; then
   fi
 fi
 
-OUTPUT=geexbox-`cat $GEEXBOX_DIR/VERSION`-$LANGUAGE.$TARGET_ARCH.iso
+OUTPUT=geexbox-`cat $GEEXBOX_DIR/VERSION`-$MENU_LANG.$TARGET_ARCH.iso
 W32CODECS_DIR=/usr/lib/win32
 
 . $GEEXBOX_DIR/i18n/lang.conf
@@ -169,8 +169,8 @@ fi
 . $GEEXBOX_DIR/themes/$THEME/config
 [ -z "$FONT_CHARSETS" ] && FONT_CHARSETS="iso-8859-1"
 
-MENU_CHARSET=`lang2charset "$LANGUAGE"`
-MENU_FONT=`lang2font "$LANGUAGE" menu`
+MENU_CHARSET=`lang2charset "$MENU_LANG"`
+MENU_FONT=`lang2font "$MENU_LANG" menu`
 SUB_CHARSET=`lang2charset "$SUB_CHARSET"`
 SUB_FONT=`lang2font "$SUB_CHARSET" sub`
 
@@ -193,7 +193,7 @@ for font in $MENU_FONT $SUB_FONT; do
   fi
 done
 
-for file in menu_$LANGUAGE.conf help_$LANGUAGE.txt; do
+for file in menu_$MENU_LANG.conf help_$MENU_LANG.txt; do
   if [ ! -f $GEEXBOX_DIR/i18n/texts/$file ]; then
     echo ""
     echo "**** $file language file is missing ****"
@@ -210,9 +210,9 @@ fi
 mkdir -p $TMPDIR/ziso
 [ ! -d $TMPDIR/iso ] && cp -r $GEEXBOX_DIR/iso $TMPDIR/iso
 
-echo $LANGUAGE > $TMPDIR/iso/GEEXBOX/etc/lang
-cp $GEEXBOX_DIR/i18n/texts/help_$LANGUAGE.txt $TMPDIR/iso/GEEXBOX/usr/share/mplayer/
-cp $GEEXBOX_DIR/i18n/texts/menu_$LANGUAGE.conf $TMPDIR/iso/GEEXBOX/etc/mplayer/
+echo $MENU_LANG > $TMPDIR/iso/GEEXBOX/etc/lang
+cp $GEEXBOX_DIR/i18n/texts/help_$MENU_LANG.txt $TMPDIR/iso/GEEXBOX/usr/share/mplayer/
+cp $GEEXBOX_DIR/i18n/texts/menu_$MENU_LANG.conf $TMPDIR/iso/GEEXBOX/etc/mplayer/
 cp $GEEXBOX_DIR/i18n/lang.conf $TMPDIR/iso/GEEXBOX/etc/
 
 echo $SUB_CHARSET > $TMPDIR/iso/GEEXBOX/etc/subfont
@@ -240,8 +240,8 @@ cp $GEEXBOX_DIR/lirc/lircd_$RECEIVER $TMPDIR/iso/GEEXBOX/etc/lircd
 cp $GEEXBOX_DIR/lirc/lircd_$REMOTE.conf $TMPDIR/iso/GEEXBOX/etc/lircd.conf
 [ -n "$W32CODECS" ] && ln -s $W32CODECS_DIR/* $TMPDIR/iso/GEEXBOX/codecs/
 "$MKZFTREE" $TMPDIR/iso/GEEXBOX $TMPDIR/ziso/GEEXBOX
-rm -f $TMPDIR/iso/GEEXBOX/usr/share/mplayer/help_$LANGUAGE.txt
-rm -f $TMPDIR/iso/GEEXBOX/etc/mplayer/menu_$LANGUAGE.conf
+rm -f $TMPDIR/iso/GEEXBOX/usr/share/mplayer/help_$MENU_LANG.txt
+rm -f $TMPDIR/iso/GEEXBOX/etc/mplayer/menu_$MENU_LANG.conf
 rm -f $TMPDIR/iso/GEEXBOX/etc/lang.conf
 rm -f $TMPDIR/iso/GEEXBOX/etc/lang
 rm -f $TMPDIR/iso/GEEXBOX/etc/subfont

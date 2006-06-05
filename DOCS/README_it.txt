@@ -66,8 +66,8 @@ semplicemente qualche file di testo.
 
     - Utenti GNU/Linux:
     Modificare lo script generator.sh prima di eseguirlo, cambiando la linea
-    verso l'inizio del file: "LANGUAGE=en" con il linguaggio preferito.
-    Esempio: se sei italiano, cambia la linea in "LANGUAGE=it".
+    verso l'inizio del file: "MENU_LANG=en" con il linguaggio preferito.
+    Esempio: se sei italiano, cambia la linea in "MENU_LANG=it".
 
     - Utenti Microsoft Windows:
     Quando viene eseguito, generator.exe permette di selezionare la lingua

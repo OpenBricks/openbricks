@@ -65,8 +65,8 @@ text files.
 
     - GNU/Linux users:
     Edit the generator.sh script before running it and change the line
-    near the top: "LANGUAGE=en" to your preferred language.
-    For example: if you're French, change it to "LANGUAGE=fr".
+    near the top: "MENU_LANG=en" to your preferred language.
+    For example: if you're French, change it to "MENU_LANG=fr".
 
     - Microsoft Windows users:
     When started, generator.exe gives you a combo list that allows you

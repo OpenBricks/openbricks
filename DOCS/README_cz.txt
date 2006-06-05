@@ -70,8 +70,8 @@ Dále upravit velké množství nastavení editací textových konfiguraèních  souborù.
 
 
     - uživatelé GNU/Linux:
-    Pøed spuštìním editujte øádek "LANGUAGE=en" skriptu generator.sh
-    na váš preferovaný jazyk napø "LANGUAGE=cz"
+    Pøed spuštìním editujte øádek "MENU_LANG=en" skriptu generator.sh
+    na váš preferovaný jazyk napø "MENU_LANG=cz"
 
 
     - Uživatelé Microsoft Windows :
