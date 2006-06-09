@@ -11,7 +11,7 @@ SUB_CHARSET=
 
 # Remote to Use (pctv/logitech/hauppauge/realmagic/creative/leadtek/RM-S6/
 # RX-V850/animax/askey/avermedia/packard_bell/atiusb/atiusb2/LG/D-10/
-# digimatrix/mceusb/streamzap)
+# digimatrix/mceusb/streamzap/flytv-prime)
 REMOTE=atiusb
 
 # Remote receiver to use (animax/askey/avermedia/atiusb/atiusb2/creative/
