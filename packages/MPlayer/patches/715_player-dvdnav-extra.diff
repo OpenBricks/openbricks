@@ -1,11 +1,11 @@
 extra new files for dvdnav, as a seperate patch.
 based on files taken from:
-http://www.freeweb.hu/dcxx/mplayer/index-20060411.html
+http://www.freeweb.hu/dcxx/mplayer/index-20060614.html
 
 diff -Nur a/libmpcodecs/vd_videostill.c b/libmpcodecs/vd_videostill.c
 --- a/libmpcodecs/vd_videostill.c	1970-01-01 02:00:00.000000000 +0200
-+++ b/libmpcodecs/vd_videostill.c	2006-04-06 19:11:07.000000000 +0300
-@@ -0,0 +1,117 @@
++++ b/libmpcodecs/vd_videostill.c	2006-06-12 23:10:25.000000000 +0300
+@@ -0,0 +1,151 @@
 +#include "config.h"
 +
 +#include <stdio.h>
@@ -46,6 +46,11 @@ diff -Nur a/libmpcodecs/vd_videostill.c b/libmpcodecs/vd_videostill.c
 +#include "libvo/fastmemcpy.h"
 +mp_image_t *smpi=NULL;
 +int mp_preserve=0;
++#define	MP_STORED_IMAGE_NOSET	-1
++#define MP_STORED_IMAGE_OFF	0
++#define MP_STORED_IMAGE_ON	1
++int mp_stored_image=MP_STORED_IMAGE_NOSET;
++
 +
 +extern double video_time_usage;
 +extern double vout_time_usage;
@@ -54,19 +59,33 @@ diff -Nur a/libmpcodecs/vd_videostill.c b/libmpcodecs/vd_videostill.c
 +
 +#include "cpudetect.h"
 +
-+void clearsmpi(void) {smpi=NULL;}
++void clearsmpi(void) {smpi=NULL; mp_stored_image=MP_STORED_IMAGE_NOSET;}
 +
 +int vd_mpeg2_reset(sh_video_t *sh_video, int full_reset)
 +{
-+#ifdef USE_MPDVDNAV
 +if (!mpvdec) return 0;
++if (mp_stored_image==MP_STORED_IMAGE_NOSET) return 0;
++if (mp_stored_image==MP_STORED_IMAGE_OFF) return 1;
 +if (!sh_video->enable_mpeg2_reset) return 0;
 +mpvdec->control(sh_video, VDCTRL_RESET, &full_reset);
 +return 1;
-+#else
-+return 0;
-+#endif
 +}
++
++inline static void copy_mpi(mp_image_t *dmpi, mp_image_t *mpi) {
++  if(mpi->flags&MP_IMGFLAG_PLANAR){
++    memcpy_pic(dmpi->planes[0],mpi->planes[0], mpi->w, mpi->h,
++	       dmpi->stride[0],mpi->stride[0]);
++    memcpy_pic(dmpi->planes[1],mpi->planes[1], mpi->chroma_width, mpi->chroma_height,
++	       dmpi->stride[1],mpi->stride[1]);
++    memcpy_pic(dmpi->planes[2], mpi->planes[2], mpi->chroma_width, mpi->chroma_height,
++	       dmpi->stride[2],mpi->stride[2]);
++  } else {
++    memcpy_pic(dmpi->planes[0],mpi->planes[0], 
++	       mpi->w*(dmpi->bpp/8), mpi->h,
++	       dmpi->stride[0],mpi->stride[0]);
++  }
++}
++
 +
 +int vd_decode_mp_preserve(void) {return mp_preserve;}
 +
@@ -95,13 +114,20 @@ diff -Nur a/libmpcodecs/vd_videostill.c b/libmpcodecs/vd_videostill.c
 +    }
 +#endif
 +
++if (mp_stored_image==MP_STORED_IMAGE_NOSET && mpvdec && enable_still)
++  {
++  if (mpvdec->control(sh_video, VDCTRL_STORED_IMAGE, NULL)==CONTROL_TRUE)
++    mp_stored_image=MP_STORED_IMAGE_ON;
++    else
++    mp_stored_image=MP_STORED_IMAGE_OFF;
++  }
 +mp_preserve=0;
-+if (in_size>=0 && mpi && enable_still)
++if (in_size>=0 && mpi && enable_still && mp_stored_image==MP_STORED_IMAGE_ON)
 +  {
 +  smpi=mpi;		/* It will use copy_mpi() or other solution? */
 +  if (mpi) mp_preserve=mpi->flags & MP_IMGFLAG_PRESERVE;
 +  }
-+if (in_size<0 && enable_still && smpi)
++if (in_size<0 && enable_still && smpi && mp_stored_image!=MP_STORED_IMAGE_NOSET)
 +  {
 +  mpi=smpi;
 +  }
@@ -115,6 +141,14 @@ diff -Nur a/libmpcodecs/vd_videostill.c b/libmpcodecs/vd_videostill.c
 +//vo_draw_image(video_out,mpi);
 +vf=sh_video->vfilter;
 +ret = vf->put_image(vf,mpi, pts); // apply video filters and call the leaf vo/ve
++if (in_size>=0 && mpi && enable_still && mp_stored_image==MP_STORED_IMAGE_OFF)
++  {
++  smpi=mpcodecs_get_image(sh_video, 
++	(sh_video->codec->outflags[sh_video->outfmtidx] & CODECS_FLAG_STATIC) ?
++	MP_IMGTYPE_STATIC : MP_IMGTYPE_TEMP, MP_IMGFLAG_ACCEPT_WIDTH, 
++	sh_video->disp_w, sh_video->disp_h);
++  if (smpi) copy_mpi(smpi,mpi);
++  }
 +if(ret>0) vf->control(vf,VFCTRL_DRAW_OSD,NULL);
 +
 +    t2=GetTimer()-t2;
@@ -137,8 +171,8 @@ diff -Nur a/libmpcodecs/vd_videostill.h b/libmpcodecs/vd_videostill.h
 +#endif
 diff -Nur a/libmpdemux/stream_dvdnav.c b/libmpdemux/stream_dvdnav.c
 --- a/libmpdemux/stream_dvdnav.c	1970-01-01 02:00:00.000000000 +0200
-+++ b/libmpdemux/stream_dvdnav.c	2006-04-11 18:33:15.000000000 +0300
-@@ -0,0 +1,1113 @@
++++ b/libmpdemux/stream_dvdnav.c	2006-06-14 18:56:06.000000000 +0300
+@@ -0,0 +1,1441 @@
 +/*
 + * Copyright (C) 2000 Rich Wareham <richwareham@users.sourceforge.net>
 + *
@@ -206,6 +240,7 @@ diff -Nur a/libmpdemux/stream_dvdnav.c b/libmpdemux/stream_dvdnav.c
 +int dvdnav_force_menu = 0;
 +int dvdnav_skipintro = 0;
 +int dvdnav_color_spu = 1;
++int dvdnav_still_repeat = DVDNAV_MAX_STILL_FRAME;
 +char* dvdmenu_lang = NULL;
 +
 +extern char* dvd_device;
@@ -547,7 +582,7 @@ diff -Nur a/libmpdemux/stream_dvdnav.c b/libmpdemux/stream_dvdnav.c
 +    highlight_event->palette=0;
 +    highlight_event->buttonN=0; }
 +#ifdef USE_MPDVDNAV_TRACE
-+    dvdnav_print_buttons(dvdnav_priv,"dvdna_get_highlight");
++    dvdnav_print_buttons(dvdnav_priv,"dvdnav_get_highlight");
 +#endif
 +return;
 +}
@@ -738,7 +773,7 @@ diff -Nur a/libmpdemux/stream_dvdnav.c b/libmpdemux/stream_dvdnav.c
 +#endif
 +	  }
 +	if (event->still_length==0xff) {
-+	  if (dvdnav_priv->stillcounter<DVDNAV_MAX_STILL_FRAME)
++	  if (dvdnav_priv->stillcounter<dvdnav_still_repeat)
 +	    dvdnav_still_back(dvdnav_priv->dvdnav);
 +	    else
 +	    dvdnav_priv->stillok=1;
@@ -762,7 +797,7 @@ diff -Nur a/libmpdemux/stream_dvdnav.c b/libmpdemux/stream_dvdnav.c
 +#endif
 +	  if (now-dvdnav_priv->cell_timer<end_time) {	// cell play time end?
 +	    dvdnav_button_select_auto_action( dvdnav_priv->dvdnav, 1);
-+	  if (dvdnav_priv->stillcounter<DVDNAV_MAX_STILL_FRAME)
++	  if (dvdnav_priv->stillcounter<dvdnav_still_repeat)
 +	    dvdnav_still_back(dvdnav_priv->dvdnav);
 +	    else
 +	    dvdnav_priv->stillok=1; // don't let dvdnav stall on this image
@@ -1079,7 +1114,7 @@ diff -Nur a/libmpdemux/stream_dvdnav.c b/libmpdemux/stream_dvdnav.c
 +#endif
 +	if (t<2.00 && et>4.00) {				// correct cell play time?
 +	  if (now-dvdnav_priv->cell_timer<end_time) {	// cell play time end?
-+	    if (dvdnav_priv->waitcounter<DVDNAV_MAX_WAIT_FRAME)
++	    if (dvdnav_priv->waitcounter<dvdnav_still_repeat)
 +	      {
 +	      dvdnav_wait_back(dvdnav_priv->dvdnav);
 +	      dvdnav_priv->waitcounter++;
@@ -1137,7 +1172,7 @@ diff -Nur a/libmpdemux/stream_dvdnav.c b/libmpdemux/stream_dvdnav.c
 +      return len;
 +      break; }/* return eof */
 +    case DVDNAV_WAIT: {
-+      if (dvdnav_priv->waitcounter>=DVDNAV_MAX_WAIT_FRAME) return len;
++      if (dvdnav_priv->waitcounter>=dvdnav_still_repeat) return len;
 +      break;
 +      }
 +    }
@@ -1148,6 +1183,332 @@ diff -Nur a/libmpdemux/stream_dvdnav.c b/libmpdemux/stream_dvdnav.c
 +mp_msg(MSGT_STREAM,MSGL_DBG2,"DVDNAV fill_buffer len: %d\n",len);
 +return len;
 +}
++
++static int control(stream_t *stream,int cmd,void* arg) 
++{
++dvdnav_priv_t *priv = stream->priv;
++switch(cmd) 
++  {
++  case STREAM_CTRL_GET_TIME_LENGTH:
++    {
++    return STREAM_OK;
++    }
++  case STREAM_CTRL_LANG_FROM_SID:
++    {
++    *(int*)arg = dvdnav_lang_from_sid(priv,*(int*)arg);
++    return STREAM_OK;
++    }
++  case STREAM_CTRL_SID_FROM_LANG:
++    {
++    if (!arg) return STREAM_ERROR;
++    (*(struct dvd_idfromlang_st*)arg).id=dvdnav_sid_from_lang(priv, 
++	(*(struct dvd_idfromlang_st*)arg).lang);
++    return STREAM_OK;
++    }
++  case STREAM_CTRL_AID_FROM_LANG:
++    {
++    if (!arg) return STREAM_ERROR;
++    (*(struct dvd_idfromlang_st*)arg).id=dvdnav_aid_from_lang(priv, 
++	(*(struct dvd_idfromlang_st*)arg).lang);
++    return STREAM_OK;
++    }
++  case STREAM_CTRL_NUMBER_OF_SUBS:
++    {
++    *(int*)arg = dvdnav_number_of_subs(priv);
++    return STREAM_OK;
++    }
++  case STREAM_CTRL_DVDNAV_REALLYEOF:
++    {
++    if (dvdnav_reallyeof(priv))
++      return STREAM_OK;
++    return STREAM_ERROR;
++    }
++  case STREAM_CTRL_DVDNAV_EVENT_STOP:
++    {
++    if (priv->event.eventflag.stop)
++      return STREAM_OK;
++    return STREAM_ERROR;
++    }
++  case STREAM_CTRL_DVDNAV_EVENT_WAIT:
++    {
++    if (priv->event.eventflag.wait)
++      return STREAM_OK;
++    return STREAM_ERROR;
++    }
++  case STREAM_CTRL_DVDNAV_EVENT_STILL:
++    {
++    if (priv->event.eventflag.still_frame)
++      return STREAM_OK;
++    return STREAM_ERROR;
++    }
++  case STREAM_CTRL_DVDNAV_EVENT_VTS:
++    {
++    if (priv->event.eventflag.vts_change)
++      return STREAM_OK;
++    return STREAM_ERROR;
++    }
++  case STREAM_CTRL_DVDNAV_EVENT_VTS_DOMAIN:
++    {
++    if (priv->vts_domain)
++      return STREAM_OK;
++    return STREAM_ERROR;
++    }
++  case STREAM_CTRL_GET_AUDIO_ID:
++    {
++    if (!arg) return STREAM_ERROR;
++    *(int*)arg = priv->alang;
++    return STREAM_OK;
++    }
++  case STREAM_CTRL_GET_DVDSUB_ID:
++    {
++    if (!arg) return STREAM_ERROR;
++    *(int*)arg = priv->slang;
++    return STREAM_OK;
++    }
++  case STREAM_CTRL_DVDNAV_EVENT_CELL:
++    {
++    if (priv->event.eventflag.cell_change)
++      return STREAM_OK;
++    return STREAM_ERROR;
++    }
++  case STREAM_CTRL_DVDNAV_REALLY_CHANGE:
++    {
++    if (priv->event.cell_really_change)
++      return STREAM_OK;
++    return STREAM_ERROR;
++    }
++  case STREAM_CTRL_DVDNAV_TITLESET:
++    {
++    priv->lasttitle=priv->title;
++    priv->lastpart=priv->part;
++    priv->old_vts_domain=priv->vts_domain;
++    return STREAM_OK;
++    }
++  case STREAM_CTRL_DVDNAV_IS_NEW_TITLE:
++    {
++    if (priv->lasttitle!=priv->title)
++      return STREAM_OK;
++    return STREAM_ERROR;
++    }
++  case STREAM_CTRL_DVDNAV_EVENT_SPU_CLUT:
++    {
++    if (priv->event.eventflag.spu_clut_change)
++      return STREAM_OK;
++    return STREAM_ERROR;
++    }
++  case STREAM_CTRL_GET_SPU_CLUT:
++    {
++    memcpy(arg,&(priv->event.spu_clut),sizeof(spu_clut_t));
++    return STREAM_OK;
++    }
++  case STREAM_CTRL_GET_SPU_PALETTE:
++    {
++    if (!arg) return STREAM_ERROR;
++    *(uint32_t*)arg=priv->event.spu_palette;
++    return STREAM_OK;
++    }
++  case STREAM_CTRL_DVDNAV_EVENT_HIGHLIGHT:
++    {
++    if (priv->event.eventflag.highlight)
++      return STREAM_OK;
++    return STREAM_ERROR;
++    }
++  case STREAM_CTRL_DVDNAV_EVENT_NAV_PACKET:
++    {
++    if (priv->event.eventflag.nav_packet)
++      return STREAM_OK;
++    return STREAM_ERROR;
++    }
++  case STREAM_CTRL_DVDNAV_EVENT_CLEAR:
++    {
++    dvdnav_event_clear(priv);
++    return STREAM_OK;
++    }
++  case STREAM_CTRL_DVDNAV_STILLOK:
++    {
++    if (priv->stillok) return STREAM_OK;
++    return STREAM_ERROR;
++    }
++  case STREAM_CTRL_DVDNAV_GET_HIGHLIGHT_SHOW:
++    {
++    if (!arg) return STREAM_ERROR;
++    dvdnav_highlight_event_t highlight_event;
++    dvdnav_get_highlight(priv,&highlight_event,1);
++    (*(mp_highlight_t*)arg).display=highlight_event.display;
++    (*(mp_highlight_t*)arg).sx=highlight_event.sx;
++    (*(mp_highlight_t*)arg).sy=highlight_event.sy;
++    (*(mp_highlight_t*)arg).ex=highlight_event.ex;
++    (*(mp_highlight_t*)arg).ey=highlight_event.ey;
++    (*(mp_highlight_t*)arg).pts=highlight_event.pts;
++    (*(mp_highlight_t*)arg).palette=highlight_event.palette;
++    (*(mp_highlight_t*)arg).buttonN=highlight_event.buttonN;
++    return STREAM_OK;
++    }
++  case STREAM_CTRL_DVDNAV_GET_HIGHLIGHT_ACTIVATE:
++    {
++    if (!arg) return STREAM_ERROR;
++    dvdnav_highlight_event_t highlight_event;
++    dvdnav_get_highlight(priv,&highlight_event,2);
++    (*(mp_highlight_t*)arg).display=highlight_event.display;
++    (*(mp_highlight_t*)arg).sx=highlight_event.sx;
++    (*(mp_highlight_t*)arg).sy=highlight_event.sy;
++    (*(mp_highlight_t*)arg).ex=highlight_event.ex;
++    (*(mp_highlight_t*)arg).ey=highlight_event.ey;
++    (*(mp_highlight_t*)arg).palette=highlight_event.palette;
++    (*(mp_highlight_t*)arg).pts=highlight_event.pts;
++    (*(mp_highlight_t*)arg).buttonN=highlight_event.buttonN;
++    return STREAM_OK;
++    }
++  case STREAM_CTRL_CHANGE_ASPECT:
++    {
++    if (priv->lastaspect!=priv->aspect) return STREAM_OK;
++    return STREAM_ERROR;
++    }
++  case STREAM_CTRL_GET_ASPECT:
++    {
++    if (!arg) return STREAM_ERROR;
++    *(int*)arg=priv->aspect;
++    return STREAM_OK;
++    }
++  case STREAM_CTRL_SYNC_ASPECT:
++    {
++    priv->lastaspect=priv->aspect;
++    return STREAM_OK;
++    }
++  case STREAM_CTRL_DVDNAV_SET_LOCKSEEK:
++    {
++    if (!arg) return STREAM_ERROR;
++    priv->lockseek=*(int*)arg;
++    return STREAM_OK;
++    }
++  case STREAM_CTRL_GET_FINALPTS:
++    {
++    if (!arg) return STREAM_ERROR;
++    *(float*)arg=priv->final_pts;
++    return STREAM_OK;
++    }
++  case STREAM_CTRL_GET_TLEN:
++    {
++    if (!arg) return STREAM_ERROR;
++    *(uint32_t*)arg=priv->tlen;
++    return STREAM_OK;
++    }
++#ifdef HAVE_NEW_GUI
++  case STREAM_CTRL_DVDNAV_MOUSE:
++    {
++    dvdnav_mouse(priv);
++    return STREAM_OK;
++    }
++#endif
++  case STREAM_CTRL_DVDNAV_TITLE_PLAY:
++    {
++    if (!arg) return STREAM_ERROR;
++    dvdnav_title_play(priv->dvdnav,*(int32_t*)arg);
++    return STREAM_OK;
++    }
++  case STREAM_CTRL_DVDNAV_PART_PLAY:
++    {
++    if (!arg) return STREAM_ERROR;
++    dvdnav_part_play(priv->dvdnav,priv->title,*(int32_t*)arg);
++    return STREAM_OK;
++    }
++  case STREAM_CTRL_DVDNAV_MENUCALL:
++    {
++    if (!arg) return STREAM_ERROR;
++    switch (*(int*)arg) {
++      case DVD_MENUCALL_Escape: {
++	dvdnav_menu_call(priv->dvdnav,DVD_MENU_Escape);
++	return STREAM_OK;}
++      case DVD_MENUCALL_Title: {
++	dvdnav_menu_call(priv->dvdnav,DVD_MENU_Title);
++	return STREAM_OK;}
++      case DVD_MENUCALL_Root: {
++	dvdnav_menu_call(priv->dvdnav,DVD_MENU_Root);
++	return STREAM_OK;}
++      case DVD_MENUCALL_Subpicture: {
++	dvdnav_menu_call(priv->dvdnav,DVD_MENU_Subpicture);
++	return STREAM_OK;}
++      case DVD_MENUCALL_Audio: {
++	dvdnav_menu_call(priv->dvdnav,DVD_MENU_Audio);
++	return STREAM_OK;}
++      case DVD_MENUCALL_Angle: {
++	dvdnav_menu_call(priv->dvdnav,DVD_MENU_Angle);
++	return STREAM_OK;}
++      case DVD_MENUCALL_Part: {
++	dvdnav_menu_call(priv->dvdnav,DVD_MENU_Part);
++	return STREAM_OK;}
++      }
++    return STREAM_ERROR;
++    }
++  case STREAM_CTRL_DVDNAV_MENUFORCE:
++    {
++    dvdnav_menu_force(priv);
++    return STREAM_OK;
++    }
++  case STREAM_CTRL_DVDNAV_MENU_ACTION:
++    {
++    if (!arg) return STREAM_ERROR;
++    dvdnav_menu_action(priv,*(int*)arg);
++    return STREAM_OK;
++    }
++  case STREAM_CTRL_FULL_START:
++    {
++    dvdnav_stream_fullstart(priv);
++    return STREAM_OK;
++    }
++  case STREAM_CTRL_SET_ALANG:
++    {
++    if (!arg) return STREAM_ERROR;
++    if (!*(char**)arg) return STREAM_ERROR;
++    if (dvdnav_audio_language_select(priv->dvdnav, *(char**)arg ) !=
++	DVDNAV_STATUS_OK) {	/* FIXME: don't work! */
++      mp_msg(MSGT_FIXME, MSGL_FIXME, "Error on setting spu languages: %s\n",
++	dvdnav_err_to_string(priv->dvdnav)); 
++      return STREAM_ERROR;
++      }
++    return STREAM_OK;
++    }
++  case STREAM_CTRL_SET_SLANG:
++    {
++    if (!arg) return STREAM_ERROR;
++    if (!*(char**)arg) return STREAM_ERROR;
++    if (dvdnav_spu_language_select(priv->dvdnav, *(char**)arg ) !=
++	DVDNAV_STATUS_OK) {	/* FIXME: don't work! */
++      mp_msg(MSGT_FIXME, MSGL_FIXME, "Error on setting spu languages: %s\n",
++	dvdnav_err_to_string(priv->dvdnav)); 
++      return STREAM_ERROR;
++      }
++    return STREAM_OK;
++    }
++  case STREAM_CTRL_SET_MLANG:
++    {
++    if (!arg) return STREAM_ERROR;
++    if (!*(char**)arg) return STREAM_ERROR;
++    if (dvdnav_menu_language_select(priv->dvdnav, *(char**)arg ) !=
++	DVDNAV_STATUS_OK) {	/* FIXME: don't work! */
++      mp_msg(MSGT_FIXME, MSGL_FIXME, "Error on setting spu languages: %s\n",
++	dvdnav_err_to_string(priv->dvdnav)); 
++      return STREAM_ERROR;
++      }
++    return STREAM_OK;
++    }
++  case STREAM_CTRL_DVDNAV_GET_MENU_SID:
++    {
++    if (!arg) return STREAM_ERROR;
++    *(int*)arg=priv->menu_sid;
++    return STREAM_OK;
++    }
++  case STREAM_CTRL_GET_PALETTE:
++    {
++    if (!arg) return STREAM_ERROR;
++    *(unsigned int*)arg=dvdnav_stream_get_palette(priv);;
++    return STREAM_OK;
++    }
++
++  }
++return STREAM_UNSUPORTED;
++}
++
 +
 +dvdnav_priv_t * new_dvdnav_stream(char * filename, uint32_t titlenum)
 +{
@@ -1234,6 +1595,7 @@ diff -Nur a/libmpdemux/stream_dvdnav.c b/libmpdemux/stream_dvdnav.c
 +stream->flags = STREAM_READ | STREAM_SEEK;
 +stream->fill_buffer = fill_buffer;
 +stream->seek = seek;
++stream->control = control;
 +stream->close = stream_dvdnav_close;
 +stream->type = STREAMTYPE_DVDNAV;
 +stream->priv=(void*)dvdnav_priv;
@@ -1254,7 +1616,7 @@ diff -Nur a/libmpdemux/stream_dvdnav.c b/libmpdemux/stream_dvdnav.c
 +#endif	// #ifdef USE_MPDVDNAV
 diff -Nur a/libmpdemux/stream_dvdnav.h b/libmpdemux/stream_dvdnav.h
 --- a/libmpdemux/stream_dvdnav.h	1970-01-01 02:00:00.000000000 +0200
-+++ b/libmpdemux/stream_dvdnav.h	2006-04-11 18:31:21.000000000 +0300
++++ b/libmpdemux/stream_dvdnav.h	2006-06-12 22:27:44.000000000 +0300
 @@ -0,0 +1,262 @@
 +/*
 + * Copyright (C) 2001 Rich Wareham <richwareham@users.sourceforge.net>
@@ -1311,6 +1673,7 @@ diff -Nur a/libmpdemux/stream_dvdnav.h b/libmpdemux/stream_dvdnav.h
 +
 +#include "libmpdvdnav/dvdnav.h"
 +
++#if 0
 +extern int dvd_nav_skip_opening;
 +extern int dvd_nav_still;
 +extern int dvdnav_menutype;		/* dvdnav menu type: 0-SPU, 1-BOX, 2-SPU&BOX */
@@ -1324,6 +1687,7 @@ diff -Nur a/libmpdemux/stream_dvdnav.h b/libmpdemux/stream_dvdnav.h
 +extern int dvdnav_force_menu;		/* force display menu with simple box */
 +extern int dvdnav_skipintro;		/* skip intro before dvd menu */
 +extern int dvdnav_color_spu;		/* enable color spu buttons */
++extern int dvdnav_still_repeat;		/* still pgc repeat count */
 +#ifdef USE_MPDVDNAV_TRACE
 +extern int dvdnav_trace;		/* print trace messages (only devel)*/
 +#endif
@@ -1340,15 +1704,13 @@ diff -Nur a/libmpdemux/stream_dvdnav.h b/libmpdemux/stream_dvdnav.h
 +extern int	dvdnav_mouse_set;
 +#endif
 +
-+//#define DVDNAV_MAX_STILL_FRAME	5
-+//#define DVDNAV_MAX_WAIT_FRAME	5
-+#define DVDNAV_MAX_STILL_FRAME	5
-+#define DVDNAV_MAX_WAIT_FRAME	5
-+
 +// dvdnav menu button types
 +#define DVDNAV_MENUTYPE_SPU	0
 +#define DVDNAV_MENUTYPE_BOX	1
 +#define DVDNAV_MENUTYPE_SPU_BOX	2
++#endif
++
++#define DVDNAV_MAX_STILL_FRAME	5
 +
 +#undef max
 +#define max(x,y) ((x) > (y) ? (x) : (y))
