@@ -1,31 +1,48 @@
 continuation of 700_player-dvdnav.diff (see it for more information)
 which conflicted with geexbox patches.
 
-diff -Nur MPlayer-1.0pre8.orig/mplayer.c MPlayer-1.0pre8/mplayer.c
---- MPlayer-1.0pre8.orig/mplayer.c	2006-06-02 19:16:27.000000000 +0300
-+++ MPlayer-1.0pre8/mplayer.c	2006-06-02 19:18:50.000000000 +0300
+diff -Nur MPlayer-20060519.orig/mplayer.c MPlayer-20060519/mplayer.c
+--- MPlayer-20060519.orig/mplayer.c	2006-06-02 19:16:27.000000000 +0300
++++ MPlayer-20060519/mplayer.c	2006-06-02 19:18:50.000000000 +0300
+@@ -1621,7 +1621,7 @@
+     
+     switch(action) {
+     case M_PROPERTY_SET:
+-        if(edl_muted) return M_PROPERTY_DISABLED;
++        if(edl_muted || sw_muted) return M_PROPERTY_DISABLED;
+         if(!arg) return 0;
+         if((!!*(int*)arg) != mixer.muted) {
+             mixer_mute(&mixer);
+@@ -1630,7 +1630,7 @@
+         return 1;
+     case M_PROPERTY_STEP_UP:
+     case M_PROPERTY_STEP_DOWN:
+-        if(edl_muted) return M_PROPERTY_DISABLED;
++        if(edl_muted || sw_muted) return M_PROPERTY_DISABLED;
+         mixer_mute(&mixer);
+         user_muted = !user_muted;
+         return 1;
 @@ -3384,7 +3384,11 @@
  
  //================== Read SUBTITLES (DVD & TEXT) ==========================
  if(vo_spudec==NULL && sh_video &&
 -     (stream->type==STREAMTYPE_DVD || demuxer->type==DEMUXER_TYPE_MATROSKA)){
-+     (stream->type==STREAMTYPE_DVD || demuxer->type==DEMUXER_TYPE_MATROSKA ||
-+#ifdef USE_DVDNAV
-+      stream->type==STREAMTYPE_DVDNAV
++     (stream->type==STREAMTYPE_DVD || demuxer->type==DEMUXER_TYPE_MATROSKA
++#ifdef USE_MPDVDNAV
++      || stream->type==STREAMTYPE_DVDNAV
 +#endif
 +      )){
  
  if (spudec_ifo) {
    unsigned int palette[16], width, height;
-@@ -3908,6 +3912,24 @@
+@@ -3908,6 +3912,23 @@
  	// get it!
  	current_module="video_read_frame";
          in_size=video_read_frame(sh_video,&next_frame_time,&start,force_fps);
-+#ifdef USE_DVDNAV
++#ifdef USE_MPDVDNAV
 +	if (stream->type==STREAMTYPE_DVDNAV)
 +	  {
-+//	  if (dvdnav_reallyeof((dvdnav_priv_t*)(stream->priv)))
-+	  if (stream_control(stream,STREAM_CTRL_DVDNAV_REALLYEOF,NULL)==STREAM_OK)
++	  if (dvdnav_reallyeof((dvdnav_priv_t*)(stream->priv)))
 +	    {
 +	    eof=1;
 +	    break;
@@ -46,138 +63,9 @@ diff -Nur MPlayer-1.0pre8.orig/mplayer.c MPlayer-1.0pre8/mplayer.c
  	    eof=1;
  	  break;
  	}
-+#ifdef USE_DVDNAV
++#ifdef USE_MPDVDNAV
 +	}
 +#endif
  	if(in_size>max_framesize) max_framesize=in_size; // stats
  	sh_video->timer+=frame_time;
  	if(sh_audio) sh_audio->delay-=frame_time;
---- MPlayer-1.0pre8.orig/libmpdemux/stream.h	2006-06-12 22:14:23.000000000 +0200
-+++ MPlayer-1.0pre8/libmpdemux/stream.h	2006-06-12 23:16:51.000000000 +0200
-@@ -283,11 +347,46 @@
- extern int dvd_last_chapter;
- extern int dvd_angle;
- //#endif
-+
-+extern int dvbin_param_on;
- 
- extern char * audio_stream;
- 
- #ifdef USE_DVDNAV
--#include "dvdnav_stream.h"
-+extern int dvd_nav_skip_opening;
-+extern int dvd_nav_still;
-+extern int dvdnav_menutype;		/* dvdnav menu type: 0-SPU, 1-BOX, 2-SPU&BOX */
-+extern int dvdnav_continue_play;
-+extern int dvdnav_go_title;		/* dvdnav_title_play */
-+extern int dvdnav_go_part;		/* dvdnav_part_play */
-+extern int dvdnav_go_menu;		/* call main menu */
-+extern int dvdnav_go_menu_force;	/* call force main menu with skip intro*/
-+extern int dvdnav_go_audio;		/* dvdnav set new audio stream */
-+extern int dvdnav_go_spu;		/* dbdnav set new spu stream */
-+extern int dvdnav_force_menu;		/* force display menu with simple box */
-+extern int dvdnav_skipintro;		/* skip intro before dvd menu */
-+extern int dvdnav_color_spu;		/* enable color spu buttons */
-+extern int dvdnav_still_repeat;		/* still pgc repeat count */
-+#ifdef USE_MPDVDNAV_TRACE
-+extern int dvdnav_trace;		/* print trace messages (only devel)*/
-+#endif
-+extern char* dvdmenu_lang;		/* nav menu language */
-+
-+#ifdef HAVE_NEW_GUI
-+extern int	dvdnav_window_width;
-+extern int	dvdnav_window_height;
-+extern int	dvdnav_window_orig_width;
-+extern int	dvdnav_window_orig_height;
-+extern int	dvdnav_mouse_x;
-+extern int	dvdnav_mouse_y;
-+extern int	dvdnav_mouse_button;
-+extern int	dvdnav_mouse_set;
-+#endif
-+
-+// dvdnav menu button types
-+#define DVDNAV_MENUTYPE_SPU	0
-+#define DVDNAV_MENUTYPE_BOX	1
-+#define DVDNAV_MENUTYPE_SPU_BOX	2
- #endif
- 
- typedef struct {
---- MPlayer-1.0pre8.orig/libvo/osd_template.c	2006-06-12 22:13:57.000000000 +0200
-+++ MPlayer-1.0pre8/libvo/osd_template.c	2006-06-12 23:28:50.000000000 +0200
-@@ -193,8 +193,10 @@
-   }
- }
- 
--static inline void RENAME(vo_draw_alpha_rgb24)(int w,int h, unsigned char* src, unsigned char *srca, int srcstride, unsigned char* dstbase,int dststride){
-+static inline void RENAME(vo_draw_alpha_rgb24)(int w,int h, int dp, unsigned char* src, unsigned char *srca, int srcstride, unsigned char* dstbase,int dststride){
-     int y;
-+switch (dp) {
-+ case DEST_PLANES_Y:
-     for(y=0;y<h;y++){
-         register unsigned char *dst = dstbase;
-         register int x;
---- MPlayer-1.0pre8.orig/libvo/osd_template.c	2006-06-12 22:13:57.000000000 +0200
-+++ MPlayer-1.0pre8/libvo/osd_template.c	2006-06-12 23:28:50.000000000 +0200
-@@ -299,13 +301,61 @@
- 	asm volatile(EMMS:::"memory");
- #endif
-     return;
-+ case DEST_PLANES_RB:
-+ for(y=0;y<h;y++){
-+     register unsigned char *dst = dstbase;
-+     register int x;
-+     for(x=0;x<w;x++){
-+         if(srca[x]){
-+		dst[0]=((dst[0]*srca[x])>>8)+src[x];
-+         }
-+         dst+=3; // 24bpp
-+     }
-+     src+=srcstride;
-+     srca+=srcstride;
-+     dstbase+=dststride;
-+ }
-+ return;
-+ case DEST_PLANES_G:
-+ for(y=0;y<h;y++){
-+     register unsigned char *dst = dstbase;
-+     register int x;
-+     for(x=0;x<w;x++){
-+         if(srca[x]){
-+		dst[1]=((dst[1]*srca[x])>>8)+src[x];
-+         }
-+         dst+=3; // 24bpp
-+     }
-+     src+=srcstride;
-+     srca+=srcstride;
-+     dstbase+=dststride;
-+ }
-+ return;
-+ case DEST_PLANES_BR:
-+ for(y=0;y<h;y++){
-+     register unsigned char *dst = dstbase;
-+     register int x;
-+     for(x=0;x<w;x++){
-+         if(srca[x]){
-+		dst[2]=((dst[2]*srca[x])>>8)+src[x];
-+         }
-+         dst+=3; // 24bpp
-+     }
-+     src+=srcstride;
-+     srca+=srcstride;
-+     dstbase+=dststride;
-+ }
-+ return;
-+ }
- }
- 
--static inline void RENAME(vo_draw_alpha_rgb32)(int w,int h, unsigned char* src, unsigned char *srca, int srcstride, unsigned char* dstbase,int dststride){
-+static inline void RENAME(vo_draw_alpha_rgb32)(int w,int h, int dp, unsigned char* src, unsigned char *srca, int srcstride, unsigned char* dstbase,int dststride){
-     int y;
- #ifdef WORDS_BIGENDIAN
-     dstbase++;
- #endif
-+switch (dp) {
-+ case DEST_PLANES_Y:
-     for(y=0;y<h;y++){
-         register int x;
- #if defined(ARCH_X86) || defined(ARCH_X86_64)
