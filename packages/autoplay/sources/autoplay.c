@@ -407,7 +407,7 @@ load_mnts(int init)
                 umount_cdrom(drive);
               drive->status = CDS_NO_DISC;
             }
-          else 
+          else
             {
               drive->status = is_cdrom_mounted(drive) ? CDS_DISC_OK : CDS_NO_DISC;
             }
@@ -469,7 +469,7 @@ main (int argc, char **argv)
     {
       usleep(1000000);
 
-      if (!stat("/var/autoplay", &st_ap)) 
+      if (!stat("/var/autoplay", &st_ap))
         off_silent=0;
       else
         off_silent=1;

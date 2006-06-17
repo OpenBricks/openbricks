@@ -93,7 +93,7 @@ channels_table_add_new (struct channels_t *channels, struct channel_t *chan)
   channels->chans = realloc (channels->chans, (channels->nr_channels + 1)
                              * sizeof (struct channel_t *));
   channels->chans[channels->nr_channels] = chan;
-  channels->nr_channels++;    
+  channels->nr_channels++;
 }
 
 static char *
@@ -102,7 +102,7 @@ channels_table_list (struct channels_t *channels, int format)
   char *buffer = NULL, c[BUFSIZE];
   size_t buffer_len = 0;
   int i;
-  
+
   for (i = 0; i < channels->nr_channels; i++)
     {
       if (format)
@@ -115,7 +115,7 @@ channels_table_list (struct channels_t *channels, int format)
       strcpy (&buffer[buffer_len], c);
       buffer_len += strlen(c);
     }
- 
+
   if (channels->nr_channels)
     buffer[buffer_len - 1] = '\0'; /* erase trailing ',' char */
 
@@ -137,7 +137,7 @@ xioctl (int fd, int request, void *arg)
 static int
 v4l2_open_device (char *dev)
 {
-  struct stat st; 
+  struct stat st;
   int fd;
 
   if (stat (dev, &st) == -1)
@@ -170,7 +170,7 @@ v4l2_close_device (int fd)
 {
   if (close (fd) == -1)
     exit (EXIT_FAILURE);
-  
+
   fd = -1;
 }
 
@@ -205,10 +205,10 @@ static void
 v4l2_get_input_list (int fd)
 {
   struct v4l2_input input;
-  
+
   memset (&input, 0, sizeof (input));
   input.index = 0;
-  
+
   while (xioctl (fd, VIDIOC_ENUMINPUT, &input) == 0)
     {
       if (strcmp ((char *) input.name, MPTVSCAN_DEBUG_INPUT))
@@ -227,7 +227,7 @@ static void
 v4l2_set_input (int fd, char *input_id)
 {
   struct v4l2_input input;
-  
+
   memset (&input, 0, sizeof (input));
   input.index = 0;
 
@@ -409,7 +409,7 @@ v4l2_scan_channels (int fd, char *list,
       len = v4l2_get_all_channels_list (clist);
       if (!clist)
         return;
-      
+
       for (j = 0; j < len; j++)
         {
           f = clist[j]->freq / 62.5;
@@ -447,7 +447,7 @@ v4l2_scan_channels (int fd, char *list,
               v4l2_set_tuner_frequence (fd, f);
               usleep (200000);
               tuned = v4l2_is_tuned (fd);
-              
+
               if (progress)
                 {
                   printf ("%d\n", (int) (100 * (j + 1) / chanlists[i].count));
@@ -458,7 +458,7 @@ v4l2_scan_channels (int fd, char *list,
                 {
                   struct channel_t *chan;
                   char chan_name[128];
-                  
+
                   if (format)
                     sprintf (chan_name, "Channel %s", chanlists[i].list[j].name);
                   else

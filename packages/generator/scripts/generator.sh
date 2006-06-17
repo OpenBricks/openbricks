@@ -99,7 +99,7 @@ fi
 if [ -d "$GEEXBOX_DIR/$TARGET_ARCH" ]; then
   GEEXBOX_DIR=$GEEXBOX_DIR/$TARGET_ARCH
 else
-  # wrong arch, force delete variable 
+  # wrong arch, force delete variable
   TARGET_ARCH=""
 fi
 
