@@ -60,6 +60,7 @@
 #include "debug.h"
 #include "plugin.h"
 
+const char STREAMINFO_FIFO[] = "/tmp/mp_streaminfo";
 
 static HASH mplayer;
 
@@ -67,7 +68,7 @@ static HASH mplayer;
 static int parse_mplayer_info(char *tmpfile)
 {
     int age;
-    FILE *mplayer_stream;
+    FILE *streaminfo_fifo;
     char line[200];
 
     /* reread every 100msec only */
@@ -76,16 +77,16 @@ static int parse_mplayer_info(char *tmpfile)
 	return 0;
 
     /* Open Filestream for tmpfile */
-    mplayer_stream = fopen(tmpfile, "r");
+    streaminfo_fifo = fopen(tmpfile, "r");
 
     /* Check for File */
-    if (!mplayer_stream) {
-      error("Error: Cannot open MPlayer-Info Stream! Is MPlayer started?");
+    if (!streaminfo_fifo) {
+      error("Error: Cannot open %s! Use mkfifo to create it.", STREAMINFO_FIFO);
       return -1;
     }
 
-    /* Read Lines from the Stream */
-    while (fgets(line, sizeof(line), mplayer_stream)) {
+    /* Read lines from the fifo */
+    while (fgets(line, sizeof(line), streaminfo_fifo)) {
         char *c, *key, *val;
         c = strchr(line, '=');
         if (c == NULL)
@@ -109,7 +110,7 @@ static int parse_mplayer_info(char *tmpfile)
         hash_put(&mplayer, key, val);
     }
 
-    fclose(mplayer_stream);
+    fclose(streaminfo_fifo);
     return 0;
 
 }
@@ -118,7 +119,7 @@ static void my_mplayer(RESULT * result, RESULT * arg1)
 {
     char *key, *val;
 
-    if (parse_mplayer_info("/tmp/mp_streaminfo") < 0) {
+    if (parse_mplayer_info(STREAMINFO_FIFO) < 0) {
         SetResult(&result, R_STRING, "");
         return;
     }
