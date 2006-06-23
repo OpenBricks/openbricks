@@ -513,10 +513,10 @@ fi
 # Configure TV card and scan for channels.
 # (only available when booting from GeeXboX).
 if [ "$1" = geexbox ]; then
-  if grep -q -e 'Class 0400:.*109e:' \
-             -e 'Class 0480:.*1131:' \
-             -e 'Class 0480:.*14f1:88' \
-             /proc/pci; then
+  if grep -q -e '0400: 109e:' \
+             -e '0480: 1131:' \
+             -e '0480: 14f1:88' \
+             /tmp/pci; then
     # Only scan if a TV card is detected
     /usr/bin/mptvscan -i >/dev/null 2>&1
     if [ `echo $?` = 0 ]; then
