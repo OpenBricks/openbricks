@@ -1,8 +1,7 @@
-Index: busybox-1.1.1/include/usage.h
-===================================================================
---- busybox-1.1.1.orig/include/usage.h	2006-03-24 01:57:26.000000000 +0100
-+++ busybox-1.1.1/include/usage.h	2006-03-24 02:06:49.000000000 +0100
-@@ -3455,7 +3455,8 @@
+diff -Nur busybox-1.2.0.orig/include/usage.h busybox-1.2.0/include/usage.h
+--- busybox-1.2.0.orig/include/usage.h	2006-07-01 01:42:10.000000000 +0300
++++ busybox-1.2.0/include/usage.h	2006-07-07 18:42:50.000000000 +0300
+@@ -3378,7 +3378,8 @@
  
  #define wget_trivial_usage \
  	"[-c|--continue] [-q|--quiet] [-O|--output-document file]\n" \
@@ -12,7 +11,7 @@ Index: busybox-1.1.1/include/usage.h
  #define wget_full_usage \
  	"wget retrieves files via HTTP or FTP\n\n" \
  	"Options:\n" \
-@@ -3463,7 +3464,9 @@
+@@ -3386,7 +3387,9 @@
  	"\t-q\tquiet mode - do not print\n" \
  	"\t-P\tSet directory prefix to DIR\n" \
  	"\t-O\tsave to filename ('-' for stdout)\n" \
@@ -23,27 +22,27 @@ Index: busybox-1.1.1/include/usage.h
  
  #define which_trivial_usage \
  	"[COMMAND ...]"
-Index: busybox-1.1.1/networking/wget.c
-===================================================================
---- busybox-1.1.1.orig/networking/wget.c	2006-03-24 01:57:26.000000000 +0100
-+++ busybox-1.1.1/networking/wget.c	2006-03-24 02:07:37.000000000 +0100
-@@ -146,6 +146,8 @@
+diff -Nur busybox-1.2.0.orig/networking/wget.c busybox-1.2.0/networking/wget.c
+--- busybox-1.2.0.orig/networking/wget.c	2006-07-01 01:42:02.000000000 +0300
++++ busybox-1.2.0/networking/wget.c	2006-07-07 18:45:58.000000000 +0300
+@@ -135,6 +135,8 @@
  #define WGET_OPT_HEADER	16
  #define WGET_OPT_PREFIX	32
  #define WGET_OPT_PROXY	64
 +#define WGET_OPT_TIMEOUT	128
 +#define WGET_OPT_RETRY		256
  
+ #if ENABLE_WGET_LONG_OPTIONS
  static const struct option wget_long_options[] = {
- 	{ "continue",        0, NULL, 'c' },
-@@ -155,9 +157,26 @@
- 	{ "header",	         1, NULL, 131 },
+@@ -145,10 +147,27 @@
+ 	{ "header",          1, NULL, 131 },
  	{ "directory-prefix",1, NULL, 'P' },
  	{ "proxy",           1, NULL, 'Y' },
 +	{ "read-timeout",    1, NULL, 'T' },
 +	{ "tries",           1, NULL, 'R' },
  	{ 0,                 0, 0, 0 }
  };
+ #endif
  
 +static void timeout_reached(int ignore)
 +{
@@ -63,7 +62,7 @@ Index: busybox-1.1.1/networking/wget.c
  int wget_main(int argc, char **argv)
  {
  	int n, try=5, status;
-@@ -173,6 +192,7 @@
+@@ -164,6 +183,7 @@
  	struct host_info server, target;
  	struct sockaddr_in s_in;
  	llist_t *headers_llist = NULL;
@@ -71,7 +70,7 @@ Index: busybox-1.1.1/networking/wget.c
  
  	FILE *sfp = NULL;		/* socket to web/ftp server	    */
  	FILE *dfp = NULL;		/* socket to ftp server (data)	    */
-@@ -184,15 +204,17 @@
+@@ -175,6 +195,8 @@
  	int quiet_flag = FALSE;		/* Be verry, verry quiet...	    */
  	int use_proxy = 1;		/* Use proxies if env vars are set  */
  	char *proxy_flag = "on";	/* Use proxies if env vars are set  */
@@ -80,9 +79,10 @@ Index: busybox-1.1.1/networking/wget.c
  
  	/*
  	 * Crack command line.
- 	 */
- 	bb_opt_complementally = "-1:\203::";
+@@ -183,9 +205,9 @@
+ #if ENABLE_WGET_LONG_OPTIONS
  	bb_applet_long_options = wget_long_options;
+ #endif
 -	opt = bb_getopt_ulflags(argc, argv, "cq\213O:\203:P:Y:",
 +	opt = bb_getopt_ulflags(argc, argv, "cq\213O:\203:P:Y:T:R:",
  					&fname_out, &headers_llist,
@@ -91,7 +91,7 @@ Index: busybox-1.1.1/networking/wget.c
  	if (opt & WGET_OPT_CONTINUE) {
  		++do_continue;
  	}
-@@ -218,6 +240,9 @@
+@@ -211,6 +233,9 @@
  		}
  	}
  
@@ -101,7 +101,7 @@ Index: busybox-1.1.1/networking/wget.c
  	parse_url(argv[optind], &target);
  	server.host = target.host;
  	server.port = target.port;
-@@ -295,6 +320,13 @@
+@@ -288,6 +313,13 @@
  				server.host, inet_ntoa(s_in.sin_addr), ntohs(server.port));
  	}
  
