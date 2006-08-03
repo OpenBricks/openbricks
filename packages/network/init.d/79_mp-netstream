@@ -11,7 +11,7 @@ TMP=/tmp/streamtmp
 . /etc/network
 
 # Disable streams if not utilized.
-test "$SHOUTCAST" = "no" -a "$SHOUTCASTTV" = "no" -a `grep -c ^STREAM $CONF` -eq 0 -a `grep -c ^EXTM3U $CONF` -eq 0 && exit 1
+test "$SHOUTCAST" = "no" -a "$SHOUTCASTTV" = "no" -a "$ICECAST" = "no" -a `grep -c ^STREAM $CONF` -eq 0 -a `grep -c ^EXTM3U $CONF` -eq 0 && exit 1
 
 echo "### Network Stream Configuration ###"
 
@@ -32,6 +32,22 @@ done
 
 SC_TUNE=$(sed -n -e "s#^SHOUTCASTTUNE_URI=\"\(.*\)\"#\1#p" $CONF)
 (
+  if [ "$ICECAST" = "yes" ]; then
+    # icecast radio
+    unset FILE URL
+    wget -q -T $TIMEOUT -t $TRIES -O $TMP `sed -n -e "s#^ICECAST_URI=\"\(.*\)\"#\1#p" $CONF` || echo "" > $TMP
+    DIR="$BASEDIR/Icecast Radio"
+    for I in `sed -n -e "s#.*<server_name>\(.*\)</server_name>.*#\1#p" -e "s#.*<listen_url>\(.*\)</listen_url>.*#\1#p" $TMP | sed "s# #_#g"`; do
+      [ ! -d "$DIR" ] && mkdir -p "$DIR"
+      [ `echo $I | grep -c -e "://"` -gt 0 ] && URL="$I"
+      [ `echo $I | grep -c -e "://"` -eq 0 ] && FILE="$(echo $I | sed "s#[_/]# #g")"
+      if [ -n "$FILE" -a -n "$URL" ]; then
+        echo "$URL" > "$DIR/$FILE.pls"
+        unset FILE URL
+      fi
+    done
+  fi
+
   if [ "$SHOUTCAST" = "yes" ]; then
     # shoutcast radio
     wget -q -T $TIMEOUT -t $TRIES -O $TMP `sed -n -e "s#^SHOUTCAST_URI=\"\(.*\)\"#\1#p" $CONF` || echo "" > $TMP
