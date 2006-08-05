@@ -1,0 +1,51 @@
+#!/bin/sh
+# Usage: ndiswrapper_convert /path_to/win_driver.inf
+#
+# Tool to move and convert Windows .inf and .sys files for use with
+# NdisWrapper package.
+
+TMP=/tmp/ndiswrapper
+INF=$1
+BASEDIR=`echo $INF | sed "s#\(.*\)/.*#\1#"`
+BUS_TYPE=`sed -n -e "s# *BusType[^=]*=\ \([0-9]*\).*#\1#p" $INF`
+if [ $BUS_TYPE = "5" ]; then
+  HEX_BUS_TYPE=$BUS_TYPE
+  ID_LABEL=`sed -n -e "s#.*DeviceID.*\"\(.*\)\"#\1#p" $INF`
+  ID1=`echo $ID_LABEL | sed "s#.*VEN_\(....\)&DEV.*#\1#"`
+  ID2=`echo $ID_LABEL | sed "s#.*DEV_\(....\).*#\1#"`
+elif [ $BUS_TYPE = "15" ]; then
+  HEX_BUS_TYPE="F"
+  ID_LABEL=`sed -n -e "s#.*DeviceID.*\"\(.*\)\"#\1#p" $INF`
+  ID1=`echo $ID_LABEL | sed "s#.*VID_\(....\)&PID.*#\1#"`
+  ID2=`echo $ID_LABEL | sed "s#.*PID_\(....\).*#\1#"`
+fi
+
+if [ `echo $ID_LABEL | grep -c -e "SUBSYS"` -gt 0 ]; then
+  SUBSYS=`echo $ID_LABEL | sed "s#.*SUBSYS_\(....\)\(....\).*#\2:\1#"`
+  CONF="$BASEDIR/$ID1:$ID2:$SUBSYS.$HEX_BUS_TYPE.conf"
+  LINK="$BASEDIR/$ID1:$ID2.$HEX_BUS_TYPE.conf"
+  ln -s $CONF $LINK
+else
+  CONF="$BASEDIR/$ID1:$ID2.$HEX_BUS_TYPE.conf"
+fi
+
+sed -n "s#^[^;]*HKR,[ \(defaults\)]*,[^A-Za-z]*\([^,; ]*\)[ ]*,[^,]*,[ \"]*\([^ \t\"]*\).*#\1|\2#p" $INF > $TMP
+sed -n "s#^[^;]*HKR.*,.*\\\\\([^, ]*\)[ ]*, *default *,[^,]*,[ \"]*\([^ \t\"]*\).*#\1|\2#p" $INF >> $TMP
+sed -i -e "s/EnableRadio|0/EnableRadio|1/g" -e "s/IBSSGMode|0/IBSSGMode|2/g" -e "s/PrivacyMode|0/PrivacyMode|2/g" -e "s/AdhocGMode|1/AdhocGMode|0/g" -e "s/.*[,\*].*//g" -e "s/^|//g" $TMP
+
+for SWAP_TAG in `sed -n "s/.*|%\(.*\)%.*/\1/p" $TMP`; do
+  TAG=`sed -n "s/[^%]*$SWAP_TAG[^%]*=[ \t\"]*\([^ \t\"]*\).*/\1/p" $INF`
+  sed -i "s#%$SWAP_TAG%#$TAG#g" $TMP
+done
+
+echo "NdisVersion|0x50001" > $CONF
+echo "Environment|1" >> $CONF
+echo "BusType|$BUS_TYPE" >> $CONF
+echo "mac_address|XX:XX:XX:XX:XX:XX" >> $CONF
+echo "ndis_version|GEEXBOX" >> $CONF
+echo "" >> $CONF
+
+sort $TMP | uniq >> $CONF
+rm $TMP
+
+exit 0
