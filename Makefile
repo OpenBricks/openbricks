@@ -26,6 +26,9 @@ sum: iso generator dist fulldist
 	scripts/sum md5sum
 	scripts/sum sha1sum
 
+get:
+	scripts/get
+
 clean:
 	scripts/clean
 

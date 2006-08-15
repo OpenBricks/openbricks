@@ -11,7 +11,9 @@ if [ -z "$1" ]; then
       [ ${i##*/} = $j ] && GET=no break
     done
     if [ $GET = yes ]; then
-      $SCRIPTS/get ${i#$PACKAGES/}
+      if ! $SCRIPTS/get ${i#$PACKAGES/}; then
+        echo "";
+      fi
     fi
   done
   exit 0
@@ -43,7 +45,14 @@ if [ -f $PACKAGES/$1/url ]; then
   mkdir -p $SOURCES/$1
 
   for i in `sed s%GEEXBOX_SRCS%$GEEXBOX_SRCS% $PACKAGES/$1/url`; do
-    wget --passive-ftp -c $WGET_OPT -P $SOURCES/$1 $i
+    nbwget=1
+    until wget --passive-ftp -c $WGET_OPT -P $SOURCES/$1 $i; do
+      let nbwget=$nbwget+1;
+      if ((nbwget>10)); then
+        echo -e "\nCant't get $1 sources : $i\n Try later !!";
+        exit 1;
+      fi
+    done
   done
 
   cp -p $PACKAGES/$1/url $STAMP
