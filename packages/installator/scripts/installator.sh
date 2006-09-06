@@ -325,6 +325,19 @@ fi
 # disable kernel messages to avoid screen corruption
 echo 0 > /proc/sys/kernel/printk
 
+title="$BACKTITLE : Keymap selection"
+
+KEYMAPS="qwerty qwerty"
+for i in `ls /etc/keymaps`
+do
+   KEYMAPS="$KEYMAPS $i $i"
+done
+
+KEYMAP=`$DIALOG --no-cancel --stdout --backtitle "$title" --title "Choose Keymap" --default-item qwerty --menu "Which keymap do you want to use ?" 0 0 0 $KEYMAPS` || exit 1
+
+test -f "/etc/keymaps/$KEYMAP" && loadkmap < "/etc/keymaps/$KEYMAP"
+
+
 while true; do
   if [ -e /dev/.devfsd ]; then
     DISKS=`cat /proc/partitions | sed -n "s/\ *[0-9][0-9]*\ *[0-9][0-9]*\ *\([0-9][0-9]*\)\ \([a-z0-9/]*disc\).*$/\2 (\1_blocks)/p"`
@@ -589,7 +602,7 @@ splashimage="$grubprefix/grub-splash.xpm.gz"
 
 if [ $BOOTLOADER = syslinux ]; then
   cp "di/GEEXBOX/usr/share/ldlinux.sys" di
-  sed -e "s/boot=cdrom/boot=${DEV#/dev/}/" -e "s/vga=$VESA_MODE_OLD/vga=$VESA_MODE/" -e "s/splash=$SPLASH_OLD/splash=$SPLASH/" di/isolinux.cfg > di/syslinux.cfg
+  sed -e "s/boot=cdrom/boot=${DEV#/dev/}/" -e "s/vga=$VESA_MODE_OLD/vga=$VESA_MODE/" -e "s/splash=$SPLASH_OLD/splash=$SPLASH/" -e "s/keymap=.*/keymap=$KEYMAP/" di/isolinux.cfg > di/syslinux.cfg
   rm di/isolinux.cfg
 elif [ $BOOTLOADER = grub ]; then
   cp $grubdir/stage2 $grubdir/stage2_single
@@ -638,13 +651,13 @@ ${disable_splashimage}splashimage=$rootdev_single$splashimage
 
 title	GeeXboX
 root	$rootdev_single
-kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME splash=$SPLASH vga=$VESA_MODE video=vesafb:ywrap,mtrr
+kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME splash=$SPLASH vga=$VESA_MODE keymap=$KEYMAP video=vesafb:ywrap,mtrr
 initrd  /initrd.gz
 boot
 
 title	GeeXboX (debug)
 root	$rootdev_single
-kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME splash=0 vga=$VESA_MODE video=vesafb:ywrap,mtrr debugging
+kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME splash=0 vga=$VESA_MODE keymap=$KEYMAP video=vesafb:ywrap,mtrr debugging
 initrd  /initrd.gz
 boot
 EOF
