@@ -574,6 +574,18 @@ VESA_DEPTH=`$DIALOG --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Scree
 VESA_MODE=$((784 + VESA_RES*3 + VESA_DEPTH))
 [ $VESA_MODE -ge 796 ] && VESA_MODE=$((VESA_MODE + 1))
 
+REMOTES=`echo di/GEEXBOX/etc/lirc/lircrc* | sed -e 's/.*lircrc_//g'`
+for r in $REMOTES; do
+ LREMOTES="$LREMOTES $r $r"
+done
+REMOTE=`$DIALOG --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Remote" --menu "Select the remote to use" 000 0 0 $LREMOTES`
+
+RECEIVERS=`ls di/GEEXBOX/etc/lirc/lircd_* | grep -v ".conf" | sed -e 's/.*lircd_//g'`
+for r in $RECEIVERS; do
+  LRECEIVERS="$LRECEIVERS $r $r"
+done
+RECEIVER=`$DIALOG --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Receiver" --menu "Select the receiver to use" 000 0 0 $LRECEIVERS`
+
 if grep -q "splash=silent" di/isolinux.cfg; then
   SPLASH_ARGUMENT=""
   SPLASH_OLD="silent"
@@ -651,13 +663,13 @@ ${disable_splashimage}splashimage=$rootdev_single$splashimage
 
 title	GeeXboX
 root	$rootdev_single
-kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME splash=$SPLASH vga=$VESA_MODE keymap=$KEYMAP video=vesafb:ywrap,mtrr
+kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME splash=$SPLASH vga=$VESA_MODE keymap=$KEYMAP remote=$REMOTE receiver=$RECEIVER video=vesafb:ywrap,mtrr
 initrd  /initrd.gz
 boot
 
 title	GeeXboX (debug)
 root	$rootdev_single
-kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME splash=0 vga=$VESA_MODE keymap=$KEYMAP video=vesafb:ywrap,mtrr debugging
+kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME splash=0 vga=$VESA_MODE keymap=$KEYMAP remote=$REMOTE receiver=$RECEIVER video=vesafb:ywrap,mtrr debugging
 initrd  /initrd.gz
 boot
 EOF
@@ -745,13 +757,13 @@ EOF
   cat >> $grubdir/menu.lst <<EOF
 title	GeeXboX
 root	$rootdev
-kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME splash=$SPLASH vga=$VESA_MODE video=vesafb:ywrap,mtrr
+kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME splash=$SPLASH vga=$VESA_MODE remote=$REMOTE receiver=$RECEIVER video=vesafb:ywrap,mtrr
 initrd  /initrd.gz
 boot
 
 title	GeeXboX (debug)
 root	$rootdev
-kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME splash=0 vga=$VESA_MODE video=vesafb:ywrap,mtrr debugging
+kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME splash=0 vga=$VESA_MODE remote=$REMOTE receiver=$RECEIVER video=vesafb:ywrap,mtrr debugging
 initrd  /initrd.gz
 boot
 EOF
