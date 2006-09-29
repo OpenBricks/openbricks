@@ -1,0 +1,44 @@
+#!/bin/sh
+
+. config/options
+
+HEADERS=$SYSROOT_PREFIX/usr/include
+
+rm -rf $HEADERS
+
+$SCRIPTS/install ccache
+$SCRIPTS/install linux-headers
+$SCRIPTS/unpack glibc
+
+setup_toolchain host
+
+cd $BUILD/glibc*
+mkdir -p objdir-$1
+cd objdir-$1
+
+cat >config.cache <<EOF
+libc_cv_forced_unwind=yes
+libc_cv_c_cleanup=yes
+libc_cv_386_tls=yes
+EOF
+
+cat >configparms <<EOF
+install_root=$SYSROOT_PREFIX
+EOF
+
+../configure --host=$TARGET_NAME \
+             --build=$HOST_NAME \
+             --prefix=/usr \
+             --with-headers=$HEADERS \
+             --cache-file=config.cache \
+             --disable-sanity-checks \
+             --enable-hacker-mode
+
+make install-headers
+
+mkdir -p $HEADERS/bits
+mkdir -p $HEADERS/gnu
+
+cp bits/stdio_lim.h $HEADERS/bits
+touch $HEADERS/gnu/stubs.h
+cp ../nptl/sysdeps/unix/sysv/linux/i386/bits/pthreadtypes.h $HEADERS/bits
