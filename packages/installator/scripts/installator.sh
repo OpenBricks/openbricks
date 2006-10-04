@@ -574,7 +574,7 @@ VESA_DEPTH=`$DIALOG --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Scree
 VESA_MODE=$((784 + VESA_RES*3 + VESA_DEPTH))
 [ $VESA_MODE -ge 796 ] && VESA_MODE=$((VESA_MODE + 1))
 
-REMOTES=`echo di/GEEXBOX/etc/lirc/lircrc* | sed -e 's/.*lircrc_//g'`
+REMOTES=`ls di/GEEXBOX/etc/lirc/lircrc_* | sed -e 's/.*lircrc_//g'`
 for r in $REMOTES; do
  LREMOTES="$LREMOTES $r $r"
 done
