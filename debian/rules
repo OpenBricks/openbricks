@@ -1,123 +1,69 @@
 #!/usr/bin/make -f
-# debian/rules file, using cdbs
+## debian/rules file, using cdbs
 
-# cdbs support
+DEB_TAR_SRCDIR := .
+##DEB_VERBOSE_ALL := yes
+
+## cdbs support
 include /usr/share/cdbs/1/rules/debhelper.mk
-include /usr/share/cdbs/1/rules/simple-patchsys.mk
+#include /usr/share/cdbs/1/rules/simple-patchsys.mk
+include /usr/share/cdbs/1/rules/tarball.mk
 
 ## disable dh_strip & dh_makeshlib :
-is_debug_package:=yes
+is_debug_package = $(if $(shell test -z "$(findstring $(cdbs_curpkg),$(DEB_ARCH_PACKAGES))" && echo true),yes)
 ## disable dh_shlibdep :
-DEB_DH_SHLIBDEPS_ARGS:=--no-act
-
-VERSION:=$(shell cat VERSION)
-GENERATOR_NAME:=geexbox-generator-$(VERSION)
-GENERATOR_CONF:=debian/geexbox-generator.conf
-GENERATOR_SHARE:=usr/share/geexbox-generator
-DESTDIR=$(CURDIR)/debian/$(cdbs_curpkg)
-
-DH_LINKS_ADD:=lirc themes i18n/fonts i18n/lang.conf i18n/lang.funcs i18n/texts sort VERSION
+DEB_DH_SHLIBDEPS_ARGS = $(if $(shell test -z "$(findstring $(cdbs_curpkg),$(DEB_ARCH_PACKAGES))" && echo true),--no-act)
 
 
-debian/%.1:: debian/%.sgml
-	/usr/bin/docbook-to-man $< > $@
+DATA_GENERATOR := i18n iso lirc themes maps packages.ini sort VERSION
+G := usr/share/geexbox-generator
+S = $(CURDIR)/$(_cdbs_tarball_dir)/geexbox-generator-*
+GEEXBOX-ARCH = $(subst geexbox-generator-data-,,$(cdbs_curpkg))
 
-$(GENERATOR_CONF):: packages/generator/scripts/generator.sh
-	echo -e "#\n# Don't edit this file ! Prefer use 'dpkg-reconfigure geexbox-generator'\n#\n" > $@
-	sed -n -e"/Menu/,/THEME/p" $< | sed -e"s/MENU_LANG=.*$$/MENU_LANG=/" -e"s/SUB_CHARSET=.*$$/SUB_CHARSET=/" -e"s/REMOTE=.*$$/REMOTE=/" -e"s/RECEIVER=.*$$/RECEIVER=/"  -e"s/THEME=.*$$/THEME=/" >> $@
+##--------------
+## common target
+##--------------
+debian/%.menu: debian/geexbox-generator-data.menu.in
+	sed -e "s/%ARCH%/$(patsubst debian/geexbox-generator-data-%.menu,%,$@)/g" $< > $@
 
-config/options.%:: config/options
-	sed "s/^TARGET_ARCH=.*$$/TARGET_ARCH=$(subst config/options.,,$@)/" $< > $@
+debian/%.desktop: debian/geexbox-generator-data.desktop.in
+	sed -e "s/%ARCH%/$(patsubst debian/geexbox-generator-data-%.desktop,%,$@)/g" $< > $@
 
-debian/geexbox-generator-%.sh::
-	echo "#!/bin/sh" > $@
-	echo "/usr/bin/geexbox-generator --arch $(subst debian/geexbox-generator-,,$(subst .sh,,$@)) \"\$$@\"" >> $@
+install-desktop/%:: debian/%.desktop
+	dh_installdirs -p$(cdbs_curpkg) /usr/share/applications
+	install -m 644 $< $(CURDIR)/debian/$(cdbs_curpkg)/usr/share/applications
 
-###########################################
-## geexbox-generator
-MANPAGES:=$(patsubst %.sgml,%.1,$(wildcard debian/*.sgml))
-DEB_INSTALL_MANPAGES_geexbox-generator:=$(MANPAGES)
-DEB_INSTALL_DOCS_geexbox-generator:=$(wildcard DOCS/*.txt)
+install-lintian/%:: debian/%.lintian-override
+	dh_installdirs -p$(cdbs_curpkg) /usr/share/lintian/overrides
+	install -m 644 $(CURDIR)/debian/$(cdbs_curpkg).lintian-override $(CURDIR)/debian/$(cdbs_curpkg)/usr/share/lintian/overrides/$(cdbs_curpkg)
 
-build/geexbox-generator:: $(MANPAGES) $(GENERATOR_CONF)
+install-data/%::
+	dh_installdirs -p$(cdbs_curpkg) /$(G)/$(GEEXBOX-ARCH)
+	cd $(S).$(GEEXBOX-ARCH) && tar cf - $(DATA_GENERATOR) | \
+		tar xvf - -C $(CURDIR)/debian/$(cdbs_curpkg)/$(G)/$(GEEXBOX-ARCH)/
 
-install/geexbox-generator::
-	install -m 755 packages/generator/scripts/generator.sh $(DESTDIR)/usr/bin/geexbox-generator
-	install -m 644 config/sort VERSION $(DESTDIR)/$(GENERATOR_SHARE)/
-	echo "-custom" >> $(DESTDIR)/$(GENERATOR_SHARE)/VERSION
-	install -m 644 $(GENERATOR_CONF) $(DESTDIR)/$(GENERATOR_SHARE)/geexbox-generator.conf.template
-	cp -r $(GENERATOR_NAME).i386/i18n $(GENERATOR_NAME).i386/lirc $(GENERATOR_NAME).i386/themes $(DESTDIR)/$(GENERATOR_SHARE)/
-	rm -rf $(DESTDIR)/$(GENERATOR_SHARE)/i18n/iconv
-	chmod a+x $(DESTDIR)/$(GENERATOR_SHARE)/i18n/lang.*
+install-doc/%::
+	cd $(S).$(GEEXBOX-ARCH) && tar cf - DOCS/* | \
+		tar xvf - -C $(CURDIR)/debian/$(cdbs_curpkg)/usr/share/doc/$(cdbs_curpkg)
 
-cleanbuilddir/geexbox-generator::
-	-rm $(MANPAGES) $(GENERATOR_CONF)
+$(patsubst %,build/%,$(DEB_INDEP_PACKAGES)):: build/%: debian/%.menu debian/%.desktop
+$(patsubst %,install/%,$(DEB_INDEP_PACKAGES)):: install/%: install-data/% install-lintian/% install-doc/% install-desktop/%
+$(patsubst %,cleanbuilddir/%,$(DEB_INDEP_PACKAGES)):: cleanbuilddir/%:
+	$(RM) debian/$(cdbs_curpkg).menu
+	$(RM) debian/$(cdbs_curpkg).desktop
 
-###########################################
-## i386
-DEB_INSTALL_DOCS_geexbox-generator-data-i386 := --no-act
-DEB_INSTALL_CHANGELOGS_geexbox-generator-data-i386 := --no-act
-DEB_DH_LINK_geexbox-generator-data-i386 := usr/share/doc/geexbox-generator usr/share/doc/geexbox-generator-data-i386
-DEB_DH_LINK_geexbox-generator-data-i386 += usr/share/man/man1/geexbox-generator.1.gz usr/share/man/man1/geexbox-generator-i386.1.gz
-DEB_DH_LINK_geexbox-generator-data-i386 += usr/share/man/fr/man1/geexbox-generator.1.gz usr/share/man/fr/man1/geexbox-generator-i386.1.gz
-DEB_DH_LINK_geexbox-generator-data-i386 += $(foreach link, $(DH_LINKS_ADD), $(GENERATOR_SHARE)/$(link) $(GENERATOR_SHARE)/i386/$(link))
+##----------------------------
+## geexbox-generator-data-i386
+##----------------------------
+DEB_INSTALL_DIRS_geexbox-generator-data-i386 := /usr/share/doc/geexbox-generator-data-i386
+DEB_INSTALL_DIRS_geexbox-generator-data-i386 += /usr/share/menu
+DEB_INSTALL_DOCS_geexbox-generator-data-i386 := $(S).i386/AUTHORS
+DEB_DH_LINK_geexbox-generator-data-i386 := /usr/share/geexbox-generator/geexbox-generator.sh /usr/bin/geexbox-generator-i386
 
-configure/geexbox-generator-data-i386:: config/options.i386
-
-build/geexbox-generator-data-i386:: stamp-build-i386 debian/geexbox-generator-i386.sh
-stamp-build-i386:
-	cp config/options.i386 config/options
-	INSTALL=$(GENERATOR_NAME).i386/iso/GEEXBOX scripts/gentree generator full
-	touch $@
-
-install/geexbox-generator-data-i386::
-	cp -r $(GENERATOR_NAME).i386/iso $(DESTDIR)/$(GENERATOR_SHARE)/i386/
-	cp -r $(GENERATOR_NAME).i386/i18n/iconv $(DESTDIR)/$(GENERATOR_SHARE)/i386/i18n/
-	install -m 644 debian/$(cdbs_curpkg).lintian-override $(DESTDIR)/usr/share/lintian/overrides/$(cdbs_curpkg)
-	install -m 755 debian/geexbox-generator-i386.sh $(DESTDIR)/usr/bin/geexbox-generator-i386
-
-cleanbuilddir/geexbox-generator-data-i386:: config/options.i386
-	-rm -rf $(GENERATOR_NAME).i386
-	cp -f config/options.i386 config/options
-	-rm -f config/options.i386 debian/geexbox-generator-i386.sh stamp-build-i386
-
-###########################################
-## ppc
-DEB_INSTALL_DOCS_geexbox-generator-data-ppc := --no-act
-DEB_INSTALL_CHANGELOGS_geexbox-generator-data-ppc := --no-act
-DEB_DH_LINK_geexbox-generator-data-ppc := usr/share/doc/geexbox-generator usr/share/doc/geexbox-generator-data-ppc
-DEB_DH_LINK_geexbox-generator-data-ppc += usr/share/man/man1/geexbox-generator.1.gz usr/share/man/man1/geexbox-generator-ppc.1.gz
-DEB_DH_LINK_geexbox-generator-data-ppc += usr/share/man/fr/man1/geexbox-generator.1.gz usr/share/man/fr/man1/geexbox-generator-ppc.1.gz
-DEB_DH_LINK_geexbox-generator-data-ppc += $(foreach link, $(DH_LINKS_ADD), $(GENERATOR_SHARE)/$(link) $(GENERATOR_SHARE)/ppc/$(link))
-
-configure/geexbox-generator-data-ppc:: config/options.ppc
-
-build/geexbox-generator-data-ppc:: stamp-build-ppc debian/geexbox-generator-ppc.sh
-stamp-build-ppc:
-	cp config/options.ppc config/options
-	INSTALL=$(GENERATOR_NAME).ppc/iso/GEEXBOX scripts/gentree generator full
-	touch $@
-
-install/geexbox-generator-data-ppc::
-	cp -r $(GENERATOR_NAME).ppc/iso $(DESTDIR)/$(GENERATOR_SHARE)/ppc/
-	cp -r $(GENERATOR_NAME).ppc/i18n/iconv $(DESTDIR)/$(GENERATOR_SHARE)/ppc/i18n/
-	install -m 644 config/maps $(DESTDIR)/$(GENERATOR_SHARE)/ppc/
-	install -m 644 debian/$(cdbs_curpkg).lintian-override $(DESTDIR)/usr/share/lintian/overrides/$(cdbs_curpkg)
-	install -m 755 debian/geexbox-generator-ppc.sh $(DESTDIR)/usr/bin/geexbox-generator-ppc
-
-cleanbuilddir/geexbox-generator-data-ppc::
-	-rm -rf $(GENERATOR_NAME).ppc
-	-rm -f config/options.ppc debian/geexbox-generator-ppc.sh stamp-build-ppc
-
-###########################################
-
-clean::
-	debconf-updatepo
-#	-$(MAKE) clean
-
-# used to build a debian package
-#  run 'debian/rules dpkg-buildpackage'
-dpkg-buildpackage:
-	dpkg-buildpackage -rfakeroot -i"(?:^|/)(?:build.i386|build.ppc|sources|.stamps)$$"
-
-.PHONY: dpkg-buildpackage
+##----------------------------
+## geexbox-generator-data-ppc
+##----------------------------
+DEB_INSTALL_DIRS_geexbox-generator-data-ppc := /usr/share/doc/geexbox-generator-data-ppc
+DEB_INSTALL_DIRS_geexbox-generator-data-ppc += /usr/share/menu
+DEB_INSTALL_DOCS_geexbox-generator-data-ppc := $(S).ppc/AUTHORS
+DEB_DH_LINK_geexbox-generator-data-ppc := /usr/share/geexbox-generator/geexbox-generator.sh /usr/bin/geexbox-generator-ppc
