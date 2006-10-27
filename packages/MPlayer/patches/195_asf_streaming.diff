@@ -10,7 +10,7 @@ diff -Naur MPlayer-1.0pre8.orig/libmpdemux/asfheader.c MPlayer-1.0pre8/libmpdemu
  
  /*
  const char asf_audio_stream_guid[16] = {0x40, 0x9e, 0x69, 0xf8,
-@@ -53,12 +51,6 @@
+@@ -53,10 +51,6 @@
    0x8d, 0x46, 0xd1, 0x11, 0x8d, 0x82, 0x00, 0x60, 0x97, 0xc9, 0xa2, 0xb2};
  const char asf_data_chunk_guid[16] = {0x36, 0x26, 0xb2, 0x75,
    0x8e, 0x66, 0xcf, 0x11, 0xa6, 0xd9, 0x00, 0xaa, 0x00, 0x62, 0xce, 0x6c};
@@ -18,11 +18,9 @@ diff -Naur MPlayer-1.0pre8.orig/libmpdemux/asfheader.c MPlayer-1.0pre8/libmpdemu
 -  0xef, 0x47, 0xf2, 0x40, 0xac, 0x2c, 0x70, 0xa9, 0x0d, 0x71, 0xd3, 0x43};
 -const char asf_ext_stream_audio[16] = {0x9d, 0x8c, 0x17, 0x31,
 -  0xe1, 0x03, 0x28, 0x45, 0xb5, 0x82, 0x3d, 0xf9, 0xdb, 0x22, 0xf5, 0x03};
--const char asf_ext_stream_header[16] = {0xCB, 0xA5, 0xE6, 0x14,
--  0x72, 0xC6, 0x32, 0x43, 0x83, 0x99, 0xA9, 0x69, 0x52, 0x06, 0x5B, 0x5A};
+ const char asf_ext_stream_header[16] = {0xCB, 0xA5, 0xE6, 0x14,
+   0x72, 0xC6, 0x32, 0x43, 0x83, 0x99, 0xA9, 0x69, 0x52, 0x06, 0x5B, 0x5A};
  
- 
- // the variable string is modify in this function
 @@ -85,10 +77,6 @@
    switch(ASF_LOAD_GUID_PREFIX(guid)){
      case ASF_GUID_PREFIX_audio_stream:
@@ -34,7 +32,7 @@ diff -Naur MPlayer-1.0pre8.orig/libmpdemux/asfheader.c MPlayer-1.0pre8/libmpdemu
      case ASF_GUID_PREFIX_video_stream: 
        return "guid_video_stream";
      case ASF_GUID_PREFIX_audio_conceal_none:
-@@ -156,42 +144,6 @@
+@@ -156,16 +144,6 @@
    return -1;
  }
  
@@ -48,6 +46,13 @@ diff -Naur MPlayer-1.0pre8.orig/libmpdemux/asfheader.c MPlayer-1.0pre8/libmpdemu
 -  return -1;
 -}
 -
+ static int get_ext_stream_properties(char *buf, int buf_len, int stream_num, double* avg_frame_time)
+ {
+   // this function currently only gets the average frame time if available
+@@ -191,32 +179,6 @@
+   return 0;
+ }
+ 
 -static int asf_init_audio_stream(demuxer_t *demuxer,struct asf_priv* asf, sh_audio_t* sh_audio, ASF_stream_header_t *streamh, int *ppos, uint8_t** buf, char *hdr, unsigned int hdr_len)
 -{
 -  uint8_t *buffer = *buf;
@@ -91,7 +96,7 @@ diff -Naur MPlayer-1.0pre8.orig/libmpdemux/asfheader.c MPlayer-1.0pre8/libmpdemu
      goto err_out;
    }
  
--  if ((pos = find_asf_guid(hdr, asf_ext_stream_audio, pos, hdr_len)) >= 0)
+-  if ((pos = find_asf_guid(hdr, asf_ext_stream_audio, 0, hdr_len)) >= 0)
 -  {
 -    // Special case: found GUID for dvr-ms audio.
 -    // Now skip back to associated stream header.
@@ -158,7 +163,7 @@ diff -Naur MPlayer-1.0pre8.orig/libmpdemux/asfheader.c MPlayer-1.0pre8/libmpdemu
  	//if(demuxer->audio->id==-1) demuxer->audio->id=streamh.stream_no & 0x7F;
          break;
          }
-@@ -298,14 +235,10 @@
+@@ -298,15 +235,10 @@
          sh_video->bih=calloc((len<sizeof(BITMAPINFOHEADER))?sizeof(BITMAPINFOHEADER):len,1);
          memcpy(sh_video->bih,&buffer[4+4+1+2],len);
  	le2me_BITMAPINFOHEADER(sh_video->bih);
@@ -169,11 +174,12 @@ diff -Naur MPlayer-1.0pre8.orig/libmpdemux/asfheader.c MPlayer-1.0pre8/libmpdemu
 -          asf->asf_frame_state=-1;
 -          asf->asf_frame_start_found=0;
 -          asf->asf_is_dvr_ms=1;
+-          asf->dvr_last_vid_pts=0.0;
 -        } else asf->asf_is_dvr_ms=0;
 +	if (sh_video->bih->biCompression == mmioFOURCC('D', 'V', 'R', ' '))
 +	  mp_msg(MSGT_DEMUXER, MSGL_WARN, MSGTR_MPDEMUX_ASFHDR_DVRWantsLibavformat);
 +        //sh_video->fps=(float)sh_video->video.dwRate/(float)sh_video->video.dwScale;
 +        //sh_video->frametime=(float)sh_video->video.dwScale/(float)sh_video->video.dwRate;
-         if( mp_msg_test(MSGT_DEMUX,MSGL_V) ) print_video_header(sh_video->bih, MSGL_V);
-         //asf_video_id=streamh.stream_no & 0x7F;
- 	//if(demuxer->video->id==-1) demuxer->video->id=streamh.stream_no & 0x7F;
+         if (get_ext_stream_properties(hdr, hdr_len, streamh->stream_no, &asf->avg_vid_frame_time)) {
+ 	  sh_video->frametime=(float)asf->avg_vid_frame_time;
+ 	  sh_video->fps=1.0f/sh_video->frametime; 
