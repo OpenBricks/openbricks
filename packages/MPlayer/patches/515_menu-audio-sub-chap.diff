@@ -68,7 +68,7 @@ diff -r 13cd417bfd4a libmpdemux/demux_mkv.c
 +
 +                                    switch (ebml_read_id (s, &il))
 +                                      {
-+                                      case MATROSKA_ID_CHAPTERSTRING:
++                                      case MATROSKA_ID_CHAPSTRING:
 +                                        mkv_chapter_string[mkv_chapter_num]
 +                                          = ebml_read_utf8 (s, &l);
 +                                        break;
@@ -88,37 +88,12 @@ diff -r 13cd417bfd4a libmpdemux/demux_mkv.c
 @@ -1387,6 +1421,8 @@ demux_mkv_read_chapters (demuxer_t *demu
                               (int) ((end / 60 / 1000) % 60),
                               (int) ((end / 1000) % 60),
-                              (int) (end % 1000));
-+                      mkv_chapter_num = mkv_d->num_chapters;
+                              (int) (end % 1000), name);
++//                      mkv_chapter_num = mkv_d->num_chapters;
 +                      mkv_chapter_start[mkv_chapter_num] = start;
+
+                       free(name);
                        break;
-                     }
- 
-@@ -2339,13 +2375,23 @@ demux_mkv_open (demuxer_t *demuxer)
-     track = demux_mkv_find_track_by_num (mkv_d, demuxer->audio->id,
-                                          MATROSKA_TRACK_AUDIO);
- 
--  if (track && !demux_mkv_open_audio (demuxer, track))
-+  if (track)
-+     {
-+       for (i=0; i < mkv_d->num_tracks; i++)
-+         if (mkv_d->tracks[i]->type == MATROSKA_TRACK_AUDIO)
-+           {
-+             int def = (mkv_d->tracks[i] == track);
-+             if (demux_mkv_open_audio (demuxer, mkv_d->tracks[i]) && def)
-+               demuxer->audio->id = -2;
-+             else if (def)
-               {
-                 mp_msg (MSGT_DEMUX, MSGL_INFO,
-                         "[mkv] Will play audio track %u\n", track->tnum);
-                 demuxer->audio->id = track->tnum;
-                 demuxer->audio->sh = demuxer->a_streams[track->tnum];
-               }
-+           }
-+     }
-   else
-     {
-       mp_msg (MSGT_DEMUX, MSGL_INFO, "[mkv] No audio track found/wanted.\n");
 @@ -2363,6 +2409,10 @@ demux_mkv_open (demuxer_t *demuxer)
      track = demux_mkv_find_track_by_language (mkv_d, dvdsub_lang,
                                                MATROSKA_TRACK_SUBTITLE);
@@ -191,24 +166,12 @@ diff -r 13cd417bfd4a libmpdemux/demuxer.h
 +extern uint64_t mkv_chapter_start[99];
 +extern char* mkv_chapter_string[99];
 +
- int demux_info_add(demuxer_t *demuxer, char *opt, char *param);
+ int demux_info_add(demuxer_t *demuxer, const char *opt, const char *param);
  char* demux_info_get(demuxer_t *demuxer, char *opt);
  int demux_info_print(demuxer_t *demuxer);
-diff -r 13cd417bfd4a libmpdemux/ebml.h
---- a/libmpdemux/ebml.h	Sun Apr 30 16:54:39 2006 +0200
-+++ b/libmpdemux/ebml.h	Sun Apr 30 16:54:39 2006 +0200
-@@ -128,6 +128,8 @@
- #define MATROSKA_ID_CHAPTERATOM          0xB6
- #define MATROSKA_ID_CHAPTERTIMESTART     0x91
- #define MATROSKA_ID_CHAPTERTIMEEND       0x92
-+#define MATROSKA_ID_CHAPTERDISPLAY       0x80
-+#define MATROSKA_ID_CHAPTERSTRING        0x85
- 
- /* IDs in the cluster master */
- #define MATROSKA_ID_CLUSTERTIMECODE      0xE7
-diff -r 13cd417bfd4a libmpdemux/stream.h
---- a/libmpdemux/stream.h	Sun Apr 30 16:54:39 2006 +0200
-+++ b/libmpdemux/stream.h	Sun Apr 30 16:54:39 2006 +0200
+diff -r 13cd417bfd4a stream/stream.h
+--- a/stream/stream.h	Sun Apr 30 16:54:39 2006 +0200
++++ b/stream/stream.h	Sun Apr 30 16:54:39 2006 +0200
 @@ -287,6 +287,8 @@ extern int dvd_title;
  extern int dvd_title;
  extern int dvd_chapter;
@@ -219,8 +182,8 @@ diff -r 13cd417bfd4a libmpdemux/stream.h
  //#endif
  
 diff -r 13cd417bfd4a libmpdemux/stream_dvd.c
---- a/libmpdemux/stream_dvd.c	Sun Apr 30 16:54:39 2006 +0200
-+++ b/libmpdemux/stream_dvd.c	Sun Apr 30 16:54:39 2006 +0200
+--- a/stream/stream_dvd.c	Sun Apr 30 16:54:39 2006 +0200
++++ b/stream/stream_dvd.c	Sun Apr 30 16:54:39 2006 +0200
 @@ -31,6 +31,8 @@ extern int dvd_last_chapter;
  extern int dvd_last_chapter;
  extern char* dvd_device;
@@ -230,30 +193,10 @@ diff -r 13cd417bfd4a libmpdemux/stream_dvd.c
  
  #ifdef HAVE_DVD
  #ifdef USE_DVDREAD
-@@ -275,6 +277,19 @@ int dvd_lang_from_sid(stream_t *stream, 
-   if (!d) return 0;
-   if (id >= d->nr_of_subtitles) return 0;
-   return d->subtitles[id].language;
-+}
-+
-+char *dvd_lang_from_aid(stream_t *stream, int aid){
-+static char desc[32];
-+dvd_priv_t *d=stream->priv;
-+int i;
-+  for(i=0;i<d->nr_of_channels;i++){
-+    if(d->audio_streams[i].id==aid){
-+      sprintf (desc, "%c%c - %s (%s)", (d->audio_streams[i].language>>8)&0xFF, d->audio_streams[i].language&0xFF, dvd_audio_stream_types[d->audio_streams[i].type], dvd_audio_stream_channels[d->audio_streams[i].channels]);
-+      return desc;
-+    }
-+  }
-+  return NULL;
- }
- 
- int dvd_sid_from_lang(stream_t *stream, unsigned char* lang) {
 @@ -721,6 +736,7 @@ static int open_s(stream_t *stream,int m
       * Make sure the chapter number is valid for this title.
       */
-     mp_msg(MSGT_OPEN,MSGL_INFO, MSGTR_DVDnumChapters, tt_srpt->title[dvd_title].nr_of_ptts);
+     mp_msg(MSGT_OPEN,MSGL_STATUS, MSGTR_DVDnumChapters, tt_srpt->title[dvd_title].nr_of_ptts);
 +    dvd_total_chapter = tt_srpt->title[dvd_title].nr_of_ptts;
      if(dvd_chapter<1 || dvd_chapter>tt_srpt->title[dvd_title].nr_of_ptts) {
        mp_msg(MSGT_OPEN,MSGL_ERR, MSGTR_DVDinvalidChapter, dvd_chapter);
@@ -323,11 +266,11 @@ diff -r 13cd417bfd4a libmenu/menu_audiosel.c
 +#include "m_option.h"
 +#include "input/input.h"
 +
-+#include "libmpdemux/stream.h"
++#include "stream/stream.h"
 +#include "libmpdemux/demuxer.h"
 +
-+#include "img_format.h"
-+#include "mp_image.h"
++#include "libmpcodecs/img_format.h"
++#include "libmpcodecs/mp_image.h"
 +
 +#include "menu.h"
 +#include "menu_list.h"
@@ -460,15 +403,15 @@ diff -r 13cd417bfd4a libmenu/menu_chapsel.c
 +#include "m_option.h"
 +#include "input/input.h"
 +
-+#include "libmpdemux/stream.h"
++#include "stream/stream.h"
 +#include "libmpdemux/demuxer.h"
 +#include "libvo/video_out.h"
 +#include "libvo/sub.h"
 +#include "spudec.h"
 +#include "mplayer.h"
 +
-+#include "img_format.h"
-+#include "mp_image.h"
++#include "libmpcodecs/img_format.h"
++#include "libmpcodecs/mp_image.h"
 +
 +#include "menu.h"
 +#include "menu_list.h"
@@ -631,15 +574,15 @@ diff -r 13cd417bfd4a libmenu/menu_subsel.c
 +#include "m_option.h"
 +#include "input/input.h"
 +
-+#include "libmpdemux/stream.h"
++#include "stream/stream.h"
 +#include "libmpdemux/demuxer.h"
 +#include "libvo/video_out.h"
 +#include "libvo/sub.h"
 +#include "spudec.h"
 +#include "mplayer.h"
 +
-+#include "img_format.h"
-+#include "mp_image.h"
++#include "libmpcodecs/img_format.h"
++#include "libmpcodecs/mp_image.h"
 +
 +#include "menu.h"
 +#include "menu_list.h"
