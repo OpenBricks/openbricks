@@ -19,6 +19,12 @@ installator:
 pxe:
 	scripts/pxe
 
+vmx:
+	scripts/vmx build
+
+vmx-play:
+	scripts/vmx play
+
 exec: iso
 	scripts/exec
 
