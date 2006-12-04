@@ -248,35 +248,6 @@ setup_dvbscan () {
   fi
 }
 
-# Configure recorder settings (recording path and encoding profile)
-setup_recorder () {
-  title="$BACKTITLE : Recorder Configuration"
-
-  f="$1/etc/recorder"
-  mencoder_cfg="$1/etc/mplayer/mencoder.conf"
-
-  . $f
-
-  $DIALOG --aspect 12 --stdout --backtitle "$title" --title "Recording Capabilities (EXPERIMENTAL) ..." --yesno "\nGeeXboX allows you to record different kinds of media (TV, DVB, NetStreams ...) to disk, according to various encoding profiles (MPEG 1/2, DVD ...). You may want to use this feature and thus, need to specify an HDD location where to save the records.\n\nWARNING: This is an _EXPERIMENTAL_ feature. Be aware that your HDD will be mounted R/W while recording streams to it, leading to a potential risk of disk data corruption.\n\nWould you still configure GeeXboX recording capabilities ?\n" 0 0 || return
-
-  # get list of encoding profiles
-  for profile in `grep "^\[" $mencoder_cfg | grep -v common | grep -v dump | sed -e 's/\[//' -e 's/\]//'`; do
-    profiles="$profiles $profile ''"
-  done
-
-  while [ -z "$DONE" ]; do
-    # choose the encoding profile
-    p=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "Recorder default encoding profile" --menu "\nGeeXboX lets you record video streams through various encoding profiles. They may vary in terms of encoding speed and quality. It is possible to choose one over an other at runtime through the GeeXboX recorder menu. Please choose the encoding profile you want to use as a default.\n" 0 0 0 $profiles` || exit 1
-
-    record_path=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "Recordings location" --inputbox "\nPlease type in the location where you want recordings to be saved to. Please note that the corresponding device (HDD) will be remounted R/W in order to attempt saving data to it.\n" 0 0 "$SAVE_PATH"` || exit 1
-
-    $DIALOG --aspect 12 --stdout --yes-label "Accept" --no-label "Retry" --backtitle "$title" --title "Configuration Done ..." --yesno "\nCongratulations, recording settings have been fully configured. Are you satisfied with the following settings:\n\nEncoding Profile: $p\nRecording Path: $record_path" 0 0 && DONE=true
-  done
-
-  sed -i "s%^RECORD_PROFILE.*%RECORD_PROFILE=$p%" $f
-  sed -i "s%^SAVE_PATH.*%SAVE_PATH=\"$record_path\"%" $f
-}
-
 /bin/busybox mount -t proc none /proc
 /bin/busybox mount -t sysfs none /sys
 /bin/busybox --install -s
@@ -544,15 +515,6 @@ if [ "$1" = geexbox ]; then
   # Only scan if a DVB card is detected
   if [ -f /var/dvbcard ]; then
     $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Scan for Digital (DVB) TV Channels ?" --yesno "\nDo you want to configure your digital (DVB) tv card and scan for channels before installing GeeXboX to disk ?\n" 0 0 && setup_dvbscan "di/GEEXBOX"
-  fi
-fi
-
-# Configure Recorder settings
-# (only available when booting from GeeXboX).
-if [ "$1" = geexbox ]; then
-  # Only if MEncoder binary exists
-  if [ -f /usr/bin/mencoder ]; then
-    setup_recorder "di/GEEXBOX"
   fi
 fi
 
