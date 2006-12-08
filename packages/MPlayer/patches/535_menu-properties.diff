@@ -45,64 +45,10 @@ diff -r 84218a4f7167 libmenu/menu_param.c
  
  m_option_t*  mp_property_find(char* name);
  
-@@ -86,6 +124,131 @@ static void update_entries(menu_t* menu)
+@@ -86,6 +124,61 @@ static void update_entries(menu_t* menu)
      if(e->opt) entry_set_text(menu,e);
  }
  
-+static int
-+is_valid_video_property (char *prop)
-+{
-+  if (!prop || !sh_video)
-+    return 0;
-+
-+  if (bg_demuxer && bg_demuxer->video && bg_demuxer->video->sh
-+      && sh_video == bg_demuxer->video->sh)
-+    return 0;
-+  
-+  if (strcmp (prop, OPT_VCODEC) != 0 &&
-+      strcmp (prop, OPT_VBITRATE) != 0 &&
-+      strcmp (prop, OPT_RESOLUTION) != 0)
-+    return 0;
-+  
-+  return 1;
-+}
-+
-+static int
-+is_valid_audio_property (char *prop)
-+{
-+  if (!prop || !sh_audio)
-+    return 0;
-+
-+  if (strcmp (prop, OPT_ACODEC) != 0 &&
-+      strcmp (prop, OPT_ABITRATE) != 0 &&
-+      strcmp (prop, OPT_SAMPLES) != 0)
-+    return 0;
-+  
-+  return 1;
-+}
-+
-+static int
-+is_valid_info_property (char *prop)
-+{
-+  if (!prop || !demuxer)
-+    return 0;
-+
-+  if (!bg_demuxer || !bg_demuxer->video || !bg_demuxer->video->sh
-+      || sh_video != bg_demuxer->video->sh)
-+    return 0;
-+  
-+  if (strcmp (prop, OPT_INFO_TITLE) != 0 &&
-+      strcmp (prop, OPT_INFO_ARTIST) != 0 &&
-+      strcmp (prop, OPT_INFO_ALBUM) != 0 &&
-+      strcmp (prop, OPT_INFO_YEAR) != 0 &&
-+      strcmp (prop, OPT_INFO_COMMENT) != 0 &&
-+      strcmp (prop, OPT_INFO_TRACK) != 0 &&
-+      strcmp (prop, OPT_INFO_GENRE) != 0)
-+    return 0;
-+  
-+  return 1;
-+}
-+
 +static int is_part(char *name) {
 +  if(strncmp(name, "disk", 4))
 +    return 0;
@@ -158,22 +104,6 @@ diff -r 84218a4f7167 libmenu/menu_param.c
 +  return size;
 +}
 +
-+static char *
-+grab_demuxer_info (char *tag)
-+{
-+  char **info = demuxer->info;
-+  int n;
-+
-+  if (!info || !tag)
-+    return strdup ("");
-+
-+  for (n = 0; info[2*n] != NULL ; n++)
-+    if (!strcmp (info[2*n], tag))
-+      break;
-+
-+  return info[2*n+1] ? strdup (info[2*n+1]) : strdup ("");
-+}
-+
  static int parse_args(menu_t* menu,char* args) {
    char *element,*body, **attribs, *name, *meta, *val;
    list_entry_t* m = NULL;
@@ -189,7 +119,7 @@ diff -r 84218a4f7167 libmenu/menu_param.c
        return 1;
      }
      if(!strcmp(element,"menu")) {
-@@ -125,6 +217,136 @@ static int parse_args(menu_t* menu,char*
+@@ -125,6 +217,114 @@ static int parse_args(menu_t* menu,char*
      }
  
      name = asx_get_attrib("property",attribs);
@@ -261,58 +191,36 @@ diff -r 84218a4f7167 libmenu/menu_param.c
 +          if_freenameindex (ifs);
 +          close (fd);
 +        }
-+      } else if (!strcmp (name, OPT_NAME)) {
-+        val = strdup (basename (filename));
-+
-+      } else if (!strcmp (name, OPT_VCODEC) && is_valid_video_property(name)) {
-+        val = (char *) malloc (8);
-+        if (sh_video->format == 0x10000001) {
-+          sprintf (val, "mpeg1");
-+        }
-+        else if (sh_video->format == 0x10000002) {
-+          sprintf (val, "mpeg2");
-+        }
-+        else if (sh_video->format == 0x10000004) {
-+          sprintf (val, "mpeg4");
-+        }
-+        else if (sh_video->format == 0x10000005) {
-+          sprintf (val, "h264");
-+        }
-+        else if (sh_video->format >= 0x20202020) {
-+          sprintf (val, "%.4s", (char *) &sh_video->format);
-+        }
-+        else {
-+          sprintf (val, "0x%08X", sh_video->format);
-+        }
-+      } else if (!strcmp (name, OPT_VBITRATE) && is_valid_video_property(name)) {
-+        val = (char *) malloc (16);
-+        sprintf (val, "%d kbps", (int) (sh_video->i_bps * 8 / 1024));
-+      } else if (!strcmp (name, OPT_RESOLUTION) && is_valid_video_property(name)) {
-+        val = (char *) malloc (16);
-+        sprintf (val, "%d x %d", sh_video->disp_w, sh_video->disp_h);
-+      } else if (!strcmp (name, OPT_ACODEC) && is_valid_audio_property(name)) {
-+        val = strdup (sh_audio->codec->name);
-+      } else if (!strcmp (name, OPT_ABITRATE) && is_valid_audio_property(name)) {
-+        val = (char *) malloc (16);
-+        sprintf (val, "%d kbps", (int) (sh_audio->i_bps * 8 / 1000));
-+      } else if (!strcmp (name, OPT_SAMPLES) && is_valid_audio_property(name)) {
-+        val = (char *) malloc (16);
-+        sprintf (val, "%d Hz, %d ch.",
-+                 sh_audio->samplerate, sh_audio->channels);
-+      } else if ((!strcmp (name, OPT_INFO_TITLE) ||
-+                 !strcmp (name, OPT_INFO_ARTIST) ||
-+                 !strcmp (name, OPT_INFO_ALBUM) ||
-+                 !strcmp (name, OPT_INFO_YEAR) ||
-+                 !strcmp (name, OPT_INFO_COMMENT) ||
-+                 !strcmp (name, OPT_INFO_TRACK) ||
-+                 !strcmp (name, OPT_INFO_GENRE)) &&
-+                 is_valid_info_property(name) &&
-+                 strcmp(grab_demuxer_info(name), "") ) {
-+        val = grab_demuxer_info (name);
-+
-+      } else if (is_part(name) || is_cdrom(name)) {
++      } else if (!strcmp (name, OPT_NAME))
++        val = get_metadata (META_NAME);
++      else if (!strcmp (name, OPT_VCODEC))
++        val = get_metadata (META_VIDEO_CODEC);
++      else if (!strcmp(name, OPT_VBITRATE))
++        val = get_metadata (META_VIDEO_BITRATE);
++      else if(!strcmp(name, OPT_RESOLUTION))
++        val = get_metadata (META_VIDEO_RESOLUTION);
++      else if (!strcmp(name, OPT_ACODEC))
++        val = get_metadata (META_AUDIO_CODEC);
++      else if(!strcmp(name, OPT_ABITRATE))
++        val = get_metadata (META_AUDIO_BITRATE);
++      else if(!strcmp(name, OPT_SAMPLES))
++        val = get_metadata (META_AUDIO_SAMPLES);
++      else if (!strcmp (name, OPT_INFO_TITLE))
++        val = get_metadata (META_INFO_TITLE);
++      else if (!strcmp (name, OPT_INFO_ARTIST))
++        val = get_metadata (META_INFO_ARTIST);
++      else if (!strcmp (name, OPT_INFO_ALBUM))
++        val = get_metadata (META_INFO_ALBUM);
++      else if (!strcmp (name, OPT_INFO_YEAR))
++        val = get_metadata (META_INFO_YEAR);
++      else if (!strcmp (name, OPT_INFO_COMMENT))
++        val = get_metadata (META_INFO_COMMENT);
++      else if (!strcmp (name, OPT_INFO_TRACK))
++        val = get_metadata (META_INFO_TRACK);
++      else if (!strcmp (name, OPT_INFO_GENRE))
++        val = get_metadata (META_INFO_GENRE);
++      else if (is_part(name) || is_cdrom(name))
 +        val = strdup(part_size(name));
-+      }
 +    }
 +    if (val) {
 +      int l = strlen(name) + 2 + strlen(val) + 1;
