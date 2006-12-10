@@ -119,7 +119,7 @@ diff -r 84218a4f7167 libmenu/menu_param.c
        return 1;
      }
      if(!strcmp(element,"menu")) {
-@@ -125,6 +217,114 @@ static int parse_args(menu_t* menu,char*
+@@ -125,6 +217,95 @@ static int parse_args(menu_t* menu,char*
      }
  
      name = asx_get_attrib("property",attribs);
@@ -140,10 +140,11 @@ diff -r 84218a4f7167 libmenu/menu_param.c
 +        else
 +          val = strdup ("#undef");
 +      }
-+      else if(!strcmp(name, OPT_IP)) {
++      else if(!strcmp(name, OPT_IP) || !strcmp(name, OPT_MAC)) {
 +        struct if_nameindex *ifs, *ifp;
 +        struct ifreq ifr;
 +        int fd, ip;
++        unsigned char *hwaddr;
 +
 +        fd = socket(AF_INET, SOCK_DGRAM, 0);
 +        if (fd >= 0) {
@@ -151,35 +152,15 @@ diff -r 84218a4f7167 libmenu/menu_param.c
 +            if (strcmp (ifp->if_name, "lo") && strcmp (ifp->if_name, "sit0")) {
 +              strcpy(ifr.ifr_name, ifp->if_name);
 +              ifr.ifr_addr.sa_family = AF_INET;
-+              if (ioctl(fd, SIOCGIFADDR, &ifr) == 0) {
++              if (!strcmp(name, OPT_IP) && ioctl(fd, SIOCGIFADDR, &ifr) == 0) {
 +                val = (char *) malloc (16);
 +                ip = ((struct sockaddr_in *) &ifr.ifr_addr)->sin_addr.s_addr;
 +                ip = ntohl (ip);
 +                sprintf (val, "%d.%d.%d.%d",
 +                         (ip>>24)&0xFF, (ip>>16)&0xFF, (ip>>8)&0xFF, ip&0xFF);
-+              } else {
-+                val = strdup("NULL");
-+              }
-+              break;
-+            }
-+          }
-+          if_freenameindex (ifs);
-+          close (fd);
-+        }
-+      } else if (!strcmp(name, OPT_MAC)) {
-+        struct if_nameindex *ifs, *ifp;
-+        struct ifreq ifr;
-+        int fd;
-+
-+        fd = socket(AF_INET, SOCK_DGRAM, 0);
-+        if (fd >= 0) {
-+          for (ifp = ifs = if_nameindex (); ifp->if_index != 0; ifp++) {
-+            if (strcmp (ifp->if_name, "lo") && strcmp (ifp->if_name, "sit0")) {
-+              strcpy(ifr.ifr_name, ifp->if_name);
-+              ifr.ifr_addr.sa_family = AF_INET;
-+              if (ioctl(fd, SIOCGIFHWADDR, &ifr) == 0) {
++              } else if (!strcmp(name, OPT_MAC) && ioctl(fd, SIOCGIFHWADDR, &ifr) == 0) {
 +                val = (char *) malloc (20);
-+                unsigned char *hwaddr = (unsigned char *)ifr.ifr_hwaddr.sa_data;
++                hwaddr = (unsigned char *)ifr.ifr_hwaddr.sa_data;
 +                sprintf (val, "%02X:%02X:%02X:%02X:%02X:%02X",
 +                         hwaddr[0],hwaddr[1],hwaddr[2],hwaddr[3],hwaddr[4],hwaddr[5]);
 +              } else {
