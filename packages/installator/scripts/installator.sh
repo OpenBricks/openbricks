@@ -180,7 +180,6 @@ setup_tvscan () {
 # Configure DVB card and scan for channels.
 setup_dvbscan () {
   DVB_LIST=/usr/share/dvb
-  DVB_FILE=/usr/share/dvb.tar.lzma
 
   DVBSCAN=/usr/bin/dvbscan
   SCAN_ARGS="-x 0" # Scan FreeToAir channels only
@@ -188,8 +187,11 @@ setup_dvbscan () {
   TITLE="$BACKTITLE : Digital TV Channels Scanner"
   CHANNELS_CONF="$1/etc/mplayer/channels.conf"
 
-  if [ -f $DVB_FILE -a ! -d $DVB_LIST ]; then
-    tar xaf $DVB_FILE -C /usr/share
+  if [ -f /usr/share/dvb.tar.lzma -a ! -d $DVB_LIST ]; then
+    tar xaf /usr/share/dvb.tar.lzma -C /usr/share
+  fi
+  if [ -f /usr/share/dvb.tar.gz -a ! -d $DVB_LIST ]; then
+    tar xzf /usr/share/dvb.tar.gz -C /usr/share
   fi
 
   DVB_TYPE=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "DVB Card Type Selection" --menu "\nBelow is the list of available DVB card types. Please select the one you want to use for channels scan." 0 0 0 dvb-s "DVB Sattelite" dvb-t "DVB Terrestrial" dvb-c "DVB Cable" atsc "ATSC (US)"`
@@ -564,7 +566,8 @@ device_map=$grubdir/device.map
 
 rm -rf $grubdir
 mkdir -p $grubdir
-tar xaf "di/GEEXBOX/usr/share/grub-i386-pc.tar.lzma" -C $grubdir
+[ -f "di/GEEXBOX/usr/share/grub-i386-pc.tar.lzma" ] && tar xaf "di/GEEXBOX/usr/share/grub-i386-pc.tar.lzma" -C $grubdir
+[ -f "di/GEEXBOX/usr/share/grub-i386-pc.tar.gz" ] && tar xzf "di/GEEXBOX/usr/share/grub-i386-pc.tar.gz" -C $grubdir
 
 if [ -f "di/GEEXBOX/usr/share/grub-splash.xpm.gz" ]; then
   cp -f "di/GEEXBOX/usr/share/grub-splash.xpm.gz" $grubdir || exit 1
