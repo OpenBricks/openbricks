@@ -288,10 +288,13 @@ DIRECTORY_ADD_RANDOM_PLAYLIST  = [ 'audio' ]
 #
 # DIRECTORY_AUTOPLAY_ITEMS       = [ ]
 
+plugin.remove('mbus')
 
 # ======================================================================
 # Freevo movie settings:
 # ======================================================================
+
+plugin.remove('video.bookmarker')
 
 #
 # Where the movie files can be found.
@@ -331,6 +334,11 @@ VIDEO_PREFERED_PLAYER = 'mplayer'
 # ======================================================================
 # Freevo audio settings:
 # ======================================================================
+
+plugin.remove('audio')
+plugin.remove('audio.detach')
+plugin.remove('audio.artist')
+plugin.remove('mixer')
 
 #
 # Where the Audio (mp3, ogg) files can be found.
@@ -577,6 +585,9 @@ GUI_DISPLAY="SDL"
 # Freevo remote control settings:
 # ======================================================================
 
+# Disable LIRC plugin
+plugin.remove('input.lirc')
+
 #
 # Location of the lircrc file
 #
@@ -704,6 +715,7 @@ JOY_CMDS = {
 # ======================================================================
 
 plugin.remove('tv')
+plugin.remove('tv.xine')
 
 #
 # This is where recorded video is written.
