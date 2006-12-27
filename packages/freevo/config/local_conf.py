@@ -335,9 +335,6 @@ VIDEO_PREFERED_PLAYER = 'mplayer'
 # Freevo audio settings:
 # ======================================================================
 
-plugin.remove('audio')
-plugin.remove('audio.detach')
-plugin.remove('audio.artist')
 plugin.remove('mixer')
 
 #
