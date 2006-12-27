@@ -304,6 +304,8 @@ plugin.remove('video.bookmarker')
 # VIDEO_ITEMS = [ ('action movies', '/files/movies/action'),
 #                 ('funny stuff', '/files/movies/comedy') ]
 
+VIDEO_ITEMS = [ ('My files', '/mnt') ]
+
 # Some people access movies on a different machine using an automounter.
 # To avoid timeouts, you can specify the machine name in the directory
 # to check if the machine is alive first
@@ -346,6 +348,8 @@ plugin.remove('mixer')
 #
 # AUDIO_ITEMS = [ ('Music Collection', '/local/mp3/'),
 #                 'fxd/webradio.fxd' ]
+
+AUDIO_ITEMS = [ ('My files', '/mnt') ]
 
 #
 # The list of filename suffixes that are used to match the files that
