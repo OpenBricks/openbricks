@@ -647,6 +647,14 @@ JOY_CMDS = {
 # MPlayer settings:
 # ======================================================================
 
+MPLAYER_VO_DEV = 'cvidix,vesa'
+MPLAYER_VO_DEV_OPTS  = ''
+MPLAYER_ARGS_DEF = '-nolirc'
+MPLAYER_SOFTWARE_SCALER = ''
+MPLAYER_VF_INTERLACED = 0
+MPLAYER_VF_PROGRESSIVE = 0
+MPLAYER_AUTOCROP = 0
+
 # MPLAYER_AO_DEV       = 'oss:/dev/dsp'  # e.g.: oss,sdl,alsa, see mplayer docs
 
 # MPLAYER_VO_DEV_OPTS  = ''	         # e.g.: ':some_var=vcal'
