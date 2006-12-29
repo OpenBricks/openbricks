@@ -161,6 +161,7 @@ USE_NETWORK = 1
 #
 CACHE_IMAGES = 1
 
+logging.getLogger().setLevel(logging.INFO)
 
 # ======================================================================
 # Plugins:
