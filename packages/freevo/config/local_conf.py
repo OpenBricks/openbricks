@@ -317,10 +317,10 @@ VIDEO_ITEMS = [ ('My files', '/mnt') ]
 # The list of filename suffixes that are used to match the files that
 # are played wih MPlayer.
 # 
-# VIDEO_MPLAYER_SUFFIX = [ 'avi', 'mpg', 'mpeg', 'wmv', 'bin', 'rm',
-#                          'divx', 'ogm', 'vob', 'asf', 'm2v', 'm2p',
-#                          'mp4', 'viv', 'nuv', 'mov', 'iso',
-#                          'nsv', 'mkv' ]
+VIDEO_MPLAYER_SUFFIX = [ 'avi', 'mpg', 'mpeg', 'wmv', 'bin', 'rm',
+                         'divx', 'ogm', 'vob', 'asf', 'm2v', 'm2p',
+                         'mp4', 'viv', 'nuv', 'mov', 'iso',
+                         'nsv', 'mkv' ]
 
 #
 # The list of filename suffixes that are used to match the files that
@@ -356,14 +356,14 @@ AUDIO_ITEMS = [ ('My files', '/mnt') ]
 # The list of filename suffixes that are used to match the files that
 # are played as audio.
 # 
-# AUDIO_SUFFIX     = [ 'mp3', 'ogg', 'wav','m4a', 'wma', 'aac', 'flac', 'mka' ]
+AUDIO_SUFFIX     = [ 'mp3', 'ogg', 'wav','m4a', 'wma', 'aac', 'flac', 'mka' ]
 
 #
 # Regular expression used to recognize filenames which are likely to be 
 # covers for an album 
 #
 # This will match front.jpg and cover-f.jpg, but not back.jpg nor cover-b.jpg:
-# AUDIO_COVER_REGEXP = 'front|-f'
+AUDIO_COVER_REGEXP = 'front|-f'
 
 #
 # Preferred audio player
@@ -390,7 +390,7 @@ AUDIO_PREFERED_PLAYER = 'mplayer'
 # The list of filename suffixes that are used to match the files that
 # are used for the image viewer.
 # 
-# IMAGE_SUFFIX = [ 'jpg','gif','png', 'jpeg','bmp','tiff','psd' ]
+IMAGE_SUFFIX = [ 'jpg','gif','png', 'jpeg','bmp','tiff','psd' ]
 
 #
 # The viewer now supports a new type of menu entry, a slideshow file.
