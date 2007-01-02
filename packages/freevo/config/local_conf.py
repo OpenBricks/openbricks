@@ -289,8 +289,6 @@ DIRECTORY_ADD_RANDOM_PLAYLIST  = [ 'audio' ]
 #
 # DIRECTORY_AUTOPLAY_ITEMS       = [ ]
 
-plugin.remove('mbus')
-
 # ======================================================================
 # Freevo movie settings:
 # ======================================================================
