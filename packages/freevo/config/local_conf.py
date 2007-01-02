@@ -585,9 +585,6 @@ GUI_DISPLAY="SDL"
 # Freevo remote control settings:
 # ======================================================================
 
-# Disable LIRC plugin
-plugin.remove('input.lirc')
-
 #
 # Location of the lircrc file
 #
@@ -602,7 +599,7 @@ plugin.remove('input.lirc')
 # Check contrib/lirc for examples and helpers/freevo2lirc.pl for a converter
 # script.
 #
-# LIRCRC = '/etc/freevo/lircrc'
+LIRCRC = '/etc/lircrc'
 
 #
 # Joystick support
