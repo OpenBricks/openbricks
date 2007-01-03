@@ -1,0 +1,99 @@
+Index: popcorn/src/backends/xine/player.py
+===================================================================
+--- a/popcorn/src/backends/xine/player.py	(révision 2340)
++++ b/popcorn/src/backends/xine/player.py	(copie de travail)
+@@ -67,6 +67,10 @@
+     def _child_spawn(self):
+         # Launch self (-u is unbuffered stdout)
+         script = os.path.join(os.path.dirname(__file__), 'main.py')
++        if os.path.isfile(script + 'o'):
++            script = script + 'o'
++        elif os.path.isfile(script + 'c'):
++            script = script + 'c'
+         self._xine = ChildProcess(self, script)
+         self._xine.signals["completed"].connect_weak(self._child_exited)
+         self._xine.set_stop_command(kaa.notifier.WeakCallback(self._xine.die))
+Index: popcorn/src/backends/gstreamer/player.py
+===================================================================
+--- a/popcorn/src/backends/gstreamer/player.py	(révision 2340)
++++ b/popcorn/src/backends/gstreamer/player.py	(copie de travail)
+@@ -61,6 +61,10 @@
+         self._mrl = media.url
+         if not self._gst:
+             script = os.path.join(os.path.dirname(__file__), 'main.py')
++            if os.path.isfile(script + 'o'):
++                script = script + 'o'
++            elif os.path.isfile(script + 'c'):
++                script = script + 'c'
+             self._gst = ChildProcess(self, script)
+             self._gst.signals["completed"].connect_weak(self._child_exited)
+             self._gst.set_stop_command(WeakCallback(self._gst.die))
+Index: metadata/src/disc/CDDB.py
+===================================================================
+--- a/metadata/src/disc/CDDB.py	(révision 2340)
++++ b/metadata/src/disc/CDDB.py	(copie de travail)
+@@ -13,7 +13,7 @@
+ 
+ import urllib, string, socket, os, struct, re
+ 
+-name = 'CDDB.py'
++name = 'CDDB.pyc'
+ version = 1.3
+ 
+ if os.environ.has_key('EMAIL'):
+Index: beacon/src/server/parser.py
+===================================================================
+--- a/beacon/src/server/parser.py	(révision 2340)
++++ b/beacon/src/server/parser.py	(copie de travail)
+@@ -68,7 +68,10 @@
+     """
+     plugindir = os.path.join(os.path.dirname(__file__), 'plugins')
+     for plugin in os.listdir(plugindir):
+-        if not plugin.endswith('.py') or plugin == '__init__.py':
++        if (not plugin.endswith('.pyo') and not plugin.endswith('.pyc') and not plugin.endswith('.py')) \
++        or plugin == '__init__.pyo' \
++        or plugin == '__init__.pyc' \
++        or plugin == '__init__.py':
+             continue
+         exec('import plugin.%s' % plugin)
+         plugin.create(db, register)
+Index: cherrypy/src/controller.py
+===================================================================
+--- a/cherrypy/src/controller.py	(révision 2340)
++++ b/cherrypy/src/controller.py	(copie de travail)
+@@ -44,7 +44,7 @@
+ 
+ # load template engines
+ for f in os.listdir(os.path.dirname(__file__)):
+-    if not f.startswith('templ_') or not f.endswith('.py'):
++    if not f.startswith('templ_') or (not f.endswith('.pyo') and not f.endswith('.pyc') and not f.endswith('.py')):
+         # this is no template engine
+         continue
+     try:
+Index: epg/src/sources/__init__.py
+===================================================================
+--- a/epg/src/sources/__init__.py	(révision 2340)
++++ b/epg/src/sources/__init__.py	(copie de travail)
+@@ -35,10 +35,19 @@
+ sources = {}
+ 
+ for f in os.listdir(os.path.dirname(__file__)):
+-    if f.startswith('_') or f.startswith('config_') or not f.endswith('.py'):
++    if f.startswith('_') or f.startswith('config_') \
++    or (not f.endswith('.pyo') and not f.endswith('.pyc') and not f.endswith('.py')):
+         continue
+     try:
+-        exec('import %s as s' % f[:-3])
++        if f.endswith('.pyo') \
++        or f.endswith('.pyc'):
++            exec('import %s as s' % f[:-4])
++        elif f.endswith('.py'):
++            exec('import %s as s' % f[:-3])
+     except ImportError:
+         continue
+-    sources[f[:-3]] = s
++    if f.endswith('.pyo') \
++    or f.endswith('.pyc'):
++        sources[f[:-4]] = s
++    elif f.endswith('.py'):
++        sources[f[:-3]] = s
