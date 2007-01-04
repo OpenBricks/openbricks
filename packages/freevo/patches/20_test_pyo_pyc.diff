@@ -1,3 +1,24 @@
+Index: webserver/src/server.py
+===================================================================
+--- a/webserver/src/server.py	(révision 8918)
++++ b/webserver/src/server.py	(copie de travail)
+@@ -240,8 +240,15 @@
+ 
+         for script_dir, script_import in scripts:
+             for module in os.listdir(script_dir):
+-                if not module.endswith('.py') or module == '__init__.py':
++                if not module.endswith('.pyo') and not module.endswith('.pyc') and not module.endswith('.py'):
+                     continue
++                if module == '__init__.pyo' \
++                or module == '__init__.pyc' \
++                or module == '__init__.py':
++                    continue
++                elif module.endswith('.pyo') \
++                or module.endswith('.pyc'):
++                    module = module[:-1]
+                 module = module[:-3]
+                 try:
+                     exec('import %s.%s as r' % (script_import, module))
 Index: ui/contrib/developer/chktab.py
 ===================================================================
 --- a/ui/contrib/developer/chktab.py	(révision 8918)
@@ -34,7 +55,7 @@ Index: ui/src/gui/areas/handler.py
 Index: ui/src/config/configfile.py
 ===================================================================
 --- a/ui/src/config/configfile.py	(révision 8918)
---- b/ui/src/config/configfile.py	(copie de travail)
++++ b/ui/src/config/configfile.py	(copie de travail)
 @@ -71,7 +71,9 @@
  #
  for dirname in cfgfilepath[1:]:
@@ -46,25 +67,41 @@ Index: ui/src/config/configfile.py
          log.critical(('freevo_config.py found in %s, please remove it ' +
                        'and use local_conf.py instead!') % freevoconf)
          sys.exit(1)
-@@ -80,7 +82,9 @@
+@@ -80,9 +82,17 @@
  # Load freevo_config.py:
  #
  FREEVO_CONFIG = os.path.join(freevo.conf.SHAREDIR, 'freevo_config.py')
 -if os.path.isfile(FREEVO_CONFIG):
-+if os.path.isfile(FREEVO_CONFIG + 'o') \
-+or os.path.isfile(FREEVO_CONFIG + 'c') \
-+or os.path.isfile(FREEVO_CONFIG):
++if os.path.isfile(FREEVO_CONFIG + 'o'):
++    FREEVO_CONFIG = FREEVO_CONFIG + 'o'
      log.info('Loading cfg: %s' % FREEVO_CONFIG)
      execfile(FREEVO_CONFIG, globals(), locals())
++elif os.path.isfile(FREEVO_CONFIG + 'c'):
++    FREEVO_CONFIG = FREEVO_CONFIG + 'c'
++    log.info('Loading cfg: %s' % FREEVO_CONFIG)
++    execfile(FREEVO_CONFIG, globals(), locals())
++elif os.path.isfile(FREEVO_CONFIG):
++    log.info('Loading cfg: %s' % FREEVO_CONFIG)
++    execfile(FREEVO_CONFIG, globals(), locals())
      
-@@ -105,7 +109,9 @@
+ else:
+     log.critical("Error: %s: no such file" % FREEVO_CONFIG)
+@@ -105,7 +115,17 @@
          overridefile = has_config
      else:
          overridefile = dirname + '/local_conf.py'
 -    if os.path.isfile(overridefile):
-+    if os.path.isfile(overridefile + 'o') \
-+    or os.path.isfile(overridefile + 'c') \
-+    or os.path.isfile(overridefile):
++    test = 0
++    if os.path.isfile(overridefile + 'o'):
++        overridefile = overridefile + 'o'
++        test = 1
++    elif os.path.isfile(overridefile + 'c'):
++        overridefile = overridefile + 'c'
++        test = 1
++    elif os.path.isfile(overridefile):
++        test = 1
++    
++    if test == 1:
          log.info('Loading cfg overrides: %s' % overridefile)
          execfile(overridefile, globals(), locals())
  
