@@ -58,12 +58,26 @@ fi
 
 if [ "$RADIO" = yes ]; then
   # set mplayer menu radio stations list
-  echo "<cmdlist name=\"radio_chan\" title=\"Radio Stations\" ptr=\"\" item-bg=\"-1\" title-bg=\"-1\" ptr-bg=\"164\" >" >> /etc/mplayer/menu.conf
-  grep '^CHAN' /etc/radio | sed "s/^CHAN=\"\([^:]*\):\(.*\)\"/<e name=\"\2\" ok=\"run 'fmio -d v4l -v 50 -f \1'\"\/>/" >> /etc/mplayer/menu.conf
+  if [ `grep -c ^CHAN /etc/radio` -gt 0 ]; then
+    for CHAN in `sed -n 's/^CHAN="\(.*\):\(.*\)"/\1-\2/p' /etc/radio | sed 'y/ /_/' `; do
+      mp_set_option radio=channels "$CHAN" concat
+    done
+  else
+    sed "s/.*set_menu radio_chan.*//" /etc/mplayer/menu.conf
+    sed -i 's/^radio=.*//' /etc/mplayer/menu.conf
+  fi
+
+  # set mplayer Radio channels list
+  n=0
+  echo "<cmdlist name=\"radio_chan\" title=\"Radio Stations\" ptr=\"\" item-bg=\"-1\" title-bg=\"-1\" ptr-bg=\"164\" auto-close=\"yes\" >" >> /etc/mplayer/menu.conf
+  for CHNAME in `sed -n 's/^radio=channels=//p' /etc/mplayer/mplayer.conf | sed -e 's/,/\n/g' -e 's/_/ /g' | sed 's/\(.*\)-\(.*\)/\2/'`; do
+    echo "<e name=\"$CHNAME\" ok=\"loadfile radio://$((++n))\"/>" >> /etc/mplayer/menu.conf
+  done
   echo "</cmdlist>" >> /etc/mplayer/menu.conf
 else
   # no supported radio card specified
   sed -i 's/.*ok="set_menu radio_settings".*//' /etc/mplayer/menu.conf
+  sed -i 's/^radio=.*//' /etc/mplayer/menu.conf
 fi
 
 exit 0
