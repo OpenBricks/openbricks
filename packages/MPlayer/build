@@ -18,54 +18,28 @@ $SCRIPTS/build iconv-base
 
 setup_toolchain --optimize target
 
-if [ "$DXR3" = "yes" ]; then
-  $SCRIPTS/build em8300
-  DXR3_CONFIG="--enable-dxr3 --enable-ossaudio"
-else
-  DXR3_CONFIG="--disable-dxr3 --disable-ossaudio"
-fi
+set_option() {
+  OPT="$1"
+  CFG_LIST="$2"
+  PKG="$3"
+  [ "$OPT" = yes ] && CFG=enable || CFG=disable
+  for CFG_NAME in $CFG_LIST; do
+    EXTRA_CONFIG="$EXTRA_CONFIG --$CFG-$CFG_NAME"
+  done
+  [ $CFG = enable -a -n "$PKG" ] && $SCRIPTS/build $PKG
+  return 0
+}
 
-if [ "$IVTV" = "yes" ]; then
-  $SCRIPTS/build ivtv
-  IVTV_CONFIG="--enable-ivtv --enable-pvr"
-else
-  IVTV_CONFIG="--disable-ivtv --disable-pvr"
-fi
+set_option "$DXR3" "dxr3 ossaudio" "em8300"
+set_option "$IVTV" "ivtv pvr" "ivtv"
+set_option "$SDL" "sdl" "SDL"
+set_option "$DIRECTFB" "directfb" "DirectFB"
+set_option "$LIVE555" "live" "live"
+set_option "$FREEVO" "png" "libpng"
+set_option "$RADIO" "radio"
 
-if [ "$SDL" = "yes" ]; then
-  $SCRIPTS/build SDL
-  SDL_CONFIG="--enable-sdl"
-else
-  SDL_CONFIG="--disable-sdl"
-fi
-
-if [ "$DIRECTFB" = "yes" ]; then
-  $SCRIPTS/build DirectFB
-  CFLAGS="$CFLAGS -I$LIB_PREFIX/include/directfb"
-  DIRECTFB_CONFIG="--enable-directfb"
-else
-  DIRECTFB_CONFIG="--disable-directfb"
-fi
-
-if [ "$LIVE555" = "yes" ]; then
-  $SCRIPTS/build live
-  LIVE555_CONFIG="--enable-live --with-livelibdir=$LIB_PREFIX/live"
-else
-  LIVE555_CONFIG="--disable-live"
-fi
-
-if [ "$FREEVO" = "yes" ]; then
-  $SCRIPTS/build libpng 
-  LIBPNG_CONFIG="--enable-png"
-else
-  LIBPNG_CONFIG="--disable-png"
-fi
-
-if [ "$RADIO" = "yes" ]; then
-  RADIO_V4L_CONFIG="--enable-radio"
-else
-  RADIO_V4L_CONFIG="--disable-radio"
-fi
+[ "$DIRECTFB" = yes ] && CFLAGS="$CFLAGS -I$LIB_PREFIX/include/directfb"
+[ "$LIVE555" = yes ] && EXTRA_CONFIG="--with-livelibdir=$LIB_PREFIX/live"
 
 if [ "$TARGET_ARCH" = i386 ]; then
   $SCRIPTS/build vesautils
@@ -90,13 +64,7 @@ cd $BUILD/$1*
             --with-extralibdir="$LIB_PREFIX/lib" \
             --with-extraincdir="$LIB_PREFIX/include" \
             $ARCH_CONFIG \
-            $DXR3_CONFIG \
-            $IVTV_CONFIG \
-            $SDL_CONFIG \
-            $DIRECTFB_CONFIG \
-            $LIVE555_CONFIG \
-            $LIBPNG_CONFIG \
-            $RADIO_V4L_CONFIG \
+            $EXTRA_CONFIG \
             --disable-mencoder \
             --disable-gui \
             --enable-largefiles \
