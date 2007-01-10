@@ -49,48 +49,13 @@ diff -r 13cd417bfd4a libmpdemux/demux_mkv.c
  
  /* for e.g. "-slang ger" */
  extern char *dvdsub_lang;
-@@ -1366,6 +1371,35 @@ demux_mkv_read_chapters (demuxer_t *demu
-                               end = ebml_read_uint (s, &l) / 1000000;
-                               break;
- 
-+                            case MATROSKA_ID_CHAPTERDISPLAY:
-+                              {
-+                                uint64_t len;
-+                                int i;
-+
-+                                len = ebml_read_length (s, &i);
-+                                l = len + i;
-+
-+                                while (len > 0)
-+                                  {
-+                                    uint64_t l;
-+                                    int il;
-+
-+                                    switch (ebml_read_id (s, &il))
-+                                      {
-+                                      case MATROSKA_ID_CHAPSTRING:
-+                                        mkv_chapter_string[mkv_chapter_num]
-+                                          = ebml_read_utf8 (s, &l);
-+                                        break;
-+
-+                                      default:
-+                                        ebml_read_skip (s, &l);
-+                                        break;
-+                                      }
-+                                    len -= l + il;
-+                                  }
-+                                break;
-+                              }
-+
-                             default:
-                               ebml_read_skip (s, &l);
-                               break;
-@@ -1387,6 +1421,8 @@ demux_mkv_read_chapters (demuxer_t *demu
+@@ -1387,6 +1421,9 @@ demux_mkv_read_chapters (demuxer_t *demu
                               (int) ((end / 60 / 1000) % 60),
                               (int) ((end / 1000) % 60),
                               (int) (end % 1000), name);
 +                      mkv_chapter_num = demuxer->num_chapters;
 +                      mkv_chapter_start[mkv_chapter_num] = start;
++                      mkv_chapter_string[mkv_chapter_num] = strdup(name);
 
                        free(name);
                        break;
@@ -477,7 +442,7 @@ diff -r 13cd417bfd4a libmenu/menu_chapsel.c
 +        }
 +      else if (demuxer->type == DEMUXER_TYPE_MATROSKA)
 +        {
-+          for (cid = 0; cid < mkv_chapter_num + 0; cid++)
++          for (cid = 1; cid < mkv_chapter_num + 1; cid++)
 +            {
 +              if ((e = calloc (1, sizeof (list_entry_t))) != NULL)
 +                {
@@ -487,9 +452,9 @@ diff -r 13cd417bfd4a libmenu/menu_chapsel.c
 +                  else
 +                    {
 +                      e->p.txt = malloc (4);
-+                      sprintf (e->p.txt, "%-3d", cid+1);
++                      sprintf (e->p.txt, "%-3d", cid);
 +                    }
-+                  e->cid = cid + 1;
++                  e->cid = cid;
 +                  menu_list_add_entry (menu, e);
 +                }
 +            }
