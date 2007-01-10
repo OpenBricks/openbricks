@@ -30,9 +30,23 @@ fi
 if test $PHY_TYPE = wifi -o $PHY_TYPE = auto; then
   DEV=$WIFI
   if test -n "$DEV"; then
-    test -n "$WIFI_MODE" && iwconfig "$DEV" mode "$WIFI_MODE"
-    test -n "$WIFI_ESSID" && iwconfig "$DEV" essid "$WIFI_ESSID"
-    test -n "$WIFI_WEP" && iwconfig "$DEV" key "$WIFI_WEP"
+    if test $WIFI_ENC = WEP; then
+      test -n "$WIFI_MODE" && iwconfig "$DEV" mode "$WIFI_MODE"
+      test -n "$WIFI_ESSID" && iwconfig "$DEV" essid "$WIFI_ESSID"
+      test -n "$WIFI_KEY" && iwconfig "$DEV" key "$WIFI_KEY"
+    elif test $WIFI_ENC = WPA -a -x /usr/bin/wpa_supplicant; then
+      if test ! -f /etc/wpa_supplicant.conf; then
+        echo "ap_scan=2" > /etc/wpa_supplicant.conf
+        wpa_passphrase "$WIFI_ESSID" "$WIFI_KEY" | sed "s/}//" >> /etc/wpa_supplicant.conf
+        echo "scan_ssid=1" >> /etc/wpa_supplicant.conf
+        echo "proto=WPA" >> /etc/wpa_supplicant.conf
+        echo "key_mgmt=WPA-PSK" >> /etc/wpa_supplicant.conf
+        echo "pairwise=TKIP" >> /etc/wpa_supplicant.conf
+        echo "group=TKIP" >> /etc/wpa_supplicant.conf
+        echo "}" >> /etc/wpa_supplicant.conf
+      fi
+      wpa_supplicant -B -w -i $DEV -c /etc/wpa_supplicant.conf -D $WPADRV
+    fi
   fi
 fi
 if test $PHY_TYPE = ethernet -o $PHY_TYPE = auto -a -z "$DEV"; then
