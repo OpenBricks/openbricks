@@ -82,7 +82,7 @@ convert () {
 
 # Configure network interface and parameters before installing GeeXboX to disk.
 setup_network () {
-  local title phy_type wifi_mode wep essid host_ip subnet gw_ip dns_ip smb_user smb_pwd val f
+  local title phy_type wifi_mode wifi_enc wifi_key wpa_drv wifi_essid host_ip subnet gw_ip dns_ip smb_user smb_pwd val f
 
   title="$BACKTITLE : Network Configuration"
   f="$1/etc/network"
@@ -95,11 +95,19 @@ setup_network () {
   if [ $phy_type = "auto" -o $phy_type = "wifi" ]; then
     wifi_mode=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "Configuring WiFi Mode" --menu "\nAs you seem to be using your wireless adapter to connect this computer to your network, you will have to setup the networking mode.\n Are you connected to an access point (recommended) or directly to another computer ?\n" 0 0 0 managed "Connected to an access point (recommended)" ad-hoc "Direct Connection"` || exit 1
 
-    val=`grep WIFI_WEP $f | cut -d'"' -f2`
-    wep=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "Configuring WEP key" --inputbox "\nAs you seem to be using your wireless adapter to connect this computer to your network, you may be using a WEP key. If so, please fill in the following input box with your access point WEP key or let it blank if you do not have one (open network).\n" 0 0 "$val"` || exit 1
+    wifi_enc=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "Configuring WiFi Encryption" --menu "\nAs you seem to be using your wireless adapter to connect this computer to your network, you will have to setup the security mode.\n Are you using no ecnryption, WEP encryption or WPA encryption ?\n" 0 0 0 none "no encryption" WEP "WEP" WPA "WPA (experimental)"` || exit 1
 
     val=`grep WIFI_ESSID $f | cut -d'"' -f2`
-    essid=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "Configuring WiFi ESSID" --inputbox "\nAs you seem to be using your wireless adapter to connect this computer to your network, you probably are using an SSID. If so, please fill in the following input box with your SSID identifier or leave it blank if you do not have one (open network).\n" 0 0 "$val"` || exit 1
+    wifi_essid=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "Configuring WiFi ESSID" --inputbox "\nAs you seem to be using your wireless adapter to connect this computer to your network, you probably are using an SSID. If so, please fill in the following input box with your SSID identifier or leave it blank if you do not have one (open network).\n" 0 0 "$val"` || exit 1
+
+    if [ $wifi_enc = WEP -o $wifi_enc = WPA ]; then
+      val=`grep WIFI_KEY $f | cut -d'"' -f2`
+      wifi_key=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "Configuring WEP/WPA key" --inputbox "\nAs you have selected to use encryption for your wireless connection, please fill in the following input box with your access point WEP/WPA key.\n" 0 0 "$val"` || exit 1
+    fi
+
+    if [ $wifi_enc = WPA ]; then
+      wpa_drv=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "Configuring WiFi WPA Driver" --menu "\nSince you are connecting to your network using WPA encryption, you will have to select the driver interface. Most native linux drivers can use wext, and NDIS drivers must use ndiswrapper.\n" 0 0 0 wext "Wireless Extensions" ndiswrapper "NDISwrapper" hostap "hostap" ipw "ipw" atmel "atmel"` || exit 1
+    fi
   fi
 
   # get GeeXboX IP address
@@ -128,8 +136,10 @@ setup_network () {
 
   sed -i "s%^PHY_TYPE=\".*\"\(.*\)%PHY_TYPE=\"$phy_type\"\1%" $f
   sed -i "s%^WIFI_MODE=\".*\"\(.*\)%WIFI_MODE=\"$wifi_mode\"\1%" $f
-  sed -i "s%^WIFI_WEP=\".*\"\(.*\)%WIFI_WEP=\"$wep\"\1%" $f
-  sed -i "s%^WIFI_ESSID=\".*\"\(.*\)%WIFI_ESSID=\"$essid\"\1%" $f
+  sed -i "s%^WIFI_ENC=\".*\"\(.*\)%WIFI_ENC=\"$wifi_enc\"\1%" $f
+  sed -i "s%^WIFI_KEY=\".*\"\(.*\)%WIFI_KEY=\"$wifi_key\"\1%" $f
+  sed -i "s%^WIFI_ESSID=\".*\"\(.*\)%WIFI_ESSID=\"$wifi_essid\"\1%" $f
+  sed -i "s%^WPA_DRV=\".*\"\(.*\)%WPA_DRV=\"$wpa_drv\"\1%" $f
   sed -i "s%^HOST=.*%HOST=\"$host_ip\"%" $f
   sed -i "s%^SUBNET=.*%SUBNET=\"$subnet\"%" $f
   sed -i "s%^GATEWAY=.*%GATEWAY=\"$gw_ip\"%" $f
