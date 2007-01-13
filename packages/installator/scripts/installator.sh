@@ -106,7 +106,7 @@ setup_network () {
     fi
 
     if [ $wifi_enc = WPA ]; then
-      wpa_drv=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "Configuring WiFi WPA Driver" --menu "\nSince you are connecting to your network using WPA encryption, you will have to select the driver interface. Most native linux drivers can use wext, and NDIS drivers must use ndiswrapper.\n" 0 0 0 wext "Wireless Extensions" ndiswrapper "NDISwrapper" ipw "ipw" atmel "atmel"` || exit 1
+      wpa_drv=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "Configuring WiFi WPA Driver" --menu "\nSince you are connecting to your network using WPA encryption, you will have to select the driver interface. Most native linux drivers can use wext, but atmel drivers might have to use atmel.\n" 0 0 0 wext "Wireless Extensions" atmel "atmel"` || exit 1
     fi
   fi
 
