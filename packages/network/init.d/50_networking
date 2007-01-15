@@ -6,6 +6,22 @@
 
 echo "### Setting up network ###"
 
+function wpa_config_gen()
+{
+cat > /etc/wpa_supplicant.conf <<EOF
+ap_scan=2
+network={
+ssid=$1
+psk="$2"
+scan_ssid=1
+proto=WPA
+key_mgmt=WPA-PSK
+pairwise=TKIP
+group=TKIP
+}
+EOF
+}
+
 # get options
 test -f /etc/network || exit 1
 . /etc/network
@@ -36,14 +52,7 @@ if test $PHY_TYPE = wifi -o $PHY_TYPE = auto; then
       test -n "$WIFI_KEY" && iwconfig "$DEV" key "$WIFI_KEY"
     elif test $WIFI_ENC = WPA -a -x /usr/bin/wpa_supplicant; then
       if test ! -f /etc/wpa_supplicant.conf; then
-        echo "ap_scan=2" > /etc/wpa_supplicant.conf
-        wpa_passphrase "$WIFI_ESSID" "$WIFI_KEY" | sed "s/}//" >> /etc/wpa_supplicant.conf
-        echo "scan_ssid=1" >> /etc/wpa_supplicant.conf
-        echo "proto=WPA" >> /etc/wpa_supplicant.conf
-        echo "key_mgmt=WPA-PSK" >> /etc/wpa_supplicant.conf
-        echo "pairwise=TKIP" >> /etc/wpa_supplicant.conf
-        echo "group=TKIP" >> /etc/wpa_supplicant.conf
-        echo "}" >> /etc/wpa_supplicant.conf
+        wpa_config_gen "$WIFI_ESSID" "$WIFI_KEY"
       fi
       wpa_supplicant -B -w -i $DEV -c /etc/wpa_supplicant.conf -D $WPA_DRV
     fi
