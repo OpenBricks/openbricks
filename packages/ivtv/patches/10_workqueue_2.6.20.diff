@@ -1,0 +1,127 @@
+diff -Naur ivtv-0.9.1.orig/driver/ivtv-driver.c ivtv-0.9.1/driver/ivtv-driver.c
+--- ivtv-0.9.1.orig/driver/ivtv-driver.c	2007-01-27 16:34:26.000000000 +0100
++++ ivtv-0.9.1/driver/ivtv-driver.c	2007-01-27 16:34:50.000000000 +0100
+@@ -342,12 +342,8 @@
+ 
+ static void ivtv_flush_scheduled_work(struct ivtv *itv)
+ {
+-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+ 	flush_scheduled_work();
+ 	flush_workqueue(itv->vbi_work_queues);
+-#else
+-	flush_scheduled_tasks();
+-#endif
+ }
+ 
+ /* Release ioremapped memory */
+@@ -690,16 +686,12 @@
+ 
+ 	itv->DMA_slock = SPIN_LOCK_UNLOCKED;
+ 
+-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+ 	itv->vbi_work_queues = create_workqueue("ivtv_vbi");
+ 	if (itv->vbi_work_queues == NULL) {
+ 		IVTV_ERR("Could not create VBI workqueue\n");
+ 		return -1;
+ 	}
+-	INIT_WORK(&itv->vbi_work_queue, vbi_work_handler, itv);
+-#else
+-	INIT_TQUEUE(&itv->vbi_work_queue, vbi_work_handler, itv);
+-#endif
++	INIT_WORK(&itv->vbi_work_queue, vbi_work_handler);
+ 
+ 	/* start counting open_id at 1 */
+ 	itv->open_id = 1;
+@@ -1358,9 +1350,8 @@
+       free_mem:
+ 	release_mem_region(pci_resource_start(itv->dev, 0), IVTV_IOREMAP_SIZE);
+       free_workqueue:
+-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+ 	destroy_workqueue(itv->vbi_work_queues);
+-#endif
++
+       err:
+ 	if (retval == 0)
+ 		retval = -ENODEV;
+@@ -1402,13 +1393,10 @@
+ 	/* Stop all Work Queues */
+ 	IVTV_DEBUG_INFO(" Flushing Work Queues.\n");
+ 	ivtv_flush_scheduled_work(itv);
+-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+-	IVTV_DEBUG_INFO(" Cancel Work Queues.\n");
+-	cancel_delayed_work(&itv->vbi_work_queue);
+ 
+ 	IVTV_DEBUG_INFO(" Destroy Work Queues.\n");
+ 	destroy_workqueue(itv->vbi_work_queues);
+-#endif
++
+ 	IVTV_DEBUG_INFO(" Stopping Threads.\n");
+ 	/* Stop all threads */
+ 	atomic_set(&itv->enc_vbi_thread_running, 0);
+diff -Naur ivtv-0.9.1.orig/driver/ivtv-driver.h ivtv-0.9.1/driver/ivtv-driver.h
+--- ivtv-0.9.1.orig/driver/ivtv-driver.h	2007-01-27 16:34:26.000000000 +0100
++++ ivtv-0.9.1/driver/ivtv-driver.h	2007-01-27 16:34:55.000000000 +0100
+@@ -1014,12 +1014,8 @@
+ 
+ 	atomic_t streams_setup;
+ 
+-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+ 	struct workqueue_struct *vbi_work_queues;
+ 	struct work_struct vbi_work_queue;
+-#else
+-	struct tq_struct vbi_work_queue;
+-#endif
+ 
+ 	struct ivtv_dec_dma dec_dma_stat;
+ 	struct ivtv_dma_settings dma_cfg;
+diff -Naur ivtv-0.9.1.orig/driver/ivtv-i2c.c ivtv-0.9.1/driver/ivtv-i2c.c
+--- ivtv-0.9.1.orig/driver/ivtv-i2c.c	2007-01-27 16:34:26.000000000 +0100
++++ ivtv-0.9.1/driver/ivtv-i2c.c	2007-01-27 16:35:03.000000000 +0100
+@@ -785,9 +785,5 @@
+ {
+ 	IVTV_DEBUG_I2C("i2c exit\n");
+ 
+-        if (itv->options.newi2c > 0) {
+-                i2c_del_adapter(&itv->i2c_adap);
+-        } else {
+-                i2c_bit_del_bus(&itv->i2c_adap);
+-        }
++        i2c_del_adapter(&itv->i2c_adap);
+ }
+diff -Naur ivtv-0.9.1.orig/driver/ivtv-vbi.c ivtv-0.9.1/driver/ivtv-vbi.c
+--- ivtv-0.9.1.orig/driver/ivtv-vbi.c	2007-01-27 16:34:26.000000000 +0100
++++ ivtv-0.9.1/driver/ivtv-vbi.c	2007-01-27 16:35:08.000000000 +0100
+@@ -78,11 +78,7 @@
+ 
+ void vbi_schedule_work(struct ivtv *itv)
+ {
+-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+ 	queue_work(itv->vbi_work_queues, &itv->vbi_work_queue);
+-#else
+-	ivtv_schedule_work(&itv->vbi_work_queue);
+-#endif
+ }
+ 
+ static void passthrough_vbi_data(struct ivtv *itv, u8 *p, int cnt)
+@@ -593,9 +589,9 @@
+ 	vbi_schedule_work(itv);
+ }
+ 
+-void vbi_work_handler(void *arg)
++void vbi_work_handler(struct work_struct *work)
+ {
+-	struct ivtv *itv = arg;
++	struct ivtv *itv = container_of(work, struct ivtv, vbi_work_queue);
+ 	struct v4l2_sliced_vbi_data data;
+ 	int count = 0;
+ 
+diff -Naur ivtv-0.9.1.orig/driver/ivtv-vbi.h ivtv-0.9.1/driver/ivtv-vbi.h
+--- ivtv-0.9.1.orig/driver/ivtv-vbi.h	2007-01-27 16:34:26.000000000 +0100
++++ ivtv-0.9.1/driver/ivtv-vbi.h	2007-01-27 16:35:06.000000000 +0100
+@@ -26,5 +26,5 @@
+ void ivtv_disable_vbi(struct ivtv *itv);
+ void ivtv_set_vbi(unsigned long arg);
+ void vbi_setup_lcr(struct ivtv *itv, int set, int is_pal, struct v4l2_sliced_vbi_format *fmt);
+-void vbi_work_handler(void *arg);
++void vbi_work_handler(struct work_struct *work);
+ void vbi_schedule_work(struct ivtv *itv);
