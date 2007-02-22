@@ -12,7 +12,7 @@
 | AVANT PROPOS
 | ~~~~~~~~~~~~
 
-La GeeXboX est une sorte "divx box" logicielle. En fait, il s'agit d'un CD
+La GeeXboX est une distribution Linux de type Media Center. Il s'agit d'un CD
 bootable qui vous permet de regarder des films ou d'écouter de la musique.
 Il supporte de nombreux formats tels que avi, mpeg, divx, ogm, rm, mp3, ogg,
 dvd, vcd et cdda. GeeXboX supporte aussi certains types de télécommandes
@@ -29,9 +29,6 @@ Pour générer une iso GeeXboX vous devez posséder l'un des sytémes suivants:
   - MAC OS X avec mkisofs et mkzftree.
   - Windows.
 
-Pour installer la GeeXboX, vous aurez besoin :
-  - un système GNU/Linux avec SysLinux.
-
 Pour construire votre propre GeeXboX, vous nécessiterez les outils
 classiques :
   - un système GNU/Linux opérationnel.
@@ -40,14 +37,13 @@ classiques :
   - La commande patch.
   - L'assembleur nasm.
   - bzip2 et gzip.
-  - mkfs.ext2 et mkfs.vfat
   - L'outil de téléchargement wget (non nécessaire pour le paquetage
     GeeXboX complet).
   - mkisofs et mkzftree pour construire l'image ISO.
   - mkzftree pour compresser les fichiers de l'image ISO.
   - cdrecord (pour graver l'image).
 
-Et environ 1.2 Go d'espace disque disponible.
+Et environ 2 Go d'espace disque disponible.
 
 
 | PERSONALISATION
@@ -67,14 +63,6 @@ http://www.geexbox.org/releases/geexbox-extra-codecs-nonfree.tar.gz
 
 Vous pouvez modifier d'autres options en éditant simplement des fichiers
 textes.
-
-* Langue :
-
-    Choisissez la langue de vos menus en éditant le fichier generator.sh ou
-    generator.bat (en fonction de votre OS). Cela n'as pas d'effets sur la
-    langue du DVD (voir section MPlayer). Si votre langue n'est pas
-    disponible, vous pouvez toujours traduire un menu. Il suffit de re-créer
-    les fichiers language/menu_LANG.conf and language/help_LANG.txt.
 
 * Chargement des firmwares :
 
@@ -474,124 +462,16 @@ textes.
     Il vous est également possible de spécifier la méthode de lecture par
     défaut au moyen du générateur d'ISO de la GeeXboX.
 
-* Capacités d'enregistrement :
-
-    La GeeXboX permet l'enregistrement en cours de lecture, de même que la
-    fonctionnalité de "pause en direct" (également connue sous le nom anglais
-    de Time-Shifting). Malheureusement, cette opération est extrêmement
-    consommatrice de temps CPU (encodage en temps-réel et lecture simultannée
-    d'un flux vidéo) et, de ce fait, il se peut que vous nécessitiez un
-    ordinateur relativement récent pour être à même de tirer partie de cette
-    fonctionnalité.
-
-    Le menu de contrôle comporte un sous-menu dédié à cette fonctionnalité
-    d'enregistrement, qui vous permet de vérifier le statut de
-    l'enregistrement (actif/inactif), vérifier le chemin de destination des
-    fichiers enregistrés, mais également démarrer et/ou arrêter le processus
-    d'enregistrement, ou encore de sélectionner le profil d'encodage que vous
-    désirez utiliser. Le processus d'enregistrement peut également être appelé
-    (ou interrompu) au moyen du clavier (via la touche "i") ou au moyen d'une
-    télécommande.
-
-    Une condition est néanmoins requise pour profiter de la fonctionnalité, à
-    savoir que vous devez disposer d'un espace de stockage des fichiers. Ce
-    dernier peut tout aussi bien être un disque dur interne ou externe qu'un
-    lecteur réseau, connecté par NFS ou Samba. La seule contrainte à
-    considérer réside dans le fait que Linux doit supporter l'accès en
-    écriture au système de fichiers (autrement dit, les partitions NTFS ne
-    sont pas utilisables). Prenez garde lors de l'enregistrement de fichiers
-    au fait que votre disque dur sera remonté en R/W pour permettre le
-    stockage. Une fois l'enregistrement terminé, la GeeXboX tentera de
-    remonter votre disque en R/O, par mesure de sécurité, mais il y a toujours
-    un risque que cela ne soit pas fait. Il est alors vivement recommandé,
-    lors de l'utilisation de cette fonctionnalité, que vous procédiez à une
-    extinction "propre" de l'ordinateur pour éviter toute corruption
-    potentielle de données ou du système de fichiers. Nous n'assumons en aucun
-    cas une éventuelle perte de données sensibles.
-
-    Le répertoire de destination des fichiers enregistrés doit également être
-    renseigné lors de l'installation ou de la génération de l'image ISO par le
-    générateur. Il s'agit ici de modifier la variable suivante au sein du
-    fichier /etc/recorder :
-
-    SAVE_PATH="/tmp"
-
-    Le comportement par défaut consiste à enregistrer les vidéos dans le
-    répertoire /tmp, mais dans la mesure où il s'agit d'un RAMdisk, la GeeXboX
-    est suffisamment intelligente pour refuser cette action. Partant de ce
-    point, il n'y aucune chance que la GeeXboX tente d'enregistrer des
-    fichiers sur votre disque dur à moins que vous n'aillez personnellement
-    spécifié un répertoire de destination valide.
-
-    De la même façon, il est également possible de choisir le profil
-    d'encodage qui sera utilisé par défaut. Il vous sera toujours possible de
-    le changer en cours d'éxécution, par le biais du menu dédié à
-    l'enregistrement. De nombreux profils sont disponibles (consultez le
-    fichier de configuration /etc/mplayer/mencoder.conf pour une liste
-    exhaustive et les détails de chacun) et proposent chacun différents
-    niveaux de qualité et de vitesse d'encodage. Vous serez amenés à en
-    choisir l'un par rapport à l'autre selon votre puissance CPU. Selon le
-    flux d'entrée (WebTV de faible résolution, TV analogique standard, TV
-    numérique en haute résolution ...), un type de profil peut correspondre
-    mieux qu'un autre. Vous trouverez ci-dessous une liste non-exhaustive des
-    différents profils d'encodages disponibles :
-
-     - MPEG 1
-     - MPEG 2
-     - Video CD (PAL/NTSC)
-     - Super Video CD (PAL/NTSC)
-     - DVD Video (PAL/NTSC)
-     - Stream Dump (peut être utilisé sur des flux DVB de type MPEG-TS par
-       exemple pour éviter un processus de ré-encodage).
-
-    Le profil d'encodage par défaut doit être renseigné au sein du fichier de
-    configuration /etc/recorder de la manière suivante :
-
-    RECORD_PROFILE="mpeg1"
-
-    A moins que vous ne sachiez exactement ce que vous faites, il est
-    grandement recommandé que vous utilisiez le générateur d'images ISO pour
-    choisir le profil par défaut.
-
-    Lorsque vous regardez un flux TV et que vous débutez son enregistrement,
-    l'image va se bloquer quelques secondes, le temps pour MEncoder de
-    démarrer l'enregistrement, et la GeeXboX va procéder à la lecture en
-    différé du fichier en cours d'enregistrement. Si votre CPU est trop lent,
-    la lecture apparaîtra de manière saccadée, attendant que les images soient
-    encodées. Si cela se produit, il existe 2 cas de figures :
-
-     - utilisez un PC multimédia plus puissant.
-     - utilisez un profil d'encodage plus rapide (i.e. de moindre qualité).
-
-    Lorsque vous mettez fin au processus d'enregistrement, la GeeXboX arrêtera
-    MEncoder et va relancer la lecture du flux vidéo original.
-
-
-| GENERATION DE L'ISO
-| ~~~~~~~~~~~~~~~~~~~
-
-Avant tout, jetez un oeuil sur la section personalisation juste au dessus
-
-Sous Linux, l'ISO est générée en lançant la commande suivante:
-  ./generator.sh
-et sous Windows:
-  generator.exe
-
 
 | INSTALLATION
 | ~~~~~~~~~~~~
 
-Avant tout, vous devez créer une partition de type FAT16/32 ou EXT2/3 d'une
-taille d'environ 16 Mo minimum.
-
-Puis, vous pouvez installer la GeeXboX depuis Linux en lançant simplement
-  ./installator.sh
+Le plus simple est de démarrer la GeeXboX depuis le CD est de
+taper "install" au prompt de démarrage.
 
 Répondez ensuite à toutes les questions. Lisez les questions avec attention
 et stoppez l'installation si vous ne comprenez pas ce que vous faites.
 
-Mais le plus simple reste encore de démarrer la GeeXboX depuis le CD est de
-taper "install" au prompt de démarrage.
 
 | BOOT PXE
 | ~~~~~~~~
