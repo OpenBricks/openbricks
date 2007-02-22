@@ -11,7 +11,7 @@
 | ABOUT
 | ~~~~~
 
-GeeXboX is a kind of "divx box" software. In fact, it is a stand-alone boot
+GeeXboX is a Media Center Linux distribution. In fact, it is a stand-alone boot
 CD which allows you to watch movies or listen to music. It supports many
 formats, such as avi, mpeg, divx, ogm, rm, mp3, ogg, dvd, vcd and cdda.
 It also supports some IR remote controllers and TV-Out for some graphic cards.
@@ -24,10 +24,7 @@ This archive contains the needed scripts to rebuild an iso image of GeeXboX.
 To generate a GeeXboX iso, you will need either :
   - a GNU/Linux system with mkisofs and mkzftree.
   - a MAC OS X system with mkisofs and mkzftree.
-  - a windows system.
-
-To install the GeeXboX, you will need :
-  - a GNU/Linux system with syslinux.
+  - a Windows system.
 
 To build the GeeXboX, you will need some classic tools :
   - a working GNU/Linux system.
@@ -36,13 +33,12 @@ To build the GeeXboX, you will need some classic tools :
   - the patch command.
   - the nasm assembler.
   - bzip2 and gzip.
-  - mkfs.ext2 and mkfs.vfat
   - the wget download tool (not needed for the full GeeXboX package).
   - mkisofs and mkzftree to build the iso image.
   - mkzftree to compress files on the iso image.
   - cdrecord (to burn the iso image).
 
-And also 1.2 GB of hard disk free space.
+And also 2 GB of hard disk free space.
 
 
 | PERSONALIZATION
@@ -57,28 +53,6 @@ package on http://www.geexbox.org/releases/extra-codecs-nonfree.tar.gz
 
 You can also modify many options. This can be done simply by editing some
 text files.
-
-* Language :
-
-    You can easily select your preferred menu language by following
-    the procedure below :
-
-    - GNU/Linux users:
-    Edit the generator.sh script before running it and change the line
-    near the top: "MENU_LANG=en" to your preferred language.
-    For example: if you're French, change it to "MENU_LANG=fr".
-
-    - Microsoft Windows users:
-    When started, generator.exe gives you a combo list that allows you
-    to choose your preferred language.
-
-    NB : This has no effect on DVD language (see the MPlayer section).
-
-    For the list of available languages please see the "language" directory.
-    If your language is not available, you can translate the menu
-    in your own language. This simply involves the creation of
-    language/menu_LANG.conf and language/help_LANG.txt,
-    and adding LANG to language/lang.conf.
 
 * Firmware auto-loader :
 
@@ -173,7 +147,7 @@ text files.
     to windows shares (default will only connect to anonymous shares).
     You can also declare some NFS mounts in GEEXBOX/etc/nfs.
 
-* Wifi :
+* WiFi :
 
     By default, GeeXboX tries to autodetect your network settings.
     If you have both traditionnal NIC and WiFi cards, only the latest will
@@ -284,18 +258,18 @@ text files.
 * Radio configuration :
 
     If your TV-card has built-in FM radio tuner, GeeXboX can support playing
-    the radio. You have to modify the GEEXBOX/etc/radio file to have 
+    the radio. You have to modify the GEEXBOX/etc/radio file to have
     "RADIO=yes" if you want to use the radio. There is no hardware auto-
-    detection, so setting this to 'yes' without a TV-card-based FM radio will 
+    detection, so setting this to 'yes' without a TV-card-based FM radio will
     put unnecessary menu items on your GeeXboX screen.
 
-    The GEEXBOX/etc/radio file also has the radio station definition. There 
-    are a number of examples in the file, which simply include the radio 
-    frequency and the name of the station. Please be careful when editing 
+    The GEEXBOX/etc/radio file also has the radio station definition. There
+    are a number of examples in the file, which simply include the radio
+    frequency and the name of the station. Please be careful when editing
     channels and simply use the same syntax as the examples and the radio
     stations should be present in the main menu under "LISTEN RADIO".
 
-    Since the radio application itself is not part of MPlayer, there is 
+    Since the radio application itself is not part of MPlayer, there is
     separate access to the volume. Please note that the volume that is being
     increased or decreased is Master volume. Before switching back to TV or
     video viewing, or music playing, the volume should be re-adjusted.
@@ -321,18 +295,18 @@ text files.
 
 * Network streaming  :
 
-    GeeXboX now gives you the possibility to add some SHOUTcast Radio/TV 
+    GeeXboX now gives you the possibility to add some SHOUTcast Radio/TV
     official playlist as easily as personal playlists (local and remote).
 
     SHOUTcast activation is set in "GEEXBOX/etc/network" config file.
     As SHOUTcast TV sometimes may contain pornographic and
-    subscription-only streams, you can define a "black list" and a "white 
-    list" to allow/deny any streams you choose (default keywords for "black 
+    subscription-only streams, you can define a "black list" and a "white
+    list" to allow/deny any streams you choose (default keywords for "black
     list" are : "adult xxx porn ESS SWCTV SWPTV Subscription"). The
     black/white lists are case-insensitive.
 
     "GEEXBOX/etc/netstream" config file can be set to create local and
-    remote playlists (some examples are located in this file). "Remote 
+    remote playlists (some examples are located in this file). "Remote
     playlists" refer to "Extended M3U" files.
 
     For French users only :
@@ -446,108 +420,15 @@ text files.
     You can also make use of the GeeXboX ISO generator to select the default
     DVD playback method you want.
 
-* Recording Capabilities :
-
-    GeeXboX allows you to record the stream you're watching and even
-    proceed with live pause (a.k.a. Time-Shifting). Unfortunately, this
-    operation is CPU-time consuming (realtime encoding and playback of a
-    stream) and so, you may require a fairly recent computer to be able
-    to fully make use of this feature.
-
-    The control menu comes with a recorder-dedicated sub-menu that allows you
-    to monitor the recording status (on/off), check for the recorded files
-    destination, but also start/stop the record process and select the
-    encoding profile you want to use. The record process can also be started
-    (or stopped) from the keyboard, using the "i" key, or from the remote
-    controller.
-
-    There's unfortunately a requirement to the use of recording capabilities :
-    you need to be able to store the recorded files somewhere. This can be
-    an internal/external hard drive or a remote NFS/Samba share. The only
-    thing that matters is that the filesystem has to be Linux-writable (i.e.
-    NTFS disk aren't supported). Be aware while recording that your disk will
-    be remounted R/W to allow file storage. Once the record process has ended,
-    GeeXboX should remount your disk as R/O for safety measure but this might
-    not work. It is then highly recommended when making use of the recording
-    capabilities that you perform a clean shutdown of the computer to avoid a
-    potential filesystem or data corruption. We won't take any responsibility
-    for data loss.
-
-    The recorded files destination path has to be specified at installation or
-    ISO generation in the /etc/recorder configuration file. Simply replace the
-    following setting with your own one :
-
-    SAVE_PATH="/tmp"
-
-    The default behavior is to save to /tmp but as it's a RAMdisk, GeeXboX is
-    smart enough to not proceed so. Considering that, there's no way GeeXboX
-    will try to record or store files to your computer unless you'd
-    explicitely specify a destination path.
-
-    In the same way, you can also specify the default encoding profile to be
-    used when recording. You can always change to another one at runtime
-    through the recorder option menu. A few profiles are available (see the
-    /etc/mplayer/mencoder.conf file for a complete list and details) and they
-    all feature different level of quality or encoding speed. You might choose
-    one over another, according to your CPU power. According to the input
-    stream (low-resolution WebTV, regular analog TV, digital HDTV ...), one
-    profile might fit better than another. Below is a short non-exhaustive
-    list of available encoding profiles :
-
-     - MPEG 1
-     - MPEG 2
-     - Video CD (PAL/NTSC)
-     - Super Video CD (PAL/NTSC)
-     - DVD Video (PAL/NTSC)
-     - Stream Dump (can be safely used on DVB MPEG-TS streams for example
-       to avoid a re-encoding process).
-
-    The default encoding profile has to be specified in the /etc/recorder
-    configuration file, as below :
-
-    RECORD_PROFILE="mpeg1"
-
-    Unless you know exactly what you're doing, it is highly recommended that
-    you use the ISO generator to select the default profile.
-
-    When watching a TV stream and starting the record process, GeeXboX image
-    might freeze a few seconds (time for MEncoder to start recording) and will
-    start playing back the currently recording file. If you're CPU is too
-    slow, the playback will lag, waiting for the frames to be encoded. If this
-    happens, you only have 2 solutions :
-
-     - use a more powerful HTPC.
-     - use a fastest (i.e. less quality) encoding profile.
-
-    When stopping the recording process, GeeXboX will stop MEncoder and will
-    reload the original input stream.
-
-
-| GENERATION
-| ~~~~~~~~~~
-
-First have a look at the personalization section just above.
-
-Then basically you can generate the iso under Linux by launching
-  ./generator.sh
-or under windows by launching
-  generator.exe
-
 
 | INSTALLATION
 | ~~~~~~~~~~~~
 
-First you need to create a FAT16/32 or EXT2/3 partition with at least 16 MB
-of free space.
-
-Then you can install the GeeXboX under Linux by launching
-  ./installator.sh
-And then responding to all the questions. Be carefull during this step.
-Read twice each question and stop installing if you don't understand one
-of the question.
-
-But the easiest way to install GeeXboX is still to boot it from CD and type
+The easiest way to install GeeXboX is to boot it from CD and type
 "install" at isolinux boot prompt.
+
+Be carefull during this step. Read twice each question and stop installing
+if you don't understand one of the questions.
 
 
 | PXE BOOT
@@ -690,8 +571,6 @@ or a full tar (containing all sources) with :
   make fulldist
 or a geexbox generator with :
   make generator
-or a geexbox installator with :
-  make installator
 or a pxe ready tree with :
   make pxe
 
@@ -707,11 +586,11 @@ or a pxe ready tree with :
 
 * Linux :
 
-    This is a classical Linux configuration (packages/linux/linux.conf).
+    This is a classical Linux configuration (packages/linux/config/linux.conf).
     You can edit them by hand, or you can also do a scripts/unpack linux
     and then a make menuconfig -C build/linux-* (or use the method you prefer
     instead of menuconfig). Then you should backup your build/linux-*/.config
-    into packages/linux/linux.conf.
+    into packages/linux/config/linux.conf.
 
 * Lirc :
 
