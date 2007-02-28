@@ -25,7 +25,7 @@ vmx:
 vmx-play:
 	scripts/vmx play
 
-qemu:
+qemu: iso
 	scripts/qemu
 
 exec: iso
