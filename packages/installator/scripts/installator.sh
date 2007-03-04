@@ -732,13 +732,13 @@ EOF
   cat >> $grubdir/menu.lst <<EOF
 title	GeeXboX
 root	$rootdev
-kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME splash=$SPLASH vga=$VESA_MODE remote=$REMOTE receiver=$RECEIVER video=vesafb:ywrap,mtrr
+kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME splash=$SPLASH vga=$VESA_MODE keymap=$KEYMAP remote=$REMOTE receiver=$RECEIVER video=vesafb:ywrap,mtrr
 initrd  /initrd.gz
 boot
 
 title	GeeXboX (debug)
 root	$rootdev
-kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME splash=0 vga=$VESA_MODE remote=$REMOTE receiver=$RECEIVER video=vesafb:ywrap,mtrr debugging
+kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME splash=0 vga=$VESA_MODE keymap=$KEYMAP remote=$REMOTE receiver=$RECEIVER video=vesafb:ywrap,mtrr debugging
 initrd  /initrd.gz
 boot
 EOF
