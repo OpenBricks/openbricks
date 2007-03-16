@@ -22,12 +22,7 @@ EOF
 }
 
 wifi_connection_up() {
-  if test `iwconfig $DEV | grep -c -e "Cell:" -e "Access Point:"` -eq 0; then
-    retval=1 # No wireless connection
-  else
-    retval=0
-  fi
-  return $retval
+  iwconfig $DEV | grep -q -e "Cell:" -e "Access Point:"
 }
 
 # get options
@@ -66,7 +61,7 @@ if test $PHY_TYPE = wifi -o $PHY_TYPE = auto; then
         fi
         wpa_supplicant -B -w -i $DEV -c /etc/wpa_supplicant.conf -D $WPA_DRV
       fi
-      if test -x /usr/bin/iwpriv -a ! wifi_connection_up; then
+      if ! wifi_connection_up && test -x /usr/bin/iwpriv; then
         # WPA not up, try using iwpriv instead
         iwpriv $DEV AuthMode=WPAPSK >/dev/null 2>&1
         iwpriv $DEV EncrypType=TKIP >/dev/null 2>&1
@@ -74,10 +69,7 @@ if test $PHY_TYPE = wifi -o $PHY_TYPE = auto; then
       fi
     fi
   fi
-  if test ! wifi_connection_up; then
-    # Failed to setup WiFi, allow fall-through to ethernet if autodetect
-    unset $DEV
-  fi
+  wifi_connection_up || unset $DEV
 fi
 if test $PHY_TYPE = ethernet -o $PHY_TYPE = auto -a -z "$DEV"; then
   DEV=$ETH
