@@ -1,6 +1,7 @@
 #!/bin/sh
 
 FIFO=/var/cp_fifo
+MPFIFO=/var/mp_control
 DIR=
 RM=
 
@@ -13,23 +14,24 @@ while true; do
     cd)
       DIR=$FILE
       [ -d "$DIR" ] || DIR=${DIR%/[^/]*}
+      echo "osd_show_text \"*d*\"" > $MPFIFO
       ;;
 
     cp)
-      [ -z "$DIR" ] && continue
-      rw "$DIR"
-      cp -R "$FILE" "$DIR"
+      [ -z "$DIR" ] && echo "osd_show_text \"*!*\" 1500" > $MPFIFO && continue
+      rw "$DIR" && echo "osd_show_text \"*c* wait...\"" > $MPFIFO
+      cp -R "$FILE" "$DIR" && echo "osd_show_text \"OK\"" > $MPFIFO || echo "osd_show_text \"*!!!!*\" 2000" > $MPFIFO
       ro "$DIR"
       ;;
 
     rm)
-      RM=$FILE
+      RM=$FILE && echo "osd_show_text \"*r*\"" > $MPFIFO
       ;;
 
     rmok)
       if [ "$FILE" = "$RM" ]; then
         rw "$FILE"
-        rm -r "$FILE"
+        rm -r "$FILE" && echo "osd_show_text \"*o*\"" > $MPFIFO
         ro "$FILE"
       fi
       RM=
