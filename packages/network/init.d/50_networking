@@ -30,10 +30,7 @@ test -f /etc/network || exit 1
 . /etc/network
 test -z "$HOST" && HOST=0.0.0.0
 if [ -x /usr/bin/iwconfig ]; then
-  for i in `iwconfig 2>&1 | grep '^[^\ ]' | grep -v '^lo' | cut -f1 -d' '`; do
-    ifconfig $i up >/dev/null 2>&1
-  done
-  WIFI=`iwconfig 2>&1 | grep '^[^\ ]' | grep -v "no wireless extensions" | cut -f1 -d' ' | head -n 1`
+  WIFI=`iwconfig 2>&1 | grep '^[^\ ]' | grep "ESSID" | grep -v "no wireless extensions" | cut -f1 -d' ' | head -n 1`
   ETH=`iwconfig 2>&1 | grep '^[^\ ]'  | grep -v '^lo' | grep "no wireless extensions" | cut -f1 -d' ' | head -n 1`
 else
   ETH=eth0
@@ -67,6 +64,13 @@ if test $PHY_TYPE = wifi -o $PHY_TYPE = auto; then
         iwpriv $DEV EncrypType=TKIP >/dev/null 2>&1
         iwpriv $DEV WPAPSK="$WIFI_KEY" >/dev/null 2>&1
       fi
+    fi
+    for i in `iwconfig 2>&1 | grep '^[^\ ]' | grep -v '^lo' | cut -f1 -d' '`; do
+      ifconfig $i up >/dev/null 2>&1
+    done
+    if test "$WIFI_ESSID" != any; then
+      MAC_AP="`iwlist wlan0 scan 2>/dev/null | grep -B1 "$WIFI_ESSID" | head -n 1 | cut -d" " -f15`"
+      test -n "$MAC_AP" && iwconfig "$DEV" ap "$MAC_AP"
     fi
   fi
   wifi_connection_up $DEV || unset DEV
