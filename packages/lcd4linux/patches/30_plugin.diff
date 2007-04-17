@@ -1,9 +1,76 @@
-diff -Naur lcd4linux-0.10.1-RC1.orig/config.h.in lcd4linux-0.10.1-RC1/config.h.in
---- lcd4linux-0.10.1-RC1.orig/config.h.in	2007-03-23 11:25:01.000000000 +0100
-+++ lcd4linux-0.10.1-RC1/config.h.in	2007-03-23 11:45:59.000000000 +0100
-@@ -314,6 +314,9 @@
- /* mpd plugin */
- #undef PLUGIN_MPD
+--- lcd4linux-0.10.0.ori/configure	Mon Mar 27 13:24:27 2006
++++ lcd4linux-0.10.0/configure	Mon Mar 27 13:25:51 2006
+@@ -6818,6 +6818,7 @@
+          PLUGIN_UPTIME="yes"
+          PLUGIN_WIRELESS="yes"
+          PLUGIN_XMMS="yes"
++         PLUGIN_MPLAYER="yes"
+          ;;
+       apm)
+          PLUGIN_APM=$val
+@@ -6891,6 +6892,9 @@
+       xmms)
+          PLUGIN_XMMS=$val
+          ;;
++      mplayer)
++         PLUGIN_MPLAYER=$val
++         ;;
+       *)
+          { { echo "$as_me:$LINENO: error: Unknown plugin '$plugin'" >&5
+ echo "$as_me: error: Unknown plugin '$plugin'" >&2;}
+@@ -7800,6 +7804,14 @@
+ 
+ cat >>confdefs.h <<\_ACEOF
+ #define PLUGIN_XMMS 1
++_ACEOF
++
++fi
++if test "$PLUGIN_MPLAYER" = "yes"; then
++   PLUGINS="$PLUGINS plugin_mplayer.o"
++
++cat >>confdefs.h <<\_ACEOF
++#define PLUGIN_MPLAYER 1
+ _ACEOF
+ 
+ fi
+
+--- lcd4linux-0.10.0.ori/plugin.c	Mon Mar 27 23:11:15 2006
++++ lcd4linux-0.10.0/plugin.c	Mon Mar 27 23:17:06 2006
+@@ -242,6 +242,8 @@
+ void plugin_exit_loadavg(void);
+ int plugin_init_meminfo(void);
+ void plugin_exit_meminfo(void);
++int plugin_init_mplayer(void);
++void plugin_exit_mplayer(void);
+ int plugin_init_mysql(void);
+ void plugin_exit_mysql(void);
+ int plugin_init_netdev(void);
+@@ -311,6 +313,9 @@
+ #ifdef PLUGIN_MEMINFO
+     plugin_init_meminfo();
+ #endif
++#ifdef PLUGIN_MPLAYER
++    plugin_init_mplayer();
++#endif
+ #ifdef PLUGIN_MYSQL
+     plugin_init_mysql();
+ #endif
+@@ -389,6 +394,9 @@
+ #endif
+ #ifdef PLUGIN_MEMINFO
+     plugin_exit_meminfo();
++#endif
++#ifdef PLUGIN_MPLAYER
++    plugin_exit_mplayer();
+ #endif
+ #ifdef PLUGIN_MYSQL
+     plugin_exit_mysql();
+ 
+--- lcd4linux-0.10.0.ori/config.h.in	Tue Mar 28 00:13:35 2006
++++ lcd4linux-0.10.0/config.h.in	Tue Mar 28 00:13:55 2006
+@@ -284,6 +284,9 @@
+ /* meminfo plugin */
+ #undef PLUGIN_MEMINFO
  
 +/* mplayer plugin */
 +#undef PLUGIN_MPLAYER
@@ -11,90 +78,20 @@ diff -Naur lcd4linux-0.10.1-RC1.orig/config.h.in lcd4linux-0.10.1-RC1/config.h.i
  /* mysql plugin */
  #undef PLUGIN_MYSQL
  
-diff -Naur lcd4linux-0.10.1-RC1.orig/configure lcd4linux-0.10.1-RC1/configure
---- lcd4linux-0.10.1-RC1.orig/configure	2007-03-23 11:25:01.000000000 +0100
-+++ lcd4linux-0.10.1-RC1/configure	2007-03-23 11:31:18.000000000 +0100
-@@ -7964,6 +7964,7 @@
-          PLUGIN_LOADAVG="yes"
-          PLUGIN_MEMINFO="yes"
-          PLUGIN_MPD="yes"
-+         PLUGIN_MPLAYER="yes"
-          PLUGIN_MYSQL="yes"
-          PLUGIN_NETDEV="yes"
-          PLUGIN_POP3="yes"
-@@ -8020,6 +8021,9 @@
-       mpd)
-          PLUGIN_MPD=$val
- 	 ;;
-+      mplayer)
-+         PLUGIN_MPLAYER=$val
-+         ;;
-       mysql)
-          PLUGIN_MYSQL=$val
-          ;;
-@@ -9614,6 +9618,14 @@
- echo "$as_me: WARNING: libmpd/libmpd.h header not found: mpd plugin disabled" >&2;}
-    fi
- fi
-+if test "$PLUGIN_MPLAYER" = "yes"; then
-+   PLUGINS="$PLUGINS plugin_mplayer.o"
-+
-+cat >>confdefs.h <<\_ACEOF
-+#define PLUGIN_MPLAYER 1
-+_ACEOF
-+
-+fi
- if test "$PLUGIN_MYSQL" = "yes"; then
- 
- for ac_header in mysql/mysql.h
-diff -Naur lcd4linux-0.10.1-RC1.orig/Makefile.am lcd4linux-0.10.1-RC1/Makefile.am
---- lcd4linux-0.10.1-RC1.orig/Makefile.am	2007-03-23 11:25:01.000000000 +0100
-+++ lcd4linux-0.10.1-RC1/Makefile.am	2007-03-23 11:47:52.000000000 +0100
-@@ -116,6 +116,7 @@
- plugin_loadavg.c              \
- plugin_meminfo.c              \
- plugin_mpd.c		      \
-+plugin_mplayer.c              \
- plugin_mysql.c                \
- plugin_netdev.c               \
- plugin_pop3.c                 \
-@@ -147,6 +148,7 @@
- NEWS                          \
- TODO                          \
- README                        \
-+plugin_mplayer.c              \
+--- lcd4linux-0.10.0.ori/Makefile.am	Wed Apr  5 11:09:17 2006
++++ lcd4linux-0.10.0/Makefile.am	Wed Apr  5 11:12:06 2006
+@@ -87,6 +87,7 @@
+ plugin_isdn.c               \
+ plugin_loadavg.c            \
+ plugin_meminfo.c            \
++plugin_mplayer.c            \
+ plugin_mysql.c              \
+ plugin_netdev.c             \
+ plugin_pop3.c               \
+@@ -117,5 +118,6 @@
+ README.Drivers              \
+ README.Plugins              \
+ README.KDE                  \
++plugin_mplayer.c            \
  plugin_sample.c
  
- 
-diff -Naur lcd4linux-0.10.1-RC1.orig/plugin.c lcd4linux-0.10.1-RC1/plugin.c
---- lcd4linux-0.10.1-RC1.orig/plugin.c	2007-03-23 11:25:01.000000000 +0100
-+++ lcd4linux-0.10.1-RC1/plugin.c	2007-03-23 11:32:47.000000000 +0100
-@@ -84,6 +84,8 @@
- void plugin_exit_meminfo(void);
- int plugin_init_mpd(void);
- void plugin_exit_mpd(void);
-+int plugin_init_mplayer(void);
-+void plugin_exit_mplayer(void);
- int plugin_init_mysql(void);
- void plugin_exit_mysql(void);
- int plugin_init_netdev(void);
-@@ -162,6 +164,9 @@
- #ifdef PLUGIN_MPD
-     plugin_init_mpd();
- #endif
-+#ifdef PLUGIN_MPLAYER
-+    plugin_init_mplayer();
-+#endif
- 
- #ifdef PLUGIN_MYSQL
-     plugin_init_mysql();
-@@ -251,6 +256,9 @@
- #ifdef PLUGIN_MPD
-     plugin_exit_mpd();
- #endif
-+#ifdef PLUGIN_MPLAYER
-+    plugin_exit_mplayer();
-+#endif
- #ifdef PLUGIN_MYSQL
-     plugin_exit_mysql();
- #endif
