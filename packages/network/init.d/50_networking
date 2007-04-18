@@ -61,7 +61,7 @@ if test $PHY_TYPE = wifi -o $PHY_TYPE = auto; then
         fi
         wpa_supplicant -B -w -i $DEV -c /etc/wpa_supplicant.conf -D $WPA_DRV
       fi
-      if ! wifi_connection_up $DEV && test -x /usr/bin/iwpriv; then
+      if test -x /usr/bin/iwpriv; then
         # WPA not up, try using iwpriv instead
         iwpriv $DEV AuthMode=WPAPSK >/dev/null 2>&1
         iwpriv $DEV EncrypType=TKIP >/dev/null 2>&1
@@ -69,7 +69,15 @@ if test $PHY_TYPE = wifi -o $PHY_TYPE = auto; then
       fi
     fi
   fi
-  wifi_connection_up $DEV || unset DEV
+  if [ $PHY_TYPE = auto ]; then
+    COUNT=0
+    while [ $COUNT -lt 3 ]; do
+      wifi_connection_up $DEV && break
+      sleep 1
+      COUNT=$((COUNT + 1))
+    done
+    wifi_connection_up $DEV || unset DEV
+  fi
 fi
 if test $PHY_TYPE = ethernet -o $PHY_TYPE = auto -a -z "$DEV"; then
   DEV=$ETH
