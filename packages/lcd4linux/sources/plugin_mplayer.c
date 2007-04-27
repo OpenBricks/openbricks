@@ -65,7 +65,7 @@ const char STREAMINFO_FIFO[] = "/tmp/mp_streaminfo";
 static HASH mplayer;
 
 
-static int parse_mplayer_info(char *tmpfile)
+static int parse_mplayer_info(const char *tmpfile)
 {
     int age;
     FILE *streaminfo_fifo;
