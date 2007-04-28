@@ -1,6 +1,6 @@
 /*
  * MPlayer-Plugin for LCD4Linux, based on XMMS-Plugin by Markus Keil
- * Copyright (C) 2006 FoXCoRe <foxcore@gmail.com>
+ * Copyright (C) 2006-2007 Guillaume LECERF <foxcore@gmail.com>
  * Copyright (C) 2003 Markus Keil <markus_keil@t-online.de>
  */
 
