@@ -1,19 +1,28 @@
 diff -r 90db519a2f3f mplayer.c
 --- a/mplayer.c	Sun Apr 30 16:54:43 2006 +0200
 +++ b/mplayer.c	Sun Apr 30 16:54:44 2006 +0200
-@@ -747,6 +747,65 @@ static int libmpdemux_was_interrupted(in
+@@ -83,6 +83,7 @@
+ 
+ #include "input/input.h"
+ 
++char * info_fifo=NULL;
+ int slave_mode=0;
+ int player_idle_mode=0;
+ int quiet=0;
+@@ -747,6 +747,66 @@ static int libmpdemux_was_interrupted(in
  
  #define mp_basename2(s) (strrchr(s,'/')==NULL?(char*)s:(strrchr(s,'/')+1))
  #define mp_basename(s) (strrchr(s,'\\')==NULL?(mp_basename2(s)):(strrchr(s,'\\')+1))
 +
-+void dump_stream_info(demuxer_t *demuxer, char* log_filename)
++void dump_stream_info()
 +{
 +  int fd;
 +  FILE * log_file;
-+  sh_video_t *sh_video = demuxer->video->sh;
-+  sh_audio_t *sh_audio = demuxer->audio->sh;
 +
-+  fd = open(log_filename, O_RDWR | O_NONBLOCK);
++  if(!info_fifo) return;
++
++  mkfifo(info_fifo, 0644);
++  fd = open(info_fifo, O_RDWR | O_NONBLOCK);
 +  if(fd < 0) return;
 +  log_file = fdopen(fd, "w");
 +  if(!log_file) return;
@@ -71,8 +80,18 @@ diff -r 90db519a2f3f mplayer.c
      loop_seek = 1;
    }
  
-+  dump_stream_info(demuxer, "/tmp/mp_streaminfo");
++  dump_stream_info();
 +
  if(rel_seek_secs || abs_seek_pos){
    current_module="seek";
    if(demux_seek(demuxer,rel_seek_secs,audio_delay,abs_seek_pos)){
+--- a/cfg-common.h	2007-04-28 14:08:07.000000000 +0200
++++ b/cfg-common.h	2007-04-28 14:08:16.000000000 +0200
+@@ -6,6 +6,7 @@
+ 	{"really-quiet", &verbose, CONF_TYPE_FLAG, CONF_GLOBAL, 0, -10, NULL},
+ 	{"v", cfg_inc_verbose, CONF_TYPE_FUNC, CONF_GLOBAL|CONF_NOSAVE, 0, 0, NULL},
+ 	{"msglevel", msgl_config, CONF_TYPE_SUBCONFIG, CONF_GLOBAL, 0, 0, NULL},
++	{"info-fifo", &info_fifo, CONF_TYPE_STRING, 0, 0, 0, NULL},
+ #ifdef USE_ICONV
+ 	{"msgcharset", &mp_msg_charset, CONF_TYPE_STRING, CONF_GLOBAL, 0, 0, NULL},
+ #endif
