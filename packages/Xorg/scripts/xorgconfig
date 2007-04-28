@@ -1,0 +1,57 @@
+#!/bin/sh
+
+# Create a minimalist X.org configuration file.
+# It is required to be able to set custom resolution.
+
+. /etc/X11/X.cfg
+
+CFG_FILE=/etc/X11/xorg.conf
+
+FAILSAFE_RESOLUTIONS="\"800x600\" \"640x480\""
+
+append () {
+  i=0
+  while [ $i -lt $1 ]; do
+    echo -n "  " >> $CFG_FILE
+    i=$(($i+1))
+  done
+  echo "$2 $3" >> $CFG_FILE
+}
+
+create_device () {
+  append 0 Section \"Device\"
+  append 1 Identifier "\"Video board\""
+  if [ $XORG_DRIVER = "auto" ]; then
+    # Start X server in probe mode to find the best GPU driver
+    Xorg -configure -probeonly -br
+    DRV=`cat /xorg.conf.new | grep "Driver.*\"" | grep -v kbd | grep -v mouse | cut -f2 -d\"`
+    append 1 Driver "\"${DRV}\""
+  else
+    append 1 Driver "\"${XORG_DRIVER}\""
+  fi
+  append 0 EndSection
+}
+
+create_display () {
+  append 1 SubSection \"Display\"
+  append 2 Depth $1
+  append 2 Modes "\"${XORG_RESX}x${XORG_RESY}\" ${FAILSAFE_RESOLUTIONS}"
+  append 1 EndSubSection
+}
+
+create_screen () {
+  append 0 Section \"Screen\"
+  append 1 Identifier "\"Default Screen\""
+  append 1 Device "\"Video board\""
+  append 1 Defaultdepth 24
+  create_display 24
+  create_display 16
+  append 0 EndSection
+}
+
+if [ ! -f $CFG_FILE ]; then
+  mkdir -p /etc/X11
+  create_device
+  append 0 ""
+  create_screen
+fi
