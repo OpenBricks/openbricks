@@ -80,10 +80,8 @@ static int parse_mplayer_info(const char *tmpfile)
     streaminfo_fifo = fopen(tmpfile, "r");
 
     /* Check for File */
-    if (!streaminfo_fifo) {
-      error("Error: Cannot open %s! Use mkfifo to create it.", STREAMINFO_FIFO);
-      return -1;
-    }
+    if (!streaminfo_fifo)
+      return 0;
 
     /* Read lines from the fifo */
     while (fgets(line, sizeof(line), streaminfo_fifo)) {
