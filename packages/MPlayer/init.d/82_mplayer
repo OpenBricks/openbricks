@@ -25,6 +25,28 @@ TTY=4
 
 RET=0
 
+if [ -f /usr/bin/Xorg ]; then
+  while [ ! -f /etc/X11/xorg.conf ]; do
+    # ensure xorgconfig has finished creating the xorg.conf file
+    sleep 1
+  done
+  # starts X.org with a black background
+  Xorg -br > /dev/null 2>&1 &
+
+  while true; do
+    if [ -n "`pidof lircd`" ]; then
+      irpty /etc/lircrc -- mp_wrapper
+    else
+      mp_wrapper
+    fi
+    test `cat /tmp/mp_result` -eq 166 && return 0
+    test `cat /tmp/mp_result` -eq 167 && mplayer dvd://1 > /dev/null 2>&1
+    test `cat /tmp/mp_result` -eq 168 && return 64
+  done
+  RET=$?
+  exit $RET
+fi
+
 # start mplayer with gdb when built with debugging options
 if test -f /etc/debug; then
   echo "r /usr/share/mplayer/background.avi -loop 0" > /gdb_cmd
