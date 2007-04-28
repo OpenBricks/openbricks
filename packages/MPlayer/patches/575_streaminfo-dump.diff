@@ -1,7 +1,7 @@
 diff -r 90db519a2f3f mplayer.c
 --- a/mplayer.c	Sun Apr 30 16:54:43 2006 +0200
 +++ b/mplayer.c	Sun Apr 30 16:54:44 2006 +0200
-@@ -747,6 +747,81 @@ static int libmpdemux_was_interrupted(in
+@@ -747,6 +747,65 @@ static int libmpdemux_was_interrupted(in
  
  #define mp_basename2(s) (strrchr(s,'/')==NULL?(char*)s:(strrchr(s,'/')+1))
  #define mp_basename(s) (strrchr(s,'\\')==NULL?(mp_basename2(s)):(strrchr(s,'\\')+1))
@@ -18,9 +18,10 @@ diff -r 90db519a2f3f mplayer.c
 +  log_file = fdopen(fd, "w");
 +  if(!log_file) return;
 +
-+  fprintf(log_file, "ID_VIDEO_PERCENT=0\n");
 +  fprintf(log_file, "ID_FILENAME=%s\n", mp_basename(filename));
 +  fprintf(log_file, "ID_DEMUXER=%s\n", demuxer->desc->name);
++  fprintf(log_file, "ID_LENGTH=%.2lf\n", demuxer_get_time_length(demuxer));
++  fprintf(log_file, "ID_VIDEO_PERCENT=%d\n", demuxer_get_percent_pos(demuxer));
 +
 +  if (sh_video) {
 +    /* Assume FOURCC if all bytes >= 0x20 (' ') */
@@ -61,42 +62,16 @@ diff -r 90db519a2f3f mplayer.c
 +    fprintf(log_file, "ID_AUDIO_RATE=%d\n", sh_audio->samplerate);
 +    fprintf(log_file, "ID_AUDIO_NCH=%d\n", sh_audio->channels);
 +  }
-+  fprintf(log_file, "ID_LENGTH=%.2lf\n", demuxer_get_time_length(demuxer));
-+  fclose(log_file);
-+}
-+
-+void dump_stream_position(demuxer_t *demuxer, char* log_filename)
-+{
-+  int fd;
-+  FILE * log_file;
-+
-+  fd = open(log_filename, O_RDWR | O_NONBLOCK);
-+  if(fd < 0) return;
-+  log_file = fdopen(fd, "w");
-+  if(!log_file) return;
-+
-+  fprintf(log_file, "ID_VIDEO_PERCENT=%d\n", demuxer_get_percent_pos(demuxer));
-+  fprintf(log_file, "ID_FILENAME=%s\n", mp_basename(filename));
-+
 +  fclose(log_file);
 +}
  
  int playtree_add_playlist(play_tree_t* entry)
  {
-@@ -3426,6 +3495,8 @@ if(sh_audio){
-     mp_msg(MSGT_IDENTIFY,MSGL_INFO,"ID_AUDIO_NCH=%d\n", sh_audio->channels);
-   }
-   mp_msg(MSGT_IDENTIFY,MSGL_INFO,"ID_LENGTH=%.2lf\n", demuxer_get_time_length(demuxer));
-+
-+dump_stream_info(demuxer, "/tmp/mp_streaminfo");
- 
- if(!sh_video) goto main; // audio-only
- 
 @@ -5066,6 +5142,8 @@ if (stream->type==STREAMTYPE_DVDNAV && d
      loop_seek = 1;
    }
  
-+  dump_stream_position(demuxer, "/tmp/mp_streaminfo");
++  dump_stream_info(demuxer, "/tmp/mp_streaminfo");
 +
  if(rel_seek_secs || abs_seek_pos){
    current_module="seek";
