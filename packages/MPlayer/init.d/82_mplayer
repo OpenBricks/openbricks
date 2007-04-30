@@ -33,6 +33,28 @@ if [ -f /usr/bin/Xorg ]; then
   # starts X.org with a black background
   Xorg -br > /dev/null 2>&1 &
 
+  # get the resolution X.org has actually started
+  # it's not necessary the one requested in /etc/X11/X.cfg file
+  XWIN_INFO=/tmp/xwininfo
+  XORG_RES=/var/xorg.res
+  while true; do
+    DISPLAY=:0.0 xwininfo -root > $XWIN_INFO
+    if [ $? -eq 0 ]; then
+      RES=`cat $XWIN_INFO | sed -n 's/-geometry \(.*\)+0+0/\1/p'`
+      RESX=`echo $RES | cut -f1 -dx`
+      RESY=`echo $RES | cut -f2 -dx`
+
+      # save this info somewhere for debug purpose
+      echo "XORG_RESX=${RESX}" >> $XORG_RES
+      echo "XORG_RESY=${RESY}" >> $XORG_RES
+
+      # finally set MPlayer video settings accurately
+      mp_set_option screenw "$RESX"
+      mp_set_option screenh "$RESY"
+      break
+    fi
+  done
+
   while true; do
     if [ -n "`pidof lircd`" ]; then
       irpty /etc/lircrc -- mp_wrapper
