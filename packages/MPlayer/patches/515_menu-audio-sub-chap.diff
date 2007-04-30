@@ -1,16 +1,16 @@
 diff -r 13cd417bfd4a libmenu/Makefile
 --- a/libmenu/Makefile	Sun Apr 30 16:54:39 2006 +0200
 +++ b/libmenu/Makefile	Sun Apr 30 16:54:39 2006 +0200
-@@ -9,6 +9,9 @@ SRCS= menu.c \
-       menu_pt.c \
-       menu_list.c  \
-       menu_filesel.c \
-+      menu_audiosel.c \
-+      menu_subsel.c \
-+      menu_chapsel.c \
-       menu_txt.c \
-       menu_console.c \
-       menu_param.c \
+@@ -8,6 +8,9 @@ SRCS= menu.c \
+                menu_pt.c \
+                menu_list.c  \
+                menu_filesel.c \
++               menu_audiosel.c \
++               menu_subsel.c \
++               menu_chapsel.c \
+                menu_txt.c \
+                menu_console.c \
+                menu_param.c \
 diff -r 13cd417bfd4a libmenu/menu.c
 --- a/libmenu/menu.c	Sun Apr 30 16:54:39 2006 +0200
 +++ b/libmenu/menu.c	Sun Apr 30 16:54:39 2006 +0200
@@ -37,7 +37,7 @@ diff -r 13cd417bfd4a libmenu/menu.c
 diff -r 13cd417bfd4a libmpdemux/demux_mkv.c
 --- a/libmpdemux/demux_mkv.c	Sun Apr 30 16:54:39 2006 +0200
 +++ b/libmpdemux/demux_mkv.c	Sun Apr 30 16:54:39 2006 +0200
-@@ -255,6 +255,11 @@ typedef struct __attribute__((__packed__
+@@ -261,6 +261,11 @@ typedef struct __attribute__((__packed__
    uint32_t fourcc3;             /* fourcc */
  } real_audio_v5_props_t;
  
@@ -49,7 +49,7 @@ diff -r 13cd417bfd4a libmpdemux/demux_mkv.c
  
  /* for e.g. "-slang ger" */
  extern char *dvdsub_lang;
-@@ -1387,6 +1421,9 @@ demux_mkv_read_chapters (demuxer_t *demu
+@@ -1473,6 +1473,9 @@ demux_mkv_read_chapters (demuxer_t *demu
                               (int) ((end / 60 / 1000) % 60),
                               (int) ((end / 1000) % 60),
                               (int) (end % 1000), name);
@@ -59,7 +59,7 @@ diff -r 13cd417bfd4a libmpdemux/demux_mkv.c
 
                        free(name);
                        break;
-@@ -2363,6 +2409,10 @@ demux_mkv_open (demuxer_t *demuxer)
+@@ -2646,6 +2646,10 @@ demux_mkv_open (demuxer_t *demuxer)
      track = demux_mkv_find_track_by_language (mkv_d, dvdsub_lang,
                                                MATROSKA_TRACK_SUBTITLE);
  
@@ -67,10 +67,10 @@ diff -r 13cd417bfd4a libmpdemux/demux_mkv.c
 +  for (i=0; i < mkv_d->num_tracks; i++)
 +    if (mkv_d->tracks[i]->type == MATROSKA_TRACK_SUBTITLE)
 +      mkv_subtitles[mkv_subtitles_num++] = mkv_d->tracks[i]->tnum;
-   if (track && !demux_mkv_open_sub (demuxer, track))
+   if (track)
            {
              mp_msg (MSGT_DEMUX, MSGL_INFO,
-@@ -2416,6 +2466,7 @@ demux_close_mkv (demuxer_t *demuxer)
+@@ -2703,6 +2703,7 @@ demux_close_mkv (demuxer_t *demuxer)
  {
    mkv_demuxer_t *mkv_d = (mkv_demuxer_t *) demuxer->priv;
  
@@ -81,9 +81,9 @@ diff -r 13cd417bfd4a libmpdemux/demux_mkv.c
 diff -r 13cd417bfd4a libmpdemux/demux_ogg.c
 --- a/libmpdemux/demux_ogg.c	Sun Apr 30 16:54:39 2006 +0200
 +++ b/libmpdemux/demux_ogg.c	Sun Apr 30 16:54:39 2006 +0200
-@@ -170,6 +170,9 @@ extern subtitle* vo_sub;
+@@ -158,6 +158,9 @@ extern subtitle* vo_sub;
+ static subtitle ogg_sub;
  extern subtitle* vo_sub;
- static float clear_sub;
  //FILE* subout;
 +int ogg_subtitles[64];
 +int ogg_subtitles_num=0;
@@ -91,24 +91,24 @@ diff -r 13cd417bfd4a libmpdemux/demux_ogg.c
  
  static
  uint16_t get_uint16 (const void *buf)
-@@ -854,6 +857,7 @@ int demux_ogg_open(demuxer_t* demuxer) {
+@@ -819,6 +819,7 @@ int demux_ogg_open(demuxer_t* demuxer) {
+ #endif
  
-   clear_sub = -1;
    s = demuxer->stream;
 +  ogg_subtitles_num = 0;
  
    demuxer->priv =
-   ogg_d = (ogg_demuxer_t*)calloc(1,sizeof(ogg_demuxer_t));
-@@ -1125,6 +1129,7 @@ int demux_ogg_open(demuxer_t* demuxer) {
+   ogg_d = calloc(1,sizeof(ogg_demuxer_t));
+@@ -1093,6 +1093,7 @@ int demux_ogg_open(demuxer_t* demuxer) {
  	/// Check for text (subtitles) header
        } else if (strncmp(st->streamtype, "text", 4) == 0) {
            mp_msg(MSGT_DEMUX, MSGL_INFO, "[Ogg] stream %d: subtitles (SRT-like text subtitles), -sid %d\n", ogg_d->num_sub, ogg_d->n_text);
 +          ogg_subtitles[ogg_subtitles_num++] = ogg_d->num_sub;
  	  ogg_d->subs[ogg_d->num_sub].samplerate= get_uint64(&st->time_unit)/10;
  	  ogg_d->subs[ogg_d->num_sub].text = 1;
- 	  mp_msg(MSGT_IDENTIFY, MSGL_INFO, "ID_SUBTITLE_ID=%d\n", ogg_d->n_text);
-@@ -1589,6 +1594,8 @@ static void demux_close_ogg(demuxer_t* d
-   ogg_demuxer_t* ogg_d = demuxer->priv;
+           ogg_d->subs[ogg_d->num_sub].id = ogg_d->n_text;
+@@ -1558,6 +1558,8 @@ static void demux_close_ogg(demuxer_t* d
+   ogg_stream_t* os = NULL;
    int i;
  
 +  ogg_subtitles_num = 0;
@@ -119,7 +119,7 @@ diff -r 13cd417bfd4a libmpdemux/demux_ogg.c
 diff -r 13cd417bfd4a libmpdemux/demuxer.h
 --- a/libmpdemux/demuxer.h	Sun Apr 30 16:54:39 2006 +0200
 +++ b/libmpdemux/demuxer.h	Sun Apr 30 16:54:39 2006 +0200
-@@ -315,6 +315,16 @@ extern int pts_from_bps;
+@@ -360,6 +360,16 @@ extern int pts_from_bps;
  
  extern int extension_parsing;
  
@@ -139,28 +139,28 @@ diff -r 13cd417bfd4a libmpdemux/demuxer.h
 diff -r 13cd417bfd4a stream/stream.h
 --- a/stream/stream.h	Sun Apr 30 16:54:39 2006 +0200
 +++ b/stream/stream.h	Sun Apr 30 16:54:39 2006 +0200
-@@ -287,6 +287,8 @@ extern int dvd_title;
+@@ -301,6 +301,8 @@ extern int dvd_title;
  extern int dvd_title;
  extern int dvd_chapter;
  extern int dvd_last_chapter;
 +extern int dvd_total_chapter;
 +extern int dvd_chapter_pos[99];
  extern int dvd_angle;
- //#endif
  
+ extern char * audio_stream;
 diff -r 13cd417bfd4a libmpdemux/stream_dvd.c
 --- a/stream/stream_dvd.c	Sun Apr 30 16:54:39 2006 +0200
 +++ b/stream/stream_dvd.c	Sun Apr 30 16:54:39 2006 +0200
-@@ -31,6 +31,8 @@ extern int dvd_last_chapter;
- extern int dvd_last_chapter;
+@@ -44,6 +44,8 @@ extern int dvd_last_chapter;
  extern char* dvd_device;
  int dvd_angle=1;
+ int dvd_speed=0; /* 0 => don't touch speed */
 +int dvd_total_chapter=0;
 +int dvd_chapter_pos[99];
  
- #ifdef HAVE_DVD
- #ifdef USE_DVDREAD
-@@ -721,6 +736,7 @@ static int open_s(stream_t *stream,int m
+ static void dvd_set_speed(char *device, unsigned speed)
+ {
+@@ -1000,6 +1000,7 @@ static int open_s(stream_t *stream,int m
       * Make sure the chapter number is valid for this title.
       */
      mp_msg(MSGT_OPEN,MSGL_STATUS, MSGTR_DVDnumChapters, tt_srpt->title[dvd_title].nr_of_ptts);
@@ -168,9 +168,9 @@ diff -r 13cd417bfd4a libmpdemux/stream_dvd.c
      if(dvd_chapter<1 || dvd_chapter>tt_srpt->title[dvd_title].nr_of_ptts) {
        mp_msg(MSGT_OPEN,MSGL_ERR, MSGTR_DVDinvalidChapter, dvd_chapter);
        ifoClose( vmg_file );
-@@ -926,6 +942,12 @@ static int open_s(stream_t *stream,int m
-     d->cell_last_pack=d->cur_pgc->cell_playback[ d->cur_cell ].last_sector;
-     mp_msg(MSGT_DVD,MSGL_V, "DVD start cell: %d  pack: 0x%X-0x%X  \n",d->cur_cell,d->cur_pack,d->cell_last_pack);
+@@ -1218,6 +1218,12 @@ static int open_s(stream_t *stream,int m
+       d->cell_times_table[k] = dvdtimetomsec(&d->cur_pgc->cell_playback[k].playback_time);
+     list_chapters(d->cur_pgc);
  
 +    {
 +      int chap;
@@ -184,40 +184,28 @@ diff -r 13cd417bfd4a libmpdemux/stream_dvd.c
 diff -r 13cd417bfd4a mplayer.c
 --- a/mplayer.c	Sun Apr 30 16:54:39 2006 +0200
 +++ b/mplayer.c	Sun Apr 30 16:54:39 2006 +0200
-@@ -360,8 +360,8 @@ extern int mp_msg_levels[MSGT_MAX];
- extern int mp_msg_levels[MSGT_MAX];
- extern int mp_msg_level_all;
- 
--static stream_t* stream=NULL;
--static demuxer_t *demuxer=NULL;
-+stream_t* stream=NULL;
-+demuxer_t *demuxer=NULL;
- static sh_audio_t *sh_audio=NULL;
- static sh_video_t *sh_video=NULL;
- static demux_stream_t *d_audio=NULL;
-@@ -3266,8 +3266,7 @@ demux_info_print(demuxer);
+@@ -3192,7 +3192,7 @@ demux_info_print(demuxer);
  
  //================== Read SUBTITLES (DVD & TEXT) ==========================
- if(vo_spudec==NULL && sh_video &&
--     (stream->type==STREAMTYPE_DVD || demuxer->type==DEMUXER_TYPE_MATROSKA ||
--      d_dvdsub->id >= 0)){
-+     (stream->type==STREAMTYPE_DVD || demuxer->type==DEMUXER_TYPE_MATROSKA)){
+ if(vo_spudec==NULL && mpctx->sh_video &&
+-     (mpctx->stream->type==STREAMTYPE_DVD || mpctx->stream->type == STREAMTYPE_DVDNAV || mpctx->d_sub->id >= 0)){
++     (mpctx->stream->type==STREAMTYPE_DVD || mpctx->stream->type == STREAMTYPE_DVDNAV)){
+   init_vo_spudec();
+ }
  
- if (spudec_ifo) {
-   unsigned int palette[16], width, height;
 diff -r 13cd417bfd4a mplayer.h
---- a/mplayer.h	Sun Apr 30 16:54:39 2006 +0200
-+++ b/mplayer.h	Sun Apr 30 16:54:39 2006 +0200
-@@ -36,6 +36,9 @@ extern int    sub_unicode;
- extern int    sub_unicode;
- extern char * sub_cp;
- extern sub_data* subdata; //currently used subtitles  
+--- a/libvo/sub.h	Sun Apr 30 16:54:39 2006 +0200
++++ b/libvo/sub.h	Sun Apr 30 16:54:39 2006 +0200
+@@ -60,6 +60,9 @@ extern int    sub_unicode;
+ #include "subreader.h"
+ 
+ extern sub_data* subdata; //currently used subtitles
 +extern sub_data* set_of_subtitles[MAX_SUBTITLE_FILES];
 +extern int set_of_sub_size;
 +extern int set_of_sub_pos;
  extern subtitle* vo_sub;
- extern int    suboverlap_enabled;
  
+ extern unsigned char* vo_osd_text;
 diff -r 13cd417bfd4a libmenu/menu_audiosel.c
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
 +++ b/libmenu/menu_audiosel.c	Sun Apr 30 16:54:39 2006 +0200
