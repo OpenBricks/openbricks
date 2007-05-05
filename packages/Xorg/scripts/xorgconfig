@@ -6,52 +6,49 @@
 . /etc/X11/X.cfg
 
 CFG_FILE=/etc/X11/xorg.conf
+DEFAULT_CFG_FILE=/etc/X11/xorg.default
 
 FAILSAFE_RESOLUTIONS="\"800x600\" \"640x480\""
 
-append () {
-  i=0
-  while [ $i -lt $1 ]; do
-    echo -n "  " >> $CFG_FILE
-    i=$(($i+1))
-  done
-  echo "$2 $3" >> $CFG_FILE
-}
-
-create_device () {
-  append 0 Section \"Device\"
-  append 1 Identifier "\"Video board\""
+configure_device () {
+  DRV=${XORG_DRIVER}
   if [ $XORG_DRIVER = "auto" ]; then
     # Start X server in probe mode to find the best GPU driver
     Xorg -configure -probeonly -br
     DRV=`cat /xorg.conf.new | grep "Driver.*\"" | grep -v kbd | grep -v mouse | cut -f2 -d\"`
-    append 1 Driver "\"${DRV}\""
-  else
-    append 1 Driver "\"${XORG_DRIVER}\""
   fi
-  append 0 EndSection
+  sed -i "s%::DRIVER::%${DRV}%" $CFG_FILE
 }
 
-create_display () {
-  append 1 SubSection \"Display\"
-  append 2 Depth $1
-  append 2 Modes "\"${XORG_RESX}x${XORG_RESY}\" ${FAILSAFE_RESOLUTIONS}"
-  append 1 EndSubSection
+configure_monitor () {
+  # Default refresh rate
+  HORIZSYNC="28-51"
+  VERTREFRESH="43-60"
+
+  # Try to get monitor's accurate refresh rate through EDID information
+  ddcprobe | grep monitorrange 2>&1 > /dev/null
+  if [ "$?" = 0 ]; then
+    HORIZSYNC="`ddcprobe | grep monitorrange | sed 's%monitorrange: \(.*\),.*%\1%'`"
+    VERTREFRESH="`ddcprobe | grep monitorrange | sed 's%monitorrange:.*, \(.*\)%\1%'`"
+  fi
+
+  sed -i "s%::HS::%${HORIZSYNC}%" $CFG_FILE
+  sed -i "s%::VR::%${VERTREFRESH}%" $CFG_FILE
+
+  # Try to get modeline for resolution user asked for
+  MODELINE="`gtf $XORG_RESX $XORG_RESY $XORG_RATE | grep Modeline`"
+  sed -i "s%::MODELINE::%${MODELINE}%" $CFG_FILE
 }
 
-create_screen () {
-  append 0 Section \"Screen\"
-  append 1 Identifier "\"Default Screen\""
-  append 1 Device "\"Video board\""
-  append 1 Defaultdepth 24
-  create_display 24
-  create_display 16
-  append 0 EndSection
+configure_screen () {
+  MODE_NAME=`gtf $XORG_RESX $XORG_RESY $XORG_RATE | grep Modeline | sed 's%.*"\(.*\)".*%\1%'`
+  RES="\"${MODE_NAME}\" ${FAILSAFE_RESOLUTIONS}"
+  sed -i "s%::MODES::%${RES}%g" $CFG_FILE
 }
 
 if [ ! -f $CFG_FILE ]; then
-  mkdir -p /etc/X11
-  create_device
-  append 0 ""
-  create_screen
+  cp $DEFAULT_CFG_FILE $CFG_FILE
+  configure_device
+  configure_monitor
+  configure_screen
 fi
