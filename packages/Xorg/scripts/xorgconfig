@@ -1,0 +1,56 @@
+#!/bin/sh
+
+# Create a minimalist X.org configuration file.
+# It is required to be able to set custom resolution.
+
+. /etc/X11/X.cfg
+
+CFG_FILE=/etc/X11/xorg.conf
+DEFAULT_CFG_FILE=/etc/X11/xorg.default
+RESOLUTIONS_FILE=/etc/X11/resolutions
+
+configure_device () {
+  DRV=${XORG_DRIVER}
+  if [ $XORG_DRIVER = "auto" ]; then
+    # Start X server in probe mode to find the best GPU driver
+    Xorg -configure -probeonly -br
+    DRV=`cat /xorg.conf.new | grep "Driver.*\"" | grep -v kbd | grep -v mouse | cut -f2 -d\"`
+  fi
+  sed -i "s%::DRIVER::%${DRV}%" $CFG_FILE
+}
+
+configure_monitor () {
+  # Default refresh rate
+  HORIZSYNC="28-51"
+  VERTREFRESH="43-60"
+
+  # Try to get monitor's accurate refresh rate through EDID information
+  ddcprobe | grep monitorrange 2>&1 > /dev/null
+  if [ "$?" = 0 ]; then
+    HORIZSYNC="`ddcprobe | grep monitorrange | sed 's%monitorrange: \(.*\),.*%\1%'`"
+    VERTREFRESH="`ddcprobe | grep monitorrange | sed 's%monitorrange:.*, \(.*\)%\1%'`"
+  fi
+
+  sed -i "s%::HS::%${HORIZSYNC}%" $CFG_FILE
+  sed -i "s%::VR::%${VERTREFRESH}%" $CFG_FILE
+
+  # Try to get modeline for resolution user asked for
+  MODELINE="`gtf $XORG_RESX $XORG_RESY $XORG_RATE | grep Modeline`"
+  sed -i "s%::MODELINE::%${MODELINE}%" $CFG_FILE
+}
+
+configure_screen () {
+  MODE_NAME=`gtf $XORG_RESX $XORG_RESY $XORG_RATE | grep Modeline | sed 's%.*"\(.*\)".*%\1%'`
+  for r in `cat $RESOLUTIONS_FILE`; do
+     FAILSAFE_RESOLUTIONS="$FAILSAFE_RESOLUTIONS \"$r\""
+  done
+  RES="\"${MODE_NAME}\" ${FAILSAFE_RESOLUTIONS}"
+  sed -i "s%::MODES::%${RES}%g" $CFG_FILE
+}
+
+if [ ! -f $CFG_FILE ]; then
+  cp $DEFAULT_CFG_FILE $CFG_FILE
+  configure_device
+  configure_monitor
+  configure_screen
+fi
