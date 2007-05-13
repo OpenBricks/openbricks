@@ -43,6 +43,14 @@ configure_device () {
 }
 
 configure_monitor () {
+  if [ "$HAVE_EDID" = 1 ]; then
+    # monitor has already been configured
+    sed -i "s%.*HorizSync.*::HS::%%" $CFG_FILE
+    sed -i "s%.*VertRefresh.*::VR::%%" $CFG_FILE
+    sed -i "s%::MODELINE::%%" $CFG_FILE
+    return
+  fi
+
   if [ "$XORG_HORIZSYNC" = "auto" -o "$XORG_VERTREFRESH" = "auto" ]; then
     # Default refresh rate
     HORIZSYNC="28-51"
@@ -62,9 +70,14 @@ configure_monitor () {
   sed -i "s%::HS::%${HORIZSYNC}%" $CFG_FILE
   sed -i "s%::VR::%${VERTREFRESH}%" $CFG_FILE
 
-  # Try to get modeline for resolution user asked for
-  MODELINE="`gtf $XORG_RESX $XORG_RESY $XORG_RATE | grep Modeline`"
-  sed -i "s%::MODELINE::%${MODELINE}%" $CFG_FILE
+  if [ "$XORG_RESX" != "auto" -a "$XORG_RESY" != "auto" -a "$XORG_RATE" != "auto" ]; then
+    # Try to get modeline for resolution user asked for
+    MODELINE="`gtf $XORG_RESX $XORG_RESY $XORG_RATE | grep Modeline`"
+    sed -i "s%::MODELINE::%${MODELINE}%" $CFG_FILE
+  else
+    # auto: try any fitting resolution
+    sed -i "s%::MODELINE::%%" $CFG_FILE
+  fi
 }
 
 configure_screen () {
@@ -73,7 +86,7 @@ configure_screen () {
     for r in `cat $MODES`; do
       MODELINES="$MODELINES \"$r\""
     done
-  else
+  elif [ "$XORG_RESX" != "auto" -a "$XORG_RESY" != "auto" -a "$XORG_RATE" != "auto" ]; then
     MODE_NAME=`gtf $XORG_RESX $XORG_RESY $XORG_RATE | grep Modeline | sed 's%.*"\(.*\)".*%\1%'`
     MODELINES="\"${MODE_NAME}\""
   fi
@@ -86,7 +99,15 @@ configure_screen () {
 
 if [ ! -f $CFG_FILE ]; then
   cp $DEFAULT_CFG_FILE $CFG_FILE
-  read_edid
+
+  if [ "$XORG_RESX" = "auto" -o "$XORG_RESY" = "auto" -o "$XORG_RATE" = "auto" ]; then
+    # try to get/set the best resolution suited for the monitor using EDID
+    read_edid
+  else
+    sed -i 's%::CUSTOM_MONITOR::%%' $CFG_FILE
+    sed -i "s%::MONITOR_ID::%${MONITOR_ID}%" $CFG_FILE
+  fi
+
   configure_device
   configure_monitor
   configure_screen
