@@ -14,7 +14,7 @@ diff -r 13cd417bfd4a libmenu/Makefile
 diff -r 13cd417bfd4a libmenu/menu.c
 --- a/libmenu/menu.c	Sun Apr 30 16:54:39 2006 +0200
 +++ b/libmenu/menu.c	Sun Apr 30 16:54:39 2006 +0200
-@@ -27,6 +27,9 @@ extern menu_info_t menu_info_cmdlist;
+@@ -28,6 +28,9 @@ extern menu_info_t menu_info_cmdlist;
  extern menu_info_t menu_info_cmdlist;
  extern menu_info_t menu_info_pt;
  extern menu_info_t menu_info_filesel;
@@ -24,7 +24,7 @@ diff -r 13cd417bfd4a libmenu/menu.c
  extern menu_info_t menu_info_txt;
  extern menu_info_t menu_info_console;
  extern menu_info_t menu_info_pref;
-@@ -39,6 +42,9 @@ menu_info_t* menu_info_list[] = {
+@@ -40,6 +40,9 @@ menu_info_t* menu_info_list[] = {
    &menu_info_pt,
    &menu_info_cmdlist,
    &menu_info_filesel,
@@ -160,7 +160,7 @@ diff -r 13cd417bfd4a libmpdemux/stream_dvd.c
  
  static void dvd_set_speed(char *device, unsigned speed)
  {
-@@ -1000,6 +1000,7 @@ static int open_s(stream_t *stream,int m
+@@ -1001,6 +1001,7 @@ static int open_s(stream_t *stream,int m
       * Make sure the chapter number is valid for this title.
       */
      mp_msg(MSGT_OPEN,MSGL_STATUS, MSGTR_DVDnumChapters, tt_srpt->title[dvd_title].nr_of_ptts);
@@ -168,7 +168,7 @@ diff -r 13cd417bfd4a libmpdemux/stream_dvd.c
      if(dvd_chapter<1 || dvd_chapter>tt_srpt->title[dvd_title].nr_of_ptts) {
        mp_msg(MSGT_OPEN,MSGL_ERR, MSGTR_DVDinvalidChapter, dvd_chapter);
        ifoClose( vmg_file );
-@@ -1218,6 +1218,12 @@ static int open_s(stream_t *stream,int m
+@@ -1219,6 +1219,12 @@ static int open_s(stream_t *stream,int m
        d->cell_times_table[k] = dvdtimetomsec(&d->cur_pgc->cell_playback[k].playback_time);
      list_chapters(d->cur_pgc);
  
@@ -184,6 +184,45 @@ diff -r 13cd417bfd4a libmpdemux/stream_dvd.c
 diff -r 13cd417bfd4a mplayer.c
 --- a/mplayer.c	Sun Apr 30 16:54:39 2006 +0200
 +++ b/mplayer.c	Sun Apr 30 16:54:39 2006 +0200
+@@ -386,6 +386,16 @@
+ 
+ #define mp_basename2(s) (strrchr(s,'/')==NULL?(char*)s:(strrchr(s,'/')+1))
+ 
++void *mpctx_get_demuxer(MPContext *mpctx)
++{
++    return mpctx->demuxer;
++}
++
++void *mpctx_get_stream(MPContext *mpctx)
++{
++    return mpctx->stream;
++}
++
+ void *mpctx_get_video_out(MPContext *mpctx)
+ {
+     return mpctx->video_out;
+@@ -411,6 +411,21 @@
+     return mpctx->global_sub_size;
+ }
+ 
++int mpctx_get_set_of_sub_size(MPContext *mpctx)
++{
++    return mpctx->set_of_sub_size;
++}
++
++int mpctx_get_set_of_sub_pos(MPContext *mpctx)
++{
++    return mpctx->set_of_sub_pos;
++}
++
++void *mpctx_get_set_of_subtitles(MPContext *mpctx, int sid)
++{
++    return mpctx->set_of_subtitles[sid];
++}
++
+ static int is_valid_metadata_type (metadata_t type) {
+   switch (type)
+   {
 @@ -3192,7 +3192,7 @@ demux_info_print(demuxer);
  
  //================== Read SUBTITLES (DVD & TEXT) ==========================
@@ -193,24 +232,25 @@ diff -r 13cd417bfd4a mplayer.c
    init_vo_spudec();
  }
  
-diff -r 13cd417bfd4a mplayer.h
---- a/libvo/sub.h	Sun Apr 30 16:54:39 2006 +0200
-+++ b/libvo/sub.h	Sun Apr 30 16:54:39 2006 +0200
-@@ -60,6 +60,9 @@ extern int    sub_unicode;
- #include "subreader.h"
- 
- extern sub_data* subdata; //currently used subtitles
-+extern sub_data* set_of_subtitles[MAX_SUBTITLE_FILES];
-+extern int set_of_sub_size;
-+extern int set_of_sub_pos;
- extern subtitle* vo_sub;
- 
- extern unsigned char* vo_osd_text;
+diff -r 13cd417bfd4a access_mpcontext.h
+--- a/access_mpcontext.h	Sun Apr 30 16:54:39 2006 +0200
++++ b/access_mpcontext.h	Sun Apr 30 16:54:39 2006 +0200
+@@ -1,6 +1,11 @@
+ struct MPContext;
++void *mpctx_get_demuxer(struct MPContext *mpctx);
++void *mpctx_get_stream(struct MPContext *mpctx);
+ void *mpctx_get_video_out(struct MPContext *mpctx);
+ void *mpctx_get_audio_out(struct MPContext *mpctx);
+ void *mpctx_get_playtree_iter(struct MPContext *mpctx);
+ void *mpctx_get_mixer(struct MPContext *mpctx);
+ int mpctx_get_global_sub_size(struct MPContext *mpctx);
++int mpctx_get_set_of_sub_size(struct MPContext *mpctx);
++int mpctx_get_set_of_sub_pos(struct MPContext *mpctx);
++void *mpctx_get_set_of_subtitles(struct MPContext *mpctx, int sid);
 diff -r 13cd417bfd4a libmenu/menu_audiosel.c
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
 +++ b/libmenu/menu_audiosel.c	Sun Apr 30 16:54:39 2006 +0200
 @@ -0,0 +1,133 @@
-+
 +#include <stdlib.h>
 +#include <stdio.h>
 +#include <string.h>
@@ -227,6 +267,7 @@ diff -r 13cd417bfd4a libmenu/menu_audiosel.c
 +#include "libmpcodecs/img_format.h"
 +#include "libmpcodecs/mp_image.h"
 +
++#include "access_mpcontext.h"
 +#include "menu.h"
 +#include "menu_list.h"
 +
@@ -257,9 +298,6 @@ diff -r 13cd417bfd4a libmenu/menu_audiosel.c
 +  { NULL, NULL, NULL, 0,0,0,NULL }
 +};
 +
-+
-+extern stream_t* stream;
-+extern demuxer_t *demuxer;
 +extern void resync_audio_stream(void *sh_audio);
 +extern char *dvd_lang_from_aid(stream_t *stream, int aid);
 +
@@ -267,6 +305,8 @@ diff -r 13cd417bfd4a libmenu/menu_audiosel.c
 +  char *str, aid_str[32];
 +  list_entry_t* e;
 +  int aid;
++  demuxer_t* demuxer = mpctx_get_demuxer(menu->ctx);
++  stream_t* stream = mpctx_get_stream(menu->ctx);
 +
 +  if (!demuxer || !demuxer->audio || !demuxer->audio->sh){
 +    menu_list_read_cmd(menu,MENU_CMD_CANCEL);
@@ -296,6 +336,7 @@ diff -r 13cd417bfd4a libmenu/menu_audiosel.c
 +
 +static void read_cmd(menu_t* menu,int cmd) {
 +  int aid;
++  demuxer_t* demuxer = mpctx_get_demuxer(menu->ctx);
 +
 +  switch(cmd) {
 +  case MENU_CMD_RIGHT:
@@ -346,8 +387,7 @@ diff -r 13cd417bfd4a libmenu/menu_audiosel.c
 diff -r 13cd417bfd4a libmenu/menu_chapsel.c
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
 +++ b/libmenu/menu_chapsel.c	Sun Apr 30 16:54:39 2006 +0200
-@@ -0,0 +1,167 @@
-+
+@@ -0,0 +1,169 @@
 +#include <stdlib.h>
 +#include <stdio.h>
 +#include <string.h>
@@ -364,6 +404,7 @@ diff -r 13cd417bfd4a libmenu/menu_chapsel.c
 +#include "libvo/sub.h"
 +#include "spudec.h"
 +#include "mplayer.h"
++#include "access_mpcontext.h"
 +
 +#include "libmpcodecs/img_format.h"
 +#include "libmpcodecs/mp_image.h"
@@ -397,14 +438,13 @@ diff -r 13cd417bfd4a libmenu/menu_chapsel.c
 +  { NULL, NULL, NULL, 0, 0, 0, NULL }
 +};
 +
-+extern stream_t* stream;
-+extern demuxer_t *demuxer;
-+
 +static int
 +fill_menu (menu_t* menu)
 +{
 +  list_entry_t* e;
 +  int cid;
++  demuxer_t* demuxer = mpctx_get_demuxer(menu->ctx);
++  stream_t* stream = mpctx_get_stream(menu->ctx);
 +
 +  if ((demuxer && stream->type == STREAMTYPE_DVD)
 +      || (demuxer && demuxer->type == DEMUXER_TYPE_MATROSKA
@@ -457,6 +497,9 @@ diff -r 13cd417bfd4a libmenu/menu_chapsel.c
 +static void
 +read_cmd (menu_t* menu, int cmd)
 +{
++  demuxer_t* demuxer = mpctx_get_demuxer(menu->ctx);
++  stream_t* stream = mpctx_get_stream(menu->ctx);
++
 +  switch (cmd)
 +    {
 +    case MENU_CMD_RIGHT:
@@ -517,8 +560,7 @@ diff -r 13cd417bfd4a libmenu/menu_chapsel.c
 diff -r 13cd417bfd4a libmenu/menu_subsel.c
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
 +++ b/libmenu/menu_subsel.c	Sun Apr 30 16:54:39 2006 +0200
-@@ -0,0 +1,192 @@
-+
+@@ -0,0 +1,201 @@
 +#include <stdlib.h>
 +#include <stdio.h>
 +#include <string.h>
@@ -535,6 +577,7 @@ diff -r 13cd417bfd4a libmenu/menu_subsel.c
 +#include "libvo/sub.h"
 +#include "spudec.h"
 +#include "mplayer.h"
++#include "access_mpcontext.h"
 +
 +#include "libmpcodecs/img_format.h"
 +#include "libmpcodecs/mp_image.h"
@@ -542,6 +585,9 @@ diff -r 13cd417bfd4a libmenu/menu_subsel.c
 +#include "menu.h"
 +#include "menu_list.h"
 +
++#ifdef USE_DVDREAD
++#include "stream/stream_dvd.h"
++#endif
 +
 +struct list_entry_s {
 +  struct list_entry p;
@@ -570,13 +616,13 @@ diff -r 13cd417bfd4a libmenu/menu_subsel.c
 +};
 +
 +
-+extern stream_t* stream;
-+extern demuxer_t *demuxer;
-+
 +static int fill_menu(menu_t* menu) {
 +  list_entry_t* e;
 +  char txt[3];
 +  int lang, sid=0, inc;
++  demuxer_t* demuxer = mpctx_get_demuxer(menu->ctx);
++  stream_t* stream = mpctx_get_stream(menu->ctx);
++  int set_of_sub_size = mpctx_get_set_of_sub_size(menu->ctx);
 +
 +  if ((demuxer && demuxer->sub && stream->type == STREAMTYPE_DVD)
 +#ifdef HAVE_OGGVORBIS
@@ -628,9 +674,12 @@ diff -r 13cd417bfd4a libmenu/menu_subsel.c
 +      sid = 0;
 +      while(sid < set_of_sub_size)
 +        if((e = calloc(1,sizeof(list_entry_t))) != NULL){
-+          e->p.txt = strrchr(set_of_subtitles[sid]->filename, '/');
-+          if(e->p.txt == NULL)  e->p.txt = set_of_subtitles[sid]->filename;
-+          else  e->p.txt++;
++          e->p.txt =
++            strrchr (((sub_data*)mpctx_get_set_of_subtitles(menu->ctx, sid))->filename, '/');
++          if (e->p.txt == NULL)
++            e->p.txt = ((sub_data*)mpctx_get_set_of_subtitles(menu->ctx, sid))->filename;
++          else
++            e->p.txt++;
 +          e->p.next = NULL;
 +          e->sid = inc + sid++;
 +          menu_list_add_entry(menu,e);
@@ -644,7 +693,10 @@ diff -r 13cd417bfd4a libmenu/menu_subsel.c
 +}
 +
 +static void read_cmd(menu_t* menu,int cmd) {
-+  int sid;
++  int sid, set_of_sub_pos = mpctx_get_set_of_sub_pos(menu->ctx);
++  demuxer_t* demuxer = mpctx_get_demuxer(menu->ctx);
++  stream_t* stream = mpctx_get_stream(menu->ctx);
++  extern sub_data *subdata;
 +
 +  switch(cmd) {
 +  case MENU_CMD_RIGHT:
@@ -669,7 +721,7 @@ diff -r 13cd417bfd4a libmenu/menu_subsel.c
 +      if (demuxer->type == DEMUXER_TYPE_MATROSKA)
 +        sid -= mkv_subtitles_num;
 +      set_of_sub_pos = sid;
-+      subdata = set_of_subtitles[set_of_sub_pos];
++      subdata = (sub_data*)mpctx_get_set_of_subtitles(menu->ctx, set_of_sub_pos);
 +      vo_sub = NULL;
 +      vo_osd_changed(OSDTYPE_SUBTITLE);
 +    }
