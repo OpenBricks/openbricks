@@ -70,10 +70,15 @@ configure_monitor () {
   sed -i "s%::HS::%${HORIZSYNC}%" $CFG_FILE
   sed -i "s%::VR::%${VERTREFRESH}%" $CFG_FILE
 
-  if [ "$XORG_RESX" != "auto" -a "$XORG_RESY" != "auto" -a "$XORG_RATE" != "auto" ]; then
-    # Try to get modeline for resolution user asked for
-    MODELINE="`gtf $XORG_RESX $XORG_RESY $XORG_RATE | grep Modeline`"
-    sed -i "s%::MODELINE::%${MODELINE}%" $CFG_FILE
+  if [ "$XORG_RESX" != "auto" -a "$XORG_RESY" != "auto" ]; then
+    if [ "$XORG_RATE" != "auto" ]; then
+      # Try to get modeline for resolution user asked for
+      MODELINE="`gtf $XORG_RESX $XORG_RESY $XORG_RATE | grep Modeline`"
+      sed -i "s%::MODELINE::%${MODELINE}%" $CFG_FILE
+    else
+      # no custom modeline, use built-in ones
+      sed -i "s%::MODELINE::%%" $CFG_FILE
+    fi
   else
     # auto: try any fitting resolution
     sed -i "s%::MODELINE::%%" $CFG_FILE
@@ -86,9 +91,13 @@ configure_screen () {
     for r in `cat $MODES`; do
       MODELINES="$MODELINES \"$r\""
     done
-  elif [ "$XORG_RESX" != "auto" -a "$XORG_RESY" != "auto" -a "$XORG_RATE" != "auto" ]; then
-    MODE_NAME=`gtf $XORG_RESX $XORG_RESY $XORG_RATE | grep Modeline | sed 's%.*"\(.*\)".*%\1%'`
-    MODELINES="\"${MODE_NAME}\""
+  elif [ "$XORG_RESX" != "auto" -a "$XORG_RESY" != "auto" ]; then
+    if [ "$XORG_RATE" != "auto" ]; then
+      MODE_NAME=`gtf $XORG_RESX $XORG_RESY $XORG_RATE | grep Modeline | sed 's%.*"\(.*\)".*%\1%'`
+      MODELINES="\"${MODE_NAME}\""
+    else
+      MODELINES="\"${XORG_RESX}x${XORG_RESY}\""
+    fi
   else
     for r in `cat $RESOLUTIONS_FILE`; do
        FAILSAFE_RESOLUTIONS="$FAILSAFE_RESOLUTIONS \"$r\""
@@ -108,7 +117,7 @@ tweak_driver_options () {
 if [ ! -f $CFG_FILE ]; then
   cp $DEFAULT_CFG_FILE $CFG_FILE
 
-  if [ "$XORG_RESX" = "auto" -o "$XORG_RESY" = "auto" -o "$XORG_RATE" = "auto" ]; then
+  if [ "$XORG_RESX" = "auto" -o "$XORG_RESY" = "auto" ]; then
     # try to get/set the best resolution suited for the monitor using EDID
     read_edid
   else
