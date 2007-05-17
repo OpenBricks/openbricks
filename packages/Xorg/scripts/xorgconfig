@@ -13,6 +13,7 @@ EDID_DATA=/tmp/edid-data
 EDID_XORG=/tmp/edid-xorg
 MODES=/tmp/modes
 MONITOR_ID="Generic Monitor"
+DRV=${XORG_DRIVER}
 
 read_edid () {
   get-edid 2>/dev/null > $EDID_DATA
@@ -33,7 +34,6 @@ read_edid () {
 }
 
 configure_device () {
-  DRV=${XORG_DRIVER}
   if [ $XORG_DRIVER = "auto" ]; then
     # Start X server in probe mode to find the best GPU driver
     Xorg -configure -probeonly -br
@@ -108,9 +108,10 @@ configure_screen () {
 }
 
 tweak_driver_options () {
-  MONITOR_TYPE="TMDS"
-  laptop-detect
-  [ "$?" = 1 ] && MONITOR_TYPE="LVDS"
+  MONITOR_TYPE="CRT"
+  GUESS=`xresprobe ${DRV} | grep disptype | sed 's%.*: \(.*\)%\1%'`
+  [ "$GUESS" = "lcd/lvds" ] && MONITOR_TYPE="LVDS"
+  [ "$GUESS" = "lcd/tmds" ] && MONITOR_TYPE="TMDS"
   sed -i "s%::MONITOR_TYPE::%${MONITOR_TYPE}%g" $CFG_FILE
 }
 
