@@ -1,5 +1,7 @@
 #!/bin/sh
 
+USE_XORG=no
+
 # Detect whether partition ($1) mounted at ($2) with type ($3) is microsoft.
 detect_os_microsoft () {
   local longname
@@ -530,6 +532,16 @@ if [ "$1" = geexbox ]; then
   fi
 fi
 
+# Configure X.Org
+# (only available when booting from GeeXboX).
+if [ "$1" = geexbox ]; then
+  # Only configure if support for X has been compiled in
+  if [ -f /etc/X11/X.cfg ]; then
+    USE_XORG=yes # default is to use X if present
+    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Support for HDTV through X.Org ?" --yesno "\nIt appears that this version of GeeXboX has been compiled with support for HDTV through X.Org video server. Remember that X.Org is only useful if you want to display high-resolution movies on a wide display. It doesn't provide TVOut support any longer. Do you want to enable support for HDTV anyhow (regular console will kept being available too) ?\n" 0 0 || USE_XORG=no
+  fi
+fi
+
 VESA_MODE_OLD=`grep vga= di/isolinux.cfg | head -1 | sed "s%.*vga=\([^ ]*\).*%\1%"`
 
 VESA_RES=$((($VESA_MODE_OLD - 784) / 3))
@@ -639,7 +651,7 @@ ${disable_splashimage}splashimage=$rootdev_single$splashimage
 EOF
 
 # conditional HDTV menu entry if X.org is found
-if [ -f /etc/X11/X.cfg ]; then
+if [ "$USE_XORG" = yes ]; then
   cat >> $grubdir/single.lst <<EOF
 title	GeeXboX HDTV
 root	$rootdev_single
@@ -745,7 +757,7 @@ EOF
   IFS=$saveifs
 
 # conditional HDTV menu entry if X.org is found
-if [ -f /etc/X11/X.cfg ]; then
+if [ "$USE_XORG" = yes ]; then
   cat >> $grubdir/menu.lst <<EOF
 title	GeeXboX HDTV
 root	$rootdev_single
