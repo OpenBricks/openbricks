@@ -45,74 +45,75 @@ if test -x /usr/bin/freevo; then
   route add -net 224.255.222.240 netmask 255.255.255.255 lo
 fi
 
-# select device
-if test $PHY_TYPE = wifi -o $PHY_TYPE = auto; then
-  DEV=$WIFI
-  if test -n "$DEV"; then
-    test -n "$WIFI_MODE" && iwconfig "$DEV" mode "$WIFI_MODE"
-    test -n "$WIFI_CHANNEL" && iwconfig "$DEV" channel "$WIFI_CHANNEL"
-    test -n "$WIFI_ESSID" && iwconfig "$DEV" essid "$WIFI_ESSID"
-    if test $WIFI_ENC = WEP; then
-      test -n "$WIFI_KEY" && iwconfig "$DEV" key "$WIFI_KEY"
-    elif test $WIFI_ENC = WPA; then
-      if test -x /usr/bin/wpa_supplicant; then
-        if test ! -f /etc/wpa_supplicant.conf; then
-          wpa_config_gen "$WIFI_ESSID" "$WIFI_KEY"
+(
+  # select device
+  if test $PHY_TYPE = wifi -o $PHY_TYPE = auto; then
+    DEV=$WIFI
+    if test -n "$DEV"; then
+      test -n "$WIFI_MODE" && iwconfig "$DEV" mode "$WIFI_MODE"
+      test -n "$WIFI_CHANNEL" && iwconfig "$DEV" channel "$WIFI_CHANNEL"
+      test -n "$WIFI_ESSID" && iwconfig "$DEV" essid "$WIFI_ESSID"
+      if test $WIFI_ENC = WEP; then
+        test -n "$WIFI_KEY" && iwconfig "$DEV" key "$WIFI_KEY"
+      elif test $WIFI_ENC = WPA; then
+        if test -x /usr/bin/wpa_supplicant; then
+          if test ! -f /etc/wpa_supplicant.conf; then
+            wpa_config_gen "$WIFI_ESSID" "$WIFI_KEY"
+          fi
+          wpa_supplicant -B -w -i $DEV -c /etc/wpa_supplicant.conf -D $WPA_DRV
         fi
-        wpa_supplicant -B -w -i $DEV -c /etc/wpa_supplicant.conf -D $WPA_DRV
-      fi
-      if test -x /usr/bin/iwpriv; then
-        # WPA not up, try using iwpriv instead
-        iwpriv $DEV set AuthMode=WPAPSK >/dev/null 2>&1
-        iwpriv $DEV set EncrypType=TKIP >/dev/null 2>&1
-        iwpriv $DEV set WPAPSK="$WIFI_KEY" >/dev/null 2>&1
+        if test -x /usr/bin/iwpriv; then
+          # WPA may not be up, try using iwpriv as well
+          iwpriv $DEV set AuthMode=WPAPSK >/dev/null 2>&1
+          iwpriv $DEV set EncrypType=TKIP >/dev/null 2>&1
+          iwpriv $DEV set WPAPSK="$WIFI_KEY" >/dev/null 2>&1
+        fi
       fi
     fi
+    if [ $PHY_TYPE = auto ]; then
+      COUNT=0
+      while [ $COUNT -lt 10 ]; do
+        wifi_connection_up $DEV && break
+        sleep 1
+        COUNT=$((COUNT + 1))
+      done
+      wifi_connection_up $DEV || unset DEV
+    fi
   fi
-  if [ $PHY_TYPE = auto ]; then
-    COUNT=0
-    while [ $COUNT -lt 3 ]; do
-      wifi_connection_up $DEV && break
-      sleep 1
-      COUNT=$((COUNT + 1))
+  if test $PHY_TYPE = ethernet -o $PHY_TYPE = auto -a -z "$DEV"; then
+    DEV=$ETH
+  fi
+  test -n "$DEV" || exit 1
+
+  [ -n "$SUBNET" ] && NETMASK="netmask $SUBNET"
+
+  # bring interface up
+  if ifconfig $DEV $HOST $NETMASK >/dev/null 2>&1; then
+    if test $HOST = 0.0.0.0; then
+      udhcpc -H geexbox -n -i $DEV >/dev/null 2>&1 && NET=yes
+      test "$NET" != yes && ifconfig $DEV 192.168.0.54 netmask 255.255.255.0 && NET=yes
+    else
+      metric=0
+      for i in $GATEWAY; do
+        route add default gw $i dev $DEV metric $((metric++))
+      done
+      NET=yes
+    fi
+    echo "" > /var/ifup
+  fi
+
+  if test "$UPNP" = "yes"; then
+    # bring lo up and add UPnP multicast route
+    ifconfig lo 127.0.0.1
+    route add -net 239.0.0.0 netmask 255.0.0.0 $DEV
+  fi
+
+  # adding DNS server
+  if [ "$NET" = yes ]; then
+    for i in $DNS_SERVER; do
+      echo "nameserver $i" >> /etc/resolv.conf
     done
-    wifi_connection_up $DEV || unset DEV
   fi
-fi
-if test $PHY_TYPE = ethernet -o $PHY_TYPE = auto -a -z "$DEV"; then
-  DEV=$ETH
-fi
-test -n "$DEV" || exit 1
-
-[ -n "$SUBNET" ] && NETMASK="netmask $SUBNET"
-
-# bring interface up
-if ifconfig $DEV $HOST $NETMASK >/dev/null 2>&1; then
-  if test $HOST = 0.0.0.0; then
-    udhcpc -H geexbox -n -i $DEV >/dev/null 2>&1 && NET=yes
-    test "$NET" != yes && ifconfig $DEV 192.168.0.54 netmask 255.255.255.0 && NET=yes
-  else
-    metric=0
-    for i in $GATEWAY; do
-      route add default gw $i dev $DEV metric $((metric++))
-    done
-    NET=yes
-  fi
-fi
-
-if test "$UPNP" = "yes"; then
-  # bring lo up and add UPnP multicast route
-  ifconfig lo 127.0.0.1
-  route add -net 239.0.0.0 netmask 255.0.0.0 $DEV
-fi
-
-# adding DNS server
-if [ "$NET" = yes ]; then
-  for i in $DNS_SERVER; do
-    echo "nameserver $i" >> /etc/resolv.conf
-  done
-fi
-
-test "$NET" = yes || exit 1
+)&
 
 exit 0
