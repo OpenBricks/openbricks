@@ -262,6 +262,72 @@ setup_dvbscan () {
   fi
 }
 
+# Configure X.Org
+setup_xorg () {
+  XORG_CONFIG=/usr/bin/xorgconfig
+
+  TITLE="$BACKTITLE : X.Org Video Server Configuration"
+  RESOLUTION_FILE="$1/etc/X11/resolutions"
+  DRIVERS_FILE="$1/etc/X11/drivers"
+  USER_RESOLUTION_LABEL="custom"
+  USER_RESOLUTION_AUTO="auto"
+  USER_DRIVERS_AUTO="auto"
+  X_CFG="$1/etc/X11/X.cfg"
+
+  # retrieve current X settings
+  . $X_CFG
+
+  RESOLUTIONS="$USER_RESOLUTION_AUTO ''"
+  for i in `cat $RESOLUTION_FILE`; do
+    RESOLUTIONS="$RESOLUTIONS $i ''"
+  done
+  RESOLUTIONS="$RESOLUTIONS $USER_RESOLUTION_LABEL ''"
+
+  RES=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "Prefered display resolution" --menu "\nPlease choose one of the resolutions in the list below. You can also keep it to automatic, in order for X.Org to set the best suited resolution for your monitor." 0 0 0 $RESOLUTIONS`
+
+  if [ "$RES" = "$USER_RESOLUTION_LABEL" ]; then
+    OLD_RES=auto
+    if [ "$XORG_RESX" != auto -a "$XORG_RESY" != auto ]; then
+      OLD_RES="${XORG_RESX}x${XORG_RESY}"
+    fi
+  
+    RES=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "User defined custom resolution" --inputbox "\nPlease enter the resolution you want X.Org to use for your display. It has to be under the form of \"width x height\" (in pixels) such as 1360x768, 1024x768 ...\n" 0 0 $OLD_RES`
+  fi
+
+  if [ "$RES" = "$USER_RESOLUTION_AUTO" ]; then
+    NEW_RESX="auto"
+    NEW_RESY="auto"
+  else
+    NEW_RESX=`echo $RES | sed 's%\(.*\)x.*%\1%'`
+    NEW_RESY=`echo $RES | sed 's%.*x\(.*\)%\1%'`
+  fi
+
+  NEW_RATE=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "Prefered display refresh rate" --inputbox "\nPlease enter the video refresh rate you want X.Org to use for your display (in Hz). You may also keep it to \"auto\" for autodetection (recommended, unless you'd set a custom resolution).\n" 0 0 $XORG_RATE`
+
+  DRIVERS="$USER_DRIVERS_AUTO ''"
+  for i in `cat $DRIVERS_FILE`; do
+    DRIVERS="$DRIVERS $i ''"
+  done
+
+  NEW_DRIVER=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "Prefered video driver" --menu "\nPlease choose one of the video drivers in the list below. You can also keep it to automatic, in order for X.Org to set the best suited one according to your hardware." 0 0 0 $DRIVERS`
+
+  NEW_HORIZSYNC=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "Prefered monitor's horizontal synchronization" --inputbox "\nPlease enter your monitor exact horizontal synchronization range (in kHz), under the form \"28-51\" for example (check your monitor's documentation). It is highly recommended that you keep it autodetected, unless you know exactly what you're doing.\n" 0 0 $XORG_HORIZSYNC`
+
+  NEW_VERTREFRESH=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "Prefered monitor's vertical refresh rate" --inputbox "\nPlease enter your monitor exact vertical refresh rate range (in kHz), under the form \"43-60\" for example (check your monitor's documentation). It is highly recommended that you keep it autodetected, unless you know exactly what you're doing.\n" 0 0 $XORG_VERTREFRESH`
+
+  # write settings to config file
+  echo "XORG_RESX=\"$NEW_RESX\"" > $X_CFG
+  echo "XORG_RESY=\"$NEW_RESY\"" >> $X_CFG
+  echo "XORG_RATE=\"$NEW_RATE\"" >> $X_CFG
+  echo "XORG_DRIVER=\"$NEW_DRIVER\"" >> $X_CFG
+  echo "XORG_HORIZSYNC=\"$NEW_HORIZSYNC\"" >> $X_CFG
+  echo "XORG_VERTREFRESH=\"$NEW_VERTREFRESH\"" >> $X_CFG
+
+  cp $X_CFG /etc/X11 # for xorgconfig to work with new params
+  $XORG_CONFIG > /dev/null 2>&1 # create xorg.conf file
+  cp /etc/X11/xorg.conf $1/etc/X11/ # save back new xorg.conf to HDD
+}
+
 /bin/busybox mount -t proc none /proc
 /bin/busybox mount -t sysfs none /sys
 /bin/busybox --install -s
@@ -539,6 +605,10 @@ if [ "$1" = geexbox ]; then
   if [ -f /etc/X11/X.cfg ]; then
     USE_XORG=yes # default is to use X if present
     $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Support for HDTV through X.Org ?" --yesno "\nIt appears that this version of GeeXboX has been compiled with support for HDTV through X.Org video server. Remember that X.Org is only useful if you want to display high-resolution movies on a wide display. It doesn't provide TVOut support any longer. Do you want to enable support for HDTV anyhow (regular console will kept being available too) ?\n" 0 0 || USE_XORG=no
+  fi
+
+  if [ "$USE_XORG" = yes ]; then
+    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Setup X.Org ?" --yesno "\nDo you want to configure your X.Org video server right now ? It will avoid hardware autodetection each time you boot, which can significantly speeds up boot time\n" 0 0 && setup_xorg "di/GEEXBOX"
   fi
 fi
 
