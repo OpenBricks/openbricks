@@ -636,6 +636,21 @@ timeout  2
 color cyan/blue white/blue
 ${disable_splashimage}splashimage=$rootdev_single$splashimage
 
+EOF
+
+# conditional HDTV menu entry if X.org is found
+if [ -f /etc/X11/X.cfg ]; then
+  cat >> $grubdir/single.lst <<EOF
+title	GeeXboX HDTV
+root	$rootdev_single
+kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME splash=$SPLASH vga=$VESA_MODE keymap=$KEYMAP remote=$REMOTE receiver=$RECEIVER video=vesafb:ywrap,mtrr hdtv
+initrd  /initrd.gz
+boot
+
+EOF
+fi
+
+cat >> $grubdir/single.lst <<EOF
 title	GeeXboX
 root	$rootdev_single
 kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME splash=$SPLASH vga=$VESA_MODE keymap=$KEYMAP remote=$REMOTE receiver=$RECEIVER video=vesafb:ywrap,mtrr
@@ -728,6 +743,18 @@ EOF
     fi
   done
   IFS=$saveifs
+
+# conditional HDTV menu entry if X.org is found
+if [ -f /etc/X11/X.cfg ]; then
+  cat >> $grubdir/menu.lst <<EOF
+title	GeeXboX HDTV
+root	$rootdev_single
+kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME splash=$SPLASH vga=$VESA_MODE keymap=$KEYMAP remote=$REMOTE receiver=$RECEIVER video=vesafb:ywrap,mtrr hdtv
+initrd  /initrd.gz
+boot
+
+EOF
+fi
 
   cat >> $grubdir/menu.lst <<EOF
 title	GeeXboX
