@@ -1,7 +1,7 @@
 diff -r eea2414bb57d input/input.c
 --- a/input/input.c	Sun Apr 30 16:54:34 2006 +0200
 +++ b/input/input.c	Sun Apr 30 16:54:34 2006 +0200
-@@ -102,6 +102,15 @@ static mp_cmd_t mp_cmds[] = {
+@@ -123,6 +123,15 @@ static mp_cmd_t mp_cmds[] = {
    { MP_CMD_SUB_FORCED_ONLY, "forced_subs_only",  0, { {MP_CMD_ARG_INT,{-1}}, {-1,{0}} } },
  #ifdef HAS_DVBIN_SUPPORT
    { MP_CMD_DVB_SET_CHANNEL, "dvb_set_channel", 2, { {MP_CMD_ARG_INT,{0}}, {MP_CMD_ARG_INT,{0}}, {-1,{0}}}},
@@ -20,13 +20,13 @@ diff -r eea2414bb57d input/input.c
 diff -r eea2414bb57d input/input.h
 --- a/input/input.h	Sun Apr 30 16:54:34 2006 +0200
 +++ b/input/input.h	Sun Apr 30 16:54:34 2006 +0200
-@@ -71,6 +71,10 @@
- #define MP_CMD_GET_PROPERTY 69
- #define MP_CMD_OSD_SHOW_PROPERTY_TEXT 70
+@@ -96,6 +96,10 @@
  
-+#define MP_CMD_VCD_PLAY 92
-+#define MP_CMD_DVD_PLAY 93
-+#define MP_CMD_CDDA_PLAY 94
+ #define MP_CMD_SET_OPTION 94
+ 
++#define MP_CMD_VCD_PLAY 95
++#define MP_CMD_DVD_PLAY 96
++#define MP_CMD_CDDA_PLAY 97
 +
  #define MP_CMD_GUI_EVENTS       5000
  #define MP_CMD_GUI_LOADFILE     5001
@@ -34,7 +34,7 @@ diff -r eea2414bb57d input/input.h
 diff -r eea2414bb57d libmpdemux/cdda.c
 --- a/stream/stream_cdda.c	Sun Apr 30 16:54:34 2006 +0200
 +++ b/stream/stream_cdda.c	Sun Apr 30 16:54:34 2006 +0200
-@@ -284,6 +284,34 @@ static void cdparanoia_callback(long int
+@@ -283,6 +283,34 @@ static void cdparanoia_callback(long int
  #endif
  }
  
@@ -69,35 +69,21 @@ diff -r eea2414bb57d libmpdemux/cdda.c
  static int fill_buffer(stream_t* s, char* buffer, int max_len) {
    cdda_priv* p = (cdda_priv*)s->priv;
    cd_track_t *cd_track;
-diff -r eea2414bb57d libmpdemux/stream_dvd.c
---- a/stream/stream_dvd.c	Sun Apr 30 16:54:34 2006 +0200
-+++ b/stream/stream_dvd.c	Sun Apr 30 16:54:34 2006 +0200
-@@ -737,7 +737,6 @@ static int open_s(stream_t *stream,int m
-         return STREAM_UNSUPORTED;
-       }
-     }
--    --dvd_chapter; // remap 1.. -> 0..
-     /* XXX No need to remap dvd_last_chapter */
-     /**
-      * Make sure the angle number is valid for this title.
-@@ -908,8 +907,8 @@ static int open_s(stream_t *stream,int m
-      * Determine which program chain we want to watch.  This is based on the
-      * chapter number.
-      */
--    pgc_id = vts_file->vts_ptt_srpt->title[ttn].ptt[dvd_chapter].pgcn; // local
--    pgn  = vts_file->vts_ptt_srpt->title[ttn].ptt[dvd_chapter].pgn;  // local
-+    pgc_id = vts_file->vts_ptt_srpt->title[ttn].ptt[dvd_chapter-1].pgcn; // local
-+    pgn = vts_file->vts_ptt_srpt->title[ttn].ptt[dvd_chapter-1].pgn; // local
-     d->cur_pgc = vts_file->vts_pgcit->pgci_srp[pgc_id-1].pgc;
-     d->cur_cell = d->cur_pgc->program_map[pgn-1] - 1; // start playback here
-     d->packs_left=-1;      // for Navi stuff
 diff -r eea2414bb57d mplayer.c
---- a/mplayer.c	Sun Apr 30 16:54:34 2006 +0200
-+++ b/mplayer.c	Sun Apr 30 16:54:34 2006 +0200
-@@ -4309,6 +4309,117 @@ if (stream->type==STREAMTYPE_DVDNAV && d
-     case MP_CMD_QUIT : {
-       exit_player_with_rc(MSGTR_Exit_quit, (cmd->nargs > 0)? cmd->args[0].v.i : 0);
-     }
+--- a/command.c	Sun Apr 30 16:54:34 2006 +0200
++++ b/command.c	Sun Apr 30 16:54:34 2006 +0200
+@@ -2,6 +2,7 @@
+ #include <inttypes.h>
+ #include <unistd.h>
+ #include <string.h>
++#include <sys/stat.h>
+ 
+ #include "config.h"
+ #include "input/input.h"
+@@ -1728,6 +1728,117 @@ if (stream->type==STREAMTYPE_DVDNAV && d
+ 	    exit_player_with_rc(MSGTR_Exit_quit,
+ 				(cmd->nargs > 0) ? cmd->args[0].v.i : 0);
+ 
 +#ifdef HAVE_VCD
 +    case MP_CMD_VCD_PLAY : {
 +      char buf[10];
@@ -123,11 +109,11 @@ diff -r eea2414bb57d mplayer.c
 +          play_tree_append_entry(tracks, vcd);
 +        }
 +
-+      while(play_tree_iter_up_step(playtree_iter, 0, 1) != PLAY_TREE_ITER_END);
-+      play_tree_free_list(playtree->child, 1);
-+      play_tree_set_child(playtree, tracks);
-+      play_tree_iter_step(playtree_iter, 0, 0);
-+      eof = PT_NEXT_SRC;
++      while(play_tree_iter_up_step(mpctx->playtree_iter, 0, 1) != PLAY_TREE_ITER_END);
++      play_tree_free_list(mpctx->playtree->child, 1);
++      play_tree_set_child(mpctx->playtree, tracks);
++      play_tree_iter_step(mpctx->playtree_iter, 0, 0);
++      mpctx->eof = PT_NEXT_SRC;
 +    } break;
 +#endif
 +#ifdef USE_DVDREAD
@@ -170,12 +156,12 @@ diff -r eea2414bb57d mplayer.c
 +                           ((dvd_priv_t *) s->priv)->vmg_file, 0x0001);
 +        free_stream (s);
 +        
-+        while(play_tree_iter_up_step(playtree_iter, 0, 1) != PLAY_TREE_ITER_END);
-+        play_tree_free_list(playtree->child, 1);
-+        play_tree_set_child(playtree, tracks);
-+        play_tree_iter_down_step(playtree_iter, 0, 0);
-+        play_tree_iter_step(playtree_iter, i-1, 0);
-+        eof = PT_NEXT_SRC;
++        while(play_tree_iter_up_step(mpctx->playtree_iter, 0, 1) != PLAY_TREE_ITER_END);
++        play_tree_free_list(mpctx->playtree->child, 1);
++        play_tree_set_child(mpctx->playtree, tracks);
++        play_tree_iter_down_step(mpctx->playtree_iter, 0, 0);
++        play_tree_iter_step(mpctx->playtree_iter, i-1, 0);
++        mpctx->eof = PT_NEXT_SRC;
 +      }
 +    } break;
 +#endif
@@ -201,14 +187,14 @@ diff -r eea2414bb57d mplayer.c
 +          play_tree_append_entry(tracks, cdda);
 +        }
 +
-+      while(play_tree_iter_up_step(playtree_iter, 0, 1) != PLAY_TREE_ITER_END);
-+      play_tree_free_list(playtree->child, 1);
-+      play_tree_set_child(playtree, tracks);
-+      play_tree_iter_step(playtree_iter, 0, 0);
-+      eof = PT_NEXT_SRC;
++      while(play_tree_iter_up_step(mpctx->playtree_iter, 0, 1) != PLAY_TREE_ITER_END);
++      play_tree_free_list(mpctx->playtree->child, 1);
++      play_tree_set_child(mpctx->playtree, tracks);
++      play_tree_iter_step(mpctx->playtree_iter, 0, 0);
++      mpctx->eof = PT_NEXT_SRC;
 +    } break;
 +#endif
 +
-     case MP_CMD_GRAB_FRAMES : {
-       grab_frames=2;
-     } break;
+     case MP_CMD_SET_OPTION: {
+       extern mconfig;
+       char *option = cmd->args[0].v.s, *value = cmd->args[1].v.s;

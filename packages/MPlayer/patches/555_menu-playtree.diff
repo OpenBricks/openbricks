@@ -1,7 +1,7 @@
 diff -r cc4b9cfa9112 libmenu/menu_pt.c
 --- a/libmenu/menu_pt.c	Sun Apr 30 16:54:41 2006 +0200
 +++ b/libmenu/menu_pt.c	Sun Apr 30 16:54:42 2006 +0200
-@@ -33,11 +33,13 @@ struct menu_priv_s {
+@@ -32,11 +32,13 @@ struct menu_priv_s {
  struct menu_priv_s {
    menu_list_priv_t p;
    char* title;
@@ -16,7 +16,7 @@ diff -r cc4b9cfa9112 libmenu/menu_pt.c
  };
  
  #define ST_OFF(m) M_ST_OFF(struct menu_priv_s,m)
-@@ -45,28 +47,78 @@ static m_option_t cfg_fields[] = {
+@@ -44,28 +44,79 @@ static m_option_t cfg_fields[] = {
  static m_option_t cfg_fields[] = {
    MENU_LIST_PRIV_FIELDS,
    { "title", ST_OFF(title),  CONF_TYPE_STRING, 0, 0, 0, NULL },
@@ -29,6 +29,7 @@ diff -r cc4b9cfa9112 libmenu/menu_pt.c
 +static int fill_menu(menu_t* menu) {
 +  play_tree_t* i;
 +  list_entry_t* e;
++  play_tree_iter_t* playtree_iter = mpctx_get_playtree_iter(menu->ctx);
 +
 +  menu_list_init(menu);
 +
@@ -49,14 +50,14 @@ diff -r cc4b9cfa9112 libmenu/menu_pt.c
 +#if defined(HAVE_VCD) || defined(HAVE_CDDA)
 +      if (i->entry_type == PLAY_TREE_ENTRY_VCD
 +          || !strncasecmp(i->files[0],"cdda://",7)) {
-+        e->p.txt = (char *) malloc (10*sizeof(char));
++        e->p.txt = malloc (10);
 +        sprintf(e->p.txt, "Track %s", mp_basename(i->files[0]));
 +      }
 +      else
 +#endif
 +#ifdef USE_DVDREAD
 +      if (i->entry_type == PLAY_TREE_ENTRY_DVD) {
-+        e->p.txt = (char *) malloc (10*sizeof(char));
++        e->p.txt = malloc (10);
 +        sprintf(e->p.txt, "Title %s", mp_basename(i->files[0]));
 +      }
 +      else
@@ -81,7 +82,7 @@ diff -r cc4b9cfa9112 libmenu/menu_pt.c
      char str[15];
      play_tree_t* i;
      mp_cmd_t* c;
- 
+     play_tree_iter_t* playtree_iter = mpctx_get_playtree_iter(menu->ctx);
  
 -    if(playtree_iter->tree == mpriv->p.current->pt)
 -      break;
@@ -103,7 +104,7 @@ diff -r cc4b9cfa9112 libmenu/menu_pt.c
  	if(i == mpriv->p.current->pt)
  	  break;
  	d++;
-@@ -84,12 +136,14 @@ static void read_cmd(menu_t* menu,int cm
+@@ -83,12 +83,14 @@ static void read_cmd(menu_t* menu,int cm
  	}
        }
        snprintf(str,15,"pt_step %d",d);
@@ -123,18 +124,18 @@ diff -r cc4b9cfa9112 libmenu/menu_pt.c
    } break;
    default:
      menu_list_read_cmd(menu,cmd);
-@@ -105,8 +159,6 @@ static void close(menu_t* menu) {
+@@ -104,8 +104,6 @@ static void close(menu_t* menu) {
  }
  
  static int op(menu_t* menu, char* args) {
 -  play_tree_t* i;
 -  list_entry_t* e;
+   play_tree_iter_t* playtree_iter = mpctx_get_playtree_iter(menu->ctx);
+   
    args = NULL; // Warning kill
- 
-   menu->draw = menu_list_draw;
-@@ -114,30 +166,7 @@ static int op(menu_t* menu, char* args) 
+@@ -115,30 +115,7 @@ static int op(menu_t* menu, char* args) 
    menu->read_key = read_key;
-   menu->close = close;
+   menu->close = close_menu;
  
 -  menu_list_init(menu);
 -
@@ -165,15 +166,15 @@ diff -r cc4b9cfa9112 libmenu/menu_pt.c
  
  const menu_info_t menu_info_pt = {
 diff -r cc4b9cfa9112 mplayer.c
---- a/mplayer.c	Sun Apr 30 16:54:41 2006 +0200
-+++ b/mplayer.c	Sun Apr 30 16:54:42 2006 +0200
-@@ -4440,7 +4440,7 @@ if (stream->type==STREAMTYPE_DVDNAV && d
-       grab_frames=2;
+--- a/command.c	Sun Apr 30 16:54:41 2006 +0200
++++ b/command.c	Sun Apr 30 16:54:42 2006 +0200
+@@ -1857,7 +1857,7 @@ if (stream->type==STREAMTYPE_DVDNAV && d
+       }
      } break;
-     case MP_CMD_PLAY_TREE_STEP : {
--      int n = cmd->args[0].v.i == 0 ? 1 : cmd->args[0].v.i;
-+      int n = cmd->args[0].v.i;
-       int force = cmd->args[1].v.i;
+ 	case MP_CMD_PLAY_TREE_STEP:{
+-		int n = cmd->args[0].v.i == 0 ? 1 : cmd->args[0].v.i;
++		int n = cmd->args[0].v.i;
+ 		int force = cmd->args[1].v.i;
  
  #ifdef HAVE_NEW_GUI
 diff -r cc4b9cfa9112 playtree.c
@@ -208,7 +209,7 @@ diff -r cc4b9cfa9112 playtree.c
 diff -r cc4b9cfa9112 playtreeparser.c
 --- a/playtreeparser.c	Sun Apr 30 16:54:41 2006 +0200
 +++ b/playtreeparser.c	Sun Apr 30 16:54:42 2006 +0200
-@@ -684,6 +684,7 @@ parse_playlist_file(char* file) {
+@@ -738,6 +738,7 @@ parse_playlist_file(char* file) {
    free_stream(stream);
  
    play_tree_add_bpf(ret, file);

@@ -1,7 +1,7 @@
 diff -r 84218a4f7167 libmenu/menu_param.c
 --- a/libmenu/menu_param.c	Sun Apr 30 16:54:40 2006 +0200
 +++ b/libmenu/menu_param.c	Sun Apr 30 16:54:41 2006 +0200
-@@ -9,6 +9,14 @@
+@@ -9,6 +9,15 @@
  #include <sys/types.h>
  #include <sys/stat.h>
  #include <ctype.h>
@@ -13,21 +13,23 @@ diff -r 84218a4f7167 libmenu/menu_param.c
 +#include <mntent.h>
 +#include <sys/vfs.h>
 +#include <fcntl.h>
++#include <version.h>
  
  #include "mp_msg.h"
  #include "help_mp.h"
-@@ -59,6 +77,10 @@ static m_option_t cfg_fields[] = {
+@@ -60,6 +60,11 @@ static m_option_t cfg_fields[] = {
  };
  
  #define mpriv (menu->priv)
 +
 +#define OPT_VERSION "Version"
++#define OPT_MPREV "MPlayerRev"
 +#define OPT_IP "IP"
 +#define OPT_MAC "MAC"
  
- m_option_t*  mp_property_find(char* name);
- 
-@@ -86,6 +124,61 @@ static void update_entries(menu_t* menu)
+ #define OPT_NAME "name"
+ #define OPT_VCODEC "vcodec"
+@@ -102,6 +102,61 @@ static void update_entries(menu_t* menu)
      if(e->opt) entry_set_text(menu,e);
  }
  
@@ -89,21 +91,9 @@ diff -r 84218a4f7167 libmenu/menu_param.c
  static int parse_args(menu_t* menu,char* args) {
    char *element,*body, **attribs, *name, *meta, *val;
    list_entry_t* m = NULL;
-@@ -104,9 +197,11 @@
-       asx_parser_free(parser);
-       if(!m)
-         mp_msg(MSGT_OSD_MENU,MSGL_WARN,MSGTR_LIBMENU_NoEntryFoundInTheMenuDefinition);
-+#if 0
-       m = calloc(1,sizeof(struct list_entry_s));
-       m->p.txt = strdup("Back");
-       menu_list_add_entry(menu,m);
-+#endif
-       return 1;
+@@ -195,6 +195,69 @@ static int parse_args(menu_t* menu,char*
      }
-     if(!strcmp(element,"menu")) {
-@@ -125,6 +217,95 @@ static int parse_args(menu_t* menu,char*
-     }
- 
+     
      name = asx_get_attrib("property",attribs);
 +    val = NULL;
 +    if(name) {
@@ -114,7 +104,7 @@ diff -r 84218a4f7167 libmenu/menu_param.c
 +        {
 +          int fd;
 +          fd = open ("/etc/version", O_RDONLY);
-+          val = (char *) malloc (st.st_size + 1);
++          val = malloc (st.st_size + 1);
 +          memset (val, '\0', st.st_size + 1);
 +          read (fd, val, st.st_size + 1);
 +          close (fd);
@@ -134,14 +124,13 @@ diff -r 84218a4f7167 libmenu/menu_param.c
 +            if (strcmp (ifp->if_name, "lo") && strcmp (ifp->if_name, "sit0")) {
 +              strcpy(ifr.ifr_name, ifp->if_name);
 +              ifr.ifr_addr.sa_family = AF_INET;
++              val = malloc (20);
 +              if (!strcmp(name, OPT_IP) && ioctl(fd, SIOCGIFADDR, &ifr) == 0) {
-+                val = (char *) malloc (16);
 +                ip = ((struct sockaddr_in *) &ifr.ifr_addr)->sin_addr.s_addr;
 +                ip = ntohl (ip);
 +                sprintf (val, "%d.%d.%d.%d",
 +                         (ip>>24)&0xFF, (ip>>16)&0xFF, (ip>>8)&0xFF, ip&0xFF);
 +              } else if (!strcmp(name, OPT_MAC) && ioctl(fd, SIOCGIFHWADDR, &ifr) == 0) {
-+                val = (char *) malloc (20);
 +                hwaddr = (unsigned char *)ifr.ifr_hwaddr.sa_data;
 +                sprintf (val, "%02X:%02X:%02X:%02X:%02X:%02X",
 +                         hwaddr[0],hwaddr[1],hwaddr[2],hwaddr[3],hwaddr[4],hwaddr[5]);
@@ -154,34 +143,9 @@ diff -r 84218a4f7167 libmenu/menu_param.c
 +          if_freenameindex (ifs);
 +          close (fd);
 +        }
-+      } else if (!strcmp (name, OPT_NAME))
-+        val = get_metadata (META_NAME);
-+      else if (!strcmp (name, OPT_VCODEC))
-+        val = get_metadata (META_VIDEO_CODEC);
-+      else if (!strcmp(name, OPT_VBITRATE))
-+        val = get_metadata (META_VIDEO_BITRATE);
-+      else if(!strcmp(name, OPT_RESOLUTION))
-+        val = get_metadata (META_VIDEO_RESOLUTION);
-+      else if (!strcmp(name, OPT_ACODEC))
-+        val = get_metadata (META_AUDIO_CODEC);
-+      else if(!strcmp(name, OPT_ABITRATE))
-+        val = get_metadata (META_AUDIO_BITRATE);
-+      else if(!strcmp(name, OPT_SAMPLES))
-+        val = get_metadata (META_AUDIO_SAMPLES);
-+      else if (!strcmp (name, OPT_INFO_TITLE))
-+        val = get_metadata (META_INFO_TITLE);
-+      else if (!strcmp (name, OPT_INFO_ARTIST))
-+        val = get_metadata (META_INFO_ARTIST);
-+      else if (!strcmp (name, OPT_INFO_ALBUM))
-+        val = get_metadata (META_INFO_ALBUM);
-+      else if (!strcmp (name, OPT_INFO_YEAR))
-+        val = get_metadata (META_INFO_YEAR);
-+      else if (!strcmp (name, OPT_INFO_COMMENT))
-+        val = get_metadata (META_INFO_COMMENT);
-+      else if (!strcmp (name, OPT_INFO_TRACK))
-+        val = get_metadata (META_INFO_TRACK);
-+      else if (!strcmp (name, OPT_INFO_GENRE))
-+        val = get_metadata (META_INFO_GENRE);
++      }
++      else if (!strcmp (name, OPT_MPREV))
++        val = strdup(VERSION);
 +      else if (is_part(name) || is_cdrom(name))
 +        val = strdup(part_size(name));
 +    }
@@ -200,7 +164,7 @@ diff -r 84218a4f7167 libmenu/menu_param.c
 diff -r 84218a4f7167 mplayer.c
 --- a/mplayer.c	Sun Apr 30 16:54:40 2006 +0200
 +++ b/mplayer.c	Sun Apr 30 16:54:41 2006 +0200
-@@ -511,7 +511,7 @@
+@@ -492,7 +492,7 @@
      if (!strcmp (info[2*n], tag))
        break;
  
