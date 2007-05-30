@@ -69,9 +69,9 @@ diff -r eea2414bb57d libmpdemux/cdda.c
  static int fill_buffer(stream_t* s, char* buffer, int max_len) {
    cdda_priv* p = (cdda_priv*)s->priv;
    cd_track_t *cd_track;
-diff -r eea2414bb57d mplayer.c
---- a/command.c	Sun Apr 30 16:54:34 2006 +0200
-+++ b/command.c	Sun Apr 30 16:54:34 2006 +0200
+diff -Naur MPlayer-r23418.orig/command.c MPlayer-r23418/command.c
+--- MPlayer-r23418.orig/command.c	2007-05-30 19:10:09.000000000 +0200
++++ MPlayer-r23418/command.c	2007-05-30 19:22:38.000000000 +0200
 @@ -2,6 +2,7 @@
  #include <inttypes.h>
  #include <unistd.h>
@@ -80,121 +80,121 @@ diff -r eea2414bb57d mplayer.c
  
  #include "config.h"
  #include "input/input.h"
-@@ -1728,6 +1728,117 @@ if (stream->type==STREAMTYPE_DVDNAV && d
+@@ -1809,6 +1810,117 @@
  	    exit_player_with_rc(MSGTR_Exit_quit,
  				(cmd->nargs > 0) ? cmd->args[0].v.i : 0);
  
 +#ifdef HAVE_VCD
-+    case MP_CMD_VCD_PLAY : {
-+      char buf[10];
-+      play_tree_t *vcd, *tracks;
-+      stream_t *s;
-+      int i, m;
++        case MP_CMD_VCD_PLAY : {
++          char buf[10];
++          play_tree_t *vcd, *tracks;
++          stream_t *s;
++          int i, m;
++          
++          if ((s = open_stream ("vcd://", NULL, &i)) == NULL)
++            break;
++          for (m=2; m<100; m++)
++            if (vcd_seek_to_track (s->priv, m) < 0)
++              break;
++          free_stream (s);
++          
++          tracks = play_tree_new();
++          sprintf(buf, "vcd://%d", i = m > 2 ? 2 : 1);
++          play_tree_add_file(tracks, buf);
++          for (i++; i<m; i++)
++          {
++            sprintf(buf, "vcd://%d", i);
++            vcd = play_tree_new();
++            play_tree_add_file(vcd, buf);
++            play_tree_append_entry(tracks, vcd);
++          }
 +
-+      if ((s = open_stream ("vcd://", NULL, &i)) == NULL)
-+        break;
-+      for (m=2; m<100; m++)
-+        if (vcd_seek_to_track (s->priv, m) < 0)
-+          break;
-+      free_stream (s);
-+
-+      tracks = play_tree_new();
-+      sprintf(buf, "vcd://%d", i = m > 2 ? 2 : 1);
-+      play_tree_add_file(tracks, buf);
-+      for (i++; i<m; i++)
-+        {
-+          sprintf(buf, "vcd://%d", i);
-+          vcd = play_tree_new();
-+          play_tree_add_file(vcd, buf);
-+          play_tree_append_entry(tracks, vcd);
-+        }
-+
-+      while(play_tree_iter_up_step(mpctx->playtree_iter, 0, 1) != PLAY_TREE_ITER_END);
-+      play_tree_free_list(mpctx->playtree->child, 1);
-+      play_tree_set_child(mpctx->playtree, tracks);
-+      play_tree_iter_step(mpctx->playtree_iter, 0, 0);
-+      mpctx->eof = PT_NEXT_SRC;
-+    } break;
++          while(play_tree_iter_up_step(mpctx->playtree_iter, 0, 1) != PLAY_TREE_ITER_END);
++          play_tree_free_list(mpctx->playtree->child, 1);
++          play_tree_set_child(mpctx->playtree, tracks);
++          play_tree_iter_step(mpctx->playtree_iter, 0, 0);
++          mpctx->eof = PT_NEXT_SRC;
++        } break;
 +#endif
 +#ifdef USE_DVDREAD
-+    case MP_CMD_DVD_PLAY : {
-+      struct stat st;
-+      
-+      if (stat ("/var/dvdnav", &st) == 0)
-+      {
-+        mp_cmd_t* c = mp_input_parse_cmd ("loadfile dvdnav://");
-+        if (c) {
++        case MP_CMD_DVD_PLAY : {
++          struct stat st;
++          
++          if (stat ("/var/dvdnav", &st) == 0)
++          {
++            mp_cmd_t* c = mp_input_parse_cmd ("loadfile dvdnav://");
++            if (c) {
 +#ifdef HAVE_MENU
-+          mp_input_queue_cmd (mp_input_parse_cmd ("menu hide"));
++              mp_input_queue_cmd (mp_input_parse_cmd ("menu hide"));
 +#endif
-+          mp_input_queue_cmd (c);
-+        }
-+        break;
-+      }
-+      else
-+      {
-+        char buf[10];
-+        play_tree_t *dvd, *tracks;
-+        stream_t *s;
-+        int nb_tracks, i; 
-+        
-+        if ((s = open_stream("dvd://", NULL, &i)) == NULL)
-+          break;
-+        
-+        tracks = play_tree_new();
-+        play_tree_add_file(tracks, "dvd://1");
-+        
-+        nb_tracks = ((dvd_priv_t *) s->priv)->vmg_file->tt_srpt->nr_of_srpts;
-+        for (i=2; i<=nb_tracks; i++)
-+        {
-+          dvd = play_tree_new();
-+          sprintf(buf, "dvd://%d", i);
-+          play_tree_add_file(dvd, buf);
-+          play_tree_append_entry(tracks, dvd);
-+        }
-+        i = dvd_title_info(((dvd_priv_t *) s->priv)->dvd,
-+                           ((dvd_priv_t *) s->priv)->vmg_file, 0x0001);
-+        free_stream (s);
-+        
-+        while(play_tree_iter_up_step(mpctx->playtree_iter, 0, 1) != PLAY_TREE_ITER_END);
-+        play_tree_free_list(mpctx->playtree->child, 1);
-+        play_tree_set_child(mpctx->playtree, tracks);
-+        play_tree_iter_down_step(mpctx->playtree_iter, 0, 0);
-+        play_tree_iter_step(mpctx->playtree_iter, i-1, 0);
-+        mpctx->eof = PT_NEXT_SRC;
-+      }
-+    } break;
++              mp_input_queue_cmd (c);
++            }
++            break;
++          }
++          else
++          {
++            char buf[10];
++            play_tree_t *dvd, *tracks;
++            stream_t *s;
++            int nb_tracks, i; 
++            
++            if ((s = open_stream("dvd://", NULL, &i)) == NULL)
++              break;
++            
++            tracks = play_tree_new();
++            play_tree_add_file(tracks, "dvd://1");
++            
++            nb_tracks = ((dvd_priv_t *) s->priv)->vmg_file->tt_srpt->nr_of_srpts;
++            for (i=2; i<=nb_tracks; i++)
++            {
++              dvd = play_tree_new();
++              sprintf(buf, "dvd://%d", i);
++              play_tree_add_file(dvd, buf);
++              play_tree_append_entry(tracks, dvd);
++            }
++            i = dvd_title_info(((dvd_priv_t *) s->priv)->dvd,
++                               ((dvd_priv_t *) s->priv)->vmg_file, 0x0001);
++            free_stream (s);
++            
++            while(play_tree_iter_up_step(mpctx->playtree_iter, 0, 1) != PLAY_TREE_ITER_END);
++            play_tree_free_list(mpctx->playtree->child, 1);
++            play_tree_set_child(mpctx->playtree, tracks);
++            play_tree_iter_down_step(mpctx->playtree_iter, 0, 0);
++            play_tree_iter_step(mpctx->playtree_iter, i-1, 0);
++            mpctx->eof = PT_NEXT_SRC;
++          }
++        } break;
 +#endif
 +#ifdef HAVE_CDDA
-+    case MP_CMD_CDDA_PLAY : {
-+      int get_cdda_tracks_num(char* dev);
-+      char buf[11];
-+      play_tree_t *cdda, *tracks;
-+      int nb_tracks, i; 
-+
-+      nb_tracks = get_cdda_tracks_num (cdrom_device ? cdrom_device : DEFAULT_CDROM_DEVICE);
-+      if (nb_tracks <= 0)
-+        break;
-+
-+      tracks = play_tree_new();
-+      play_tree_add_file(tracks, "cdda://1");
-+
-+      for (i=2; i<=nb_tracks; i++)
-+        {
-+          cdda = play_tree_new();
-+          sprintf(buf, "cdda://%d", i);
-+          play_tree_add_file(cdda, buf);
-+          play_tree_append_entry(tracks, cdda);
-+        }
-+
-+      while(play_tree_iter_up_step(mpctx->playtree_iter, 0, 1) != PLAY_TREE_ITER_END);
-+      play_tree_free_list(mpctx->playtree->child, 1);
-+      play_tree_set_child(mpctx->playtree, tracks);
-+      play_tree_iter_step(mpctx->playtree_iter, 0, 0);
-+      mpctx->eof = PT_NEXT_SRC;
-+    } break;
++        case MP_CMD_CDDA_PLAY : {
++          int get_cdda_tracks_num(char* dev);
++          char buf[11];
++          play_tree_t *cdda, *tracks;
++          int nb_tracks, i; 
++          
++          nb_tracks = get_cdda_tracks_num (cdrom_device ? cdrom_device : DEFAULT_CDROM_DEVICE);
++          if (nb_tracks <= 0)
++            break;
++          
++          tracks = play_tree_new();
++          play_tree_add_file(tracks, "cdda://1");
++          
++          for (i=2; i<=nb_tracks; i++)
++          {
++            cdda = play_tree_new();
++            sprintf(buf, "cdda://%d", i);
++            play_tree_add_file(cdda, buf);
++            play_tree_append_entry(tracks, cdda);
++          }
++          
++          while(play_tree_iter_up_step(mpctx->playtree_iter, 0, 1) != PLAY_TREE_ITER_END);
++          play_tree_free_list(mpctx->playtree->child, 1);
++          play_tree_set_child(mpctx->playtree, tracks);
++          play_tree_iter_step(mpctx->playtree_iter, 0, 0);
++          mpctx->eof = PT_NEXT_SRC;
++        } break;
 +#endif
-+
-     case MP_CMD_SET_OPTION: {
-       extern mconfig;
-       char *option = cmd->args[0].v.s, *value = cmd->args[1].v.s;
++            
+ 	case MP_CMD_PLAY_TREE_STEP:{
+ 		int n = cmd->args[0].v.i;
+ 		int force = cmd->args[1].v.i;
