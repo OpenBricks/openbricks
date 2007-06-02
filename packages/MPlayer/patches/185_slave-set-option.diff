@@ -1,3 +1,7 @@
+Designed to allow setting of string parameters via slave option or menu.
+Could possibly be extended to other options with a variable third argument
+giving the parameter type, and the associated conversion function. Does
+not change the base config file- this should be done externally to MPlayer.
 diff -r 1abf56096b14 input/input.c
 --- a/input/input.c	Sun Apr 30 16:54:45 2006 +0200
 +++ b/input/input.c	Sun Apr 30 16:54:45 2006 +0200
@@ -5,43 +9,32 @@ diff -r 1abf56096b14 input/input.c
    { MP_CMD_GET_TIME_POS, "get_time_pos", 0, { {-1,{0}} } },
    { MP_CMD_GET_TIME_LENGTH, "get_time_length", 0, { {-1,{0}} } },
    { MP_CMD_SWITCH_AUDIO, "switch_audio", 0, { { MP_CMD_ARG_INT,{-1} }, {-1,{0}} } },
-+  { MP_CMD_SET_OPTION, "set_option", 2, { { MP_CMD_ARG_STRING, {0}}, { MP_CMD_ARG_STRING, {0}}, { MP_CMD_ARG_STRING, {0}}, {-1,{0}} } },
++  { MP_CMD_SET_OPTION, "set_option", 2, { { MP_CMD_ARG_STRING, {0}}, { MP_CMD_ARG_STRING, {0}}, {-1,{0}} } },
  #ifdef USE_TV
    { MP_CMD_TV_STEP_CHANNEL, "tv_step_channel", 1,  { { MP_CMD_ARG_INT ,{0}}, {-1,{0}} }},
    { MP_CMD_TV_STEP_NORM, "tv_step_norm",0, { {-1,{0}} }  },
-diff -r 1abf56096b14 input/input.h
---- a/input/input.h	Sun Apr 30 16:54:45 2006 +0200
-+++ b/input/input.h	Sun Apr 30 16:54:45 2006 +0200
-@@ -78,6 +78,8 @@
+--- a/input/input.h	2007-06-02 12:54:50.000000000 +0800
++++ b/input/input.h	2007-06-02 12:52:53.000000000 +0800
+@@ -93,6 +93,7 @@
+ #define MP_CMD_STEP_PROPERTY 91
+ #define MP_CMD_RADIO_STEP_FREQ 92
+ #define MP_CMD_TV_STEP_FREQ 93
++#define MP_CMD_SET_OPTION 94
  
- #define MP_CMD_RECORD 95
- 
-+#define MP_CMD_SET_OPTION 91
-+
  #define MP_CMD_GUI_EVENTS       5000
  #define MP_CMD_GUI_LOADFILE     5001
- #define MP_CMD_GUI_LOADSUBTITLE 5002
-diff -r 1abf56096b14 mplayer.c
---- a/mplayer.c	Sun Apr 30 16:54:45 2006 +0200
-+++ b/mplayer.c	Sun Apr 30 16:54:45 2006 +0200
-@@ -4516,6 +4516,20 @@ if (stream->type==STREAMTYPE_DVDNAV && d
-     case MP_CMD_GRAB_FRAMES : {
-       grab_frames=2;
-     } break;
+--- a/command.c	2007-06-02 12:54:50.000000000 +0800
++++ b/command.c	2007-06-02 12:51:39.000000000 +0800
+@@ -1810,6 +1809,12 @@
+ 	    exit_player_with_rc(MSGTR_Exit_quit,
+ 				(cmd->nargs > 0) ? cmd->args[0].v.i : 0);
+ 
 +    case MP_CMD_SET_OPTION: {
-+      char *option = cmd->args[0].v.s, *value = cmd->args[1].v.s;
-+      m_config_set_option(mconfig, option, value);
-+      if (cmd->nargs==3 && !strcmp(cmd->args[2].v.s, "save")) {
-+        char *buf;
-+        size_t len;
-+        len = strlen(option) + strlen(value) + sizeof("mp_set_option '' ''");
-+        if ((buf = (char*)malloc(len))) {
-+          sprintf(buf, "mp_set_option '%s' '%s'", option, value);
-+          system(buf);
-+          free(buf);
-+        }
-+      }
++        extern mconfig;
++        char *option = cmd->args[0].v.s, *value = cmd->args[1].v.s;
++        m_config_set_option(mconfig, option, value);
 +    } break;
-     case MP_CMD_PLAY_TREE_STEP : {
-       int n = cmd->args[0].v.i;
-       int force = cmd->args[1].v.i;
++
+ 	case MP_CMD_PLAY_TREE_STEP:{
+ 		int n = cmd->args[0].v.i == 0 ? 1 : cmd->args[0].v.i;
+ 		int force = cmd->args[1].v.i;
