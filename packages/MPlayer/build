@@ -4,17 +4,13 @@
 
 $SCRIPTS/build toolchain
 $SCRIPTS/build lirc
-$SCRIPTS/build libogg
-$SCRIPTS/build libvorbis
-$SCRIPTS/build libtheora
-$SCRIPTS/build libdts
-$SCRIPTS/build libmpcdec
 $SCRIPTS/build cdparanoia
 $SCRIPTS/build zlib
 $SCRIPTS/build alsa
 $SCRIPTS/build freetype
 $SCRIPTS/build fribidi
 $SCRIPTS/build iconv-base
+$SCRIPTS/build libdvdnav
 
 setup_toolchain --optimize target
 
@@ -30,6 +26,9 @@ set_option() {
   return 0
 }
 
+EXTRA_LIBDIR="$LIB_PREFIX/lib"
+EXTRA_INCDIR="$LIB_PREFIX/include"
+
 set_option "$DXR3" "dxr3 ossaudio" "em8300"
 set_option "$IVTV" "ivtv pvr" "ivtv"
 set_option "$SDL" "sdl" "SDL"
@@ -38,22 +37,27 @@ set_option "$LIVE555" "live" "live"
 set_option "$FREEVO" "png" "libpng"
 set_option "$XORG" "xv x11 xf86keysym" "xorg-libs"
 
-[ "$DIRECTFB" = yes ] && CFLAGS="$CFLAGS -I$LIB_PREFIX/include/directfb"
+if [ "$DIRECTFB" = yes ]; then
+  EXTRA_INCDIR="$EXTRA_INCDIR -I$LIB_PREFIX/include/directfb"
+  EXTRA_LIBDIR="$EXTRA_LIBDIR -L`ls -d $LIB_PREFIX/lib/directfb*`"
+fi
 [ "$LIVE555" = yes ] && EXTRA_CONFIG="$EXTRA_CONFIG --with-livelibdir=$LIB_PREFIX/live"
 
 if [ "$TARGET_ARCH" = i386 ]; then
   $SCRIPTS/build vesautils
-  ARCH_CONFIG="--enable-win32 \
+  ARCH_CONFIG="--enable-win32dll \
                --enable-real \
-               --with-reallibdir=/codecs \
-               --with-win32libdir=/codecs \
+               --realcodecsdir=/codecs \
+               --win32codecsdir=/codecs \
                --disable-fbdev \
                --enable-vesa"
+  VIDIX_DRV="cyberblade,mach64,mga,nvidia,pm2,pm3,radeon,rage128,unichrome"
 else
-  ARCH_CONFIG="--disable-win32 \
+  ARCH_CONFIG="--disable-win32dll \
                --disable-real \
                --enable-fbdev \
                --disable-vesa"
+  VIDIX_DRV="mach64,radeon,rage128"
 fi
 
 if [ "$DEBUG" = yes ]; then
@@ -67,8 +71,8 @@ CFLAGS="$CFLAGS -ffast-math -DFIXED_POINT -D__USE_EXTERN_INLINES"
 cd $BUILD/$1*
 ./configure --prefix=/usr \
             --confdir=/etc/mplayer \
-            --with-extralibdir="$LIB_PREFIX/lib" \
-            --with-extraincdir="$LIB_PREFIX/include" \
+            --with-extralibdir="$EXTRA_LIBDIR" \
+            --with-extraincdir="$EXTRA_INCDIR" \
             --enable-radio \
             --enable-radio-v4l2 \
             $ARCH_CONFIG \
@@ -91,9 +95,8 @@ cd $BUILD/$1*
             --disable-winsock2 \
             --disable-smb \
             --disable-dvdread \
-            --enable-mpdvdkit \
             --enable-dvdnav \
-            --disable-dvdnav-trace \
+            --with-dvdnav-config="$LIB_PREFIX/bin/dvdnav-config" \
             --enable-cdparanoia \
             --enable-freetype \
             --with-freetype-config="$LIB_PREFIX/bin/freetype-config" \
@@ -117,19 +120,16 @@ cd $BUILD/$1*
             --disable-xanim \
             --disable-xvid \
             --disable-x264 \
-            --enable-libavcodec \
-            --enable-libavformat \
             --disable-demuxer=matroska \
-            --enable-libpostproc \
             --disable-libavcodec_so \
             --disable-libavformat_so \
             --disable-libpostproc_so \
-            --disable-libfame \
             --disable-speex \
             --disable-tremor-internal \
             --disable-tremor-low \
             --disable-tremor-external \
-            --enable-theora \
+            --disable-libvorbis \
+            --disable-theora \
             --disable-faad-external \
             --enable-faad-internal \
             --disable-faac \
@@ -140,13 +140,10 @@ cd $BUILD/$1*
             --disable-xmms \
             --enable-mp3lib \
             --enable-liba52 \
-            --enable-libdts \
             --disable-libmpeg2 \
-            --enable-musepack \
-            --disable-amr_nb \
-            --disable-amr_nb-fixed \
-            --disable-amr_wb \
+            --disable-musepack \
             --enable-vidix-internal \
+            --with-vidix-drivers="$VIDIX_DRV" \
             --disable-vidix-external \
             --disable-gl \
             --disable-dga \
@@ -199,4 +196,3 @@ sed -i 's/.*HAVE_LRINTF.*/#define HAVE_LRINTF 1/' config.h
 sed -i 's/.*HAVE_ROUND.*/#undef HAVE_ROUND/' config.h
 [ "$DEBUG" = yes ] && sed -i 's/.*MP_DEBUG.*/#define MP_DEBUG 1/' config.h
 make
-$STRIP libdha/libdha.so vidix/drivers/*.so
