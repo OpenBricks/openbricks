@@ -41,10 +41,10 @@ SC_TUNE=$(sed -n -e "s#^SHOUTCASTTUNE_URI=\"\(.*\)\"#\1#p" $CONF)
     rm -f $TMP
     wget -q -T $TIMEOUT -t $TRIES -O $TMP `sed -n -e "s#^ICECAST_URI=\"\(.*\)\"#\1#p" $CONF` || echo "" > $TMP
     DIR="$BASEDIR/Icecast Radio"
-    for I in `sed -n -e "s#.*<server_name>\(.*\)</server_name>.*#\1#p" -e "s#.*<listen_url>\(.*\)</listen_url>.*#\1#p" $TMP | sed "s# #_#g"`; do
+    for I in `sed -n -e "s#.*<server_name>\(.*\)</server_name>.*#\1#p" -e "s#.*<listen_url>\(.*\)</listen_url>.*#\1#p" $TMP | sed "s# #%20#g"`; do
       [ ! -d "$DIR" ] && mkdir -p "$DIR"
       [ `echo $I | grep -c -e "://"` -gt 0 ] && URL="$I"
-      [ `echo $I | grep -c -e "://"` -eq 0 ] && FILE="$(echo $I | sed "s#[_/]# #g")"
+      [ `echo $I | grep -c -e "://"` -eq 0 ] && FILE="$(echo $I | sed -e "s#%20# #g" -e "s#/# #g")"
       if [ -n "$FILE" -a -n "$URL" ]; then
         echo "$URL" > "$DIR/$FILE.pls"
         unset FILE URL
@@ -54,14 +54,16 @@ SC_TUNE=$(sed -n -e "s#^SHOUTCASTTUNE_URI=\"\(.*\)\"#\1#p" $CONF)
 
   if [ "$SHOUTCAST" = "yes" ]; then
     # shoutcast radio
-    rm -f $TMP
-    wget -q -T $TIMEOUT -t $TRIES -O $TMP `sed -n -e "s#^SHOUTCAST_URI=\"\(.*\)\"#\1#p" $CONF` || echo "" > $TMP
-    DIR="$BASEDIR/SHOUTcast Radio"
-    for I in `sed "s#\&amp;#\&#g" $TMP |sed -n "s#.*name=\"\([^\"]*\)\".*id=\"\([0-9]*\)\".*#\1_TAG_\2#p"| sed -e "s#\ #_#g"`; do
-      [ ! -d "$DIR" ] && mkdir -p "$DIR"
-      FILE="$(echo $I | sed -e "s#\(.*\)_TAG_[0-9]*#\1#" | sed -e "s#[_/]# #g" -e "s#://##g")"
-      URL="$SC_TUNE?id=$(echo $I | sed -e "s#.*_TAG_\([0-9]*\)#\1#")"
-      echo "$URL" > "$DIR/$FILE.pls"
+    for GENRE in `sed -n -e "s#^SHOUTCAST_GENRE=\"\(.*\)\"#\1#p" $CONF`; do
+      rm -f $TMP
+      wget -q -T $TIMEOUT -t $TRIES -O $TMP `sed -n -e "s#^SHOUTCAST_URI=\"\(.*\)\"#\1$GENRE#p" $CONF` || echo "" > $TMP
+      DIR="$BASEDIR/SHOUTcast Radio/`echo $GENRE | sed -e "s#/#-#g" -e "s#%20# #g" -e "s#%26#&#g"`"
+      for I in `sed "s#\&amp;#\&#g" $TMP |sed -n "s#.*name=\"\([^\"]*\)\".*id=\"\([0-9]*\)\".*#\1_TAG_\2#p"| sed -e "s#\ #_#g"`; do
+        [ ! -d "$DIR" ] && mkdir -p "$DIR"
+        FILE="$(echo $I | sed -e "s#\(.*\)_TAG_[0-9]*#\1#" | sed -e "s#[_/]# #g" -e "s#://##g")"
+        URL="$SC_TUNE?id=$(echo $I | sed -e "s#.*_TAG_\([0-9]*\)#\1#")"
+        echo "$URL" > "$DIR/$FILE.pls"
+      done
     done
   fi
 
@@ -103,8 +105,8 @@ SC_TUNE=$(sed -n -e "s#^SHOUTCASTTUNE_URI=\"\(.*\)\"#\1#p" $CONF)
     M3UURL="$(echo $J | sed "s#^EXTM3U=\"\(.*\)\":.*#\1#")"
     rm -f $TMP
     wget -q -T $TIMEOUT -t $TRIES -O $TMP "$M3UURL" || continue
-    for I in `sed -n -e "s/#EXTINF:[-]*[0-9]*,\(.*\)/\1/p" -e "s#\(.*\)://\(.*\)#\1://\2#p" $TMP | sed "s# #_#g"`; do
-      [ -n "$FILE" ] || FILE="$(echo $I | sed -e "s#[_/]# #g")"
+    for I in `sed -n -e "s/#EXTINF:[-]*[0-9]*,\(.*\)/\1/p" -e "s#\(.*\)://\(.*\)#\1://\2#p" $TMP | sed "s# #%20#g"`; do
+      [ -n "$FILE" ] || FILE="$(echo $I | sed -e "s#%20# #g" -e "s#/# #g")"
       [ -n "$URL" ] || URL="$(echo $I | sed -n -e "s#\(.*\)://\(.*\)#\1://\2#p" | sed -e "s#%DD#$DAY#g" -e "s#%MM#$MONTH#g" -e "s#%YY#$YEAR#g" -e "s#%yy#$year#g")"
       if [ -n "$FILE" -a -n "$URL" ]; then
         [ ! -d "$DIR" ] && mkdir -p "$DIR"

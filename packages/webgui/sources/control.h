@@ -1,0 +1,2 @@
+void printMplayerMenuControl();
+void printMplayerVolumeControl();
