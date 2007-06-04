@@ -71,9 +71,11 @@ const char *printFileIcon(const char *file) {
 const char *printDirIcon(const char *file) {
 	if(strcasestr(file, "cdrom")) {
 		return "cdrom.png";
-	} else if(!strcmp(file, "nfs")) {
+	} else if(strcasestr(file, "shares")) {
+		return "share.png";
+	} else if(strcasestr(file, "nfs")) {
 		return "nfs.png";
-	} else if(!strcmp(file, "Network Streams")) {	
+	} else if(strcasestr(file, "streams")) {	
 		return "stream.png";
 	} else {
 		return "folder.png";
