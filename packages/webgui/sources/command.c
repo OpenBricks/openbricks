@@ -4,6 +4,7 @@
 #include "command.h"
 #define MPLAYER_FIFO "/var/mp_control"
 #define MPLAYER_DIR "/var/mp_current_path"
+#define START_DIR "/mnt"
 #define MAX 512
 
 /* toDo
@@ -85,9 +86,15 @@ void execSystemCmd(const char *cmd) {
 }
 
 
-/* current dir fundtions */
+/* current dir functions */
 const char * getDir() {
-	return getFileContent(MPLAYER_DIR);
+	char *path = getFileContent(MPLAYER_DIR);
+	
+	if(strlen(path) == 0) {
+		return START_DIR;
+	} else {
+		return path;
+	}
 }
 
 void setDir(const char *data) {
