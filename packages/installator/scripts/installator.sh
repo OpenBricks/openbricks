@@ -548,6 +548,14 @@ VESA_DEPTH=`$DIALOG --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Scree
 VESA_MODE=$((784 + VESA_RES*3 + VESA_DEPTH))
 [ $VESA_MODE -ge 796 ] && VESA_MODE=$((VESA_MODE + 1))
 
+title="$BACKTITLE : Menu Language selection"
+
+LANGS=`ls di/GEEXBOX/etc/mplayer/*.lang | sed -e 's$di/GEEXBOX/etc/mplayer/\(.*\).lang$\1$g'`
+for l in $LANGS; do
+  LLANGS="$LLANGS $l $l"
+done
+MENU_LANG=`$DIALOG --no-cancel --stdout --backtitle "$title" --title "Choose Menu Language" --default-item en --menu "Which language do you want to use for the menu ?" 0 0 0 $LLANGS` || exit 1
+
 REMOTES=`ls di/GEEXBOX/etc/lirc/lircrc_* | sed -e 's/.*lircrc_//g'`
 for r in $REMOTES; do
  LREMOTES="$LREMOTES $r $r"
@@ -589,7 +597,7 @@ splashimage="$grubprefix/grub-splash.xpm.gz"
 
 if [ $BOOTLOADER = syslinux ]; then
   cp "di/GEEXBOX/usr/share/ldlinux.sys" di
-  sed -e "s/boot=cdrom/boot=${DEV#/dev/}/" -e "s/vga=$VESA_MODE_OLD/vga=$VESA_MODE/" -e "s/splash=$SPLASH_OLD/splash=$SPLASH/" -e "s/keymap=.*/keymap=$KEYMAP/" di/isolinux.cfg > di/syslinux.cfg
+  sed -e "s/boot=cdrom/boot=${DEV#/dev/}/" -e "s/lang=.*/lang=$MENU_LANG/" -e "s/vga=$VESA_MODE_OLD/vga=$VESA_MODE/" -e "s/splash=$SPLASH_OLD/splash=$SPLASH/" -e "s/keymap=.*/keymap=$KEYMAP/" di/isolinux.cfg > di/syslinux.cfg
   rm di/isolinux.cfg
 elif [ $BOOTLOADER = grub ]; then
   cp $grubdir/stage2 $grubdir/stage2_single
@@ -638,13 +646,13 @@ ${disable_splashimage}splashimage=$rootdev_single$splashimage
 
 title	GeeXboX
 root	$rootdev_single
-kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME splash=$SPLASH vga=$VESA_MODE keymap=$KEYMAP remote=$REMOTE receiver=$RECEIVER video=vesafb:ywrap,mtrr
+kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME lang=$MENU_LANG splash=$SPLASH vga=$VESA_MODE keymap=$KEYMAP remote=$REMOTE receiver=$RECEIVER video=vesafb:ywrap,mtrr
 initrd  /initrd.gz
 boot
 
 title	GeeXboX (debug)
 root	$rootdev_single
-kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME splash=0 vga=$VESA_MODE keymap=$KEYMAP remote=$REMOTE receiver=$RECEIVER video=vesafb:ywrap,mtrr debugging
+kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME lang=$MENU_LANG splash=0 vga=$VESA_MODE keymap=$KEYMAP remote=$REMOTE receiver=$RECEIVER video=vesafb:ywrap,mtrr debugging
 initrd  /initrd.gz
 boot
 EOF
@@ -732,13 +740,13 @@ EOF
   cat >> $grubdir/menu.lst <<EOF
 title	GeeXboX
 root	$rootdev
-kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME splash=$SPLASH vga=$VESA_MODE keymap=$KEYMAP remote=$REMOTE receiver=$RECEIVER video=vesafb:ywrap,mtrr
+kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME lang=$MENU_LANG splash=$SPLASH vga=$VESA_MODE keymap=$KEYMAP remote=$REMOTE receiver=$RECEIVER video=vesafb:ywrap,mtrr
 initrd  /initrd.gz
 boot
 
 title	GeeXboX (debug)
 root	$rootdev
-kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME splash=0 vga=$VESA_MODE keymap=$KEYMAP remote=$REMOTE receiver=$RECEIVER video=vesafb:ywrap,mtrr debugging
+kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME lang=$MENU_LANG splash=0 vga=$VESA_MODE keymap=$KEYMAP remote=$REMOTE receiver=$RECEIVER video=vesafb:ywrap,mtrr debugging
 initrd  /initrd.gz
 boot
 EOF
