@@ -1,3 +1,5 @@
+CFLAGS += -D_GNU_SOURCE
+
 all: webgui
 
 webgui: index.cgi state.cgi
