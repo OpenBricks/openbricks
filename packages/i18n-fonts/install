@@ -11,11 +11,8 @@ mkdir -p $INSTALL/etc
 mkdir -p $INSTALL/usr/share/fonts
 
 SUB_CHARSET=`lang2charset "$SUB_CHARSET"`
-MENU_CHARSET=`lang2charset "$MENU_LANG"`
-MENU_FONT=`lang2font "$MENU_LANG" menu`
 SUB_FONT=`lang2font "$SUB_CHARSET" sub`
 
-echo $MENU_LANG > $INSTALL/etc/lang
 echo $SUB_CHARSET > $INSTALL/etc/subfont
 
 case "$2" in
@@ -33,19 +30,30 @@ case "$2" in
     . $BUILD/theme-$THEME/config
     [ -z "$FONT_CHARSETS" ] && FONT_CHARSETS="iso-8859-1"
 
-    for i in $FONT_CHARSETS; do
-      if [ "$i" = "$MENU_CHARSET" ]; then
-        cp $BUILD/theme-$THEME/*.ttf $INSTALL/usr/share/fonts/themefont.ttf
-        MENU_FONT="themefont.ttf"
-        break
+    for MENU_LANG in $INCLUDED_LANGS; do
+      MENU_CHARSET=`lang2charset "$MENU_LANG"`
+      MENU_FONT=`lang2font "$MENU_LANG" menu`
+
+      for i in $FONT_CHARSETS; do
+        if [ "$i" = "$MENU_CHARSET" ]; then
+          cp $BUILD/theme-$THEME/*.ttf $INSTALL/usr/share/fonts/themefont.ttf
+          MENU_FONT="themefont.ttf"
+          break
+        fi
+      done
+
+      [ -z "$SUB_FONT" -o -z "$MENU_FONT" ] && exit 1
+
+      cp -r $BUILD/$1/$SUB_FONT $INSTALL/usr/share/fonts/
+      if [ "$MENU_FONT" != "themefont.ttf" -a "$MENU_FONT" != "$SUB_FONT" ]; then
+        if [ `grep -c "$MENU_FONT" $PACKAGES/extra-fonts-nonfree/url` -gt 0 ]; then
+          [ "$EXTRAFONTS" = no ] && echo "Language $MENU_LANG requires EXTRAFONTS=yes" && exit 1
+          $SCRIPTS/unpack extra-fonts-nonfree
+          cp -r $BUILD/extra-fonts-nonfree/$MENU_FONT $INSTALL/usr/share/fonts/
+        else
+          cp -r $BUILD/$1/$MENU_FONT $INSTALL/usr/share/fonts/
+        fi
       fi
     done
-
-    [ -z "$SUB_FONT" -o -z "$MENU_FONT" ] && exit 1
-
-    cp -r $BUILD/$1/$SUB_FONT $INSTALL/usr/share/fonts/
-    if [ "$MENU_FONT" != "themefont.ttf" -a "$MENU_FONT" != "$SUB_FONT" ]; then
-      cp -r $BUILD/$1/$MENU_FONT $INSTALL/usr/share/fonts/
-    fi
     ;;
 esac
