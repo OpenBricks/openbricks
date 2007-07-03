@@ -3,7 +3,7 @@ diff -Naur busybox-1.5.0.orig/include/usage.h busybox-1.5.0/include/usage.h
 +++ busybox-1.5.0/include/usage.h	2007-03-23 23:51:21.000000000 +0100
 @@ -3619,7 +3619,8 @@
  #define wget_trivial_usage \
-        "[-c|--continue] [-q|--quiet] [-O|--output-document file]\n" \
+        "[-c|--continue] [-s|--spider] [-q|--quiet] [-O|--output-document file]\n" \
         "		[--header 'header: value'] [-Y|--proxy on/off] [-P DIR]\n" \
 -       "		[-U|--user-agent agent] url"
 +       "		[-U|--user-agent agent] url" \
@@ -57,20 +57,20 @@ diff -Naur busybox-1.5.0.orig/networking/wget.c busybox-1.5.0/networking/wget.c
  	int port;
  	int try = 5;
 @@ -114,6 +132,8 @@
- 	int use_proxy = 1;              /* Use proxies if env vars are set  */
+ 	bool use_proxy = 1;              /* Use proxies if env vars are set  */
  	const char *proxy_flag = "on";  /* Use proxies if env vars are set  */
- 	const char *user_agent = "Wget";/* Content of the "User-Agent" header field */
+ 	const char *user_agent = "Wget";/* "User-Agent" header field        */
 +	const char *timeout = "900";    /* Read Timeout duration (-T) */
 +	char *nr_tries = NULL;          /* Number of retries (-t) */
- 
- 	/*
- 	 * Crack command line.
+ 	static const char * const keywords[] = {
+ 		"content-length", "transfer-encoding", "chunked", "location", NULL
+ 	};
 @@ -127,6 +147,8 @@
- 		WGET_OPT_USER_AGENT = 0x20,
- 		WGET_OPT_PASSIVE    = 0x40,
- 		WGET_OPT_HEADER     = 0x80,
-+		WGET_OPT_TIMEOUT    = 0x100,
-+		WGET_OPT_RETRY      = 0x200,
+ 		WGET_OPT_USER_AGENT = 0x40,
+ 		WGET_OPT_PASSIVE    = 0x80,
+ 		WGET_OPT_HEADER     = 0x100,
++		WGET_OPT_TIMEOUT    = 0x200,
++		WGET_OPT_RETRY      = 0x400,
  	};
  #if ENABLE_FEATURE_WGET_LONG_OPTIONS
  	static const struct option wget_long_options[] = {
@@ -84,11 +84,11 @@ diff -Naur busybox-1.5.0.orig/networking/wget.c busybox-1.5.0/networking/wget.c
  		{ "passive-ftp",      no_argument, NULL, 0xff },
  		{ "header",           required_argument, NULL, 0xfe },
 @@ -144,9 +168,10 @@
- 	applet_long_options = wget_long_options;
  #endif
+ 	/* server.allocated = target.allocated = NULL; */
  	opt_complementary = "-1" USE_FEATURE_WGET_LONG_OPTIONS(":\xfe::");
--	opt = getopt32(argc, argv, "cqO:P:Y:U:",
-+	opt = getopt32(argc, argv, "cqO:P:Y:T:t:U:",
+-	opt = getopt32(argc, argv, "csqO:P:Y:U:",
++	opt = getopt32(argc, argv, "csqO:P:Y:T:t:U:",
  				&fname_out, &dir_prefix,
 -				&proxy_flag, &user_agent
 +				&proxy_flag, &user_agent,
