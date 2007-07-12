@@ -563,9 +563,9 @@ else
     GEEXBOX="$CDROM/GEEXBOX"
   fi
   cp -a "$GEEXBOX" di/GEEXBOX 2>/dev/null
-  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Faster boot- HDD sleepless mode ?" --yesno "\nDo you want to install so that boot times are faster, but boot HDD cannot spin down ?\n" 0 0 && FASTBOOT=yes && echo "" > "di/GEEXBOX/var/fastboot"
+  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Faster boot- HDD sleepless mode ?" --defaultno --yesno "\nDo you want to install so that boot times are faster, but boot HDD cannot spin down ?\n" 0 0 && FASTBOOT=yes && echo "" > "di/GEEXBOX/var/fastboot"
   if [ "$FASTBOOT" = "yes" ]; then
-    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Faster boot- Larger HDD space requirement ?" --yesno "\nDo you want to install so that boot times are faster, but more HDD space is required for installation ?\n" 0 0 && UNCOMPRESS_INSTALL=yes && rm di/GEEXBOX/bin.tar.*
+    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Faster boot- Larger HDD space requirement ?" --defaultno --yesno "\nDo you want to install so that boot times are faster, but more HDD space is required for installation ?\n" 0 0 && UNCOMPRESS_INSTALL=yes && rm di/GEEXBOX/bin.tar.*
     [ "$UNCOMPRESS_INSTALL" = "yes" -a -f "$GEEXBOX/bin.tar.lzma" ] && tar -xaf "$GEEXBOX/bin.tar.lzma" -C di/GEEXBOX
     [ "$UNCOMPRESS_INSTALL" = "yes" -a -f "$GEEXBOX/bin.tar.gz" ] && tar -xzf "$GEEXBOX/bin.tar.gz" -C di/GEEXBOX
   fi
@@ -610,7 +610,7 @@ if [ "$1" = geexbox ]; then
   # Only configure if support for X has been compiled in
   if [ -f /etc/X11/X.cfg ]; then
     USE_XORG=yes # default is to use X if present
-    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Support for HDTV through X.Org ?" --yesno "\nIt appears that this version of GeeXboX has been compiled with support for HDTV through X.Org video server. Remember that X.Org is only useful if you want to display high-resolution movies on a wide display. It doesn't provide TVOut support any longer. Do you want to enable support for HDTV anyhow (regular console will kept being available too) ?\n" 0 0 || USE_XORG=no
+    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Support for HDTV through X.Org ?" --defaultno --yesno "\nIt appears that this version of GeeXboX has been compiled with support for HDTV through X.Org video server. Remember that X.Org is only useful if you want to display high-resolution movies on a wide display. It doesn't provide TVOut support any longer. Do you want to enable support for HDTV anyhow (regular console will kept being available too) ?\n" 0 0 || USE_XORG=no
   fi
 
   if [ "$USE_XORG" = yes ]; then
