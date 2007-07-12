@@ -13,7 +13,7 @@ done
 
 busybox mkdir /ramfs/initrd
 busybox pivot_root /ramfs /ramfs/initrd
-busybox mkdir -p /proc /sys /usr/bin /usr/sbin
+busybox mkdir -p /proc /sys /usr/bin /usr/sbin /usr/lib
 busybox mount -t proc none /proc
 busybox mount -t sysfs none /sys
 busybox --install -s
@@ -33,6 +33,7 @@ progress() {
 
 progress 8000 "setting up ramfs tree"
 mkdir -p /dev
+mkdir -p /lib
 mkdir -p /mnt
 mkdir -p /tmp
 mkdir -p /root
@@ -59,7 +60,7 @@ if test "$BOOT" = nfs; then
   GEEXBOX=/nfs
   mkdir -p $GEEXBOX
   udhcpc -q -H geexbox -n && mount -t nfs -o ro,nolock,nfsvers=2 $NFS $GEEXBOX
-  if [ ! -f "$GEEXBOX/bin.tar.lzma" -a ! -f "$GEEXBOX/bin.tar.gz" ]; then
+  if [ ! -f "$GEEXBOX/bin.tar.lzma" -a ! -f "$GEEXBOX/bin.tar.gz" -a ! -f "$GEEXBOX/usr/bin/mplayer" ]; then
     umount $GEEXBOX
     rmdir $GEEXBOX
     GEEXBOX=
@@ -103,20 +104,21 @@ fi
 
 if test -n "$GEEXBOX" ; then
   progress 25000 "copying system into ram"
-  cp -a "$GEEXBOX/sbin" /
-  progress 27000 "copying system into ram"
   cp -a "$GEEXBOX/etc" /
-  progress 29000 "copying system into ram"
-  cp -a "$GEEXBOX/usr" /
-  progress 30500 "copying system into ram"
+  progress 27000 "copying system into ram"
   cp -a "$GEEXBOX/var" /
+  progress 29000 "copying system into ram"
+  [ "$BOOT" != cdrom -a ! -f /var/fastboot ] && ln -s "$GEEXBOX"/sbin/* /sbin || cp -a "$GEEXBOX/sbin" /
+  progress 30500 "copying system into ram"
+  [ "$BOOT" != cdrom -a ! -f /var/fastboot ] && ln -s "$GEEXBOX/usr/share" /usr/ || cp -a "$GEEXBOX/usr/share" /usr
   progress 31000 "copying system into ram"
   [ -f "$GEEXBOX/bin.tar.lzma" ] && tar xaf "$GEEXBOX/bin.tar.lzma" -C /
   [ -f "$GEEXBOX/bin.tar.gz" ] && tar xzf "$GEEXBOX/bin.tar.gz" -C /
+  [ -f "$GEEXBOX/usr/bin/mplayer" ] && ln -s "$GEEXBOX"/lib/* /lib && ln -s "$GEEXBOX"/usr/bin/* /usr/bin && ln -s "$GEEXBOX"/usr/sbin/* /usr/sbin && ln -s "$GEEXBOX"/usr/lib/* /usr/lib/
   progress 42000 "copying system into ram"
-  cp -a "$GEEXBOX/codecs" /
+  [ "$BOOT" != cdrom -a ! -f /var/fastboot ] && ln -s "$GEEXBOX/codecs" / || cp -a "$GEEXBOX/codecs" /
   progress 45000 "copying system into ram"
-  cp -a "$GEEXBOX/firmwares" /
+  [ "$BOOT" != cdrom -a ! -f /var/fastboot ] && ln -s "$GEEXBOX/firmwares" / || cp -a "$GEEXBOX/firmwares" /
   progress 46000 "copying system into ram"
   INIT=/sbin/init
 else
