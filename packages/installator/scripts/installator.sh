@@ -219,7 +219,7 @@ setup_dvbscan () {
 
     CITY=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "City Selection" --menu "\nBelow is the list of locations from your country with known DVB-T transponders frequencies. If you live in place not present in this list, please contact your DVB provider, asking for your local transponders frequencies and send this information to the LinuxTV (http://www.linuxtv.org/) team. Otherwise, simply choose the town nearest to where you live." 0 0 0 $CITIES`
 
-    $DVBSCAN $SCAN_ARGS $DVB_LIST/$DVB_TYPE/$COUNTRY/$CITY > $CHANNELS_CONF
+    $DVBSCAN $SCAN_ARGS $DVB_LIST/$DVB_TYPE/$COUNTRY/$CITY > $CHANNELS_CONF 2> /dev/null
   elif [ $DVB_TYPE = "dvb-s" ]; then
     for i in `ls $DVB_LIST/$DVB_TYPE`; do
       SATS="$SATS $i ''"
@@ -227,7 +227,7 @@ setup_dvbscan () {
 
     SAT=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "Satellite Selection" --menu "\nBelow is the list of known DVB-S satellite transponders you may be able to be connected to. If you are using another transponder which is not present in this list, please contact your DVB provider, asking for your transponder frequencies and send this information to the LinuxTV (http://www.linuxtv.org/) team. Otherwise, simply choose the one that fits your needs." 0 0 0 $SATS`
 
-    $DVBSCAN $SCAN_ARGS $DVB_LIST/$DVB_TYPE/$SAT > $CHANNELS_CONF
+    $DVBSCAN $SCAN_ARGS $DVB_LIST/$DVB_TYPE/$SAT > $CHANNELS_CONF 2>/dev/null
   elif [ $DVB_TYPE = "dvb-c" ]; then
     for i in `ls $DVB_LIST/$DVB_TYPE`; do
       COUNTRIES="$COUNTRIES $i ''"
@@ -241,7 +241,7 @@ setup_dvbscan () {
 
     CITY=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "City Selection" --menu "\nBelow is the list of locations from your country with known DVB-C transponders frequencies. If you live in place not present in this list, please contact your DVB provider, asking for your local transponders frequencies and send this information to the LinuxTV (http://www.linuxtv.org/) team. Otherwise, simply choose the town nearest to the place you live." 0 0 0 $CITIES`
 
-    $DVBSCAN $SCAN_ARGS $DVB_LIST/$DVB_TYPE/$COUNTRY/$CITY > $CHANNELS_CONF
+    $DVBSCAN $SCAN_ARGS $DVB_LIST/$DVB_TYPE/$COUNTRY/$CITY > $CHANNELS_CONF 2>/dev/null
   elif [ $DVB_TYPE = "atsc" ]; then
     for i in `ls $DVB_LIST/$DVB_TYPE`; do
       ATSC="$ATSC $i ''"
@@ -249,7 +249,7 @@ setup_dvbscan () {
 
     FREQ=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "ATSC Transponder Selection" --menu "\nBelow is the list of known ATSC transponders you may be able to be connected to. If you are using another transponder which is not present in this list, please contact your ATSC provider, asking for your transponder frequencies and send this information to the LinuxTV (http://www.linuxtv.org/) team. Otherwise, simply choose the one that fits your needs." 0 0 0 $ATSC`
 
-    $DVBSCAN $SCAN_ARGS $DVB_LIST/$DVB_TYPE/$FREQ > $CHANNELS_CONF
+    $DVBSCAN $SCAN_ARGS $DVB_LIST/$DVB_TYPE/$FREQ > $CHANNELS_CONF 2>/dev/null
   fi
 
   if [ -s $CHANNELS_CONF ]; then
