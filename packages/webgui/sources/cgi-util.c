@@ -55,9 +55,9 @@ char * cgi_error_strings[CGIERR_NUM_ERRS] = {
 
 
 /* Debugging.  If set, this library will attempt to append debugging
-   information to a file named "debug.txt" in the current directory. */
-
-/* #define DEBUG */
+   information to a file named "debug.txt" in the current directory.
+#define DEBUG
+*/
 
 
 /* Converts hexadecimal to decimal (character): */
@@ -338,11 +338,6 @@ int cgi_init(void)
 						 strlen("name=") +
 						 strlen("name="));
 					  
-					  /* strdup(strstr(cgi_query,
-					     "name=\"") +
-					     6); */
-					  
-					  
 					  /* Truncate after quote: */
 					  
 					  if (strchr(cgi_entries[which_entry].
@@ -393,11 +388,6 @@ int cgi_init(void)
 					strcpy(cgi_entries[which_entry].content_type,
 					       strstr(getenv("CONTENT_TYPE"), "Content-Type: ") +
 					       strlen("Content-Type: "));
-				      
-
-					/* strdup(strstr(cgi_query,
-					   "Content-Type: ") +
-					   14); */
 				      
 				      debug("entry.content_type",
 					    cgi_entries[which_entry].
@@ -478,10 +468,6 @@ int cgi_init(void)
 	  if (buf_tmp == NULL)
 	    {
 	      /* Does the "QUERY_STRING" env. variable not exist!? */
-	      
-	      /* cgi_errno = CGIERR_NULL_QUERY_STRING; */
-	      
-	      /* return(cgi_errno); */
 	      
 	      cl = 0;
 	      cgi_query = malloc(sizeof(char));
@@ -577,9 +563,6 @@ int cgi_init(void)
 		  /* "=" is the end of the name half of a name/value pair: */
 		  
 		  cgi_entries[cgi_num_entries].val = cgi_query + i + 1;
-		  
-		  /*  plustospace(cgi_entries[cgi_num_entries].val);
-		      unescape_url(cgi_entries[cgi_num_entries].val); */
 		  
 		  cgi_num_entries++;
 		  in_name = 0;
@@ -906,10 +889,6 @@ const char * cgi_getnentrystr(const char *field_name, int n)
     }
   else
     {
-      /* printf("CGI-UTIL: \"%s\" ? ", field_name);
-      fgets(buf, 512, stdin);
-      buf[strlen(buf) - 1] = '\0'; */
-      
       return(NULL);
     }
 }

@@ -20,7 +20,7 @@
 + change play_dir to system paramete (print state)
 */
 
-void pringPageHead();
+void printPageHead();
 void printPageFoot();
 void printMenu1(const char *);
 void printMenu2(const char *);
@@ -55,7 +55,7 @@ int main(int argc, char *argv[]) {
 	cmdSystem(cgi_getentrystr("system"));
 	mplayerMenu(cgi_getentrystr("menu"));
 	
-	pringPageHead();
+	printPageHead();
 	printMenu1(cgi_level_1);
 	printMenu2(cgi_level_2);
 	printPageFoot();
@@ -157,27 +157,6 @@ void printMenu2player(const char *l2) {
 		printf("CONTROL");
 	}
 	printf("</td>");
-	/* not now
-	printf("<td> | </td>");
-
-	printf("<td>");
-	if(strcmp(l2, "dvd")) {
-		printf("<a href=\"/cgi-bin/index.cgi?l2=dvd\">DVD</a>");
-	} else {
-		printf("DVD");
-	}
-	printf("</td>");
-	
-	printf("<td> | </td>");
-
-	printf("<td>");
-	if(strcmp(l2, "tv")) {
-		printf("<a href=\"/cgi-bin/index.cgi?l2=tv\">TV</a>");
-	} else {
-		printf("TV");
-	}
-	printf("</td>");
-	*/
 	printf("<td> | </td>");
 	printf("</tr>");
 	printf("</table>");
@@ -227,7 +206,7 @@ void printPagePlayer() {
 	playDir(cgi_play_dir);
 }
 
-void pringPageHead() {
+void printPageHead() {
 	printf("Content-type: text/html\n\n") ;
 
 	printf("<html>\n") ;

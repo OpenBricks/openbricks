@@ -7,7 +7,7 @@
 #define START_DIR "/mnt"
 #define MAX 512
 
-/* toDo
+/* ToDo
 + replace MAX with size of file in execMplayerCmd and execSystemCmd+
 + return (and check) exit status from execMplayerCmd and execSystemCmd
 + play m3u lists
@@ -48,11 +48,9 @@ void playFile(const char *file) {
 void menu(const char *value) {
 	if(value != 0) {
 		char param[20];
-		sprintf(param, "%s", value); 
-		
 		char cmd[MAX] = "menu ";
+		sprintf(param, "%s", value); 
 		strcat(cmd, param);
-		
 		execMplayerCmd(cmd);
 	}
 }
@@ -64,7 +62,6 @@ void playDir(const char *file) {
 		char cmd[MAX] = "playdir '";
 		strcat(cmd, file);
 		strcat(cmd, "'");
-
 		execSystemCmd(cmd);
 	}
 }
