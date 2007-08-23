@@ -9,12 +9,10 @@
 #include "language_en.h"
 #define MENU1_DIR "/tmp/webgui_menu_1"
 #define MENU2_DIR "/tmp/webgui_menu_2"
-#define VERSION "0.00.1"
+#define VERSION "0.00.2"
 
 /* toDo 
 + add to list function
-+ fix printControls function to css
-+ fix html to xhtml
 + fix printMenu1, at first time displays all links
 + change play_file to mplayer parameter (print state)
 + change play_dir to system paramete (print state)
@@ -99,68 +97,40 @@ const char *getLevel2(const char *cgi_param) {
 }
 
 void printMenu1(const char *l1) {
-	printf("<table width=\"100%%\">");
-	printf("<tr>");
-	printf("<td> | </td>");
-	
-	printf("<td>");
+	printf("\t\t<div id=\"menuL1\">\n");
 	if(strcmp(l1, "player")) {
-		printf("<a href=\"/cgi-bin/index.cgi?l1=player\">PLAYER</a>");
+		printf("\t\t\t<a class=\"menuL1Element\" href=\"/cgi-bin/index.cgi?l1=player\">PLAYER</a>\n");
 	} else {
-		printf("PLAYER");
+		printf("\t\t\t<a class=\"menuL1Element\" href=\"#nothing\">PLAYER</a>\n");
 	}
-	printf("</td>");
 	
-	printf("<td> | </td>");
-	
-	printf("<td>");
 	if(strcmp(l1, "system")) {
-		printf("<a href=\"/cgi-bin/index.cgi?l1=system\">SYSTEM</a>");
+		printf("\t\t\t<a class=\"menuL1Element\" href=\"/cgi-bin/index.cgi?l1=system\">SYSTEM</a>\n");
 	} else {
-		printf("SYSTEM");
+		printf("\t\t\t<a class=\"menuL1Element\" href=\"#nothing\">SYSTEM</a>\n");
 	}
-	printf("</td>");
-	
-	printf("<td> | </td>");
-	
-	printf("<td align=\"center\" width=\"99%%\">");
-	printf("<iframe src=\"state.cgi\" name=\"state\" scrolling=\"no\" marginheight=\"0\" marginwidth=\"0\" frameborder=\"0\" width=\"700\" height=\"18\" align=\"center\"></iframe>");
-	printf("</td>");
-	
-	printf("</tr>");
-	printf("</table>");
-	printf("<hr>\n");
+	printf("\t\t</div>\n");
 }
 
 void printMenu2system(const char *l2) {
 }
 
 void printMenu2player(const char *l2) {
-	printf("<table>");
-	printf("<tr>");
-	printf("<td> | </td>");
-	
-	printf("<td>");
+	printf("\t\t<div id=\"menuL2\">\n");
+
 	if(strcmp(l2, "player")) {
-		printf("<a href=\"/cgi-bin/index.cgi?l2=browser\">BROWSER</a>");
+		printf("\t\t\t<a class=\"menuL2Element\" href=\"/cgi-bin/index.cgi?l2=browser\">BROWSER</a>\n");
 	} else {
-		printf("BROWSER");
+		printf("\t\t\t<a class=\"menuL2Element\" href=\"#nothing\">BROWSER</a>\n");
 	}
-	printf("</td>");
 	
-	printf("<td> | </td>");
-	
-	printf("<td>");
 	if(strcmp(l2, "control")) {
-		printf("<a href=\"/cgi-bin/index.cgi?l2=control\">CONTROL</a>");
+		printf("\t\t\t<a class=\"menuL2Element\" href=\"/cgi-bin/index.cgi?l2=control\">CONTROL</a>\n");
 	} else {
-		printf("CONTROL");
+		printf("\t\t\t<a class=\"menuL2Element\" href=\"#nothing\">CONTROL</a>\n");
 	}
-	printf("</td>");
-	printf("<td> | </td>");
-	printf("</tr>");
-	printf("</table>");
-	printf("<hr>\n");
+
+	printf("\t\t</div>\n");
 }
 
 
@@ -170,19 +140,7 @@ void printMenu2(const char *l2) {
 		printPageSystem();
 	} else if(!strcmp(l2, "control")) {
 		printMenu2player(l2);
-		printf("<table width=\"100%%\">");
-		printf("<tr>");
-		printf("<td>");
-		printMplayerVolumeControl();
-		printf("</td>");
-		printf("<td>");
-		printMplayerMenuControl();
-		printf("</td>");
-		printf("<td>");
-		printDVDMenuControl();
-		printf("</td>");
-		printf("</tr>");
-		printf("</table>");
+		printGeexboxWebmote();
 	} else {
 		printMenu2player(l2);
 		printPagePlayer();
@@ -207,18 +165,25 @@ void printPagePlayer() {
 }
 
 void printPageHead() {
-	printf("Content-type: text/html\n\n") ;
-
-	printf("<html>\n") ;
-	printf("<head>\n");
-	printf("	<title>GeexBox Webgui %s</title>\n", VERSION);
-	printf("	<link rel=\"stylesheet\" type=\"text/css\" href=\"/webgui.css\">");
-	printf("</head>\n");
-	printf("<body>\n") ;
+	printf("Content-type: application/xhtml+xml\n\n");
+	printf("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+	printf("<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.1//EN\" \"http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd\">\n");
+	printf("<html xmlns=\"http://www.w3.org/1999/xhtml\"\n");
+     printf("      xml:lang=\"en\" >\n");
+	printf("\t<head>\n");
+	printf("\t\t<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\" />\n");
+	printf("\t\t<title>GeexBox &#8250; WebGui %s</title>\n", VERSION);
+	printf("\t\t<link rel=\"StyleSheet\" href=\"/style/geexbox/style.css\" type=\"text/css\" />\n");
+	printf("\t\t<link rel=\"shortcut icon\" href=\"/style/geexbox/icon.png\" type=\"image/x-icon\" />\n");
+	printf("\t\t<script type=\"text/javascript\" src=\"/js/state.js\"></script>\n");
+	printf("\t</head>\n");
+	printf("\t<body onload=\"getState();\">\n");
+	printf("\t\t<div id=\"headPlayerState\"></div>\n");
+	printf("\t\t<div id=\"head\"><img src=\"/style/geexbox/logo.png\" alt=\"GeexBox WebGui\" /></div>\n");
 }
 
 void printPageFoot() {
-	printf("</body>\n") ;
+	printf("\t</body>\n") ;
 	printf("</html>\n") ;
 }
 

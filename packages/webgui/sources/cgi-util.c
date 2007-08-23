@@ -247,9 +247,6 @@ int cgi_init(void)
 		  return(cgi_errno);
 		}
 	      
-	      /* boundary = strdup(strstr(getenv("CONTENT_TYPE"),
-				       "boundary=") + 9); */
-
               boundary = malloc(strlen(strstr(getenv("CONTENT_TYPE"),
                                 "boundary=")) - strlen("boundary=") + 1);
 

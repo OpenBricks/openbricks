@@ -6,3 +6,4 @@ void printFile(const char *, const char *);
 void printDir(const char *, const char *);
 void printCurrentDirContent(const char *, const char *);
 void printPlayerControls(const char *, const char *);
+void printSeekBar();
