@@ -36,23 +36,24 @@ void printCurrentDir(const char *dir, const char *search) {
 	strcpy(name, dir);
 	c = strtok(name, "/");
 	
+	printf("\t\t\t<div class=\"browserDirHead\">\n");
 	while(c) {
 		p = strcat(path, "/");
 		p = strcat(path, c);
-		printf(" / <a href=\"?dir=%s\">%s</a> \n", p, c);
+		printf("\t\t\t\t / <a href=\"?dir=%s\">%s</a> \n", p, c);
 		c = strtok(NULL,"/");
 	}
 	
 	if(search != NULL) {
-		printf(" / search for '%s'<br>", search);
+		printf("\t\t\t\t / search for '%s'<br />\n", search);
 	} else {
-		printf("<a href=\"?play_dir=%s\"><img src=\"/img/play.png\" title=\"%s\"></a>\n", p, PLAY_DIR);
+		printf("\t\t\t\t<a href=\"?play_dir=%s\">\n\t\t\t\t\t<img src=\"/style/geexbox/icons/play.png\" title=\"%s\" alt=\"Play Directory\" />\n\t\t\t\t</a>\n", p, PLAY_DIR);
 	}
-	printf("<br>\n");
+	printf("\t\t\t</div>\n");
 }
 
 const char *printFileIcon(const char *file) {
-	if(strcasestr(file, ".mp3") || strcasestr(file, ".wav")) {
+	if(strcasestr(file, ".mp3") || strcasestr(file, ".wav") || strcasestr(file, ".ogg") || strcasestr(file, ".flac")) {
 		return "sound.png";
 	} else if(strcasestr(file, ".avi") || strcasestr(file, ".mpg") || strcasestr(file, ".mpeg") || strcasestr(file, ".mpe") || strcasestr(file, ".mov") || strcasestr(file, ".wmv")) {
 		return "video.png";
@@ -89,17 +90,19 @@ void printFile(const char *dir, const char *file) {
 		strcpy(cmd, "mplayer=load '");
 	} 
 	
-	printf("<img src=\"/img/%s\">&nbsp;", printFileIcon(file));
-	printf("%s\n", file);
-	printf("<a href=\"?%s%s/%s'\"><img src=\"/img/play.png\" title=\"%s\"></a>\n", cmd, dir, file, PLAY_FILE);
-	printf("<br>\n");
+	printf("\t\t\t<div class=\"browserDirContent\">\n");
+	printf("\t\t\t\t<img src=\"/style/geexbox/icons/%s\" alt=\"Icon\" />\n", printFileIcon(file));
+	printf("\t\t\t\t%s\n", file);
+	printf("\t\t\t\t<a href=\"?%s%s/%s'\"><img src=\"/style/geexbox/icons/play.png\" title=\"%s\" alt=\"%s\" /></a>\n", cmd, dir, file, PLAY_FILE, PLAY_FILE);
+	printf("\t\t\t</div>\n");
 }
 
 void printDir(const char *dir, const char *file) {
-	printf("<img src=\"/img/%s\">&nbsp;", printDirIcon(file));
-	printf("<a href=\"?dir=%s/%s\">%s</a>\n", dir, file, file);
-	printf("<a href=\"?play_dir=%s/%s\"><img src=\"/img/play.png\" title=\"%s\"></a>\n", dir, file, PLAY_DIR);
-	printf("<br>\n");
+	printf("\t\t\t<div class=\"browserDirContent\">\n");
+	printf("\t\t\t\t<img src=\"/style/geexbox/icons/%s\" alt=\"Icon\"/>\n",printDirIcon(file));
+	printf("\t\t\t\t<a href=\"?dir=%s/%s\">%s</a>\n", dir, file, file);
+	printf("\t\t\t\t<a href=\"?play_dir=%s/%s\"><img src=\"/style/geexbox/icons/play.png\" title=\"%s\" alt=\"%s\" /></a>\n", dir, file, PLAY_DIR, PLAY_DIR);
+	printf("\t\t\t</div>\n");
 }
 
 void printCurrentDirContent(const char *dir, const char *name) {
@@ -145,63 +148,40 @@ void printCurrentDirContent(const char *dir, const char *name) {
 	free(pDirEnt);
 }
 
-void printPlayerControls(const char *play_file, const char *play_dir) {
+void printSeekBar(){
+	printf("\t\t\t<div id=\"seekBar\">\n");
+	printf("\t\t\t\t<a href=\"?mplayer=volume -10\"><img id=\"seekBarButtonVolumeDecrease\" src=\"/style/geexbox/seekBar/volumeDecreaseButton.png\" alt=\"miniWebmote\" /></a>\n");
+	printf("\t\t\t\t<a href=\"?mplayer=volume +10\"><img id=\"seekBarButtonVolumeIncrease\" src=\"/style/geexbox/seekBar/volumeIncreaseButton.png\" alt=\"miniWebmote\" /></a>\n");
+	printf("\t\t\t\t<a href=\"?mplayer=pt_step -1\"><img id=\"seekBarButtonPreviousTrack\" src=\"/style/geexbox/seekBar/previousTrackButton.png\" alt=\"miniWebmote\" /></a>\n");
 	int i;
-	printf("<table width=\"100%%\">");
-	printf("<tr>");
-	
-	/* seek */
-	printf("<td>");
-	printf("<table cellspacing=0 cellpadding=0>");
-	printf("<tr>");
-	printf("<td><a href=\"?mplayer=pt_step -1\" accesskey=\"p\"><img src=\"/img/big/left.png\" title=\"%s\"></a></td>\n", PLAY_PREVIOUS);
 	for(i = 0; i <= 100; i += 2) {
-		printf("<td align=center bgcolor=#EEEEEE><a href=\"?mplayer=seek %d 1\">", i);
-		switch(i) {
-			case 0:
-				printf("[%d", i);
-				break;
-			case 100:
-				printf("%d]", i);
-				break;
-			case 50:
-				printf("%d", i);
-				break;
-			case 10:
-			case 24:
-			case 74:
-			case 36:
-			case 64:
-			case 88:
-				break;
-			case 12:
-			case 26:
-			case 76:
-			case 38:
-			case 62:
-			case 86:
-				printf(":");
-				break;
-			default:
-				printf(".");
+		printf("\t\t\t\t<a href=\"?mplayer=seek %d 1\">", i);
+		if(i == 0 || i == 10 || i == 20 || i == 30 || i == 40 || i == 50 || i == 60 || i == 70 || i == 80 || i == 90 || i == 100) {
+			printf("<img class=\"seekBarSeekField\" id=\"seekBar%d\" src=\"/style/geexbox/seekBar/2.png\" alt=\"Seekbar\" />", i);
 		}
-		printf("</a></td>");
+		else {
+			printf("<img class=\"seekBarSeekField\" id=\"seekBar%d\" src=\"/style/geexbox/seekBar/1.png\" alt=\"Seekbar\" />", i);
+		}
+		printf("</a>\n");
 	}
-	printf("<td><a href=\"?mplayer=pt_step +1\" accesskey=\"n\"><img src=\"/img/big/right.png\" title=\"%s\"></a></td>\n", PLAY_NEXT);
-	printf("<td>&nbsp;</td>");
-	printf("<td><a href=\"?mplayer=pause\"><img src=\"/img/big/pause.png\" title=\"%s\"></a></td>\n", PAUSE);
-	printf("</tr>");
-	printf("</table>");
-	printf("</td>");
+	printf("\t\t\t\t<a href=\"?mplayer=pt_step +1\"><img id=\"seekBarButtonNextTrack\" src=\"/style/geexbox/seekBar/nextTrackButton.png\" alt=\"miniWebmote\" /></a>\n");
+	printf("\t\t\t\t<a href=\"?mplayer=pause\"><img id=\"seekBarButtonPause\" src=\"/style/geexbox/seekBar/pauseButton.png\" alt=\"miniWebmote\" /></a>\n");
+	printf("\t\t\t\t<a href=\"?mplayer=mute\"><img id=\"seekBarButtonMute\" src=\"/style/geexbox/seekBar/muteButton.png\" alt=\"miniWebmote\" /></a>\n");
+	printf("\t\t\t</div>\n");
+}
+
+void printPlayerControls(const char *play_file, const char *play_dir) {
+	printf("\t\t<div id=\"browserBar\">\n");
+	/* print seek */
+	printSeekBar();
 	
 	/* print search */
-	printf("<td align=\"right\">");
-	printf("<form method=\"get\">");
-	printf("<input type=\"image\" src=\"/img/big/search.png\" alt=\"%s\" title=\"%s\">\n", "Search", "Search");
-	printf("<input type=\"text\" name=\"search\" value=\"\">");
-	printf("</form>");
-	printf("</td>");
+	printf("\t\t\t<form id=\"searchBox\" action=\"?\" method=\"get\">\n");
+	printf("\t\t\t\t<fieldset>\n");
+	printf("\t\t\t\t\t<input type=\"image\" id=\"searchBoxButton\" src=\"/style/geexbox/searchBox/searchbutton.png\" alt=\"%s\" title=\"%s\" />\n", "Search", "Search");
+	printf("\t\t\t\t\t<input type=\"text\" id=\"searchBoxTextField\" name=\"search\" value=\"\" />\n");
+	printf("\t\t\t\t</fieldset>\n");
+	printf("\t\t\t</form>\n");
+	printf("\t\t</div>\n");
 	
-	printf("</tr>");
-	printf("</table>");
 }

@@ -1,3 +1,1 @@
-void printDVDMenuControl();
-void printMplayerMenuControl();
-void printMplayerVolumeControl();
+void printGeexboxWebmote();

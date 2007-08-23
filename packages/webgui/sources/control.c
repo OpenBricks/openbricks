@@ -5,55 +5,33 @@
 + volume control on SPDIF ?
 */
 
-void printMplayerMenuControl() {
-	printf("GeexBox Menu");
-	printf("<table>");
-	printf("<tr>");
-	printf("<td><a href=\"?mplayer=menu hide\"><img src=\"/img/big/close.png\" title=\"%s\"></a></td>\n", "Hide menu");
-	printf("<td><a href=\"?mplayer=menu up\"><img src=\"/img/big/up.png\" title=\"%s\"></a></td>\n", "Menu up");
-	printf("<td>&nbsp;</td>");
-	printf("</tr>");
-	printf("<tr>");
-	printf("<td><a href=\"?mplayer=menu cancel\"><img src=\"/img/big/left.png\" title=\"%s\"></a></td>\n", "Menu left");
-	printf("<td><a href=\"?mplayer=menu ok\"><img src=\"/img/big/ok.png\" title=\"%s\"></a></td>\n", "Menu OK");
-	printf("<td><a href=\"?mplayer=menu ok\"><img src=\"/img/big/right.png\" title=\"%s\"></a></td>\n", "Menu right");
-	printf("</tr>");
-	printf("<tr>");
-	printf("<td>&nbsp;</td>");
-	printf("<td><a href=\"?mplayer=menu down\"><img src=\"/img/big/down.png\" title=\"%s\"></a></td>\n", "Menu down");
-	printf("<td>&nbsp;</td>");
-	printf("</tr>");
-	printf("</table>");
-}
-
-void printDVDMenuControl() {
-	printf("DVD Menu");
-	printf("<table>");
-	printf("<tr>");
-	printf("<td><a href=\"?mplayer=dvdnav 5\"><img src=\"/img/big/menu.png\" title=\"%s\"></a></td>\n", "View menu");
-	printf("<td><a href=\"?mplayer=dvdnav 1\"><img src=\"/img/big/up.png\" title=\"%s\"></a></td>\n", "Up");
-	printf("<td>&nbsp;</td>");
-	printf("</tr>");
-	printf("<tr>");
-	printf("<td><a href=\"?mplayer=dvdnav 3\"><img src=\"/img/big/left.png\" title=\"%s\"></a></td>\n", "Left");
-	printf("<td><a href=\"?mplayer=dvdnav 6\"><img src=\"/img/big/ok.png\" title=\"%s\"></a></td>\n", "OK");
-	printf("<td><a href=\"?mplayer=dvdnav 4\"><img src=\"/img/big/right.png\" title=\"%s\"></a></td>\n", "Right");
-	printf("</tr>");
-	printf("<tr>");
-	printf("<td>&nbsp;</td>");
-	printf("<td><a href=\"?mplayer=dvdnav 2\"><img src=\"/img/big/down.png\" title=\"%s\"></a></td>\n", "Down");
-	printf("<td>&nbsp;</td>");
-	printf("</tr>");
-	printf("</table>");
-}
-
-void printMplayerVolumeControl() {
-	printf("Volume");
-	printf("<table>");
-	printf("<tr>");
-	printf("<td><a href=\"?mplayer=volume -10\"><img src=\"/img/remove.png\" title=\"%s\"></a></td>\n", "Volume -10%");
-	printf("<td><a href=\"?mplayer=mute\"><img src=\"/img/big/volume_mute.png\" title=\"%s\"></a></td>\n", "Mute");
-	printf("<td><a href=\"?mplayer=volume +10\"><img src=\"/img/add.png\" title=\"%s\"></a></td>\n", "Volume +10%");
-	printf("</tr>");
-	printf("</table>");	
+void printGeexboxWebmote(){
+	printf("\t\t<div id=\"webmoteControl\">\n");
+	printf("\t\t\t<a href=\"?mplayer=play\"><img id=\"webmoteControlButtonPlay\" src=\"/style/geexbox/webmote/playButton.png\" alt=\"Geexbox Webmote Control\" /></a>\n");
+	printf("\t\t\t<a href=\"?mplayer=pause\"><img id=\"webmoteControlButtonPause\" src=\"/style/geexbox/webmote/pauseButton.png\" alt=\"Geexbox Webmote Control\" /></a>\n");
+	printf("\t\t\t<a href=\"?mplayer=quit\"><img id=\"webmoteControlButtonStop\" src=\"/style/geexbox/webmote/stopButton.png\" alt=\"Geexbox Webmote Control\" /></a>\n");
+	printf("\t\t\t<a href=\"?mplayer=menu toggle\"><img id=\"webmoteControlButtonMenu\" src=\"/style/geexbox/webmote/menuButton.png\" alt=\"Geexbox Webmote Control\" /></a>\n");
+	printf("\t\t\t<a href=\"?mplayer=pt_step -1\"><img id=\"webmoteControlButtonPreviousTrack\" src=\"/style/geexbox/webmote/previousTrackButton.png\" alt=\"Geexbox Webmote Control\" /></a>\n");
+	printf("\t\t\t<a href=\"?mplayer=pt_step +1\"><img id=\"webmoteControlButtonNextTrack\" src=\"/style/geexbox/webmote/nextTrackButton.png\" alt=\"Geexbox Webmote Control\" /></a>\n");
+	printf("\t\t\t<a href=\"?mplayer=volume -10\"><img id=\"webmoteControlButtonVolumeDecrease\" src=\"/style/geexbox/webmote/volumeDecreaseButton.png\" alt=\"Geexbox Webmote Control\" /></a>\n");
+	printf("\t\t\t<a href=\"?mplayer=volume +10\"><img id=\"webmoteControlButtonVolumeIncrease\" src=\"/style/geexbox/webmote/volumeIncreaseButton.png\" alt=\"Geexbox Webmote Control\" /></a>\n");
+	printf("\t\t\t<a href=\"?mplayer=mute\"><img id=\"webmoteControlButtonMute\" src=\"/style/geexbox/webmote/muteButton.png\" alt=\"Geexbox Webmote Control\" /></a>\n");
+	printf("\t\t\t<a href=\"?mplayer=menu up\"><img id=\"webmoteControlButtonMenuUp\" src=\"/style/geexbox/webmote/menuButtonUp.png\" alt=\"Geexbox Webmote Control\" /></a>\n");
+	printf("\t\t\t<a href=\"?mplayer=menu down\"><img id=\"webmoteControlButtonMenuDown\" src=\"/style/geexbox/webmote/menuButtonDown.png\" alt=\"Geexbox Webmote Control\" /></a>\n");
+	printf("\t\t\t<a href=\"?mplayer=menu cancel\"><img id=\"webmoteControlButtonMenuLeft\" src=\"/style/geexbox/webmote/menuButtonLeft.png\" alt=\"Geexbox Webmote Control\" /></a>\n");
+	printf("\t\t\t<a href=\"?mplayer=menu ok\"><img id=\"webmoteControlButtonMenuRight\" src=\"/style/geexbox/webmote/menuButtonRight.png\" alt=\"Geexbox Webmote Control\" /></a>\n");
+	printf("\t\t\t<a href=\"?mplayer=menu ok\"><img id=\"webmoteControlButtonMenuSelect\" src=\"/style/geexbox/webmote/menuButtonSelect.png\" alt=\"Geexbox Webmote Control\" /></a>\n");
+	printf("\t\t\t<a href=\"?mplayer=seek -10\"><img id=\"webmoteControlButtonSeekBack\" src=\"/style/geexbox/webmote/seekBackwardButton.png\" alt=\"Geexbox Webmote Control\" /></a>\n");
+	printf("\t\t\t<a href=\"?mplayer=seek -60\"><img id=\"webmoteControlButtonSeekBackFast\" src=\"/style/geexbox/webmote/seekFastBackwardButton.png\" alt=\"Geexbox Webmote Control\" /></a>\n");
+	printf("\t\t\t<a href=\"?mplayer=seek +60\"><img id=\"webmoteControlButtonSeekFastForward\" src=\"/style/geexbox/webmote/seekFastForwardButton.png\" alt=\"Geexbox Webmote Control\" /></a>\n");
+	printf("\t\t\t<a href=\"?mplayer=seek +10\"><img id=\"webmoteControlButtonSeekForward\" src=\"/style/geexbox/webmote/seekForwardButton.png\" alt=\"Geexbox Webmote Control\" /></a>\n");
+	printf("\t\t\t<a href=\"?mplayer=dvdnav 1\"><img id=\"webmoteControlButtonDvdnavUp\" src=\"/style/geexbox/webmote/menuButtonUp.png\" alt=\"Geexbox Webmote Control\" /></a>\n");
+	printf("\t\t\t<a href=\"?mplayer=dvdnav 2\"><img id=\"webmoteControlButtonDvdnavDown\" src=\"/style/geexbox/webmote/menuButtonDown.png\" alt=\"Geexbox Webmote Control\" /></a>\n");
+	printf("\t\t\t<a href=\"?mplayer=dvdnav 3\"><img id=\"webmoteControlButtonDvdnavLeft\" src=\"/style/geexbox/webmote/menuButtonLeft.png\" alt=\"Geexbox Webmote Control\" /></a>\n");
+	printf("\t\t\t<a href=\"?mplayer=dvdnav 4\"><img id=\"webmoteControlButtonDvdnavRight\" src=\"/style/geexbox/webmote/menuButtonRight.png\" alt=\"Geexbox Webmote Control\" /></a>\n");
+	printf("\t\t\t<a href=\"?mplayer=dvdnav 5\"><img id=\"webmoteControlButtonDvdnavSelect\" src=\"/style/geexbox/webmote/menuButtonSelect.png\" alt=\"Geexbox Webmote Control\" /></a>\n");
+	printf("\t\t\t<a href=\"?mplayer=dvdnav 6\"><img id=\"webmoteControlButtonDvdnavMenu\" src=\"/style/geexbox/webmote/menuButtonDvd.png\" alt=\"Geexbox Webmote Control\" /></a>\n");
+	printf("\t\t\t<a href=\"?mplayer=set_menu aspect\"><img id=\"webmoteControlAspectRatioButton\" src=\"/style/geexbox/webmote/aspectRatioButton.png\" alt=\"Geexbox Webmote Control\" /></a>\n");
+	printf("<img id=\"webmoteControlMarkerDvd\" src=\"/style/geexbox/webmote/dvdMarker.png\" alt=\"Geexbox Webmote Control\" />\n");
+	printf("\t\t</div>\n");
 }
