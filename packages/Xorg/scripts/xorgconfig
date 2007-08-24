@@ -9,8 +9,13 @@ CFG_FILE=/etc/X11/xorg.conf
 DEFAULT_CFG_FILE=/etc/X11/xorg.default
 RESOLUTIONS_FILE=/etc/X11/resolutions
 HAVE_EDID=0
+HAVE_DDC=0
 EDID_DATA=/tmp/edid-data
 EDID_XORG=/tmp/edid-xorg
+DDC_DATA=/tmp/ddc-data
+DDC_RESOLUTIONS=/tmp/ddc-resolutions
+DDC_MODELINES=/tmp/ddc-modelines
+DDC_MONITOR=/tmp/ddc-monitor
 MODES=/tmp/modes
 MONITOR_ID="Generic Monitor"
 DRV=${XORG_DRIVER}
@@ -18,8 +23,12 @@ DRV=${XORG_DRIVER}
 read_edid () {
   get-edid 2>/dev/null > $EDID_DATA
   if [ "$?" = 0 ]; then
-    HAVE_EDID=1
     parse-edid < $EDID_DATA 2>/dev/null > $EDID_XORG
+    if [ "$?" != 0 ]; then
+      # no monitor info can be found
+      sed -i 's%::CUSTOM_MONITOR::%%' $CFG_FILE
+    fi
+    HAVE_EDID=1
     # force disabling DPMS 
     sed -i 's%.*# DPMS .*%      Option "DPMS" "false"%' $EDID_XORG
     CNT=`grep -n ::CUSTOM_MONITOR:: $DEFAULT_CFG_FILE | sed 's%\([0-9]*\).*%\1%'`
@@ -35,6 +44,44 @@ read_edid () {
   sed -i "s%::MONITOR_ID::%${MONITOR_ID}%" $CFG_FILE
 }
 
+ddc_probe () {
+  [ "$HAVE_EDID" = 1 ] && return # already well configured
+  ddcprobe 2>/dev/null > $DDC_DATA
+  if [ "$?" = 0 ]; then
+    cat $DDC_DATA | grep -q noedid && return # No EDID info can be found
+    HAVE_DDC=1
+    HORIZSYNC="`cat $DDC_DATA | grep monitorrange | sed 's%monitorrange: \(.*\),.*%\1%'`"
+    VERTREFRESH="`cat $DDC_DATA | grep monitorrange | sed 's%monitorrange:.*, \(.*\)%\1%'`"
+    MONITORNAME="`cat $DDC_DATA | grep monitorname | sed 's%monitorname: \(.*\)%\1%'`"
+    grep dtiming $DDC_DATA | sed 's%dtiming: %%' | sort -r > $DDC_RESOLUTIONS
+    rm -f $DDC_MODELINES
+    for i in `cat $DDC_RESOLUTIONS`; do
+      DDC_WIDTH=`echo $i | sed 's%\(.*\)x.*%\1%`
+      DDC_HEIGHT=`echo $i | sed 's%.*x\(.*\)@.*%\1%`
+      DDC_FREQ=`echo $i | sed 's%.*@\(.*\)%\1%`
+      gtf $DDC_WIDTH $DDC_HEIGHT $DDC_FREQ >> $DDC_MODELINES
+    done
+
+    # now write custom monitor
+    echo "Section \"Monitor\"" > $DDC_MONITOR
+    echo -e "\tIdentifier\t\"$MONITORNAME\"" >> $DDC_MONITOR
+    echo -e "\tOption\t\"DPMS\"\t\"false\"" >> $DDC_MONITOR
+    echo -e "\tOption\t\"IgnoreEDID\"\t\"true\"" >> $DDC_MONITOR
+    echo -e "\tHorizSync\t${HORIZSYNC}" >> $DDC_MONITOR
+    echo -e "\tVertRefresh\t${VERTREFRESH}" >> $DDC_MONITOR
+    cat $DDC_MODELINES >> $DDC_MONITOR
+    echo "EndSection" >> $DDC_MONITOR
+
+    # and write xorg.conf file
+    CNT=`grep -n ::CUSTOM_MONITOR:: $DEFAULT_CFG_FILE | sed 's%\([0-9]*\).*%\1%'`
+    TOTAL=`cat $DEFAULT_CFG_FILE | wc -l`
+    head -n $((${CNT}-1)) $DEFAULT_CFG_FILE > $CFG_FILE
+    cat $DDC_MONITOR >> $CFG_FILE 
+    tail -n $(($TOTAL-$CNT)) $DEFAULT_CFG_FILE >> $CFG_FILE
+    sed -i "s%::MONITOR_ID::%${MONITORNAME}%" $CFG_FILE
+  fi
+}
+
 configure_device () {
   if [ $XORG_DRIVER = "auto" ]; then
     # Start X server in probe mode to find the best GPU driver
@@ -45,7 +92,7 @@ configure_device () {
 }
 
 configure_monitor () {
-  if [ "$HAVE_EDID" = 1 ]; then
+  if [ "$HAVE_EDID" = 1 -o "$HAVE_DDC" = 1 ]; then
     # monitor has already been configured
     sed -i "s%.*HorizSync.*::HS::%%" $CFG_FILE
     sed -i "s%.*VertRefresh.*::VR::%%" $CFG_FILE
@@ -93,6 +140,11 @@ configure_screen () {
     for r in `cat $MODES`; do
       MODELINES="$MODELINES \"$r\""
     done
+  elif [ "$HAVE_DDC" = 1 ]; then
+    cat $DDC_MODELINES | grep "Modeline\ " | sed 's%.*"\(.*\)".*%\1%' > $MODES
+    for r in `cat $MODES`; do
+      MODELINES="$MODELINES \"$r\""
+    done
   elif [ "$XORG_RESX" != "auto" -a "$XORG_RESY" != "auto" ]; then
     if [ "$XORG_RATE" != "auto" ]; then
       MODE_NAME=`gtf $XORG_RESX $XORG_RESY $XORG_RATE | grep Modeline | sed 's%.*"\(.*\)".*%\1%'`
@@ -123,6 +175,8 @@ if [ ! -f $CFG_FILE ]; then
   if [ "$XORG_RESX" = "auto" -o "$XORG_RESY" = "auto" ]; then
     # try to get/set the best resolution suited for the monitor using EDID
     read_edid
+    # as a fallback we may get EDID through ddcprobe
+    ddc_probe
   else
     sed -i 's%::CUSTOM_MONITOR::%%' $CFG_FILE
     sed -i "s%::MONITOR_ID::%${MONITOR_ID}%" $CFG_FILE
