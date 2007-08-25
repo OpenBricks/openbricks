@@ -20,67 +20,87 @@ MODES=/tmp/modes
 MONITOR_ID="Generic Monitor"
 DRV=${XORG_DRIVER}
 
-read_edid () {
-  get-edid 2>/dev/null > $EDID_DATA
-  if [ "$?" = 0 ]; then
-    parse-edid < $EDID_DATA 2>/dev/null > $EDID_XORG
-    if [ "$?" != 0 ]; then
-      # no monitor info can be found
-      sed -i 's%::CUSTOM_MONITOR::%%' $CFG_FILE
-      return;
-    fi
-    HAVE_EDID=1
-    # force disabling DPMS 
-    sed -i 's%.*# DPMS .*%      Option "DPMS" "false"%' $EDID_XORG
-    CNT=`grep -n ::CUSTOM_MONITOR:: $DEFAULT_CFG_FILE | sed 's%\([0-9]*\).*%\1%'`
-    TOTAL=`cat $DEFAULT_CFG_FILE | wc -l`
-    head -n $((${CNT}-1)) $DEFAULT_CFG_FILE > $CFG_FILE
-    cat $EDID_XORG >> $CFG_FILE
-    tail -n $(($TOTAL-$CNT)) $DEFAULT_CFG_FILE >> $CFG_FILE
-    MONITOR_ID=`grep Identifier $EDID_XORG | sed 's%.*"\(.*\)".*%\1%'`
-  else
-     # no monitor info can be found
-     sed -i 's%::CUSTOM_MONITOR::%%' $CFG_FILE
-  fi
+set_monitor () {
+  # set monitor identifier
   sed -i "s%::MONITOR_ID::%${MONITOR_ID}%" $CFG_FILE
 }
 
+no_monitor_info () {
+  # no monitor info can be found
+  sed -i 's%::CUSTOM_MONITOR::%%' $CFG_FILE
+}
+
+add_custom_monitor () {
+  # declare custom monitor settings in config file
+  CNT=`grep -n ::CUSTOM_MONITOR:: $DEFAULT_CFG_FILE | sed 's%\([0-9]*\).*%\1%'`
+  TOTAL=`cat $DEFAULT_CFG_FILE | wc -l`
+  head -n $((${CNT}-1)) $DEFAULT_CFG_FILE > $CFG_FILE
+  cat $1 >> $CFG_FILE
+  tail -n $(($TOTAL-$CNT)) $DEFAULT_CFG_FILE >> $CFG_FILE
+}
+
+read_edid () {
+  # get EDID info
+  get-edid 2>/dev/null > $EDID_DATA
+  [ "$?" != 0 ] && return
+
+  # read EDID info: check for valid ones
+  parse-edid < $EDID_DATA 2>/dev/null > $EDID_XORG
+  [ "$?" != 0 ] && return
+
+  # valid EDID info
+  HAVE_EDID=1
+
+  # force disabling DPMS 
+  sed -i 's%.*# DPMS .*%      Option "DPMS" "false"%' $EDID_XORG
+
+  # declare new monitor settings in config file
+  add_custom_monitor "$EDID_XORG"
+
+  # tell X.Org to use custom monitor
+  MONITOR_ID=`grep Identifier $EDID_XORG | sed 's%.*"\(.*\)".*%\1%'`
+}
+
+ddc_write_monitor () {
+  echo "Section \"Monitor\"" > $DDC_MONITOR
+  echo -e "\tIdentifier\t\"$MONITOR_ID\"" >> $DDC_MONITOR
+  echo -e "\tOption\t\"DPMS\"\t\"false\"" >> $DDC_MONITOR
+  echo -e "\tOption\t\"IgnoreEDID\"\t\"true\"" >> $DDC_MONITOR
+  echo -e "\tHorizSync\t${HORIZSYNC}" >> $DDC_MONITOR
+  echo -e "\tVertRefresh\t${VERTREFRESH}" >> $DDC_MONITOR
+  cat $DDC_MODELINES >> $DDC_MONITOR
+  echo "EndSection" >> $DDC_MONITOR
+}
+
 ddc_probe () {
-  [ "$HAVE_EDID" = 1 ] && return # already well configured
   ddcprobe 2>/dev/null > $DDC_DATA
-  if [ "$?" = 0 ]; then
-    cat $DDC_DATA | grep -q noedid && return # No EDID info can be found
-    HAVE_DDC=1
-    HORIZSYNC="`cat $DDC_DATA | grep monitorrange | sed 's%monitorrange: \(.*\),.*%\1%'`"
-    VERTREFRESH="`cat $DDC_DATA | grep monitorrange | sed 's%monitorrange:.*, \(.*\)%\1%'`"
-    MONITORNAME="`cat $DDC_DATA | grep monitorname | sed 's%monitorname: \(.*\)%\1%'`"
-    grep dtiming $DDC_DATA | sed 's%dtiming: %%' | sort -r > $DDC_RESOLUTIONS
-    rm -f $DDC_MODELINES
-    for i in `cat $DDC_RESOLUTIONS`; do
-      DDC_WIDTH=`echo $i | sed 's%\(.*\)x.*%\1%`
-      DDC_HEIGHT=`echo $i | sed 's%.*x\(.*\)@.*%\1%`
-      DDC_FREQ=`echo $i | sed 's%.*@\(.*\)%\1%`
-      gtf $DDC_WIDTH $DDC_HEIGHT $DDC_FREQ >> $DDC_MODELINES
-    done
+  [ "$?" != 0 ] && return
 
-    # now write custom monitor
-    echo "Section \"Monitor\"" > $DDC_MONITOR
-    echo -e "\tIdentifier\t\"$MONITORNAME\"" >> $DDC_MONITOR
-    echo -e "\tOption\t\"DPMS\"\t\"false\"" >> $DDC_MONITOR
-    echo -e "\tOption\t\"IgnoreEDID\"\t\"true\"" >> $DDC_MONITOR
-    echo -e "\tHorizSync\t${HORIZSYNC}" >> $DDC_MONITOR
-    echo -e "\tVertRefresh\t${VERTREFRESH}" >> $DDC_MONITOR
-    cat $DDC_MODELINES >> $DDC_MONITOR
-    echo "EndSection" >> $DDC_MONITOR
+  # check if ddcprobe has found valid EDID info
+  cat $DDC_DATA | grep -q noedid && return
 
-    # and write xorg.conf file
-    CNT=`grep -n ::CUSTOM_MONITOR:: $DEFAULT_CFG_FILE | sed 's%\([0-9]*\).*%\1%'`
-    TOTAL=`cat $DEFAULT_CFG_FILE | wc -l`
-    head -n $((${CNT}-1)) $DEFAULT_CFG_FILE > $CFG_FILE
-    cat $DDC_MONITOR >> $CFG_FILE 
-    tail -n $(($TOTAL-$CNT)) $DEFAULT_CFG_FILE >> $CFG_FILE
-    sed -i "s%::MONITOR_ID::%${MONITORNAME}%" $CFG_FILE
-  fi
+  HAVE_DDC=1
+  HORIZSYNC="`cat $DDC_DATA | grep monitorrange | sed 's%monitorrange: \(.*\),.*%\1%'`"
+  VERTREFRESH="`cat $DDC_DATA | grep monitorrange | sed 's%monitorrange:.*, \(.*\)%\1%'`"
+  MONITOR_ID="`cat $DDC_DATA | grep monitorname | sed 's%monitorname: \(.*\)%\1%'`"
+
+  # find monitor supported resolutions
+  grep dtiming $DDC_DATA | sed 's%dtiming: %%' | sort -r > $DDC_RESOLUTIONS
+
+  # create corresponding modelines
+  rm -f $DDC_MODELINES
+  for i in `cat $DDC_RESOLUTIONS`; do
+    DDC_WIDTH=`echo $i | sed 's%\(.*\)x.*%\1%`
+    DDC_HEIGHT=`echo $i | sed 's%.*x\(.*\)@.*%\1%`
+    DDC_FREQ=`echo $i | sed 's%.*@\(.*\)%\1%`
+    gtf $DDC_WIDTH $DDC_HEIGHT $DDC_FREQ >> $DDC_MODELINES
+  done
+
+  # now write custom monitor
+  ddc_write_monitor
+
+  # and write xorg.conf file
+  add_custom_monitor "$DDC_MONITOR"
 }
 
 configure_device () {
@@ -93,6 +113,7 @@ configure_device () {
 }
 
 configure_monitor () {
+  set_monitor
   if [ "$HAVE_EDID" = 1 -o "$HAVE_DDC" = 1 ]; then
     # monitor has already been configured
     sed -i "s%.*HorizSync.*::HS::%%" $CFG_FILE
@@ -177,10 +198,11 @@ if [ ! -f $CFG_FILE ]; then
     # try to get/set the best resolution suited for the monitor using EDID
     read_edid
     # as a fallback we may get EDID through ddcprobe
-    ddc_probe
+    [ "$HAVE_EDID" = 0 ] && ddc_probe
+    # both autoconfiguration methods failed: remove monitor info
+    [ "$HAVE_EDID" = 0 -a "$HAVE_DDC" = 0 ] && no_monitor_info
   else
-    sed -i 's%::CUSTOM_MONITOR::%%' $CFG_FILE
-    sed -i "s%::MONITOR_ID::%${MONITOR_ID}%" $CFG_FILE
+    no_monitor_info
   fi
 
   configure_device
