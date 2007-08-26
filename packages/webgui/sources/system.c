@@ -35,6 +35,9 @@ void printPlayerState() {
 	FILE *ptr;
 
 	ptr = fopen("/tmp/mp_streaminfo","r");
+	if (!ptr)
+		return;
+
 	fgets(data, MAX, ptr);
 	
 	x = strchr(data, '=')+1;
