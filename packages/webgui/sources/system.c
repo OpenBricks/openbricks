@@ -16,6 +16,8 @@ void printGeexboxControls() {
 	FILE *ptr;
 
 	ptr = fopen("/proc/asound/pcm","r");
+	if (!ptr)
+		return;
 
 	printf("\t\t<div id=\"geexboxControls\">\n");
 	printf("\t\t\t<a id=\"geexboxControlsTvSwitch\" href=\"?system=/usr/bin/tvswitch\"><img src=\"/style/geexbox/icons/tv.png\" title=\"%s\" alt=\"TV-out Switch\" /></a>\n", "Switch TV-Out");
