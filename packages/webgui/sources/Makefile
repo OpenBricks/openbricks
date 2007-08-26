@@ -1,5 +1,5 @@
 CFLAGS += -D_GNU_SOURCE
-LDFLAGS += -j1
+MAKEFLAGS += -j1
 
 all: webgui
 
