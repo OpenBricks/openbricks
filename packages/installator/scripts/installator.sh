@@ -325,10 +325,6 @@ setup_xorg () {
   cp /etc/X11/xorg.conf $1/etc/X11/ # save back new xorg.conf to HDD
 }
 
-/bin/busybox mount -t proc none /proc
-/bin/busybox mount -t sysfs none /sys
-/bin/busybox --install -s
-
 if [ "$1" = geexbox ]; then
   DIALOG=/usr/bin/dialog
   CFDISK=/usr/bin/cfdisk
