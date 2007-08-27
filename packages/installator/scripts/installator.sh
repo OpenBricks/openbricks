@@ -264,7 +264,6 @@ setup_xorg () {
   XORG_CONFIG=/usr/bin/xorgconfig
 
   TITLE="$BACKTITLE : X.Org Video Server Configuration"
-  RESOLUTION_FILE="$1/etc/X11/resolutions"
   DRIVERS_FILE="$1/etc/X11/drivers"
   USER_RESOLUTION_LABEL="custom"
   USER_RESOLUTION_AUTO="auto"
@@ -274,22 +273,12 @@ setup_xorg () {
   # retrieve current X settings
   . $X_CFG
 
-  RESOLUTIONS="$USER_RESOLUTION_AUTO ''"
-  for i in `cat $RESOLUTION_FILE`; do
-    RESOLUTIONS="$RESOLUTIONS $i ''"
-  done
-  RESOLUTIONS="$RESOLUTIONS $USER_RESOLUTION_LABEL ''"
-
-  RES=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "Prefered display resolution" --menu "\nPlease choose one of the resolutions in the list below. You can also keep it to automatic, in order for X.Org to set the best suited resolution for your monitor." 0 0 0 $RESOLUTIONS`
-
-  if [ "$RES" = "$USER_RESOLUTION_LABEL" ]; then
-    OLD_RES=auto
-    if [ "$XORG_RESX" != auto -a "$XORG_RESY" != auto ]; then
-      OLD_RES="${XORG_RESX}x${XORG_RESY}"
-    fi
-  
-    RES=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "User defined custom resolution" --inputbox "\nPlease enter the resolution you want X.Org to use for your display. It has to be under the form of \"width x height\" (in pixels) such as 1360x768, 1024x768 ...\n" 0 0 $OLD_RES`
+  OLD_RES=auto
+  if [ "$XORG_RESX" != auto -a "$XORG_RESY" != auto ]; then
+    OLD_RES="${XORG_RESX}x${XORG_RESY}"
   fi
+  
+  RES=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "User defined custom resolution" --inputbox "\nPlease enter the resolution you want X.Org to use for your display. It has to be under the form of \"width x height\" (in pixels) such as 1360x768, 1024x768 ...\n" 0 0 $OLD_RES`
 
   if [ "$RES" = "$USER_RESOLUTION_AUTO" ]; then
     NEW_RESX="auto"
