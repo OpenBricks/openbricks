@@ -22,7 +22,7 @@ diff -Naur MPlayer-r23358.orig/libmenu/Makefile MPlayer-r23358/libmenu/Makefile
 diff -Naur MPlayer-r23358.orig/libmenu/menu.c MPlayer-r23358/libmenu/menu.c
 --- MPlayer-r23358.orig/libmenu/menu.c	2007-05-25 17:57:54.000000000 +0200
 +++ MPlayer-r23358/libmenu/menu.c	2007-05-25 17:59:03.000000000 +0200
-@@ -29,6 +29,7 @@
+@@ -28,6 +28,7 @@
  extern menu_info_t menu_info_cmdlist;
  extern menu_info_t menu_info_pt;
  extern menu_info_t menu_info_filesel;
@@ -30,7 +30,7 @@ diff -Naur MPlayer-r23358.orig/libmenu/menu.c MPlayer-r23358/libmenu/menu.c
  extern menu_info_t menu_info_txt;
  extern menu_info_t menu_info_console;
  extern menu_info_t menu_info_pref;
-@@ -41,6 +42,7 @@
+@@ -40,6 +40,7 @@
    &menu_info_pt,
    &menu_info_cmdlist,
    &menu_info_filesel,
@@ -209,7 +209,7 @@ diff -Naur MPlayer-r23358.orig/libmenu/menu_chapsel.c MPlayer-r23358/libmenu/men
 diff -Naur MPlayer-r23358.orig/libmpdemux/demuxer.h MPlayer-r23358/libmpdemux/demuxer.h
 --- MPlayer-r23358.orig/libmpdemux/demuxer.h	2007-05-25 17:57:54.000000000 +0200
 +++ MPlayer-r23358/libmpdemux/demuxer.h	2007-05-25 18:01:42.000000000 +0200
-@@ -361,6 +361,10 @@
+@@ -360,6 +360,10 @@
  
  extern int extension_parsing;
  
@@ -218,22 +218,23 @@ diff -Naur MPlayer-r23358.orig/libmpdemux/demuxer.h MPlayer-r23358/libmpdemux/de
 +extern char* mkv_chapter_string[99];
 +
  int demux_info_add(demuxer_t *demuxer, const char *opt, const char *param);
- char* demux_info_get(demuxer_t *demuxer, char *opt);
+ char* demux_info_get(demuxer_t *demuxer, const char *opt);
  int demux_info_print(demuxer_t *demuxer);
 diff -Naur MPlayer-r23358.orig/libmpdemux/demux_mkv.c MPlayer-r23358/libmpdemux/demux_mkv.c
 --- MPlayer-r23358.orig/libmpdemux/demux_mkv.c	2007-05-25 17:57:54.000000000 +0200
 +++ MPlayer-r23358/libmpdemux/demux_mkv.c	2007-05-25 18:00:07.000000000 +0200
-@@ -261,6 +261,9 @@
-   uint32_t fourcc3;             /* fourcc */
- } real_audio_v5_props_t;
- 
+@@ -194,6 +194,10 @@
+ #define RVPROPERTIES_SIZE  34
+ #define RAPROPERTIES4_SIZE 56
+ #define RAPROPERTIES5_SIZE 70
++
 +uint64_t mkv_chapter_start[99];
 +int mkv_chapter_num;
 +char* mkv_chapter_string[99];
  
  /* for e.g. "-slang ger" */
  extern char *dvdsub_lang;
-@@ -1473,7 +1476,10 @@
+@@ -1403,7 +1403,10 @@
                               (int) ((end / 60 / 1000) % 60),
                               (int) ((end / 1000) % 60),
                               (int) (end % 1000), name);
@@ -248,7 +249,7 @@ diff -Naur MPlayer-r23358.orig/libmpdemux/demux_mkv.c MPlayer-r23358/libmpdemux/
 diff -Naur MPlayer-r23358.orig/mplayer.c MPlayer-r23358/mplayer.c
 --- MPlayer-r23358.orig/mplayer.c	2007-05-25 17:57:54.000000000 +0200
 +++ MPlayer-r23358/mplayer.c	2007-05-25 18:05:08.000000000 +0200
-@@ -426,6 +426,16 @@
+@@ -379,6 +379,16 @@
  
  #define mp_basename2(s) (strrchr(s,'/')==NULL?(char*)s:(strrchr(s,'/')+1))
  
@@ -268,7 +269,7 @@ diff -Naur MPlayer-r23358.orig/mplayer.c MPlayer-r23358/mplayer.c
 diff -Naur MPlayer-r23358.orig/stream/stream_dvd.c MPlayer-r23358/stream/stream_dvd.c
 --- MPlayer-r23358.orig/stream/stream_dvd.c	2007-05-25 17:57:54.000000000 +0200
 +++ MPlayer-r23358/stream/stream_dvd.c	2007-05-25 18:03:47.000000000 +0200
-@@ -44,6 +44,8 @@
+@@ -41,6 +41,8 @@
  extern char* dvd_device;
  int dvd_angle=1;
  int dvd_speed=0; /* 0 => don't touch speed */
@@ -277,16 +278,16 @@ diff -Naur MPlayer-r23358.orig/stream/stream_dvd.c MPlayer-r23358/stream/stream_
  
  static void dvd_set_speed(char *device, unsigned speed)
  {
-@@ -1001,6 +1003,7 @@
+@@ -974,6 +974,7 @@
       * Make sure the chapter number is valid for this title.
       */
      mp_msg(MSGT_OPEN,MSGL_STATUS, MSGTR_DVDnumChapters, tt_srpt->title[dvd_title].nr_of_ptts);
 +    dvd_total_chapter = tt_srpt->title[dvd_title].nr_of_ptts;
      if(dvd_chapter<1 || dvd_chapter>tt_srpt->title[dvd_title].nr_of_ptts) {
        mp_msg(MSGT_OPEN,MSGL_ERR, MSGTR_DVDinvalidChapter, dvd_chapter);
-       ifoClose( vmg_file );
-@@ -1219,6 +1222,12 @@
-       d->cell_times_table[k] = dvdtimetomsec(&d->cur_pgc->cell_playback[k].playback_time);
+       goto fail;
+@@ -1177,6 +1177,12 @@
+       d->cell_times_table[k] = mp_dvdtimetomsec(&d->cur_pgc->cell_playback[k].playback_time);
      list_chapters(d->cur_pgc);
  
 +    {
@@ -301,7 +302,7 @@ diff -Naur MPlayer-r23358.orig/stream/stream_dvd.c MPlayer-r23358/stream/stream_
 diff -Naur MPlayer-r23358.orig/stream/stream.h MPlayer-r23358/stream/stream.h
 --- MPlayer-r23358.orig/stream/stream.h	2007-05-25 17:57:54.000000000 +0200
 +++ MPlayer-r23358/stream/stream.h	2007-05-25 18:02:12.000000000 +0200
-@@ -301,6 +301,8 @@
+@@ -295,6 +295,8 @@
  extern int dvd_title;
  extern int dvd_chapter;
  extern int dvd_last_chapter;
