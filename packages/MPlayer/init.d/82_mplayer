@@ -18,6 +18,23 @@ TTY=4
 FBITTY=2
 DBGTTY=1
 
+player_loop()
+{
+  # start mplayer or fbi and keep them launched
+  while true; do
+    if [ -n "`pidof lircd`" ]; then
+      irpty /etc/lircrc -- mp_wrapper
+    else
+      mp_wrapper
+    fi
+    test `cat /tmp/mp_result` -eq 165 -a -x /usr/bin/fbi && (chvt $FBITTY; fbi_wrapper $FBITTY; chvt $TTY)
+    test `cat /tmp/mp_result` -eq 166 && return 0
+    test `cat /tmp/mp_result` -eq 167 && mplayer dvd://1 > /dev/null 2>&1
+    test `cat /tmp/mp_result` -eq 168 && return 64
+    test `cat /tmp/mp_result` -eq 169 && (chvt $DBGTTY; /bin/sh < /dev/tty$DBGTTY; chvt $TTY)
+  done
+}
+
 # disable console blanking and cursor blinking for a proper MPlayer start
 echo -e "\033[9;0]\033[?25l\033[?1;;c" >/dev/tty$TTY
 
@@ -28,6 +45,7 @@ echo 0 > /proc/sys/kernel/printk
 echo -n /mnt/ > /tmp/mp_current_path
 
 if [ -f /usr/bin/Xorg -a -f /var/use_xorg ]; then
+  # HDTV Xorg specifics
   while [ ! -f /etc/X11/xorg.conf ]; do
     # ensure xorgconfig has finished creating the xorg.conf file
     sleep 1
@@ -58,24 +76,15 @@ if [ -f /usr/bin/Xorg -a -f /var/use_xorg ]; then
     # use the wide HD background screen
     echo "" > /tmp/widescreen
   fi
+  player_loop
+else
+  # non-HDTV version
+  chvt $TTY
+  (
+    player_loop
+  ) </dev/tty$TTY
 fi
 
-chvt $TTY
-(
-# start mplayer or fbi and keep them launched
-while true; do
-  if [ -n "`pidof lircd`" ]; then
-    irpty /etc/lircrc -- mp_wrapper
-  else
-    mp_wrapper
-  fi
-  test `cat /tmp/mp_result` -eq 165 -a -x /usr/bin/fbi && (chvt $FBITTY; fbi_wrapper < /dev/tty$FBITTY; chvt $TTY)
-  test `cat /tmp/mp_result` -eq 166 && return 0
-  test `cat /tmp/mp_result` -eq 167 && mplayer dvd://1 > /dev/null 2>&1
-  test `cat /tmp/mp_result` -eq 168 && return 64
-  test `cat /tmp/mp_result` -eq 169 && (chvt $DBGTTY; /bin/sh < /dev/tty$DBGTTY; chvt $TTY)
-done
-) </dev/tty$TTY
 RET=$?
 chvt $DBGTTY
 
