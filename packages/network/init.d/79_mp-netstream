@@ -11,7 +11,7 @@ TMP=/tmp/streamtmp
 . /etc/network
 
 # Disable streams if not utilized.
-test "$SHOUTCAST" = "no" -a "$SHOUTCASTTV" = "no" -a "$ICECAST" = "no" -a `grep -c ^STREAM $CONF` -eq 0 -a `grep -c ^EXTM3U $CONF` -eq 0 && exit 1
+test "$SHOUTCAST" = "no" -a "$SHOUTCASTTV" = "no" -a "$ICECAST" = "no" -a `grep -c ^STREAM $CONF` -eq 0 -a `grep -c ^EXTM3U $CONF` -eq 0 -a `grep -c ^EXTPLS $CONF` -eq 0 && exit 1
 
 echo "### Network Stream Configuration ###"
 
@@ -113,6 +113,27 @@ SC_TUNE=$(sed -n -e "s#^SHOUTCASTTUNE_URI=\"\(.*\)\"#\1#p" $CONF)
         echo "$URL" > "$DIR/$FILE.pls"
         unset FILE URL
       fi
+    done
+  done
+
+  # extended pls playlists
+  for J in `grep "^EXTPLS" $CONF | sed "s# #%20#g"`; do
+    DIR="$BASEDIR/$(echo $J | sed -e "s#^EXTPLS=\".*\":\(.*\)#\1#" -e "s#%20# #g")"
+    [ ! -d "$DIR" ] && mkdir -p "$DIR"
+    EXTPLSURL="$(echo $J | sed "s#^EXTPLS=\"\(.*\)\":.*#\1#")"
+    FNUM=0; TNUM=0
+    rm -f $TMP
+    wget -q -T $TIMEOUT -t $TRIES -O $TMP "$EXTPLSURL" 2>/dev/null || continue
+    cat $TMP | while read LINE; do
+      # strip unwanted chars
+      LINE=`echo $LINE | sed -e "s%\]\[%_%g" -e "s%^M%%g" | sed -e "s%\]%%g" -e "s%\[%%g"`
+      [ `echo $LINE | grep -c -i "title[0-9]*="` -eq 1 ] && \
+        TITLE=`echo $LINE | sed "s%[Tt]itle[0-9]*=\(.*\)%\1%"` && \
+        TNUM=`echo $LINE |sed "s%[Tt]itle\([0-9]*\)=.*%\1%"`
+      [ `echo $LINE | grep -c -i "file[0-9]*="` -eq 1 ] && \
+        FILE=`echo $LINE | sed "s%[Ff]ile[0-9]*=\(.*\)%\1%"` && \
+        FNUM=`echo $LINE |sed "s%[Ff]ile\([0-9]*\)=.*%\1%"`
+     [ $FNUM -eq $TNUM -a $FNUM -gt 0 ] && echo $FILE > "$DIR/$TITLE.pls"
     done
   done
 )&
