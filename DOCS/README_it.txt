@@ -316,10 +316,6 @@ Ci sono anche comandi più avanzati, se si vuole fare un po' di hack di GeeXboX:
   scripts/build package      # compila il pacchettobuild
   scripts/install package    # installa il pacchetto con il prefisso $INSTALL
   scripts/clean package      # pulisce la directory dei sorgenti del pacchetto
-  make exec                  # lancia direttamente GeeXboX in una [prigione]
-                             # ATTENZIONE: funzione sperimentale,
-                             # usare a proprio rischio.
-
 
 Se avete fatto una versione modificata di GeeXboX, è possibile compilare
 facilmente un piccolo tar.bz2 con :
