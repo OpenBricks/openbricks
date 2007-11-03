@@ -668,10 +668,6 @@ de GeeXboX:
   scripts/install package      # instala el paquete con el prefijo $INSTALL
   scripts/clean package        # limpia el árbol de fuentes del paquete
   scripts/clean --full package # límpia el paquete construido y sus fuentes
-  make exec                    # lanza directamente GeeXboX en una jaula
-                               # AVISO: esta característica es áltamente experimental
-                               # úsala a tu propio riesgo.
-
 
 Si has hecho una versión modificada de GeeXboX, puedes construir fácilmente un
 pequeño tar.bz2 con:

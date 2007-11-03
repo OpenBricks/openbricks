@@ -28,9 +28,6 @@ vmx-play:
 qemu: iso
 	scripts/qemu
 
-exec: iso
-	scripts/exec
-
 sum: iso generator dist fulldist
 	scripts/sum md5sum
 	scripts/sum sha1sum

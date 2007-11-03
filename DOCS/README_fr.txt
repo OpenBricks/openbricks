@@ -612,10 +612,6 @@ des modifications en profondeur au niveau de la GeeXboX :
   scripts/install package      # installe le paquetage dans $INSTALL
   scripts/clean package        # nettoie l'arborescence du paquetage
   scripts/clean --full package # nettoie les sources du paquetage
-  make exec                    # lance la GeeXboX dans une cellule
-                               # ATTENTION: ceci est une fonction
-                               # expérimentale.
-                               # Utilisez là à vos propres risques.
 
 Si vous avez effectué une version modifiée de la GeeXboX, vous pouvez :
 construire une archive réduite tar.bz2 via :
