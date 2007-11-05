@@ -560,9 +560,6 @@ There's also more advanced commands if you want to hack around the GeeXboX :
   scripts/install package      # install the package with the $INSTALL prefix
   scripts/clean package        # clean the package build tree
   scripts/clean --full package # clean both the package build and source trees
-  make exec                    # launch directly the GeeXboX in a jail
-                               # WARNING: this is a highly experimental feature
-                               # use it at your own risks.
 
 If you've made a hacked version of the GeeXboX, you can easily
 build a small tar.bz2 for it with :
