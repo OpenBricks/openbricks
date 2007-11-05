@@ -296,9 +296,6 @@ Es gibt noch einige Kommandos, die für fortgeschrittene Benutzer gedacht sind:
   scripts/build package      # kompliert das Paket
   scripts/install package    # installiert das Paket nach $INSTALL
   scripts/clean package      # reinigt den Dateibaum des Paketes
-  make exec                  # startet GeeXboX in einem Käfig
-                             # WARNUNG: Dies ist eine experimentelle Funktion,
-                             # Benutzung auf eigene Gefahr.
 
 Falls Sie eine veränderte Version von GeeXboX erstellt haben, so können Sie
 sehr einfach ein tar.bz2 Archiv davon erstellen:

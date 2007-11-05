@@ -301,9 +301,6 @@ Existuje více nastavujících pøíkazù pokud se chcete v GeeXboXu troch vrtat:
   scripts/build package      # vytvoøí balíèek
   scripts/install package    # instalovat balíèek s $INSTALL prefix
   scripts/clean package      # vymazat adresáøovou strukturu balíèku
-  make exec                  # launch directly the GeeXboX in a jail
-                             # WARNING: this is a highly experimental feature
-                             # use it at your own risks.
 
 Pokud jste vytvoøili upravenou verzi GeeXboXu mùete vytvoøit tar.bz2 pomocí :
   make dist
