@@ -408,7 +408,7 @@ fi
 $DIALOG --stdout --backtitle "$BACKTITLE" --title "Installation device" --msgbox "$CFDISK_MSG" 0 0 || exit 1
 
 if [ -n "$CFDISK" ]; then
-  $CFDISK /dev/$DISK || exit 1
+  $CFDISK /dev/$DISK 2>&1 > /dev/null || exit 1
 fi
 
 while [ ! -b "$DEV" ]; do
@@ -521,7 +521,7 @@ if [ "$FORMAT" = yes ]; then
       $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Warning" --msgbox "\n'$DEV' needs to be a $MKFS_TYPENAME partition. As you don't have formatting tool installed, I won't be able to format the partition. Hopefully it is already formatted.\n" 0 0
     fi
   else
-    $MKFS $MKFS_OPT "$DEV"
+    $MKFS $MKFS_OPT "$DEV" 2>&1 > /dev/null
   fi
 elif [ "$NEED_FORMAT" = yes ]; then
   $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\n'$DEV' needs to be a formatted.\n" 0 0
@@ -675,7 +675,7 @@ elif [ $BOOTLOADER = grub ]; then
 fi
 
 if [ $TYPE = HDD ]; then
-  echo "quit" | $GRUB --batch --no-floppy --device-map=$device_map
+  echo "quit" | $GRUB --batch --no-floppy --device-map=$device_map 2>&1 > /dev/null
 elif [ $TYPE = REMOVABLE ]; then
   echo "(hd0) ${DEV%%[0-9]*}" > $device_map
 fi
@@ -691,7 +691,7 @@ fi
 
 if [ $BOOTLOADER = syslinux ]; then
   umount di
-  $SYSLINUX "$DEV"
+  $SYSLINUX "$DEV" 2>&1 > /dev/null
   mount -t $MKFS_TYPE "$DEV" di
 elif [ $BOOTLOADER = grub ]; then
   if [ $TYPE = HDD ]; then
