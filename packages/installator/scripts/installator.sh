@@ -547,8 +547,8 @@ else
   cp -a "$GEEXBOX" di/GEEXBOX 2>/dev/null
   $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Faster boot- HDD sleepless mode ?" --defaultno --yesno "\nDo you want to install so that boot times are faster, but boot HDD cannot spin down ?\n" 0 0 && FASTBOOT=yes && echo "" > "di/GEEXBOX/var/fastboot"
   if [ "$FASTBOOT" = "yes" ]; then
-    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Faster boot- Larger HDD space requirement ?" --defaultno --yesno "\nDo you want to install so that boot times are faster, but more HDD space is required for installation ?\n" 0 0 && UNCOMPRESS_INSTALL=yes && rm di/GEEXBOX/bin.tar.*
-    [ "$UNCOMPRESS_INSTALL" = "yes" -a -f "$GEEXBOX/bin.tar.lzma" ] && tar -xaf "$GEEXBOX/bin.tar.lzma" -C di/GEEXBOX
+    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Faster boot- Larger HDD space requirement ?" --defaultno --yesno "\nDo you want to install so that boot times are faster, but more HDD space is required for installation ?\n" 0 0 && UNCOMPRESS_INSTALL=yes && rm di/GEEXBOX/bin.tar.lzma
+    [ "$UNCOMPRESS_INSTALL" = "yes" -a -f "$GEEXBOX/bin.tar.lzma" ] && tar xaf "$GEEXBOX/bin.tar.lzma" -C di/GEEXBOX
   fi
   cd di/GEEXBOX/boot
   mv vmlinuz initrd.gz isolinux.cfg boot.msg help.msg splash.rle ../../
@@ -596,6 +596,10 @@ if [ "$1" = geexbox ]; then
 
   if [ "$USE_XORG" = yes ]; then
     $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Setup X.Org ?" --yesno "\nDo you want to configure your X.Org video server right now ? It will avoid hardware autodetection each time you boot, which can significantly speeds up boot time\n" 0 0 && setup_xorg "di/GEEXBOX"
+    [ "$UNCOMPRESS_INSTALL" = "yes" -a -f "$GEEXBOX/X.tar.lzma" ] && rm di/GEEXBOX/X.tar.lzma && tar xaf "$GEEXBOX/X.tar.lzma" -C di/GEEXBOX
+  else
+    # Since X is disabled, remove the files from HDD install to speed up boot
+    [ -f di/GEEXBOX/X.tar.lzma ] && rm di/GEEXBOX/X.tar.lzma
   fi
 fi
 
