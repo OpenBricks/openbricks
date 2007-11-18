@@ -408,7 +408,7 @@ fi
 $DIALOG --stdout --backtitle "$BACKTITLE" --title "Installation device" --msgbox "$CFDISK_MSG" 0 0 || exit 1
 
 if [ -n "$CFDISK" ]; then
-  $CFDISK /dev/$DISK || exit 1
+  $CFDISK /dev/$DISK 2>&1 > /dev/null || exit 1
 fi
 
 while [ ! -b "$DEV" ]; do
@@ -521,7 +521,7 @@ if [ "$FORMAT" = yes ]; then
       $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Warning" --msgbox "\n'$DEV' needs to be a $MKFS_TYPENAME partition. As you don't have formatting tool installed, I won't be able to format the partition. Hopefully it is already formatted.\n" 0 0
     fi
   else
-    $MKFS $MKFS_OPT "$DEV"
+    $MKFS $MKFS_OPT "$DEV" 2>&1 > /dev/null
   fi
 elif [ "$NEED_FORMAT" = yes ]; then
   $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\n'$DEV' needs to be a formatted.\n" 0 0
@@ -536,25 +536,26 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
-if [ -d disk ]; then
-  cp -a disk/* di 2>/dev/null
+if [ -n "$NFS" ]; then
+  GEEXBOX="$NFS"
 else
-  if [ -n "$NFS" ]; then
-    GEEXBOX="$NFS"
-  else
-    GEEXBOX="$CDROM/GEEXBOX"
-  fi
-  cp -a "$GEEXBOX" di/GEEXBOX 2>/dev/null
-  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Faster boot- HDD sleepless mode ?" --defaultno --yesno "\nDo you want to install so that boot times are faster, but boot HDD cannot spin down ?\n" 0 0 && FASTBOOT=yes && echo "" > "di/GEEXBOX/var/fastboot"
-  if [ "$FASTBOOT" = "yes" ]; then
-    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Faster boot- Larger HDD space requirement ?" --defaultno --yesno "\nDo you want to install so that boot times are faster, but more HDD space is required for installation ?\n" 0 0 && UNCOMPRESS_INSTALL=yes && rm di/GEEXBOX/bin.tar.lzma
-    [ "$UNCOMPRESS_INSTALL" = "yes" -a -f "$GEEXBOX/bin.tar.lzma" ] && tar xaf "$GEEXBOX/bin.tar.lzma" -C di/GEEXBOX
-  fi
-  cd di/GEEXBOX/boot
-  mv vmlinuz initrd.gz isolinux.cfg boot.msg help.msg splash.rle ../../
-  cd ../../../
-  rm -rf di/GEEXBOX/boot
+  GEEXBOX="$CDROM/GEEXBOX"
 fi
+cp -a "$GEEXBOX" di/GEEXBOX 2>/dev/null
+
+[ "$PART_TYPE" = "Linux" ] && $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Faster boot- HDD sleepless mode ?" --defaultno --yesno "\nDo you want to install so that boot times are faster, but boot HDD cannot spin down ?\n" 0 0 && FASTBOOT=yes && echo "" > "di/GEEXBOX/var/fastboot"
+
+if [ "$FASTBOOT" = "yes" ]; then
+  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Faster boot- Larger HDD space requirement ?" --defaultno --yesno "\nDo you want to install so that boot times are faster, but more HDD space is required for installation ?\n" 0 0 && UNCOMPRESS_INSTALL=yes && rm di/GEEXBOX/bin.tar.lzma
+  [ "$UNCOMPRESS_INSTALL" = "yes" -a -f "$GEEXBOX/bin.tar.lzma" ] && tar xaf "$GEEXBOX/bin.tar.lzma" -C di/GEEXBOX
+fi
+
+cp -a "$GEEXBOX" di/GEEXBOX 2>/dev/null
+
+cd di/GEEXBOX/boot
+mv vmlinuz initrd.gz isolinux.cfg boot.msg help.msg splash.rle ../../
+cd ../../../
+rm -rf di/GEEXBOX/boot
 
 # Setup network is only available when booting from GeeXboX.
 if [ "$1" = geexbox ]; then
@@ -679,7 +680,7 @@ elif [ $BOOTLOADER = grub ]; then
 fi
 
 if [ $TYPE = HDD ]; then
-  echo "quit" | $GRUB --batch --no-floppy --device-map=$device_map
+  echo "quit" | $GRUB --batch --no-floppy --device-map=$device_map 2>&1 > /dev/null
 elif [ $TYPE = REMOVABLE ]; then
   echo "(hd0) ${DEV%%[0-9]*}" > $device_map
 fi
@@ -695,7 +696,7 @@ fi
 
 if [ $BOOTLOADER = syslinux ]; then
   umount di
-  $SYSLINUX "$DEV"
+  $SYSLINUX "$DEV" 2>&1 > /dev/null
   mount -t $MKFS_TYPE "$DEV" di
 elif [ $BOOTLOADER = grub ]; then
   if [ $TYPE = HDD ]; then
