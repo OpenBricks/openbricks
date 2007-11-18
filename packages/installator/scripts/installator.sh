@@ -541,6 +541,7 @@ if [ -n "$NFS" ]; then
 else
   GEEXBOX="$CDROM/GEEXBOX"
 fi
+
 cp -a "$GEEXBOX" di/GEEXBOX 2>/dev/null
 
 [ "$PART_TYPE" = "Linux" ] && $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Faster boot- HDD sleepless mode ?" --defaultno --yesno "\nDo you want to install so that boot times are faster, but boot HDD cannot spin down ?\n" 0 0 && FASTBOOT=yes && echo "" > "di/GEEXBOX/var/fastboot"
@@ -549,8 +550,6 @@ if [ "$FASTBOOT" = "yes" ]; then
   $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Faster boot- Larger HDD space requirement ?" --defaultno --yesno "\nDo you want to install so that boot times are faster, but more HDD space is required for installation ?\n" 0 0 && UNCOMPRESS_INSTALL=yes && rm di/GEEXBOX/bin.tar.lzma
   [ "$UNCOMPRESS_INSTALL" = "yes" -a -f "$GEEXBOX/bin.tar.lzma" ] && tar xaf "$GEEXBOX/bin.tar.lzma" -C di/GEEXBOX
 fi
-
-cp -a "$GEEXBOX" di/GEEXBOX 2>/dev/null
 
 cd di/GEEXBOX/boot
 mv vmlinuz initrd.gz isolinux.cfg boot.msg help.msg splash.rle ../../
