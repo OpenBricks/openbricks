@@ -9,84 +9,15 @@ echo "### Starting MPlayer ###"
 # still display mplayer output while in debug mode
 grep -q debugging /proc/cmdline && mp_set_option really-quiet no
 
-# disable console blanking and cursor blinking for a proper MPlayer start
-echo -e "\033[?25l\033[9;0]"
+# initialise return values
+echo "0" > /tmp/mp_result
 
-# disable kernel messages to avoid MPlayer screen corruption
-echo 0 > /proc/sys/kernel/printk
-
-# default directory
-echo -n /mnt/ > /tmp/mp_current_path
-
-# tty used for the video display and commands input
+# tty used for the video display and commands input and debugging
 TTY=4
+DBGTTY=1
 
-RET=0
-
-if [ -f /usr/bin/Xorg -a -f /var/use_xorg ]; then
-  while [ ! -f /etc/X11/xorg.conf ]; do
-    # ensure xorgconfig has finished creating the xorg.conf file
-    sleep 1
-  done
-  # starts X.org with a black background
-  Xorg -br > /dev/null 2>&1 &
-
-  # get the resolution X.org has actually started
-  # it's not necessary the one requested in /etc/X11/X.cfg file
-  XRANDR_INFO=/tmp/xrandr
-  XORG_RES=/var/xorg.res
-  while true; do
-    xrandr -display :0.0 -q > $XRANDR_INFO
-    if [ $? -eq 0 ]; then
-      RES=`cat $XRANDR_INFO | sed -n 's/\*[0-9]* *\([0-9]*\) x \([0-9]*\).* /\1x\2/p'`
-      RESX=`echo $RES | cut -f1 -dx`
-      RESY=`echo $RES | cut -f2 -dx`
-
-      # save this info somewhere for debug purpose
-      echo "XORG_RESX=${RESX}" >> $XORG_RES
-      echo "XORG_RESY=${RESY}" >> $XORG_RES
-
-      # finally set MPlayer video settings accurately
-      mp_set_option screenw "$RESX"
-      mp_set_option screenh "$RESY"
-      mp_set_option monitoraspect "${RESX}/${RESY}"
-
-      # check for screen aspect ratio
-      # usually found values are 1.25, 1.33 (4:3), 1.6 and 1.77 (16:9)
-      ASPECT=$((${RESX}*1000/${RESY}))
-      if [ "$ASPECT" -gt 1333 ]; then
-        # use the wide HD background screen
-        echo "" > /tmp/widescreen
-      fi
-
-      break
-    fi
-  done
-
-  while true; do
-    if [ -n "`pidof lircd`" ]; then
-      irpty /etc/lircrc -- mp_wrapper
-    else
-      mp_wrapper
-    fi
-    test `cat /tmp/mp_result` -eq 166 && return 0
-    test `cat /tmp/mp_result` -eq 167 && mplayer dvd://1 > /dev/null 2>&1
-    test `cat /tmp/mp_result` -eq 168 && return 64
-  done
-  RET=$?
-  exit $RET
-fi
-
-# start mplayer with gdb when built with debugging options
-if test -f /etc/debug; then
-  echo "r /usr/share/mplayer/background.avi -loop 0" > /gdb_cmd
-  gdb -x /gdb_cmd /usr/bin/mplayer
-else
-  echo "0" > /tmp/mp_result
-  # disable fbdev cursor
-  echo -e "\033[9;0]\033[?25l\033[?1;;c" >/dev/tty$TTY
-  chvt $TTY
-  (
+player_loop()
+{
   # start mplayer or fbi and keep them launched
   while true; do
     if [ -n "`pidof lircd`" ]; then
@@ -95,14 +26,59 @@ else
       mp_wrapper
     fi
     test `cat /tmp/mp_result` -eq 165 -a -x /usr/bin/fbi && fbi_wrapper
-    test `cat /tmp/mp_result` -eq 166 && return 0
+    test `cat /tmp/mp_result` -eq 166 && break
     test `cat /tmp/mp_result` -eq 167 && mplayer dvd://1 > /dev/null 2>&1
-    test `cat /tmp/mp_result` -eq 168 && return 64
-    test `cat /tmp/mp_result` -eq 169 && (chvt 1; /bin/sh < /dev/tty1; chvt $TTY)
+    test `cat /tmp/mp_result` -eq 169 && (chvt $DBGTTY; /bin/sh < /dev/tty$DBGTTY; chvt $TTY)
   done
-  ) </dev/tty$TTY
-  RET=$?
-  chvt 1
+}
+
+# disable console blanking and cursor blinking for a proper MPlayer start
+echo -e "\033[9;0]\033[?25l\033[?1;;c" >/dev/tty$TTY
+
+# disable kernel messages to avoid MPlayer screen corruption
+echo 0 > /proc/sys/kernel/printk
+
+# default directory
+echo -n /mnt/ > /tmp/mp_current_path
+
+if [ -f /usr/bin/Xorg -a -f /var/use_xorg ]; then
+  # HDTV Xorg specifics
+  while [ ! -f /etc/X11/xorg.conf ]; do
+    # ensure xorgconfig has finished creating the xorg.conf file
+    sleep 1
+  done
+  # starts X.org with a black background
+  Xorg vt$TTY -br > /dev/null 2>&1 &
+
+  # get the resolution X.org has actually started
+  # it's not necessary the one requested in /etc/X11/X.cfg file
+  XRANDR_INFO=/tmp/xrandr
+  while true; do
+    xrandr -display :0.0 -q > $XRANDR_INFO && break
+  done
+
+  RES=`cat $XRANDR_INFO | sed -n 's/\*[0-9]* *\([0-9]*\) x \([0-9]*\).* /\1x\2/p'`
+  RESX=`echo $RES | cut -f1 -dx`
+  RESY=`echo $RES | cut -f2 -dx`
+
+  # finally set MPlayer video settings accurately
+  mp_set_option screenw "$RESX"
+  mp_set_option screenh "$RESY"
+  mp_set_option monitoraspect "${RESX}/${RESY}"
+
+  # check for screen aspect ratio
+  # usually found values are 1.25, 1.33 (4:3), 1.6 and 1.77 (16:9)
+  ASPECT=$((${RESX}*1000/${RESY}))
+  if [ "$ASPECT" -gt 1333 ]; then
+    # use the wide HD background screen
+    echo "" > /tmp/widescreen
+  fi
+  player_loop
+else
+  # non-HDTV version
+  chvt $TTY
+  player_loop </dev/tty$TTY
 fi
 
-exit $RET
+
+exit 0
