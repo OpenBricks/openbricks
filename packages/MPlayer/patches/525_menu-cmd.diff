@@ -1,8 +1,8 @@
 diff -r e16f2b2827b8 input/input.c
 --- a/input/input.c	Sun Apr 30 17:23:49 2006 +0200
 +++ b/input/input.c	Sun Apr 30 17:24:01 2006 +0200
-@@ -908,7 +908,7 @@ mp_input_find_bind_for_key(mp_cmd_bind_t
-   return binds[j].cmd;
+@@ -1002,7 +1002,7 @@
+   return bind_section;
  }
  
 -static mp_cmd_t*
@@ -13,7 +13,7 @@ diff -r e16f2b2827b8 input/input.c
 diff -r e16f2b2827b8 input/input.h
 --- a/input/input.h	Sun Apr 30 17:23:49 2006 +0200
 +++ b/input/input.h	Sun Apr 30 17:24:01 2006 +0200
-@@ -230,6 +230,10 @@ void
+@@ -235,6 +235,10 @@ void
  void
  mp_input_rm_key_fd(int fd);
  
@@ -21,13 +21,13 @@ diff -r e16f2b2827b8 input/input.h
 +mp_cmd_t*
 +mp_input_get_cmd_from_keys(int n,int* keys, int paused);
 +
- // This function can be used to put a command in the system again. It's used by libmpdemux
- // when it performs a blocking operation to resend the command it received to the main
- // loop.
+ int mp_input_add_event_fd(int fd, void (*read_func)(void));
+ 
+ void mp_input_rm_event_fd(int fd);
 diff -r e16f2b2827b8 libmenu/menu.c
 --- a/libmenu/menu.c	Sun Apr 30 17:23:49 2006 +0200
 +++ b/libmenu/menu.c	Sun Apr 30 17:24:01 2006 +0200
-@@ -216,6 +216,8 @@ void menu_dflt_read_key(menu_t* menu,int
+@@ -212,6 +212,8 @@ void menu_dflt_read_key(menu_t* menu,int
    case JOY_BTN0:
      menu->read_cmd(menu,MENU_CMD_OK);
      break;
@@ -39,7 +39,7 @@ diff -r e16f2b2827b8 libmenu/menu.c
 diff -r e16f2b2827b8 libmenu/menu_filesel.c
 --- a/libmenu/menu_filesel.c	Sun Apr 30 17:23:49 2006 +0200
 +++ b/libmenu/menu_filesel.c	Sun Apr 30 17:24:01 2006 +0200
-@@ -342,9 +342,9 @@ static void read_cmd(menu_t* menu,int cm
+@@ -349,9 +349,9 @@ static void read_cmd(menu_t* menu,int cm
  	free(str);
      }	  
      if(c) {
@@ -51,12 +51,12 @@ diff -r e16f2b2827b8 libmenu/menu_filesel.c
      }
    } break;
    case MENU_CMD_ACTION: {
-diff -r e16f2b2827b8 libmenu/vf_menu.c
---- a/libmenu/vf_menu.c	Sun Apr 30 17:23:49 2006 +0200
-+++ b/libmenu/vf_menu.c	Sun Apr 30 17:24:01 2006 +0200
-@@ -163,12 +163,12 @@ static void key_cb(int code) {
+diff -r e16f2b2827b8 libmpcodes/mp_image.c
+--- a/libmpcodecs/mp_image.c	Sun Apr 30 17:23:49 2006 +0200
++++ b/libmpcodecs/mp_image.c	Sun Apr 30 17:24:01 2006 +0200
+@@ -51,12 +51,12 @@ static void key_cb(int code) {
  
- inline static void copy_mpi(mp_image_t *dmpi, mp_image_t *mpi) {
+ void copy_mpi(mp_image_t *dmpi, mp_image_t *mpi) {
    if(mpi->flags&MP_IMGFLAG_PLANAR){
 +    memcpy_pic(dmpi->planes[2], mpi->planes[2], mpi->chroma_width, mpi->chroma_height,
 +	       dmpi->stride[2],mpi->stride[2]);
@@ -71,21 +71,3 @@ diff -r e16f2b2827b8 libmenu/vf_menu.c
    } else {
      memcpy_pic(dmpi->planes[0],mpi->planes[0], 
  	       mpi->w*(dmpi->bpp/8), mpi->h,
-@@ -188,15 +188,14 @@ static int put_image(struct vf_instance_
-     return vf_next_put_image(vf,dmpi, pts);
-   }
- 
--  if(vf->priv->current->show 
--  || (vf->priv->current->parent && vf->priv->current->parent->show)) {
-   // Close all menu who requested it
--  while(vf->priv->current->cl && vf->priv->current != vf->priv->root) {
-+  while(vf->priv->current != vf->priv->root && vf->priv->current->cl) {
-     menu_t* m = vf->priv->current;
-     vf->priv->current = m->parent ? m->parent :  vf->priv->root;
-     menu_close(m);
-   }
- 
-+  if(vf->priv->current->show) {
-   // Step 1 : save the picture
-   while(go2pause == 1) {
-     static char delay = 0; // Hack : wait the 2 frame to be sure to show the right picture
