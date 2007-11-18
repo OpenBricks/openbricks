@@ -790,9 +790,7 @@ EOF
     partition=$(echo "$os" | cut -d: -f1)
     grubpartition=$(convert $partition)
 
-    if [ -z "$grubpartition" ]; then
-	continue
-    fi
+    [ -z "$grubpartition" ] && continue
 
     grubdisk=${grubpartition%,*}
     grubdisk="(${grubdisk#(})"
@@ -821,9 +819,9 @@ EOF
   done
   IFS=$saveifs
 
-# conditional HDTV menu entry if X.org is found
-if [ "$USE_XORG" = yes ]; then
-  cat >> $grubdir/menu.lst <<EOF
+  # conditional HDTV menu entry if X.org is found
+  if [ "$USE_XORG" = yes ]; then
+    cat >> $grubdir/menu.lst <<EOF
 title	GeeXboX HDTV
 root	$rootdev_single
 kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME splash=$SPLASH vga=$VESA_MODE keymap=$KEYMAP remote=$REMOTE receiver=$RECEIVER video=vesafb:ywrap,mtrr hdtv
@@ -831,7 +829,7 @@ initrd  /initrd.gz
 boot
 
 EOF
-fi
+  fi
 
   cat >> $grubdir/menu.lst <<EOF
 title	GeeXboX
