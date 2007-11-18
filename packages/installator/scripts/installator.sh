@@ -408,7 +408,7 @@ fi
 $DIALOG --stdout --backtitle "$BACKTITLE" --title "Installation device" --msgbox "$CFDISK_MSG" 0 0 || exit 1
 
 if [ -n "$CFDISK" ]; then
-  $CFDISK /dev/$DISK 2>&1 > /dev/null || exit 1
+  $CFDISK /dev/$DISK || exit 1
 fi
 
 while [ ! -b "$DEV" ]; do
