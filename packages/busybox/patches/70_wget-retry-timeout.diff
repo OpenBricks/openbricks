@@ -1,17 +1,17 @@
-diff -Naur busybox-1.8.1.orig/include/usage.h busybox-1.8.1/include/usage.h
---- busybox-1.8.1.orig/include/usage.h	2007-11-19 20:04:48.000000000 +0100
-+++ busybox-1.8.1/include/usage.h	2007-11-19 20:09:53.000000000 +0100
-@@ -4073,7 +4073,8 @@
- 	USE_GETOPT_LONG( \
+diff -Naur busybox-1.7.0.orig/include/usage.h busybox-1.7.0/include/usage.h
+--- busybox-1.7.0.orig/include/usage.h	2007-08-25 00:02:19.000000000 +0200
++++ busybox-1.7.0/include/usage.h	2007-08-25 00:02:37.000000000 +0200
+@@ -3876,7 +3876,8 @@
+ #define wget_trivial_usage \
         "[-c|--continue] [-s|--spider] [-q|--quiet] [-O|--output-document file]\n" \
-        "	[--header 'header: value'] [-Y|--proxy on/off] [-P DIR]\n" \
--       "	[-U|--user-agent agent] url" \
-+       "	[-U|--user-agent agent]" \
-+       "	[-T|--read-timeout value] [-t|--tries value] url" \
- 	) \
- 	SKIP_GETOPT_LONG( \
-        "[-csq] [-O file] [-Y on/off] [-P DIR] [-U agent] url" \
-@@ -4087,7 +4088,9 @@
+        "		[--header 'header: value'] [-Y|--proxy on/off] [-P DIR]\n" \
+-       "		[-U|--user-agent agent] url"
++       "		[-U|--user-agent agent] url" \
++       "		[-T|--read-timeout value] [-t|--tries value] url"
+ #define wget_full_usage \
+        "Retrieve files via HTTP or FTP" \
+        "\n\nOptions:\n" \
+@@ -3886,7 +3887,9 @@
         "	-P	Set directory prefix to DIR\n" \
         "	-O	Save to filename ('-' for stdout)\n" \
         "	-U	Adjust 'User-Agent' field\n" \
@@ -22,12 +22,12 @@ diff -Naur busybox-1.8.1.orig/include/usage.h busybox-1.8.1/include/usage.h
  
  #define which_trivial_usage \
         "[COMMAND ...]"
-diff -Naur busybox-1.8.1.orig/networking/wget.c busybox-1.8.1/networking/wget.c
---- busybox-1.8.1.orig/networking/wget.c	2007-11-19 20:04:48.000000000 +0100
-+++ busybox-1.8.1/networking/wget.c	2007-11-19 20:13:09.000000000 +0100
-@@ -390,6 +390,22 @@
- 	return hdrval;
+diff -Naur busybox-1.7.0.orig/networking/wget.c busybox-1.7.0/networking/wget.c
+--- busybox-1.7.0.orig/networking/wget.c	2007-08-25 00:02:19.000000000 +0200
++++ busybox-1.7.0/networking/wget.c	2007-08-25 00:10:43.000000000 +0200
+@@ -88,12 +88,30 @@
  }
+ #endif
  
 +static void timeout_reached(int ignore)
 +{
@@ -45,28 +45,27 @@ diff -Naur busybox-1.8.1.orig/networking/wget.c busybox-1.8.1/networking/wget.c
 +	itv.it_value.tv_usec = 0;
 +	setitimer(ITIMER_REAL, &itv, NULL);
 +}
- 
- int wget_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
++
+ int wget_main(int argc, char **argv);
  int wget_main(int argc, char **argv)
-@@ -397,6 +413,7 @@
+ {
  	char buf[512];
  	struct host_info server, target;
  	len_and_sockaddr *lsa;
 +	struct sigaction sa;
- 	int status;
+ 	int n, status;
  	int port;
  	int try = 5;
-@@ -416,7 +433,8 @@
+@@ -114,6 +132,8 @@
  	bool use_proxy = 1;             /* Use proxies if env vars are set  */
  	const char *proxy_flag = "on";  /* Use proxies if env vars are set  */
  	const char *user_agent = "Wget";/* "User-Agent" header field        */
--
 +	const char *timeout = "900";    /* Read Timeout duration (-T)       */
 +	char *nr_tries = NULL;          /* Number of retries (-t)           */
  	static const char keywords[] ALIGN1 =
  		"content-length\0""transfer-encoding\0""chunked\0""location\0";
  	enum {
-@@ -432,6 +450,8 @@
+@@ -129,6 +149,8 @@
  		WGET_OPT_USER_AGENT = 0x40,
  		WGET_OPT_PASSIVE    = 0x80,
  		WGET_OPT_HEADER     = 0x100,
@@ -75,7 +74,7 @@ diff -Naur busybox-1.8.1.orig/networking/wget.c busybox-1.8.1/networking/wget.c
  	};
  #if ENABLE_FEATURE_WGET_LONG_OPTIONS
  	static const char wget_longopts[] ALIGN1 =
-@@ -442,6 +462,8 @@
+@@ -139,6 +161,8 @@
  		"output-document\0"  Required_argument "O"
  		"directory-prefix\0" Required_argument "P"
  		"proxy\0"            Required_argument "Y"
@@ -84,7 +83,7 @@ diff -Naur busybox-1.8.1.orig/networking/wget.c busybox-1.8.1/networking/wget.c
  		"user-agent\0"       Required_argument "U"
  		"passive-ftp\0"      No_argument       "\xff"
  		"header\0"           Required_argument "\xfe"
-@@ -455,9 +477,10 @@
+@@ -147,9 +171,10 @@
  #endif
  	/* server.allocated = target.allocated = NULL; */
  	opt_complementary = "-1" USE_FEATURE_WGET_LONG_OPTIONS(":\xfe::");
@@ -97,7 +96,7 @@ diff -Naur busybox-1.8.1.orig/networking/wget.c busybox-1.8.1/networking/wget.c
  				USE_FEATURE_WGET_LONG_OPTIONS(, &headers_llist)
  				);
  	if (strcmp(proxy_flag, "off") == 0) {
-@@ -481,6 +504,9 @@
+@@ -173,6 +198,9 @@
  	}
  #endif
  
@@ -107,7 +106,7 @@ diff -Naur busybox-1.8.1.orig/networking/wget.c busybox-1.8.1/networking/wget.c
  	parse_url(argv[optind], &target);
  	server.host = target.host;
  	server.port = target.port;
-@@ -539,6 +565,13 @@
+@@ -240,6 +268,13 @@
  		/* We leak result of xmalloc_sockaddr2dotted */
  	}
  
