@@ -6,6 +6,24 @@
 
 if test -x /usr/bin/smbmount -a -f /etc/network; then
   echo "### Mounting Samba shares ###"
+
+mount_smb()
+{
+  user=$1
+  pass=$2
+  name=$3
+  ip=$4
+  shift 4
+  while [ $# -gt 0 ]; do
+    dir="/mnt/shares/$name/$1"
+    if [ ! -e "$dir" ]; then
+      mkdir -p "$dir"
+      mount "//$ip/$1" "$dir" -t cifs -o "ro,iocharset=utf8,user=$user,pass=$pass" || smbmount "//$name/$1" "$dir" -o "ro,iocharset=utf8,ip=$ip,username=$user,passwd=$pass" || rmdir -p "$dir"
+    fi
+    shift
+  done
+}
+
   (
     . /etc/network
     while [ ! -f /var/ifup ]; do
@@ -18,19 +36,18 @@ if test -x /usr/bin/smbmount -a -f /etc/network; then
       smbtree "$OPT" | while read mounts; do
       (
         IFS=/
-        set $mounts
-        name=$1
-        ip=$2
-        shift 2
-        while [ $# -gt 0 ]; do
-          dir="/mnt/shares/$name/$1"
-          if [ ! -e "$dir" ]; then
-            mkdir -p "$dir"
-            mount "//$ip/$1" "$dir" -t cifs -o "ro,iocharset=utf8,user=$SMB_USER,pass=$SMB_PWD" || smbmount "//$name/$1" "$dir" -o "ro,iocharset=utf8,ip=$ip,username=$SMB_USER,passwd=$SMB_PWD" || rmdir -p "$dir"
-          fi
-          shift
-        done
+        mount_smb "$SMB_USER" "$SMB_PWD" $mounts
         IFS=$saveifs
+      )&
+      done
+      for STATIC_SMB in `grep "^STATIC_SMB=" /etc/network | sed "s/^STATIC_SMB=///"`; do
+      (
+        USER=`echo $STATIC_SMB | sed "s/%.*//"`
+        PASS=`echo $STATIC_SMB | sed -e "s/.*%//" -e "s/@.*//"`
+        IP=`echo $STATIC_SMB | sed -e "s/.*@//" -e "s/&.*//"`
+        NAME=`echo $STATIC_SMB | sed -e "s/.*&//" -e "s/#.*//"`
+        MOUNTS="`echo $STATIC_SMB | sed "s/.*$NAME#//" | sed "s/#/ /g"`"
+        mount_smb "$USER" "$PASS" "$NAME" "$IP" $MOUNTS
       )&
       done
       sleep 180
