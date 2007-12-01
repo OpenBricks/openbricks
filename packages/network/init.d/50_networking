@@ -6,8 +6,10 @@
 
 echo "### Setting up network ###"
 
+WPA_CONFIG=/etc/wpa_supplicant.conf
+
 wpa_config_gen() {
-cat > /etc/wpa_supplicant.conf <<EOF
+cat > $WPA_CONFIG <<EOF
 ap_scan=$3
 network={
 ssid="$1"
@@ -15,8 +17,6 @@ psk="$2"
 scan_ssid=$4
 proto=WPA
 key_mgmt=WPA-PSK
-pairwise=TKIP
-group=TKIP
 }
 EOF
 }
@@ -57,10 +57,11 @@ fi
         test -n "$WIFI_KEY" && iwconfig "$DEV" key "$WIFI_KEY"
       elif test $WIFI_ENC = WPA; then
         if test -x /usr/bin/wpa_supplicant; then
-          if test ! -f /etc/wpa_supplicant.conf; then
+          if test ! -f $WPA_CONFIG; then
             wpa_config_gen "$WIFI_ESSID" "$WIFI_KEY" $WPA_AP_SCAN $WPA_SCAN_SSID
+            [ $WPA_CIPHER != "none" ] && echo -e "pairwise=$WPA_CIPHER\ngroup=$WPA_CIPHER" >> $WPA_CONFIG
           fi
-          wpa_supplicant -B -w -i $DEV -c /etc/wpa_supplicant.conf -D $WPA_DRV
+          wpa_supplicant -B -w -i $DEV -c $WPA_CONFIG -D $WPA_DRV
         fi
         if test -x /usr/bin/iwpriv; then
           # WPA may not be up, try using iwpriv as well
