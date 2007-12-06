@@ -439,7 +439,6 @@ main (int argc, char **argv)
   char *filename;
   char *play_dvd_cmd;
   struct stat st;
-  struct stat st_ap;
   int n, status, speed=0, off_silent=0;
   time_t last_mtime = 0;
   char system_buf[BUF_LEN];
@@ -459,11 +458,6 @@ main (int argc, char **argv)
   if (!fstype_list || !file_exts || !playlist_exts || !img_exts)
     return 2;
 
-  if (!stat ("/var/use_dxr3", &st) && S_ISREG (st.st_mode))
-    play_dvd_cmd = "set_option dvd-device %s \nquit 167\n";
-  else
-    play_dvd_cmd = "set_option dvd-device %s \nmenu hide\nplay_dvd\n";
-
   drives = load_mnts(1);
   if (!drives)
     return 3;
@@ -472,7 +466,17 @@ main (int argc, char **argv)
     {
       usleep(1000000);
 
-      if (!stat("/var/autoplay", &st_ap))
+      if (!stat ("/var/use_dxr3", &st) && S_ISREG (st.st_mode))
+        play_dvd_cmd = "set_option dvd-device %s \nquit 167\n";
+      else
+        {
+          if (!stat ("/var/dvdnav", &st) && S_ISREG (st.st_mode))
+            play_dvd_cmd = "menu hide\nloadfile dvdnav://\n";
+          else
+            play_dvd_cmd = "menu hide\nloadfile dvd://\n";
+        }
+
+      if (!stat("/var/autoplay", &st))
         off_silent=0;
       else
         off_silent=1;
@@ -523,8 +527,9 @@ main (int argc, char **argv)
                         /* it's an audio CD */
                         sprintf(system_buf, "mp_set_option cdrom-device %s", drive->dev);
                         system(system_buf);
+                        printf("set_option cdrom-device %s\n", drive->dev);
                         if (!off_silent)
-                          printf("set_option cdrom-device %s\nmenu hide\nplay_cdda\n", drive->dev);
+                          printf("menu hide\nloadfile cdda://\n");
                         break;
                       case CDS_NO_INFO: /* no information, but try to mount and detect */
                       case CDS_DATA_1:
@@ -538,6 +543,7 @@ main (int argc, char **argv)
                           {
                             sprintf(system_buf, "mp_set_option dvd-device %s", drive->dev);
                             system(system_buf);
+                            printf("set_option dvd-device %s\n", drive->dev);
                             if (!off_silent)
                               printf(play_dvd_cmd, drive->dev);
                             break;
@@ -547,6 +553,7 @@ main (int argc, char **argv)
                           {
                             sprintf(system_buf, "mp_set_option dvd-device %s", drive->dev);
                             system(system_buf);
+                            printf("set_option dvd-device %s\n", drive->dev);
                             if (!off_silent)
                               printf(play_dvd_cmd, drive->dev);
                             break;
@@ -556,8 +563,9 @@ main (int argc, char **argv)
                           {
                             sprintf(system_buf, "mp_set_option cdrom-device %s", drive->dev);
                             system(system_buf);
+                            printf("set_option cdrom-device %s\n", drive->dev);
                             if (!off_silent)
-                              printf("set_option cdrom-device %s\nmenu hide\nplay_vcd\n", drive->dev);
+                              printf("menu hide\nloadfile vcd://\n");
                             break;
                           }
                         sprintf (filename, "%s/svcd", drive->mnt);
@@ -565,8 +573,9 @@ main (int argc, char **argv)
                           {
                             sprintf(system_buf, "mp_set_option cdrom-device %s", drive->dev);
                             system(system_buf);
+                            printf("set_option cdrom-device %s\n", drive->dev);
                             if (!off_silent)
-                              printf("set_option cdrom-device %s\nmenu hide\nplay_vcd\n", drive->dev);
+                              printf("menu hide\nloadfile vcd://\n");
                             break;
                           }
                         exts=playlist_exts;
@@ -605,8 +614,9 @@ main (int argc, char **argv)
                                     if (build_playlist (drive->mnt, -1) >= 1)
                                       sprintf(system_buf, "mp_set_option cdrom-device %s", drive->dev);
                                       system(system_buf);
+                                      printf ("set_option cdrom-device %s\n", drive->dev);
                                       if (!off_silent)
-                                        printf ("set_option cdrom-device %s\nmenu hide\nplay_vcd\n", drive->dev);
+                                        printf ("menu hide\nloadfile vcd://\n");
                                   }
                               }
                           }
@@ -614,8 +624,9 @@ main (int argc, char **argv)
                       case CDS_MIXED:
                         sprintf(system_buf, "mp_set_option cdrom-device %s", drive->dev);
                         system(system_buf);
+                        printf("set_option cdrom-device %s\n", drive->dev);
                         if (!off_silent)
-                          printf("set_option cdrom-device %s\nmenu hide\nplay_cdda\n", drive->dev);
+                          printf("menu hide\nloadfile cdda://\n");
                       case CDS_XA_2_1:
                       case CDS_XA_2_2:
                         /* it's a special CD */
