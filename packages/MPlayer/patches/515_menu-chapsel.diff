@@ -41,7 +41,7 @@ diff -Naur MPlayer-r23358.orig/libmenu/menu.c MPlayer-r23358/libmenu/menu.c
 diff -Naur MPlayer-r23358.orig/libmenu/menu_chapsel.c MPlayer-r23358/libmenu/menu_chapsel.c
 --- MPlayer-r23358.orig/libmenu/menu_chapsel.c	1970-01-01 01:00:00.000000000 +0100
 +++ MPlayer-r23358/libmenu/menu_chapsel.c	2007-05-25 18:09:05.000000000 +0200
-@@ -0,0 +1,159 @@
+@@ -0,0 +1,154 @@
 +#include <stdlib.h>
 +#include <stdio.h>
 +#include <string.h>
@@ -102,7 +102,7 @@ diff -Naur MPlayer-r23358.orig/libmenu/menu_chapsel.c MPlayer-r23358/libmenu/men
 +
 +  if ((stream && stream->type == STREAMTYPE_DVD)
 +      || (demuxer && demuxer->type == DEMUXER_TYPE_MATROSKA
-+          && mkv_chapter_num > 0))
++          && demuxer->num_chapters > 0))
 +  {
 +    menu_list_init (menu);
 +    
@@ -122,18 +122,12 @@ diff -Naur MPlayer-r23358.orig/libmenu/menu_chapsel.c MPlayer-r23358/libmenu/men
 +    }
 +    else if (demuxer->type == DEMUXER_TYPE_MATROSKA)
 +    {
-+      for (cid = 0; cid < mkv_chapter_num; cid++)
++      for (cid = 0; cid < demuxer->num_chapters; cid++)
 +      {
 +        if ((e = calloc (1, sizeof (list_entry_t))) != NULL)
 +        {
 +          e->p.next = NULL;
-+          if (mkv_chapter_string[cid])
-+            e->p.txt = strdup (mkv_chapter_string[cid]);
-+          else
-+          {
-+            sprintf (textbuf, "%-3d", cid);
-+            e->p.txt = strdup (textbuf);
-+          }
++          e->p.txt = strdup (demuxer->chapters[cid].name);
 +          e->cid = cid;
 +          menu_list_add_entry (menu, e);
 +        }
@@ -159,8 +153,9 @@ diff -Naur MPlayer-r23358.orig/libmenu/menu_chapsel.c MPlayer-r23358/libmenu/men
 +        stream_seek(stream,
 +                    (off_t)dvd_chapter_pos[menu->priv->p.current->cid]*2048);
 +      else if (demuxer && demuxer->type == DEMUXER_TYPE_MATROSKA)
-+        demux_seek (demuxer,
-+                    mkv_chapter_start[menu->priv->p.current->cid]/1000.0,0,1);
++        demux_seek(demuxer,
++                   demuxer->chapters[menu->priv->p.current->cid].start/1000.0,
++                   0,1);
 +      
 +      if (menu->priv->auto_close)
 +        mp_input_queue_cmd (mp_input_parse_cmd ("menu hide"));
@@ -201,57 +196,6 @@ diff -Naur MPlayer-r23358.orig/libmenu/menu_chapsel.c MPlayer-r23358/libmenu/men
 +  },
 +  open_cs
 +};
-diff -Naur MPlayer-r23358.orig/libmpdemux/demuxer.h MPlayer-r23358/libmpdemux/demuxer.h
---- MPlayer-r23358.orig/libmpdemux/demuxer.h	2007-05-25 17:57:54.000000000 +0200
-+++ MPlayer-r23358/libmpdemux/demuxer.h	2007-05-25 18:01:42.000000000 +0200
-@@ -361,6 +361,10 @@
- 
- extern int extension_parsing;
- 
-+extern int mkv_chapter_num;
-+extern uint64_t mkv_chapter_start[99];
-+extern char* mkv_chapter_string[99];
-+
- int demux_info_add(demuxer_t *demuxer, const char *opt, const char *param);
- char* demux_info_get(demuxer_t *demuxer, const char *opt);
- int demux_info_print(demuxer_t *demuxer);
-diff -Naur MPlayer-r23358.orig/libmpdemux/demux_mkv.c MPlayer-r23358/libmpdemux/demux_mkv.c
---- MPlayer-r23358.orig/libmpdemux/demux_mkv.c	2007-05-25 17:57:54.000000000 +0200
-+++ MPlayer-r23358/libmpdemux/demux_mkv.c	2007-05-25 18:00:07.000000000 +0200
-@@ -194,6 +194,10 @@
- #define RVPROPERTIES_SIZE  34
- #define RAPROPERTIES4_SIZE 56
- #define RAPROPERTIES5_SIZE 70
-+
-+int mkv_chapter_num;
-+uint64_t mkv_chapter_start[99];
-+char* mkv_chapter_string[99];
- 
- /* for e.g. "-slang ger" */
- extern char *dvdsub_lang;
-@@ -1404,6 +1403,10 @@
-                              (int) ((end / 1000) % 60),
-                              (int) (end % 1000), name);
- 
-+                      mkv_chapter_num = demuxer->num_chapters;
-+                      mkv_chapter_start[mkv_chapter_num - 1] = start;
-+                      mkv_chapter_string[mkv_chapter_num - 1] = strdup(name);
-+                      
-                       free(name);
-                       break;
-                     }
-@@ -2616,6 +2616,11 @@
- demux_close_mkv (demuxer_t *demuxer)
- {
-   mkv_demuxer_t *mkv_d = (mkv_demuxer_t *) demuxer->priv;
-+  int i;
-+
-+  if (mkv_chapter_num)
-+      for (i = 0; i < mkv_chapter_num; i++)
-+          free(mkv_chapter_string[i]);
- 
-   if (mkv_d)
-     {
 diff -Naur MPlayer-r23358.orig/mplayer.c MPlayer-r23358/mplayer.c
 --- MPlayer-r23358.orig/mplayer.c	2007-05-25 17:57:54.000000000 +0200
 +++ MPlayer-r23358/mplayer.c	2007-05-25 18:05:08.000000000 +0200
