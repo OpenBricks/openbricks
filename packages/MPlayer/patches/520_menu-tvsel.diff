@@ -1,0 +1,263 @@
+--- MPlayer/libmenu/Makefile	2007-12-07 15:24:24.000000000 +0900
++++ MPlayer/libmenu/Makefile	2007-12-08 17:51:40.000000000 +0900
+@@ -14,5 +14,6 @@
+                menu_param.c \
+ 
+ SRCS_MPLAYER-$(DVBIN) += menu_dvbin.c
++SRCS_MPLAYER-$(TV) += menu_tv.c
+ 
+ include ../mpcommon.mak
+--- MPlayer/libmenu/menu.c	2007-12-08 18:02:40.000000000 +0900
++++ MPlayer/libmenu/menu.c	2007-12-07 15:23:45.000000000 +0900
+@@ -36,6 +36,9 @@
+ #ifdef HAS_DVBIN_SUPPORT
+ extern menu_info_t menu_info_dvbsel;
+ #endif
++#ifdef USE_TV
++extern menu_info_t menu_info_tvsel;
++#endif
+ 
+ 
+ menu_info_t* menu_info_list[] = {
+@@ -48,6 +48,9 @@
+ #ifdef HAS_DVBIN_SUPPORT
+   &menu_info_dvbsel,
+ #endif  
++#ifdef USE_TV
++  &menu_info_tvsel,
++#endif  
+   &menu_info_pref,
+   NULL
+ };
+--- MPlayer/libmenu/menu_tv.c	2007-12-04 09:03:44.693741888 +0900
++++ MPlayer/libmenu/menu_tv.c	2007-12-08 13:05:36.000000000 +0900
+@@ -0,0 +1,229 @@
++/*
++ * TV OSD menu for libmenu
++ * Copyright (C) 2007 by Otvos Attilla and Andrew Calkin
++ *
++ * This file is part of MPlayer.
++ *
++ * MPlayer is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * MPlayer is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with MPlayer; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
++ *
++ */
++#include <stdlib.h>
++#include <stdio.h>
++#include <dirent.h>
++#include <errno.h>
++#include <string.h>
++#include <sys/types.h>
++#include <sys/stat.h>
++#include <ctype.h>
++#include <unistd.h>
++#include <limits.h>
++
++#include "config.h"
++
++#include "m_struct.h"
++#include "m_option.h"
++
++#include "libmpcodecs/img_format.h"
++#include "libmpcodecs/mp_image.h"
++
++#include "menu.h"
++#include "menu_list.h"
++#include "input/input.h"
++#include "osdep/keycodes.h"
++
++#include "stream/tv.h"
++
++#define CHAN_NAME_LEN 40
++#define CMD_LEN       20
++struct list_entry_s {
++  struct list_entry p;
++  int d;
++};
++
++struct menu_priv_s {
++  menu_list_priv_t p;
++  /* Cfg fields */
++  char* title;
++  char* sel_action;
++  int auto_close;
++};
++
++static struct menu_priv_s cfg_dflt = {
++  MENU_LIST_PRIV_DFLT,
++  "TV channels",
++  "tv_set_channel %d",
++  0,
++};
++
++#define ST_OFF(m) M_ST_OFF(struct menu_priv_s,m)
++
++static m_option_t cfg_fields[] = {
++  MENU_LIST_PRIV_FIELDS,
++  { "title", ST_OFF(title),  CONF_TYPE_STRING, 0, 0, 0, NULL },
++  { "sel-action", ST_OFF(sel_action),  CONF_TYPE_STRING, 0, 0, 0, NULL },
++  { "auto-close", ST_OFF(auto_close), CONF_TYPE_FLAG, 0, 0, 1, NULL },
++  { NULL, NULL, NULL, 0,0,0,NULL }
++};
++
++#define mpriv (menu->priv)
++
++static void free_entry(list_entry_t* entry)
++{
++  if (entry)
++  {
++    if (entry->p.txt)
++      free(entry->p.txt);
++    free(entry);
++  }
++}
++
++static void update_tv_channels(menu_t* menu, int d)
++{
++  list_entry_t* e;
++
++  for( e = ((menu_list_priv_t*)mpriv)->menu ; e ; e = e->p.next )
++  {
++    if (e->p.txt)
++    { 
++      if (e->d == d)
++        e->p.txt[0] = '*';
++      else
++        e->p.txt[0] = ' ';
++    }
++  }
++}
++
++static void read_cmd(menu_t* menu, int cmd)
++{
++  char cmd_str[CMD_LEN + 1];
++
++  switch(cmd)
++  {
++    case MENU_CMD_OK:
++      if (mpriv->p.current->d == 0)
++        break;
++
++      snprintf(cmd_str, CMD_LEN, mpriv->sel_action, mpriv->p.current->d);
++      cmd_str[CMD_LEN] = '\0';
++      mp_input_queue_cmd(mp_input_parse_cmd(cmd_str));
++      update_tv_channels(menu, mpriv->p.current->d);
++      if(mpriv->auto_close)
++        menu->cl = 1;
++      break;
++
++    default:
++      menu_list_read_cmd(menu, cmd);
++  }
++}
++
++static void read_key(menu_t* menu, int c)
++{
++  if(c == KEY_BS)
++  {
++    /* Hack : we consider that the first entry is ../ */
++    mpriv->p.current = mpriv->p.menu;
++    read_cmd(menu, MENU_CMD_OK);
++  }
++  else if (menu_dflt_read_key(menu, c))
++    return;
++  else
++    menu_list_jump_to_key(menu, c);
++}
++
++static void close_menu(menu_t* menu)
++{
++  menu_list_uninit(menu, free_entry);
++}
++
++static void add_empty_menu_item(menu_t* menu)
++{
++  list_entry_t* e;
++  mpriv->p.title = mpriv->title;
++  if ((e = calloc(1, sizeof(list_entry_t))) != NULL)
++  {
++    e->p.next = NULL;
++    e->p.txt = strdup("  (None)");
++    e->d = 0;
++    menu_list_add_entry(menu, e);
++  }
++}
++
++#ifdef USE_TV
++static void sel_tv_channels(menu_t* menu)
++{
++  list_entry_t* e;
++  int i = 1;
++  char txt[CHAN_NAME_LEN + 1];
++  tv_channels_t *tv_channel = tv_channel_list;
++  mpriv->p.title = mpriv->title;
++  txt[CHAN_NAME_LEN] = '\0';
++
++  if (!tv_channel)
++  {
++    add_empty_menu_item(menu);
++    return;
++  }
++
++  while (tv_channel)
++  {
++    if ((e = calloc(1, sizeof(list_entry_t))) != NULL)
++    {
++      if (tv_channel == tv_channel_current)
++        snprintf(txt, CHAN_NAME_LEN, "* %s", tv_channel->name);
++      else 
++        snprintf(txt, CHAN_NAME_LEN, "  %s", tv_channel->name);
++
++      e->p.txt = strdup(txt);
++      e->d = i;
++      menu_list_add_entry(menu, e);
++    }
++    i++;
++    tv_channel = tv_channel->next;
++  }
++}
++#endif
++
++static int main_tvsel(menu_t* menu, char* args)
++{
++  args = NULL; /* Silence warning */
++
++  menu->draw = menu_list_draw;
++  menu->read_cmd = read_cmd;
++  menu->read_key = read_key;
++  menu->close = close_menu;
++
++  menu_list_init(menu);
++
++#if USE_TV
++  sel_tv_channels(menu);
++#else
++  add_empty_menu_item(menu);
++#endif
++  return 1;
++}
++
++const menu_info_t menu_info_tvsel = {
++  "TV sel channels",
++  "tvchannelsel",
++  "Otvos Attila, Andrew Calkin",
++  "",
++  {
++    "fs_cfg",
++    sizeof(struct menu_priv_s),
++    &cfg_dflt,
++    cfg_fields
++  },
++  main_tvsel
++};
