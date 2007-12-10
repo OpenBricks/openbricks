@@ -41,7 +41,7 @@ diff -Naur MPlayer-r23358.orig/libmenu/menu.c MPlayer-r23358/libmenu/menu.c
 diff -Naur MPlayer-r23358.orig/libmenu/menu_chapsel.c MPlayer-r23358/libmenu/menu_chapsel.c
 --- MPlayer-r23358.orig/libmenu/menu_chapsel.c	1970-01-01 01:00:00.000000000 +0100
 +++ MPlayer-r23358/libmenu/menu_chapsel.c	2007-05-25 18:09:05.000000000 +0200
-@@ -0,0 +1,154 @@
+@@ -0,0 +1,164 @@
 +#include <stdlib.h>
 +#include <stdio.h>
 +#include <string.h>
@@ -53,6 +53,7 @@ diff -Naur MPlayer-r23358.orig/libmenu/menu_chapsel.c MPlayer-r23358/libmenu/men
 +#include "input/input.h"
 +
 +#include "stream/stream.h"
++#include "stream/stream_dvd.h"
 +#include "libmpdemux/demuxer.h"
 +#include "libvo/video_out.h"
 +#include "libvo/sub.h"
@@ -107,8 +108,13 @@ diff -Naur MPlayer-r23358.orig/libmenu/menu_chapsel.c MPlayer-r23358/libmenu/men
 +    
 +    if (stream->type == STREAMTYPE_DVD)
 +    {
++      dvd_priv_t *dvd_p = (dvd_priv_t *)stream->priv;
++      int dvd_title = dvd_p->cur_title-1;
 +      char textbuf[3];
-+      for (cid = 0; cid < dvd_total_chapter; cid++)
++
++      for (cid = 0;
++           cid < dvd_p->tt_srpt->title[dvd_title].nr_of_ptts;
++           cid++)
 +      {
 +        if ((e = calloc (1, sizeof (list_entry_t))) != NULL)
 +        {
@@ -144,17 +150,21 @@ diff -Naur MPlayer-r23358.orig/libmenu/menu_chapsel.c MPlayer-r23358/libmenu/men
 +{
 +  demuxer_t* demuxer = mpctx_get_demuxer (menu->ctx);
 +  stream_t* stream = mpctx_get_stream (menu->ctx);
++  int cid = menu->priv->p.current->cid;
 +
 +  switch (cmd)
 +  {
 +    case MENU_CMD_RIGHT:
 +    case MENU_CMD_OK:
 +      if (stream && stream->type == STREAMTYPE_DVD)
++      {
++        dvd_priv_t *dvd_p = (dvd_priv_t *)stream->priv;
 +        stream_seek(stream,
-+                    (off_t)dvd_chapter_pos[menu->priv->p.current->cid]*2048);
++                    dvd_p->cur_pgc->cell_playback[cid].first_sector*2048);
++      }
 +      else if (demuxer && demuxer->type == DEMUXER_TYPE_MATROSKA)
 +        demux_seek(demuxer,
-+                   demuxer->chapters[menu->priv->p.current->cid].start/1000.0,
++                   demuxer->chapters[cid].start/1000.0,
 +                   0,1);
 +      
 +      if (menu->priv->auto_close)
@@ -216,48 +226,3 @@ diff -Naur MPlayer-r23358.orig/mplayer.c MPlayer-r23358/mplayer.c
  void *mpctx_get_video_out(MPContext *mpctx)
  {
      return mpctx->video_out;
-diff -Naur MPlayer-r23358.orig/stream/stream_dvd.c MPlayer-r23358/stream/stream_dvd.c
---- MPlayer-r23358.orig/stream/stream_dvd.c	2007-05-25 17:57:54.000000000 +0200
-+++ MPlayer-r23358/stream/stream_dvd.c	2007-05-25 18:03:47.000000000 +0200
-@@ -45,6 +45,8 @@
- extern char* dvd_device;
- int dvd_angle=1;
- int dvd_speed=0; /* 0 => don't touch speed */
-+int dvd_total_chapter=0;
-+int dvd_chapter_pos[99];
- 
- static void dvd_set_speed(char *device, unsigned speed)
- {
-@@ -866,6 +866,7 @@
-      * Make sure the chapter number is valid for this title.
-      */
-     mp_msg(MSGT_OPEN,MSGL_STATUS, MSGTR_DVDnumChapters, tt_srpt->title[dvd_title].nr_of_ptts);
-+    dvd_total_chapter = tt_srpt->title[dvd_title].nr_of_ptts;
-     if(dvd_chapter<1 || dvd_chapter>tt_srpt->title[dvd_title].nr_of_ptts) {
-       mp_msg(MSGT_OPEN,MSGL_ERR, MSGTR_DVDinvalidChapter, dvd_chapter);
-       goto fail;
-@@ -1049,6 +1049,12 @@
-       d->cell_times_table[k] = mp_dvdtimetomsec(&d->cur_pgc->cell_playback[k].playback_time);
-     list_chapters(d->cur_pgc);
- 
-+    {
-+      int chap;
-+      for (chap = 0; chap < dvd_total_chapter; chap++)
-+        dvd_chapter_pos[chap] = d->cur_pgc->cell_playback[chap].first_sector;
-+    }
-+    
-     // ... (unimplemented)
-     //    return NULL;
-     stream->type = STREAMTYPE_DVD;
-diff -Naur MPlayer-r23358.orig/stream/stream.h MPlayer-r23358/stream/stream.h
---- MPlayer-r23358.orig/stream/stream.h	2007-05-25 17:57:54.000000000 +0200
-+++ MPlayer-r23358/stream/stream.h	2007-05-25 18:02:12.000000000 +0200
-@@ -297,6 +297,8 @@
- extern int dvd_title;
- extern int dvd_chapter;
- extern int dvd_last_chapter;
-+extern int dvd_total_chapter;
-+extern int dvd_chapter_pos[99];
- extern int dvd_angle;
- 
- extern char * audio_stream;
