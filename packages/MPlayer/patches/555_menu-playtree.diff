@@ -1,7 +1,8 @@
-diff -r cc4b9cfa9112 libmenu/menu_pt.c
---- a/libmenu/menu_pt.c	Sun Apr 30 16:54:41 2006 +0200
-+++ b/libmenu/menu_pt.c	Sun Apr 30 16:54:42 2006 +0200
-@@ -32,11 +32,13 @@ struct menu_priv_s {
+Index: MPlayer/libmenu/menu_pt.c
+===================================================================
+--- MPlayer/libmenu/menu_pt.c	(revision 25520)
++++ MPlayer/libmenu/menu_pt.c	(working copy)
+@@ -32,11 +32,13 @@
  struct menu_priv_s {
    menu_list_priv_t p;
    char* title;
@@ -16,7 +17,7 @@ diff -r cc4b9cfa9112 libmenu/menu_pt.c
  };
  
  #define ST_OFF(m) M_ST_OFF(struct menu_priv_s,m)
-@@ -44,28 +44,79 @@ static m_option_t cfg_fields[] = {
+@@ -44,6 +46,7 @@
  static m_option_t cfg_fields[] = {
    MENU_LIST_PRIV_FIELDS,
    { "title", ST_OFF(title),  CONF_TYPE_STRING, 0, 0, 0, NULL },
@@ -24,195 +25,16 @@ diff -r cc4b9cfa9112 libmenu/menu_pt.c
    { NULL, NULL, NULL, 0,0,0,NULL }
  };
  
- #define mpriv (menu->priv)
- 
-+static int fill_menu(menu_t* menu) {
-+  play_tree_t* i;
-+  list_entry_t* e;
-+  play_tree_iter_t* playtree_iter = mpctx_get_playtree_iter(menu->ctx);
-+
-+  menu_list_init(menu);
-+
-+  mpriv->p.title = mpriv->title;
-+
-+  if(playtree_iter->tree->parent) {
-+    e = calloc(1,sizeof(list_entry_t));
-+    e->p.txt = "..";
-+    e->pt = playtree_iter->tree->parent;
-+    menu_list_add_entry(menu,e);
-+  }
-+
-+  for(i = playtree_iter->tree ; i->prev != NULL ; i = i->prev)
-+    /* NOP */;
-+  for( ; i != NULL ; i = i->next ) {
-+    e = calloc(1,sizeof(list_entry_t));
-+    if(i->files) {
-+#if defined(HAVE_VCD) || defined(HAVE_CDDA)
-+      if (i->entry_type == PLAY_TREE_ENTRY_VCD
-+          || !strncasecmp(i->files[0],"cdda://",7)) {
-+        e->p.txt = malloc (10);
-+        sprintf(e->p.txt, "Track %s", mp_basename(i->files[0]));
-+      }
-+      else
-+#endif
-+#ifdef USE_DVDREAD
-+      if (i->entry_type == PLAY_TREE_ENTRY_DVD) {
-+        e->p.txt = malloc (10);
-+        sprintf(e->p.txt, "Title %s", mp_basename(i->files[0]));
-+      }
-+      else
-+#endif
-+        e->p.txt = mp_basename(i->files[0]);
-+    }
-+    else
-+      e->p.txt = "Initial Playlist ...";
-+    e->pt = i;
-+    menu_list_add_entry(menu,e);
-+  }
-+
-+  return 1;
-+}
-+
- static void read_cmd(menu_t* menu,int cmd) {
-   switch(cmd) {
-   case MENU_CMD_RIGHT:
-   case MENU_CMD_OK: {
--    int d = 1;
-+    int d = 0;
-     char str[15];
-     play_tree_t* i;
-     mp_cmd_t* c;
-     play_tree_iter_t* playtree_iter = mpctx_get_playtree_iter(menu->ctx);
- 
--    if(playtree_iter->tree == mpriv->p.current->pt)
--      break;
--
--    if(playtree_iter->tree->parent && mpriv->p.current->pt == playtree_iter->tree->parent)
--      snprintf(str,15,"pt_up_step 1");
--    else {
--      for(i = playtree_iter->tree->next; i != NULL ; i = i->next) {
-+    if(playtree_iter->tree->parent && mpriv->p.current->pt == playtree_iter->tree->parent){
-+      playtree_iter->tree = playtree_iter->tree->parent;
-+      menu_list_uninit(menu,NULL);
-+      fill_menu(menu);
-+    } else if(mpriv->p.current->pt->child) {
-+      playtree_iter->tree = mpriv->p.current->pt->child;
-+      menu_list_uninit(menu,NULL);
-+      fill_menu(menu);
-+    } else {
-+      for(i = playtree_iter->tree; i != NULL ; i = i->next) {
- 	if(i == mpriv->p.current->pt)
- 	  break;
- 	d++;
-@@ -83,12 +83,14 @@ static void read_cmd(menu_t* menu,int cm
- 	}
-       }
+@@ -85,8 +88,11 @@
        snprintf(str,15,"pt_step %d",d);
-+      c = mp_input_parse_cmd(str);
-+      if(c) {
-+        if(mpriv->auto_close)
-+          mp_input_queue_cmd(mp_input_parse_cmd("menu hide"));
-+        mp_input_queue_cmd(c);
-+      } else
-+        mp_msg(MSGT_GLOBAL,MSGL_WARN,MSGTR_LIBMENU_FailedToBuildCommand,str);
      }
--    c = mp_input_parse_cmd(str);
+     c = mp_input_parse_cmd(str);
 -    if(c)
--      mp_input_queue_cmd(c);
--    else
--      mp_msg(MSGT_GLOBAL,MSGL_WARN,MSGTR_LIBMENU_FailedToBuildCommand,str);
++    if(c) {
++      if(mpriv->auto_close)
++        mp_input_queue_cmd(mp_input_parse_cmd("menu hide"));
+       mp_input_queue_cmd(c);
++    }
+     else
+       mp_msg(MSGT_GLOBAL,MSGL_WARN,MSGTR_LIBMENU_FailedToBuildCommand,str);
    } break;
-   default:
-     menu_list_read_cmd(menu,cmd);
-@@ -106,8 +106,6 @@ static void close(menu_t* menu) {
- }
- 
- static int op(menu_t* menu, char* args) {
--  play_tree_t* i;
--  list_entry_t* e;
-   play_tree_iter_t* playtree_iter = mpctx_get_playtree_iter(menu->ctx);
-   
-   args = NULL; // Warning kill
-@@ -117,30 +117,7 @@ static int op(menu_t* menu, char* args) 
-   menu->read_key = read_key;
-   menu->close = close_menu;
- 
--  menu_list_init(menu);
--
--  mpriv->p.title = mpriv->title;
--
--  if(playtree_iter->tree->parent != playtree_iter->root) {
--    e = calloc(1,sizeof(list_entry_t));
--    e->p.txt = "..";
--    e->pt = playtree_iter->tree->parent;
--    menu_list_add_entry(menu,e);
--  }
--  
--  for(i = playtree_iter->tree ; i->prev != NULL ; i = i->prev)
--    /* NOP */;
--  for( ; i != NULL ; i = i->next ) {
--    e = calloc(1,sizeof(list_entry_t));
--    if(i->files)
--      e->p.txt = mp_basename(i->files[0]);
--    else
--      e->p.txt = "Group ...";
--    e->pt = i;
--    menu_list_add_entry(menu,e);
--  }
--
--  return 1;
-+  return fill_menu(menu);
- }
- 
- const menu_info_t menu_info_pt = {
-diff -r cc4b9cfa9112 mplayer.c
---- a/command.c	Sun Apr 30 16:54:41 2006 +0200
-+++ b/command.c	Sun Apr 30 16:54:42 2006 +0200
-     } break;
-
-        case MP_CMD_PLAY_TREE_STEP:{
--               int n = cmd->args[0].v.i == 0 ? 1 : cmd->args[0].v.i;
-+               int n = cmd->args[0].v.i;
-                int force = cmd->args[1].v.i;
-
- #ifdef HAVE_NEW_GUI
-diff -r cc4b9cfa9112 playtree.c
---- a/playtree.c	Sun Apr 30 16:54:41 2006 +0200
-+++ b/playtree.c	Sun Apr 30 16:54:42 2006 +0200
-@@ -252,7 +252,6 @@ play_tree_add_file(play_tree_t* pt,char*
- 
- #ifdef MP_DEBUG
-   assert(pt != NULL);
--  assert(pt->child == NULL);
-   assert(file != NULL);
- #endif
- 
-@@ -662,9 +661,6 @@ play_tree_is_valid(play_tree_t* pt) {
- #endif
- 
-   if(pt->entry_type != PLAY_TREE_ENTRY_NODE) {
--#ifdef MP_DEBUG
--    assert(pt->child == NULL);
--#endif
-     return 1;
-   }
-   else if (pt->child != NULL) {
-@@ -724,7 +720,6 @@ play_tree_iter_down_step(play_tree_iter_
- play_tree_iter_down_step(play_tree_iter_t* iter, int d,int with_nodes) {
- 
- #ifdef MP_DEBUG
--  assert(iter->tree->files == NULL);
-   assert(iter->tree->child != NULL);
-   assert(iter->tree->child->parent == iter->tree);
-   //printf("PT : Go DOWN\n");
-diff -r cc4b9cfa9112 playtreeparser.c
---- a/playtreeparser.c	Sun Apr 30 16:54:41 2006 +0200
-+++ b/playtreeparser.c	Sun Apr 30 16:54:42 2006 +0200
-@@ -743,6 +743,7 @@ parse_playlist_file(char* file) {
-   free_stream(stream);
- 
-   play_tree_add_bpf(ret, file);
-+  play_tree_add_file(ret,file);
- 
-   return ret;
- 
