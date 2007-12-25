@@ -725,7 +725,7 @@ if [ "$USE_XORG" = yes ]; then
   cat >> $grubdir/single.lst <<EOF
 title	GeeXboX HDTV
 root	$rootdev_single
-kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME splash=$SPLASH vga=$VESA_MODE keymap=$KEYMAP remote=$REMOTE receiver=$RECEIVER video=vesafb:ywrap,mtrr hdtv
+kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME lang=$MENU_LANG splash=$SPLASH vga=$VESA_MODE keymap=$KEYMAP remote=$REMOTE receiver=$RECEIVER video=vesafb:ywrap,mtrr hdtv
 initrd  /initrd.gz
 boot
 
