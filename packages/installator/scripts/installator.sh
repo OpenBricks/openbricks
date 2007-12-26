@@ -152,7 +152,6 @@ setup_network () {
 
 # Configure TV card and scan for channels.
 setup_tvscan () {
-  MPTVSCAN=/usr/bin/mptvscan
   title="$BACKTITLE : Analog TV Channels Scanner"
 
   for i in `$MPTVSCAN -i`; do
@@ -174,17 +173,13 @@ setup_tvscan () {
 
     CHANLIST=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "TV Chanlist Selection" --menu "\nBelow is the list of pre-configured chanlists for scan. Select the one corresponding to your location." 0 0 0 $CHANLISTS`
 
-    $MPTVSCAN -a "-i$INPUT" "-s$NORM" "-c$CHANLIST" -p 2>/tmp/chans | $DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "Scanning Channels" --gauge "\nGeeXboX is currently scanning your channels. This operation may take a while. Please wait while processing ..." 0 0
+    CHANNELS_MPLAYER_PARAM=`mplayer tv:// -really-quiet -msglevel tv=4 -ao null -vo null -tvscan autostart -frames 600 -tv driver=v4l2:input=$INPUT:norm=$NORM:chanlist=$CHANLIST 2>/dev/null | grep "^channels="`  | $DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "Scanning Channels" --gauge "\nGeeXboX is currently scanning your channels. This operation may take a while. Please wait while processing ..." 0 0
 
-    CHANNELS=`sed -e 's/CHAN=//g' -e 's/:/ - /g' -e 's/\"//g' -e 's/$/\\\\n/g' /tmp/chans`
+    CHANNELS=`echo $CHANNELS_MPLAYER_PARAM | sed -e 's/channels=//g' -e 's/-/ - /g' -e 's/,/\\\\n/g' -e 's/$/\\\\n/g'`
     $DIALOG --aspect 12 --stdout --yes-label "Accept" --no-label "Retry" --backtitle "$title" --title "Scan Done ..." --yesno "\nCongratulations, the TV channels scan is done. The following channels has been discoverd (if no channel has been found, you can then try again with new card/tuner/norm/chanlist settings).\n\n$CHANNELS" 0 0 && DONE=true
   done
 
-  if [ -s /tmp/chans ]; then
-    cat /tmp/chans >> $1/etc/tvcard
-  fi
-  rm -f /tmp/chans
-
+  [ `echo $CHANNELS_MPLAYER_PARAM | grep -c "channels="` -eq 1 ] && echo "tv=$CHANNELS_MPLAYER_PARAM" >> /etc/mplayer/mplayer.conf
   sed -i "s/^TVIN_STANDARD=.*/TVIN_STANDARD=$NORM/" $1/etc/tvcard
   sed -i "s/^CHANLIST=.*/CHANLIST=$CHANLIST/" $1/etc/tvcard
 }
