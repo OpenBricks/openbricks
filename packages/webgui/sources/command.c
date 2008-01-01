@@ -110,7 +110,7 @@ const char * getFileContent(const char *path) {
 		fgets(buff, MAX, file);
 		fclose(file);
 		
-		dir = (char *)malloc(MAX * sizeof(buff));
+		dir = malloc(MAX * sizeof(buff));
 		strcpy(dir, buff);
 		
 		return dir;
