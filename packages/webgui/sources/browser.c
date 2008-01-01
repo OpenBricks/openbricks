@@ -156,7 +156,7 @@ void printSeekBar(){
 	int i;
 	for(i = 0; i <= 100; i += 2) {
 		printf("\t\t\t\t<a href=\"?mplayer=seek %d 1\">", i);
-		if(i == 0 || i == 10 || i == 20 || i == 30 || i == 40 || i == 50 || i == 60 || i == 70 || i == 80 || i == 90 || i == 100) {
+		if(!(i % 10)) {
 			printf("<img class=\"seekBarSeekField\" id=\"seekBar%d\" src=\"/style/geexbox/seekBar/2.png\" alt=\"Seekbar\" />", i);
 		}
 		else {
