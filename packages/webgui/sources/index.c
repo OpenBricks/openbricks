@@ -172,14 +172,14 @@ void printPageHead() {
      printf("      xml:lang=\"en\" >\n");
 	printf("\t<head>\n");
 	printf("\t\t<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\" />\n");
-	printf("\t\t<title>GeexBox &#8250; WebGui %s</title>\n", VERSION);
+	printf("\t\t<title>GeeXboX &#8250; WebGui %s</title>\n", VERSION);
 	printf("\t\t<link rel=\"StyleSheet\" href=\"/style/geexbox/style.css\" type=\"text/css\" />\n");
 	printf("\t\t<link rel=\"shortcut icon\" href=\"/style/geexbox/icon.png\" type=\"image/x-icon\" />\n");
 	printf("\t\t<script type=\"text/javascript\" src=\"/js/state.js\"></script>\n");
 	printf("\t</head>\n");
 	printf("\t<body onload=\"getState();\">\n");
 	printf("\t\t<div id=\"headPlayerState\"></div>\n");
-	printf("\t\t<div id=\"head\"><img src=\"/style/geexbox/logo.png\" alt=\"GeexBox WebGui\" /></div>\n");
+	printf("\t\t<div id=\"head\"><img src=\"/style/geexbox/logo.png\" alt=\"GeeXboX WebGui\" /></div>\n");
 }
 
 void printPageFoot() {
