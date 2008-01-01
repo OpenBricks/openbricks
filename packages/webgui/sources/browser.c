@@ -144,6 +144,7 @@ void printCurrentDirContent(const char *dir, const char *name) {
 				}
 			}
 		}
+		free(pDirEnt[i]);
 	}
 	free(pDirEnt);
 }
