@@ -1,0 +1,103 @@
+diff -Naur MPlayer-r25688.orig/stream/stream.c MPlayer-r25688/stream/stream.c
+--- MPlayer-r25688.orig/stream/stream.c	2008-01-12 13:55:21.000000000 +0100
++++ MPlayer-r25688/stream/stream.c	2008-01-12 17:09:06.000000000 +0100
+@@ -69,6 +69,7 @@
+ extern const stream_info_t stream_info_vstream;
+ #endif
+ #ifdef USE_DVDNAV
++extern const stream_info_t stream_info_nav_ifo;
+ extern const stream_info_t stream_info_dvdnav;
+ #endif
+ #ifdef LIBSMBCLIENT
+@@ -136,6 +137,7 @@
+   &stream_info_dvd,
+ #endif
+ #ifdef USE_DVDNAV
++  &stream_info_nav_ifo,
+   &stream_info_dvdnav,
+ #endif
+ 
+diff -Naur MPlayer-r25688.orig/stream/stream_dvd.c MPlayer-r25688/stream/stream_dvd.c
+--- MPlayer-r25688.orig/stream/stream_dvd.c	2008-01-12 13:55:20.000000000 +0100
++++ MPlayer-r25688/stream/stream_dvd.c	2008-01-12 17:09:42.000000000 +0100
+@@ -26,6 +26,9 @@
+ 
+ #include <libgen.h>
+ #include <errno.h>
++#include <sys/types.h>
++#include <sys/stat.h>
++#include <unistd.h>
+ 
+ #define FIRST_AC3_AID 128
+ #define FIRST_DTS_AID 136
+@@ -1104,11 +1107,15 @@
+     char *ext;
+     char* filename;
+     struct stream_priv_s *dvd_priv;
+-
++    struct stat st;
++    
+     ext = strrchr (stream->url, '.');
+     if (!ext || strcasecmp (ext + 1, "ifo"))
+         return STREAM_UNSUPPORTED;
+ 
++    if (stat ("/var/dvdnav", &st) == 0)
++      return STREAM_UNSUPPORTED;
++
+     mp_msg(MSGT_DVD, MSGL_INFO, ".IFO detected. Redirecting to dvd://\n");
+     if (!dvd_device)
+         dvd_device = strdup(dirname (stream->url));
+diff -Naur MPlayer-r25688.orig/stream/stream_dvdnav.c MPlayer-r25688/stream/stream_dvdnav.c
+--- MPlayer-r25688.orig/stream/stream_dvdnav.c	2008-01-12 13:55:20.000000000 +0100
++++ MPlayer-r25688/stream/stream_dvdnav.c	2008-01-12 17:10:13.000000000 +0100
+@@ -19,6 +19,11 @@
+ #include "m_struct.h"
+ #include "help_mp.h"
+ 
++#include <sys/types.h>
++#include <sys/stat.h>
++#include <unistd.h>
++#include <libgen.h>
++
+ typedef struct {
+   dvdnav_t *       dvdnav;              /* handle to libdvdnav stuff */
+   char *           filename;            /* path */
+@@ -769,3 +774,38 @@
+   &stream_opts,
+   1 // Urls are an option string
+ };
++
++static int
++ifo_stream_open (stream_t *stream, int mode, void *opts, int *file_format)
++{
++    char *ext;
++    struct stream_priv_s *dvd_priv;
++    struct stat st;
++      
++    ext = strrchr (stream->url, '.');
++    if (!ext || strcasecmp (ext + 1, "ifo"))
++        return STREAM_UNSUPPORTED;
++
++    if (stat ("/var/dvdnav", &st) != 0)
++        return STREAM_UNSUPPORTED;
++    
++    mp_msg(MSGT_DVD, MSGL_INFO, ".IFO detected. Redirecting to dvdnav://\n");
++    if (!dvd_device)
++        dvd_device = strdup(dirname (stream->url));
++
++    free(stream->url);
++    stream->url=strdup("dvdnav://");
++
++    return open_s(stream, mode, dvd_priv, file_format);
++}
++
++const stream_info_t stream_info_nav_ifo = {
++  "DVDNAV IFO input",
++  "ifo",
++  "Benjamin Zores",
++  "Mostly used to play DVDNAVs on disk through OSD Menu",
++  ifo_stream_open,
++  { "file", "", NULL },
++  &stream_opts,
++  1
++};
