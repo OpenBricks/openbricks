@@ -558,9 +558,8 @@ if [ "$1" = geexbox ]; then
              -e '0480: 1131:' \
              -e '0480: 14f1:88' \
              /tmp/pci; then
-    # Only scan if a TV card is detected
-    /usr/bin/mptvscan -i >/dev/null 2>&1
-    if [ `echo $?` = 0 ]; then
+    # Only scan if a TV card device is present
+    if [ -c /dev/video0 ]; then
       $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Scan for Analog TV Channels ?" --yesno "\nDo you want to configure your analog tv card and scan for channels before installing GeeXboX to disk ?\n" 0 0 && setup_tvscan "di/GEEXBOX"
     fi
   fi
