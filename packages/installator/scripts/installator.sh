@@ -511,7 +511,7 @@ if [ "$FORMAT" = yes ]; then
       $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Warning" --msgbox "\n'$DEV' needs to be a $MKFS_TYPENAME partition. As you don't have formatting tool installed, I won't be able to format the partition. Hopefully it is already formatted.\n" 0 0
     fi
   else
-    $MKFS $MKFS_OPT "$DEV" 2>&1 > /dev/null
+    $MKFS $MKFS_OPT "$DEV"
   fi
 elif [ "$NEED_FORMAT" = yes ]; then
   $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\n'$DEV' needs to be a formatted.\n" 0 0
@@ -532,7 +532,7 @@ else
   GEEXBOX="$CDROM/GEEXBOX"
 fi
 
-cp -a "$GEEXBOX" di/GEEXBOX 2>/dev/null
+cp -a "$GEEXBOX" di/GEEXBOX
 
 [ "$PART_TYPE" = "Linux" ] && $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Faster boot- HDD sleepless mode ?" --defaultno --yesno "\nDo you want to install so that boot times are faster, but boot HDD cannot spin down ?\n" 0 0 && FASTBOOT=yes && echo "" > "di/GEEXBOX/var/fastboot"
 
