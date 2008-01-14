@@ -1,0 +1,33 @@
+#!/bin/sh
+
+. config/options
+
+$SCRIPTS/build libdrm
+$SCRIPTS/build expat    # only headers are used
+
+# mesa build is absolutely not thread-safe
+export MAKEFLAGS=-j1
+
+[ $TARGET_ARCH = i386 ] && DRI_ARCH=x86
+[ $TARGET_ARCH = x86_64 ] && DRI_ARCH=x86-64
+[ $TARGET_ARCH = powerpc ] && DRI_ARCH=ppc
+
+cd $BUILD/$1*
+make linux-dri-${DRI_ARCH} \
+    CC=$CC \
+    HOST_CC=$HOST_CC \
+    X11_INCLUDES= \
+    EXTRA_LIB_PATH= \
+    SRC_DIRS="mesa" \
+    PROGRAM_DIRS= \
+    DRI_DIRS="i810 i915 i965" \
+    DRI_DRIVER_INSTALL_DIR="/usr/lib/dri" \
+    DRI_DRIVER_SEARCH_DIR="/usr/lib/dri"
+
+# strip DRI drivers (why are they sooooo big)
+$STRIP lib/*.so*
+
+# copy GLX headers for xorg-server to build
+cp -PR include/* $LIB_PREFIX/include
+
+
