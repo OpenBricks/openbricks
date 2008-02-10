@@ -1,0 +1,538 @@
+diff -Naur MPlayer-r25688.orig/cfg-mplayer.h MPlayer-r25688/cfg-mplayer.h
+--- MPlayer-r25688.orig/cfg-mplayer.h	2008-02-10 14:07:44.000000000 +0100
++++ MPlayer-r25688/cfg-mplayer.h	2008-02-10 14:08:12.000000000 +0100
+@@ -318,6 +318,12 @@
+ 	{"info-fifo", &info_fifo, CONF_TYPE_STRING, 0, 0, 0, NULL},
+ 	{"bg-lcdbanner", &bg_lcdbanner, CONF_TYPE_STRING, 0, 0, 0, NULL},
+ 
++	{"novisuals", &use_visuals, CONF_TYPE_FLAG, 0, 0, 0, NULL},
++        {"visuals", &use_visuals, CONF_TYPE_FLAG, 0, 0, 1, NULL},
++	{"visuals-w", &visuals_w, CONF_TYPE_INT, CONF_MIN, 8, 0, NULL},
++	{"visuals-h", &visuals_h, CONF_TYPE_INT, CONF_MIN, 8, 0, NULL},
++	{"visuals-fps", &visuals_fps, CONF_TYPE_FLOAT, 0, 0, 0, NULL},    
++
+ 	{"noloop", &mpctx_s.loop_times, CONF_TYPE_FLAG, 0, 0, -1, NULL},
+ 	{"loop", &mpctx_s.loop_times, CONF_TYPE_INT, CONF_RANGE, -1, 10000, NULL},
+ 	{"playlist", NULL, CONF_TYPE_STRING, 0, 0, 0, NULL},
+diff -Naur MPlayer-r25688.orig/configure MPlayer-r25688/configure
+--- MPlayer-r25688.orig/configure	2008-02-10 14:07:44.000000000 +0100
++++ MPlayer-r25688/configure	2008-02-10 14:08:12.000000000 +0100
+@@ -313,6 +313,7 @@
+   --disable-toolame         disable Toolame (MPEG layer 2) encoding [autodetect]
+   --disable-twolame         disable Twolame (MPEG layer 2) encoding [autodetect]
+   --enable-xmms             enable XMMS input plugin support [disabled]
++  --enable-goom             enable GOOM Audio Visual decoder [disabled]
+   --enable-libdca           enable libdca support [autodetect]
+   --disable-mp3lib          disable builtin mp3lib [enabled]
+   --disable-liba52          disable builtin liba52 [enabled]
+@@ -575,6 +576,7 @@
+ _faac=auto
+ _ladspa=auto
+ _xmms=no
++_goom=auto
+ _dvdnav=auto
+ _dvdnavconfig=dvdnav-config
+ _dvdread=auto
+@@ -936,6 +938,8 @@
+   --disable-ladspa)	_ladspa=no		;;
+   --enable-xmms)	_xmms=yes	;;
+   --disable-xmms)	_xmms=no	;;
++  --enable-goom)	_goom=yes	;;
++  --disable-goom)	_goom=no	;;
+   --enable-dvdread)	_dvdread=yes	;;
+   --disable-dvdread)	_dvdread=no	;;
+   --enable-dvdread-internal)	_dvdread_internal=yes	;;
+@@ -7172,6 +7176,22 @@
+ fi
+ echores "$_xmms"
+ 
++echocheck "GOOM Audio Visuals support"
++if test "$_goom" = auto ; then
++  _goom=no
++  cat > $TMPC << EOF
++#include <goom/goom.h>
++int main(void) { goom_init (0,0); return 0; }
++EOF
++  cc_check -lgoom2 && _ld_extra="$_ld_extra -lgoom2" && _goom=yes
++fi
++if test "$_goom" = yes ; then
++  _def_goom='#define HAVE_GOOM 1'
++else
++  _def_goom='#undef HAVE_GOOM'
++fi
++echores "$_goom"
++
+ echocheck "inet6"
+ if test "$_inet6" = auto ; then
+   cat > $TMPC << EOF
+@@ -7750,6 +7770,7 @@
+ FAAD_FIXED = $_faad_fixed
+ LIBSMBCLIENT = $_smbsupport
+ XMMS_PLUGINS = $_xmms
++GOOM = $_goom
+ MACOSX = $_macosx
+ MACOSX_FINDER_SUPPORT = $_macosx_finder_support
+ MACOSX_BUNDLE = $_macosx_bundle
+@@ -8490,6 +8511,9 @@
+ $_def_xmms
+ #define XMMS_INPUT_PLUGIN_DIR "$_xmmsplugindir"
+ 
++/* GOOM Audio Visuals support */
++$_def_goom
++
+ /* enables inet6 support */
+ $_def_inet6
+ 
+diff -Naur MPlayer-r25688.orig/etc/codecs.conf MPlayer-r25688/etc/codecs.conf
+--- MPlayer-r25688.orig/etc/codecs.conf	2008-02-10 14:07:44.000000000 +0100
++++ MPlayer-r25688/etc/codecs.conf	2008-02-10 14:08:12.000000000 +0100
+@@ -2339,6 +2339,15 @@
+   out YVU9
+   out BGR32,BGR24,BGR16,BGR15
+ 
++; Goom audio render
++videocodec goom
++  info "Audio visuals with libgoom"
++  status working
++  driver goom
++  fourcc vpcm
++  out BGR32
++
++
+ ;=============================================================================
+ ;                   AUDIO CODECS
+ ;=============================================================================
+diff -Naur MPlayer-r25688.orig/libmpcodecs/Makefile MPlayer-r25688/libmpcodecs/Makefile
+--- MPlayer-r25688.orig/libmpcodecs/Makefile	2008-02-10 14:07:41.000000000 +0100
++++ MPlayer-r25688/libmpcodecs/Makefile	2008-02-10 14:08:12.000000000 +0100
+@@ -29,6 +29,7 @@
+               vd_nuv.c \
+               vd_raw.c \
+               vd_sgi.c \
++              vd_goom.c \
+               vf.c \
+               vf_crop.c \
+               vf_expand.c \
+diff -Naur MPlayer-r25688.orig/libmpcodecs/vd.c MPlayer-r25688/libmpcodecs/vd.c
+--- MPlayer-r25688.orig/libmpcodecs/vd.c	2008-02-10 14:07:41.000000000 +0100
++++ MPlayer-r25688/libmpcodecs/vd.c	2008-02-10 14:09:20.000000000 +0100
+@@ -48,6 +48,7 @@
+ extern vd_functions_t mpcodecs_vd_libdv;
+ extern vd_functions_t mpcodecs_vd_lzo;
+ extern vd_functions_t mpcodecs_vd_qtvideo;
++extern vd_functions_t mpcodecs_vd_goom;
+ 
+ vd_functions_t* mpcodecs_vd_drivers[] = {
+         &mpcodecs_vd_null,
+@@ -97,6 +98,9 @@
+ #if defined(USE_QTX_CODECS) || defined(MACOSX)
+ 	&mpcodecs_vd_qtvideo,
+ #endif
++#ifdef HAVE_GOOM
++        &mpcodecs_vd_goom,
++#endif
+ 	NULL
+ };
+ 
+diff -Naur MPlayer-r25688.orig/libmpcodecs/vd_goom.c MPlayer-r25688/libmpcodecs/vd_goom.c
+--- MPlayer-r25688.orig/libmpcodecs/vd_goom.c	1970-01-01 01:00:00.000000000 +0100
++++ MPlayer-r25688/libmpcodecs/vd_goom.c	2008-02-10 14:11:50.000000000 +0100
+@@ -0,0 +1,81 @@
++#include <stdio.h>
++#include <stdlib.h>
++
++#include "config.h"
++#include "mp_msg.h"
++
++#include "vd_internal.h"
++#include "libaf/af_format.h"
++#include "visuals.h"
++
++#include <goom/goom.h>
++
++static vd_info_t info = {
++    "Goom audio analyser",
++    "goom",
++    "Albeu",
++    "Albeu",
++    "experimental"
++};
++
++LIBVD_EXTERN(goom)
++
++static int control(sh_video_t *sh,int cmd,void* arg,...){
++    return CONTROL_UNKNOWN;
++}
++
++// init driver
++static int init(sh_video_t *sh){
++    visuals_fmt_t* vfmt = (visuals_fmt_t*)(sh->bih+1);
++    // Check the audio format, we need PCM, 16 bit per sample.
++    if(vfmt->format != AF_FORMAT_S16_NE)
++        return 0;
++
++    if(!mpcodecs_config_vo(sh,sh->disp_w,sh->disp_h,IMGFMT_BGR32))
++        return 0;
++    if(!(sh->context = goom_init(sh->disp_w,sh->disp_h)))
++        return 0;
++
++    return 1;
++}
++
++// uninit driver
++static void uninit(sh_video_t *sh){
++    goom_close(sh->context);
++}
++
++static mp_image_t* decode(sh_video_t *sh,void* data,int len,int flags){
++    visuals_fmt_t* vfmt = (visuals_fmt_t*)(sh->bih+1);
++    int16_t buffer[2][512];
++    int16_t* sample = data;
++    int nsample = len/vfmt->samplesize/vfmt->channels, pos;
++    int num_chan = vfmt->channels >= 2 ? 2 : vfmt->channels, c;
++    void* img_data;
++    mp_image_t* mpi;
++
++    if(nsample > 512) nsample = 512;
++
++    for(pos = 0 ; pos < nsample ; pos++) {
++        for(c = 0 ; c < num_chan ; c++)
++            buffer[c][pos] = sample[c];
++        if(c < 2)
++            buffer[c][pos] = 0;
++        sample += vfmt->channels;
++    }
++
++    for( ; pos < 512 ; pos++)
++        buffer[0][pos] = buffer[1][pos] = 0;
++
++    img_data = goom_update(sh->context, buffer, 0, 0, NULL, NULL);
++    if(!img_data) return NULL;
++
++    mpi = mpcodecs_get_image(sh, MP_IMGTYPE_EXPORT, 0,
++                             sh->disp_w, sh->disp_h);
++    if(!mpi) return NULL;
++
++    mpi->planes[0]=img_data;
++    mpi->stride[0]=sh->disp_w*4;
++
++    return mpi;
++}
++
+diff -Naur MPlayer-r25688.orig/Makefile MPlayer-r25688/Makefile
+--- MPlayer-r25688.orig/Makefile	2008-02-10 14:07:44.000000000 +0100
++++ MPlayer-r25688/Makefile	2008-02-10 14:08:12.000000000 +0100
+@@ -33,6 +33,7 @@
+               subopt-helper.c \
+               subreader.c \
+               vobsub.c \
++              visuals.c \
+ 
+ SRCS_COMMON-$(UNRAR_EXEC) += unrar_exec.c
+ 
+diff -Naur MPlayer-r25688.orig/mplayer.c MPlayer-r25688/mplayer.c
+--- MPlayer-r25688.orig/mplayer.c	2008-02-10 14:07:44.000000000 +0100
++++ MPlayer-r25688/mplayer.c	2008-02-10 14:08:12.000000000 +0100
+@@ -372,6 +372,11 @@
+ static char* menu_root = "main";
+ #endif
+ 
++#include "visuals.h"
++int use_visuals = 0;
++int visuals_w = 320;
++int visuals_h = 240;
++float visuals_fps = 20;
+ 
+ #ifdef HAVE_RTC
+ static int nortc = 1;
+@@ -3539,6 +3544,22 @@
+   goto goto_next_file;
+ inited_flags|=INITED_DEMUXER;
+ 
++if(use_visuals && mpctx->demuxer->audio->sh && !mpctx->demuxer->video->sh) {
++  sh_audio_t* sh = mpctx->demuxer->audio->sh;
++  demuxer_t* vdemux;
++  // Init the audio decoder
++  if(!init_best_audio_codec(sh,audio_codec_list,audio_fm_list))
++    goto goto_next_file;
++
++  vdemux = new_visuals_demuxer(mpctx->demuxer,visuals_w,visuals_h,
++                               visuals_fps);
++  if(!vdemux) {
++    mp_msg(MSGT_CPLAYER,MSGL_ERR,"Failed to initialize visuals demuxer.\n");
++    goto goto_next_file;
++  }
++  mpctx->demuxer = vdemux;
++}
++
+ if (mpctx->stream->type != STREAMTYPE_DVD && mpctx->stream->type != STREAMTYPE_DVDNAV) {
+   int i;
+   int maxid = -1;
+diff -Naur MPlayer-r25688.orig/visuals.c MPlayer-r25688/visuals.c
+--- MPlayer-r25688.orig/visuals.c	1970-01-01 01:00:00.000000000 +0100
++++ MPlayer-r25688/visuals.c	2008-02-10 14:11:30.000000000 +0100
+@@ -0,0 +1,244 @@
++
++#include "config.h"
++
++#include <stdlib.h>
++
++
++#include "stream/stream.h"
++#include "libmpdemux/demuxer.h"
++#include "libmpdemux/stheader.h"
++#include "libmpcodecs/dec_audio.h"
++#include "libmpcodecs/ad.h"
++#include "libaf/af_format.h"
++
++#include "visuals.h"
++
++typedef struct visuals_demux {
++    demuxer_t* parent;
++    off_t pos;
++    int audio_frame_size;
++} visuals_demux_t;
++
++// Visuals demuxer. Take another demuxer as input and return
++// the audio track in pcm format as audio and video track.
++// Subtitle and pcm stream are simply passed through.
++
++static demuxer_desc_t demuxer_desc_visuals;
++
++demuxer_t* new_visuals_demuxer(demuxer_t* parent, int width, int height,
++                               float fps) {
++    unsigned format;
++    visuals_demux_t* priv;
++    visuals_fmt_t* vfmt;
++    sh_audio_t* sh_audio,*parent_sh_audio = parent->audio->sh;
++    sh_video_t* sh_video;
++    demuxer_t* demuxer;
++    BITMAPINFOHEADER* bih;
++    WAVEFORMATEX* w;
++
++    // Convert the decoder sample format to a pcm format tag.
++    switch(parent_sh_audio->sample_format) {
++    case AF_FORMAT_U8:
++    case AF_FORMAT_S16_LE:
++    case AF_FORMAT_S24_LE:
++    case AF_FORMAT_S32_LE:
++        format = 0x01; break;
++    case AF_FORMAT_FLOAT_LE:
++        format = 0x03; break;
++    case AF_FORMAT_S16_BE:
++        format = 0x736F7774; break; // 'twos'
++    case AF_FORMAT_S24_BE:
++        format = 0x34326e69; break; // 'in24'
++    case AF_FORMAT_S32_BE:
++        format = 0x32336e69; break; // 'in32'
++    case AF_FORMAT_FLOAT_BE:
++        format = 0x32336c66; break; // 'fl32'
++    default:
++        // Need conversion
++        return NULL;
++    }
++
++    // Create the demuxer and copy the settings from the parent
++    demuxer = calloc(1,sizeof(demuxer_t));
++    //demuxer->type = demuxer->file_format = ;
++    demuxer->stream = parent->stream;
++    demuxer->stream_pts = parent->stream_pts;
++    demuxer->movi_start = parent->movi_start;
++    demuxer->movi_end = parent->movi_end;
++    demuxer->seekable = parent->seekable;
++    demuxer->audio = new_demuxer_stream(demuxer,parent->audio->id);
++    demuxer->video = new_demuxer_stream(demuxer,0);
++    demuxer->sub = parent->sub;
++    demuxer->desc = &demuxer_desc_visuals;
++    if(parent->filename)
++        demuxer->filename = strdup(parent->filename);
++
++    demuxer->priv = priv = calloc(1,sizeof(visuals_demux_t));
++    priv->parent = parent;
++
++    // We need a bih to pass codec specfic data. In this case the pcm
++    // format.
++    bih = calloc(1,sizeof(BITMAPINFOHEADER)+sizeof(visuals_fmt_t));
++    vfmt = (visuals_fmt_t*)(bih+1);
++
++    // Create the audio track
++    sh_audio = demuxer->audio->sh = new_sh_audio(demuxer,0);
++    sh_audio->ds = demuxer->audio;
++    sh_audio->wf = w = calloc(1,sizeof(WAVEFORMATEX));
++
++    vfmt->format = parent_sh_audio->sample_format;
++    sh_audio->format = format;
++    if(format <= 0xFFFF) w->wFormatTag = format;
++
++    vfmt->channels = w->nChannels =
++        sh_audio->channels = parent_sh_audio->channels;
++
++    vfmt->samplerate = w->nSamplesPerSec =
++        sh_audio->samplerate = parent_sh_audio->samplerate;
++
++    vfmt->samplesize = sh_audio->samplesize = parent_sh_audio->samplesize;
++    w->wBitsPerSample = sh_audio->samplesize*8;
++
++    w->nAvgBytesPerSec = sh_audio->samplerate*sh_audio->samplesize*
++        sh_audio->channels;
++    w->nBlockAlign = sh_audio->channels*sh_audio->samplesize;
++
++    vfmt->frame_size = priv->audio_frame_size =
++        (((unsigned)(sh_audio->samplerate/fps))+127)&~0x7F;
++
++    mp_msg(MSGT_DEMUX,MSGL_V,"Visual frame size: %d smaples\n",
++           vfmt->frame_size);
++
++    // TODO: Fix the vfmt endianness, after all it could be written
++    //       to a file.
++
++    // Create the video track
++    sh_video = demuxer->video->sh = new_sh_video(demuxer,0);
++    sh_video->ds = demuxer->video;
++
++    sh_video->format = bih->biCompression = mmioFOURCC('v','p','c','m');
++    sh_video->bih = bih;
++
++    sh_video->disp_w = bih->biWidth = width;
++    sh_video->disp_h = bih->biHeight = height;
++
++    sh_video->video.dwScale = vfmt->frame_size;
++    sh_video->video.dwRate = vfmt->samplerate;
++    sh_video->fps=(float)vfmt->samplerate/vfmt->frame_size;
++    sh_video->frametime=(float)vfmt->frame_size/vfmt->samplerate;
++
++    sh_video->i_bps=w->nAvgBytesPerSec;
++
++    // We should copy the info
++    if(parent->info) {
++        int n;
++        for(n = 0 ; parent->info[n] ; n += 2);
++        demuxer->info = malloc((n+2)*sizeof(char*));
++        for(n = 0 ; parent->info[n] ; n += 2) {
++            demuxer->info[n] = strdup(parent->info[n]);
++            demuxer->info[n+1] = parent->info[n+1] ? strdup(parent->info[n+1]) : NULL;
++        }
++        demuxer->info[n] = NULL;
++        demuxer->info[n+1] = NULL;
++    }
++
++    return demuxer;
++}
++
++// Note: We can't just use decode_audio() anymore as it now assume that
++//       there is some audio filter. Anyway it is no big deal to just use
++//       the codec directly.
++static int demux_visuals_fill_buffer(demuxer_t *demux,demux_stream_t *ds) {
++    visuals_demux_t* priv = demux->priv;
++    sh_audio_t* sh_audio = priv->parent->audio->sh;
++    demux_packet_t*  dp;
++    int fsize = priv->audio_frame_size*sh_audio->samplesize*
++        sh_audio->channels;
++
++    // Let the subs just pass through
++    if(ds == demux->sub)
++        return demux_fill_buffer(priv->parent,ds);
++
++    // decode some audio
++    while(sh_audio->a_buffer_len < fsize) {
++        int size = sh_audio->a_buffer_size;
++        int len = sh_audio->a_buffer_len;
++        int ret = sh_audio->ad_driver->
++            decode_audio(sh_audio,sh_audio->a_buffer+len,
++                         fsize-len,size-len);
++        if(ret <= 0) {
++            if(ret == 0) {
++                demux->audio->eof = 1;
++                demux->video->eof = 1;
++            }
++            return 0;
++        }
++        sh_audio->a_buffer_len += ret;
++    }
++
++    dp = new_demux_packet(fsize);
++    memcpy(dp->buffer,sh_audio->a_buffer,fsize);
++    sh_audio->a_buffer_len -= fsize;
++    if(sh_audio->a_buffer_len)
++        memmove(sh_audio->a_buffer,sh_audio->a_buffer+fsize,
++                sh_audio->a_buffer_len);
++
++    dp->pos = priv->pos;
++    dp->pts = dp->pos/(float)sh_audio->o_bps;
++    priv->pos += dp->len;
++
++    ds_add_packet(demux->audio,dp);
++    dp = clone_demux_packet(dp);
++    ds_add_packet(demux->video,dp);
++    return 1;
++}
++
++static void demux_visuals_seek(demuxer_t *demux,float rel_seek_secs,
++                               float audio_delay,int flags) {
++    visuals_demux_t* priv = demux->priv;
++    sh_audio_t* sh_audio = priv->parent->audio->sh;
++    int block_size = sh_audio->channels*sh_audio->samplesize;
++    float pts;
++    if(!demux_seek(priv->parent,rel_seek_secs,audio_delay,flags))
++        return;
++    pts = ds_get_next_pts(priv->parent->audio);
++    if(pts != MP_NOPTS_VALUE)
++        priv->pos = pts*block_size*sh_audio->samplerate;
++    priv->pos = priv->pos/block_size*block_size;
++}
++
++static int demux_visuals_control(demuxer_t *demux,int cmd, void *arg) {
++    visuals_demux_t* priv = demux->priv;
++    switch (cmd) {
++    case DEMUXER_CTRL_GET_TIME_LENGTH:
++    case DEMUXER_CTRL_GET_PERCENT_POS:
++    case DEMUXER_CTRL_RESYNC:
++        return demux_control(priv->parent,cmd,arg);
++    }
++    return DEMUXER_CTRL_NOTIMPL;
++}
++
++static void demux_visuals_close(demuxer_t* demux) {
++    visuals_demux_t* priv = demux->priv;
++    if(priv) {
++        uninit_audio(priv->parent->audio->sh);
++        free_demuxer(priv->parent);
++        free(priv);
++    }
++}
++
++static demuxer_desc_t demuxer_desc_visuals = {
++  "Visuals demuxer",
++  "", // Not selectable
++  "",
++  "?",
++  "internal use only",
++  DEMUXER_TYPE_DEMUXERS,
++  0, // no autodetect
++  NULL,
++  demux_visuals_fill_buffer,
++  NULL,
++  demux_visuals_close,
++  demux_visuals_seek,
++  demux_visuals_control
++};
+diff -Naur MPlayer-r25688.orig/visuals.h MPlayer-r25688/visuals.h
+--- MPlayer-r25688.orig/visuals.h	1970-01-01 01:00:00.000000000 +0100
++++ MPlayer-r25688/visuals.h	2008-02-10 14:11:30.000000000 +0100
+@@ -0,0 +1,16 @@
++
++typedef struct visuals_fmt {
++    /// see libaf/af_format.h / Only PCM format are valid.
++    unsigned format;
++    /// Sampling rate used on the PCM
++    unsigned samplerate;
++    /// Sample size in bytes
++    unsigned samplesize;
++    /// Number of channels
++    unsigned channels;
++    /// Size of a single frame in samples
++    unsigned frame_size;
++} visuals_fmt_t;
++
++demuxer_t* new_visuals_demuxer(demuxer_t* parent, int width, int height,
++                               float fps);
