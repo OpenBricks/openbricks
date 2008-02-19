@@ -37,28 +37,26 @@ fi
 flock -e $MNTLOCK
 MNT="/mnt/$MNT"
 if [ -d "$MNT" ]; then
-  NUM=2
-  while [ -d "$MNT ($NUM)" ]; do
-    NUM=$(($NUM+1))
-  done
-  MNT="$MNT ($NUM)"
+  REMOUNT="remount,"
+else
+  REMOUNT=
+  mkdir "$MNT"
 fi
-mkdir "$MNT"
 flock -u
 
 case $DEV in
   cdrom*)
-    mount -o ro $DEVNAME "$MNT" && OK=1
+    mount -o ${REMOUNT}ro $DEVNAME "$MNT" && OK=1
     if [ "$OK" != 1 ]; then
         sleep 7
-        mount -o ro $DEVNAME "$MNT"
+        mount -o ${REMOUNT}ro $DEVNAME "$MNT"
         OK=1
     fi
     ;;
   disk*)
     hdparm -S24 $DEVNAME >/dev/null
     if ! grep -q installator /proc/cmdline; then
-      mount -o ro $DEVNAME "$MNT" && OK=1
+      mount -o ${REMOUNT}ro $DEVNAME "$MNT" && OK=1
     fi
     if [ -n "`pidof mplayer`" ]; then
       [ -e /var/autoplay ] && mp_loader "$MNT" l
