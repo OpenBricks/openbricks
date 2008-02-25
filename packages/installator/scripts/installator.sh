@@ -456,8 +456,10 @@ for type in vfat ext3 ext2 auto; do
 done
 
 NEED_FORMAT=yes
+FORMAT_DEFAULT="--defaultno"
 if [ -z "$MKFS_TYPE" ]; then
   FORMAT_MSG="Partition is not formated. "
+  FORMAT_DEFAULT=""
 else
   for type in $SUPPORTED_TYPES; do
     [ $type = $MKFS_TYPE ] && NEED_FORMAT=no
@@ -470,7 +472,7 @@ else
   fi
 fi
 
-$DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Formatting" --defaultno --yesno "$FORMAT_MSG\nDo you want to format '$DEV' ?\n" 0 0 && FORMAT=yes
+$DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Formatting" $FORMAT_DEFAULT --yesno "$FORMAT_MSG\nDo you want to format '$DEV' ?\n" 0 0 && FORMAT=yes
 
 if [ "$FORMAT" = yes ]; then
   case `$SFDISK --print-id ${DEV%%[0-9]*} ${DEV#${DEV%%[0-9]*}}` in
