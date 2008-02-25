@@ -585,7 +585,7 @@ if [ "$1" = geexbox ]; then
   fi
 
   if [ "$USE_XORG" = yes ]; then
-    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Setup X.Org ?" --yesno "\nDo you want to configure your X.Org video server right now ? It will avoid hardware autodetection each time you boot, which can significantly speeds up boot time\n" 0 0 && setup_xorg "di/GEEXBOX"
+    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Manual X.Org Setup ?" --yesno "\nX.Org server features great hardware autodetection capabilities and should be able to find the best suited drivers for your monitor and video card. It is however possible to manually force this autodetection step with your custom settings. Do you want to proceed to (not recommended, unless autodetection fails) ?\n" 0 0 && setup_xorg "di/GEEXBOX"
     [ "$UNCOMPRESS_INSTALL" = "yes" -a -f "$GEEXBOX/X.tar.lzma" ] && rm di/GEEXBOX/X.tar.lzma && tar xaf "$GEEXBOX/X.tar.lzma" -C di/GEEXBOX
   else
     # Since X is disabled, remove the files from HDD install to speed up boot
