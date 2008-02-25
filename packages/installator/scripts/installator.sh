@@ -591,7 +591,7 @@ if [ "$1" = geexbox ]; then
     [ "$UNCOMPRESS_INSTALL" = "yes" -a -f "$GEEXBOX/X.tar.lzma" ] && rm di/GEEXBOX/X.tar.lzma && tar xaf "$GEEXBOX/X.tar.lzma" -C di/GEEXBOX
   else
     # Since X is disabled, remove the files from HDD install to speed up boot
-    [ -f di/GEEXBOX/X.tar.lzma ] && rm di/GEEXBOX/X.tar.lzma
+    rm -f di/GEEXBOX/X.tar.lzma
   fi
 fi
 
