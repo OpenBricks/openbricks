@@ -579,7 +579,7 @@ fi
 # (only available when booting from GeeXboX).
 if [ "$1" = geexbox ]; then
   # Only configure if support for X has been compiled in
-  if [ -f /etc/X11/X.cfg ]; then
+  if [ -f /etc/X11/X.cfg.sample -o -f /etc/X11/X.cfg ]; then
     USE_XORG=yes # default is to use X if present
     $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Support for HDTV through X.Org ?" --yesno "\nIt appears that this version of GeeXboX has been compiled with support for HDTV through X.Org video server. Remember that X.Org is only useful if you want to display high-resolution movies on a wide display (LCD TVs, Plasma screens ...). It doesn't provide TVOut support any longer. Do you want to enable support for HDTV as a default ? (previous non-HD mode will still be available)\n" 0 0 || USE_XORG=no
   fi
