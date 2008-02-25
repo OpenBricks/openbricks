@@ -258,10 +258,12 @@ setup_xorg () {
   USER_RESOLUTION_LABEL="custom"
   USER_RESOLUTION_AUTO="auto"
   USER_DRIVERS_AUTO="auto"
+  X_CFG_SAMPLE="$1/etc/X11/X.cfg.sample"
   X_CFG="$1/etc/X11/X.cfg"
 
   # retrieve current X settings
-  . $X_CFG
+  test -f $X_CFG_SAMPLE && . $X_CFG_SAMPLE
+  test -f $X_CFG && . $X_CFG
 
   OLD_RES=auto
   if [ "$XORG_RESX" != auto -a "$XORG_RESY" != auto ]; then
