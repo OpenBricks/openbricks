@@ -721,6 +721,12 @@ kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME lang=$MENU_LANG spl
 initrd  /initrd.gz
 boot
 
+title	GeeXboX HDTV (debug)
+root	$rootdev_single
+kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME lang=$MENU_LANG splash=$SPLASH vga=$VESA_MODE keymap=$KEYMAP remote=$REMOTE receiver=$RECEIVER video=vesafb:ywrap,mtrr hdtv debugging
+initrd  /initrd.gz
+boot
+
 EOF
 fi
 
@@ -822,6 +828,12 @@ EOF
 title	GeeXboX HDTV
 root	$rootdev_single
 kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME splash=$SPLASH vga=$VESA_MODE keymap=$KEYMAP remote=$REMOTE receiver=$RECEIVER video=vesafb:ywrap,mtrr hdtv
+initrd  /initrd.gz
+boot
+
+title	GeeXboX HDTV (debug)
+root	$rootdev_single
+kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME splash=$SPLASH vga=$VESA_MODE keymap=$KEYMAP remote=$REMOTE receiver=$RECEIVER video=vesafb:ywrap,mtrr hdtv debugging
 initrd  /initrd.gz
 boot
 
