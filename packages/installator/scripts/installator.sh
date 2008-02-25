@@ -767,7 +767,7 @@ if [ $TYPE = HDD ]; then
   if [ -n "$supported_os_list" ]; then
     $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Bootloader" --defaultno --yesno "\n'$DEV' is now a GeeXboX partition. To boot from it, you will need to install a bootloader. I can install one for you. If you have any other operating system on your computer, I will also install a multiboot for you. If you do not want me to install a new bootloader, you will need to configure yours alone.\nI have found: $supported_os_list\nDo you want to install me to install the boot loader (GRUB) for you ?\n" 0 0 && MBR=yes
   else
-    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Bootloader" --defaultno --yesno "\n'$DEV' is now a GeeXboX partition. I didn't recognize any other OS on your system, want me to install boot loader on your MBR ?\n" 0 0 && MBR=yes
+    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Bootloader" --yesno "\n'$DEV' is now a GeeXboX partition. I didn't recognize any other OS on your system, want me to install boot loader on your MBR ?\n" 0 0 && MBR=yes
   fi
 elif [ $TYPE = REMOVABLE ]; then
   oslist=
