@@ -306,6 +306,24 @@ setup_xorg () {
   cp /etc/X11/xorg.conf $1/etc/X11/ # save back new xorg.conf to HDD
 }
 
+# Create grub.conf file
+setup_grub () {
+  # conditional HDTV menu entry if X.org is found
+  [ "$USE_XORG" = yes ] && cat /etc/grub/grub.conf.hdtv >> $1
+
+  # add console mode menu
+  cat /etc/grub/grub.conf.console >> $1
+
+  sed -i 's/_ROOTDEV_SINGLE_/$rootdev_single/g' $1
+  sed -i 's/_DEVNAME_/$DEVNAME/g' $1
+  sed -i 's/_MENU_LANG_/$MENU_LANG/g' $1
+  sed -i 's/_SPLASH_/$SPLASH/g' $1
+  sed -i 's/_VESA_MODE_/$VESA_MODE/g' $1
+  sed -i 's/_KEYMAP_/$KEYMAP/g' $1
+  sed -i 's/_REMOTE_/$REMOTE/g' $1
+  sed -i 's/_RECEIVER_/$RECEIVER/g' $1
+}
+
 if [ "$1" = geexbox ]; then
   DIALOG=/usr/bin/dialog
   CFDISK=/usr/bin/cfdisk
@@ -714,20 +732,7 @@ ${disable_splashimage}splashimage=$rootdev_single$splashimage
 
 EOF
 
-# conditional HDTV menu entry if X.org is found
-[ "$USE_XORG" = yes ] && cat /etc/grub/grub.conf.hdtv >> $grubdir/single.lst
-
-# add console mode menu
-cat /etc/grub/grub.conf.console >> $grubdir/single.lst
-
-sed -i 's/_ROOTDEV_SINGLE_/$rootdev_single/g' $grubdir/single.lst
-sed -i 's/_DEVNAME_/$DEVNAME/g' $grubdir/single.lst
-sed -i 's/_MENU_LANG_/$MENU_LANG/g' $grubdir/single.lst
-sed -i 's/_SPLASH_/$SPLASH/g' $grubdir/single.lst
-sed -i 's/_VESA_MODE_/$VESA_MODE/g' $grubdir/single.lst
-sed -i 's/_KEYMAP_/$KEYMAP/g' $grubdir/single.lst
-sed -i 's/_REMOTE_/$REMOTE/g' $grubdir/single.lst
-sed -i 's/_RECEIVER_/$RECEIVER/g' $grubdir/single.lst
+setup_grub $grubdir/single.lst
 
 if [ $TYPE = HDD ]; then
   oslist=$(detect_os)
@@ -806,21 +811,7 @@ EOF
   done
   IFS=$saveifs
 
-  # conditional HDTV menu entry if X.org is found
-  [ "$USE_XORG" = yes ] && cat /etc/grub/grub.conf.hdtv >> $grubdir/menu.lst
-
-  # add console mode menu
-  cat /etc/grub/grub.conf.console >> $grubdir/menu.lst
-
-  sed -i 's/_ROOTDEV_SINGLE_/$rootdev_single/g' $grubdir/menu.lst
-  sed -i 's/_DEVNAME_/$DEVNAME/g' $grubdir/menu.lst
-  sed -i 's/_MENU_LANG_/$MENU_LANG/g' $grubdir/menu.lst
-  sed -i 's/_SPLASH_/$SPLASH/g' $grubdir/menu.lst
-  sed -i 's/_VESA_MODE_/$VESA_MODE/g' $grubdir/menu.lst
-  sed -i 's/_KEYMAP_/$KEYMAP/g' $grubdir/menu.lst
-  sed -i 's/_REMOTE_/$REMOTE/g' $grubdir/menu.lst
-  sed -i 's/_RECEIVER_/$RECEIVER/g' $grubdir/menu.lst
-
+  setup_grub $grubdir/menu.lst
 else
   $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Bootloader" --msgbox "\nYou must install a boot loader to boot GeeXboX\n" 0 0
 fi
