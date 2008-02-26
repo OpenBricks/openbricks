@@ -420,9 +420,7 @@ else
 fi
 $DIALOG --stdout --backtitle "$BACKTITLE" --title "Installation device" --msgbox "$CFDISK_MSG" 0 0 || exit 1
 
-if [ -n "$CFDISK" ]; then
-  $CFDISK /dev/$DISK || exit 1
-fi
+[ -n "$CFDISK" ] && $CFDISK /dev/$DISK || exit 1
 
 while [ ! -b "$DEV" ]; do
   DISKS=""
