@@ -57,7 +57,7 @@ convert () {
   local tmp_drive tmp_disk tmp_part
 
   if test ! -e "$1"; then
-    echo "$1: Not found or not a block device." 1>&2
+    echo "$1: $MSG_DEV_NO_BLOCK" 1>&2
     exit 1
   fi
 
@@ -68,7 +68,7 @@ convert () {
 			| sed 's%.*\(([hf]d[0-9][a-g0-9,]*)\).*%\1%'`
 
   if [ -z "$tmp_drive" ]; then
-    echo "$1 does not have any corresponding BIOS drive." 1>&2
+    echo "$1 $MSG_BIOS_NO_DRIVER" 1>&2
     exit 1
   fi
 
@@ -86,55 +86,55 @@ convert () {
 setup_network () {
   local title phy_type wifi_mode wifi_enc wifi_key wpa_drv wifi_essid host_ip subnet gw_ip dns_ip smb_user smb_pwd val f
 
-  title="$BACKTITLE : Network Configuration"
+  title="$BACKTITLE : $MSG_NET_CONFIG"
   f="$1/etc/network"
 
   # Get type of physical interface
   val=`grep PHY_TYPE $f | cut -d'"' -f2`
-  phy_type=`$DIALOG --no-cancel --aspect 15 --default-item $val --stdout --backtitle "$title" --title "Network Physical Interface" --menu "\nGeeXboX can only use one network physical interface at a time. If you have more than one NIC, GeeXboX will use the first one. If you have both a traditional Ethernet adapter and a Wireless card, GeeXboX will use the wireless card by default. It is recommended to keep physical interface auto-detection but you may also want to force the use of one kind of interface.\n" 0 0 0 auto "Auto detection (recommended)" ethernet "Force using Ethernet card" wifi "Force using Wireless card"` || exit 1
+  phy_type=`$DIALOG --no-cancel --aspect 15 --default-item $val --stdout --backtitle "$title" --title "$MSG_NET_PHY" --menu "\n${MSG_NET_PHY_DESC}\n" 0 0 0 auto "$MSG_NET_PHY_AUTO" ethernet "$MSG_NET_PHY_ETH" wifi "$MSG_NET_PHY_WIFI"` || exit 1
 
   # Get wireless settings only if required
   if [ $phy_type = "auto" -o $phy_type = "wifi" ]; then
-    wifi_mode=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "Configuring WiFi Mode" --menu "\nAs you seem to be using your wireless adapter to connect this computer to your network, you will have to setup the networking mode.\n Are you connected to an access point (recommended) or directly to another computer ?\n" 0 0 0 managed "Connected to an access point (recommended)" ad-hoc "Direct Connection"` || exit 1
+    wifi_mode=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_WIFI" --menu "\n${MSG_NET_WIFI_DESC}\n" 0 0 0 managed "$MSG_NET_WIFI_AP" ad-hoc "$MSG_NET_WIFI_ADHOC"` || exit 1
 
-    wifi_enc=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "Configuring WiFi Encryption" --menu "\nAs you seem to be using your wireless adapter to connect this computer to your network, you will have to setup the security mode.\n Are you using no ecnryption, WEP encryption or WPA encryption ?\n" 0 0 0 none "no encryption" WEP "WEP" WPA "WPA (experimental)"` || exit 1
+    wifi_enc=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_CRYPTO" --menu "\n${MSG_NET_CRYPTO_DESC}\n" 0 0 0 none "$MSG_NET_CRYPTO_NONE" WEP "$MSG_NET_CRYPTO_WEP" WPA "$MSG_NET_CRYPTO_WPA"` || exit 1
 
     val=`grep WIFI_ESSID $f | cut -d'"' -f2`
-    wifi_essid=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "Configuring WiFi ESSID" --inputbox "\nAs you seem to be using your wireless adapter to connect this computer to your network, you probably are using an SSID. If so, please fill in the following input box with your SSID identifier or leave it blank if you do not have one (open network).\n" 0 0 "$val"` || exit 1
+    wifi_essid=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_SSID" --inputbox "\n${MSG_NET_SSID_DESC}\n" 0 0 "$val"` || exit 1
 
     if [ $wifi_enc = WEP -o $wifi_enc = WPA ]; then
       val=`grep WIFI_KEY $f | cut -d'"' -f2`
-      wifi_key=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "Configuring WEP/WPA key" --inputbox "\nAs you have selected to use encryption for your wireless connection, please fill in the following input box with your access point WEP/WPA key.\n" 0 0 "$val"` || exit 1
+      wifi_key=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_KEY" --inputbox "\n${MSG_NET_KEY_DESC}\n" 0 0 "$val"` || exit 1
     fi
 
     if [ $wifi_enc = WPA ]; then
-      wpa_drv=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "Configuring WiFi WPA Driver" --menu "\nSince you are connecting to your network using WPA encryption, you will have to select the driver interface. Most native linux drivers can use wext, but atmel drivers might have to use atmel.\n" 0 0 0 wext "Wireless Extensions" atmel "atmel"` || exit 1
+      wpa_drv=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_WPA_DRIVER" --menu "\n${MSG_NET_WPA_DRIVER_DESC}\n" 0 0 0 wext "$MSG_NET_WPA_DRIVER_WEXT" atmel "$MSG_NET_WPA_DRIVER_ATMEL"` || exit 1
     fi
   fi
 
   # get GeeXboX IP address
   val=`grep HOST $f | cut -d'"' -f2`
-  host_ip=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "GeeXboX IP" --inputbox "\nGeeXboX needs to be allocated an IP address to be present on your network. Please fill in the following input box or leave it as it is for using DHCP autoconfiguration\n" 0 0 "$val"` || exit 1
+  host_ip=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_IP" --inputbox "\n${MSG_NET_IP_DESC}\n" 0 0 "$val"` || exit 1
 
   # do not get more settings if DHCP
   if [ ! -z $host_ip ]; then
     val=`grep SUBNET $f | cut -d'"' -f2`
-    subnet=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "GeeXboX Subnet" --inputbox "\nYou may want to connect GeeXboX to the Internet. Please fill in the following input box with your network Subnet mask or leave it blank if you do not want to set a subnet mask for this computer.\n" 0 0 "$val"` || exit 1
+    subnet=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_SUBNET" --inputbox "\n${MSG_NET_SUBNET_DESC}\n" 0 0 "$val"` || exit 1
 
     val=`grep GATEWAY $f | cut -d'"' -f2`
-    gw_ip=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "GeeXboX GateWay" --inputbox "\nYou may want to connect GeeXboX to the Internet. Please fill in the following input box with your gateway IP address or leave it blank if you do not want to set a gateway for this computer.\n" 0 0 "$val"` || exit 1
+    gw_ip=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_GATEWAY" --inputbox "\n${MSG_NET_GATEWAY_DESC}\n" 0 0 "$val"` || exit 1
 
     val=`grep DNS_SERVER $f | cut -d'"' -f2`
-    dns_ip=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "GeeXboX DNS Server" --inputbox "\nYou may want to connect GeeXboX to the Internet. Please fill in the following input box with your DNS Server IP address used for name resolving or leave it blank if you do not want to resolve names with this computer.\n" 0 0 "$val"` || exit 1
+    dns_ip=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_DNS" --inputbox "\n${MSG_NET_DNS_DESC}\n" 0 0 "$val"` || exit 1
   fi
 
   # get samba user name
   val=`grep SMB_USER $f | cut -d'"' -f2`
-  smb_user=`$DIALOG --no-cancel --stdout --backtitle "$title" --title "Set Samba User name" --inputbox "\nWhen accessing to remote Samba shares, you may need to be authenticated. Most of Microsoft Windows computers let you anonymously access to remote shares using the guest account (SHARE). Please fill in the following input box with your user name for accesing to remote Samba shares or leave it blank if you do not have one.\n" 0 0 "$val"` || exit 1
+  smb_user=`$DIALOG --no-cancel --stdout --backtitle "$title" --title "$MSG_NET_SMB_USER" --inputbox "\n${MSG_NET_SMB_USER_DESC}\n" 0 0 "$val"` || exit 1
 
   # get samba password
   val=`grep SMB_PWD $f | cut -d'"' -f2`
-  smb_pwd=`$DIALOG --no-cancel --stdout --backtitle "$title" --title "Set Samba Password" --inputbox "\nIf user needs to be authenticated through a password, please fill in the following input box with it or leave it blank if you do not have one.\n" 0 0 "$val"` || exit 1
+  smb_pwd=`$DIALOG --no-cancel --stdout --backtitle "$title" --title "$MSG_NET_SMB_PWD" --inputbox "\n${MSG_NET_SMB_PWD_DESC}\n" 0 0 "$val"` || exit 1
 
   sed -i "s%^PHY_TYPE=\".*\"\(.*\)%PHY_TYPE=\"$phy_type\"\1%" $f
   sed -i "s%^WIFI_MODE=\".*\"\(.*\)%WIFI_MODE=\"$wifi_mode\"\1%" $f
@@ -343,6 +343,9 @@ else
 fi
 VERSION=`cat VERSION`
 BACKTITLE="GeeXboX $VERSION installator"
+
+# include language definitions
+. /etc/installator/en.install
 
 if [ "$UID" != "0" ]; then
   echo ""
