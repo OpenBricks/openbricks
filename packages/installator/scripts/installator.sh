@@ -11,7 +11,7 @@ detect_os_microsoft () {
   fi
 
   if [ -e "$2/ntldr" -a -e "$2/NTDETECT.COM" ]; then
-    longname="Windows NT/2000/XP"
+    longname="Windows NT/2000/XP/Vista"
   elif [ -e "$2/windows/win.com" ]; then
     longname="Windows 95/98/Me"
   elif [ -d "$2/dos" ]; then
