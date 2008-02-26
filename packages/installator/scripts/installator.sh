@@ -735,7 +735,7 @@ ${disable_splashimage}splashimage=$rootdev_single$splashimage
 
 EOF
 
-setup_grub $grubdir/single.lst
+  setup_grub $grubdir/single.lst
 fi
 
 if [ $TYPE = HDD ]; then
