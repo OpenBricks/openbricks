@@ -715,37 +715,19 @@ ${disable_splashimage}splashimage=$rootdev_single$splashimage
 EOF
 
 # conditional HDTV menu entry if X.org is found
-if [ "$USE_XORG" = yes ]; then
-  cat >> $grubdir/single.lst <<EOF
-title	GeeXboX HDTV
-root	$rootdev_single
-kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME lang=$MENU_LANG splash=$SPLASH vga=$VESA_MODE keymap=$KEYMAP remote=$REMOTE receiver=$RECEIVER video=vesafb:ywrap,mtrr hdtv
-initrd  /initrd.gz
-boot
+[ "$USE_XORG" = yes ] && cat /etc/grub/grub.conf.hdtv >> $grubdir/single.lst
 
-title	GeeXboX HDTV (debug)
-root	$rootdev_single
-kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME lang=$MENU_LANG splash=$SPLASH vga=$VESA_MODE keymap=$KEYMAP remote=$REMOTE receiver=$RECEIVER video=vesafb:ywrap,mtrr hdtv debugging
-initrd  /initrd.gz
-boot
+# add console mode menu
+cat /etc/grub/grub.conf.console >> $grubdir/single.lst
 
-EOF
-fi
-
-cat >> $grubdir/single.lst <<EOF
-title	GeeXboX
-root	$rootdev_single
-kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME lang=$MENU_LANG splash=$SPLASH vga=$VESA_MODE keymap=$KEYMAP remote=$REMOTE receiver=$RECEIVER video=vesafb:ywrap,mtrr
-initrd  /initrd.gz
-boot
-
-title	GeeXboX (debug)
-root	$rootdev_single
-kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME lang=$MENU_LANG splash=0 vga=$VESA_MODE keymap=$KEYMAP remote=$REMOTE receiver=$RECEIVER video=vesafb:ywrap,mtrr debugging
-initrd  /initrd.gz
-boot
-EOF
-fi
+sed -i 's/_ROOTDEV_SINGLE_/$rootdev_single/g' $grubdir/single.lst
+sed -i 's/_DEVNAME_/$DEVNAME/g' $grubdir/single.lst
+sed -i 's/_MENU_LANG_/$MENU_LANG/g' $grubdir/single.lst
+sed -i 's/_SPLASH_/$SPLASH/g' $grubdir/single.lst
+sed -i 's/_VESA_MODE_/$VESA_MODE/g' $grubdir/single.lst
+sed -i 's/_KEYMAP_/$KEYMAP/g' $grubdir/single.lst
+sed -i 's/_REMOTE_/$REMOTE/g' $grubdir/single.lst
+sed -i 's/_RECEIVER_/$RECEIVER/g' $grubdir/single.lst
 
 if [ $TYPE = HDD ]; then
   oslist=$(detect_os)
@@ -825,36 +807,19 @@ EOF
   IFS=$saveifs
 
   # conditional HDTV menu entry if X.org is found
-  if [ "$USE_XORG" = yes ]; then
-    cat >> $grubdir/menu.lst <<EOF
-title	GeeXboX HDTV
-root	$rootdev_single
-kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME splash=$SPLASH vga=$VESA_MODE keymap=$KEYMAP remote=$REMOTE receiver=$RECEIVER video=vesafb:ywrap,mtrr hdtv
-initrd  /initrd.gz
-boot
+  [ "$USE_XORG" = yes ] && cat /etc/grub/grub.conf.hdtv >> $grubdir/menu.lst
 
-title	GeeXboX HDTV (debug)
-root	$rootdev_single
-kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME splash=$SPLASH vga=$VESA_MODE keymap=$KEYMAP remote=$REMOTE receiver=$RECEIVER video=vesafb:ywrap,mtrr hdtv debugging
-initrd  /initrd.gz
-boot
+  # add console mode menu
+  cat /etc/grub/grub.conf.console >> $grubdir/menu.lst
 
-EOF
-  fi
-
-  cat >> $grubdir/menu.lst <<EOF
-title	GeeXboX
-root	$rootdev
-kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME lang=$MENU_LANG splash=$SPLASH vga=$VESA_MODE keymap=$KEYMAP remote=$REMOTE receiver=$RECEIVER video=vesafb:ywrap,mtrr
-initrd  /initrd.gz
-boot
-
-title	GeeXboX (debug)
-root	$rootdev
-kernel	/vmlinuz root=/dev/ram0 rw init=linuxrc boot=$DEVNAME lang=$MENU_LANG splash=0 vga=$VESA_MODE keymap=$KEYMAP remote=$REMOTE receiver=$RECEIVER video=vesafb:ywrap,mtrr debugging
-initrd  /initrd.gz
-boot
-EOF
+  sed -i 's/_ROOTDEV_SINGLE_/$rootdev_single/g' $grubdir/menu.lst
+  sed -i 's/_DEVNAME_/$DEVNAME/g' $grubdir/menu.lst
+  sed -i 's/_MENU_LANG_/$MENU_LANG/g' $grubdir/menu.lst
+  sed -i 's/_SPLASH_/$SPLASH/g' $grubdir/menu.lst
+  sed -i 's/_VESA_MODE_/$VESA_MODE/g' $grubdir/menu.lst
+  sed -i 's/_KEYMAP_/$KEYMAP/g' $grubdir/menu.lst
+  sed -i 's/_REMOTE_/$REMOTE/g' $grubdir/menu.lst
+  sed -i 's/_RECEIVER_/$RECEIVER/g' $grubdir/menu.lst
 
 else
   $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Bootloader" --msgbox "\nYou must install a boot loader to boot GeeXboX\n" 0 0
