@@ -68,7 +68,7 @@ convert () {
 			| sed 's%.*\(([hf]d[0-9][a-g0-9,]*)\).*%\1%'`
 
   if [ -z "$tmp_drive" ]; then
-    echo "$1 $MSG_BIOS_NO_DRIVER" 1>&2
+    echo "$1 $MSG_BIOS_NO_DRIVE" 1>&2
     exit 1
   fi
 
