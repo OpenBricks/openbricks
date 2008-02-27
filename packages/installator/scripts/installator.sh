@@ -328,7 +328,10 @@ VERSION=`cat VERSION`
 BACKTITLE="GeeXboX $VERSION installator"
 
 # include language definitions
-. /etc/installator/en.install
+LANG=`sed -n "s/.*lang=\([^ ]*\).*/\1/p" /proc/cmdline`
+[ -z $LANG ] && LANG=en
+. /etc/installator/en.install # default language file, always present
+[ -f /etc/installator/${LANG}.install ] && . /etc/installator/${LANG}.install
 
 # disable kernel messages to avoid screen corruption
 echo 0 > /proc/sys/kernel/printk
