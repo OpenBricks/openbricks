@@ -324,7 +324,6 @@ setup_grub () {
   sed -i "s/_RECEIVER_/$RECEIVER/g" $1
 }
 
-if [ "$1" = geexbox ]; then
   DIALOG=/usr/bin/dialog
   CFDISK=/usr/bin/cfdisk
   SFDISK=/usr/bin/sfdisk
@@ -332,15 +331,7 @@ if [ "$1" = geexbox ]; then
   MKE2FS=/sbin/mke2fs
   GRUB=/usr/bin/grub
   SYSLINUX=/usr/bin/syslinux
-else
-  DIALOG=`which dialog`
-  CFDISK=`which cfdisk`
-  SFDISK=`which sfdisk`
-  MKDOSFS=`which mkdosfs`
-  MKE2FS=`which mke2fs`
-  GRUB=`which grub`
-  SYSLINUX=`which syslinux`
-fi
+
 VERSION=`cat VERSION`
 BACKTITLE="GeeXboX $VERSION installator"
 
@@ -573,14 +564,10 @@ mv vmlinuz initrd.gz isolinux.cfg boot.msg help.msg splash.rle ../../
 cd ../../../
 rm -rf di/GEEXBOX/boot
 
-# Setup network is only available when booting from GeeXboX.
-if [ "$1" = geexbox ]; then
+# Setup network
   $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Configure Network ?" --yesno "\nDo you want to configure your network parameters before installing GeeXboX to disk ?\n" 0 0 && setup_network "di/GEEXBOX"
-fi
 
 # Configure TV card and scan for channels.
-# (only available when booting from GeeXboX).
-if [ "$1" = geexbox ]; then
   if grep -q -e '0400: 109e:' \
              -e '0480: 1131:' \
              -e '0480: 14f1:88' \
@@ -590,20 +577,14 @@ if [ "$1" = geexbox ]; then
       $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Scan for Analog TV Channels ?" --yesno "\nDo you want to configure your analog tv card and scan for channels before installing GeeXboX to disk ?\n" 0 0 && setup_tvscan "di/GEEXBOX"
     fi
   fi
-fi
 
 # Configure DVB card and scan for channels.
-# (only available when booting from GeeXboX).
-if [ "$1" = geexbox ]; then
   # Only scan if a DVB card is detected
   if [ -f /var/dvbcard ]; then
     $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Scan for Digital (DVB) TV Channels ?" --yesno "\nDo you want to configure your digital (DVB) tv card and scan for channels before installing GeeXboX to disk ?\n" 0 0 && setup_dvbscan "di/GEEXBOX"
   fi
-fi
 
 # Configure X.Org
-# (only available when booting from GeeXboX).
-if [ "$1" = geexbox ]; then
   # Only configure if support for X has been compiled in
   if [ -f /etc/X11/X.cfg.sample -o -f /etc/X11/X.cfg ]; then
     USE_XORG=yes # default is to use X if present
@@ -617,7 +598,6 @@ if [ "$1" = geexbox ]; then
     # Since X is disabled, remove the files from HDD install to speed up boot
     rm -f di/GEEXBOX/X.tar.lzma
   fi
-fi
 
 VESA_MODE_OLD=`grep vga= di/isolinux.cfg | head -n 1 | sed "s%.*vga=\([^ ]*\).*%\1%"`
 
