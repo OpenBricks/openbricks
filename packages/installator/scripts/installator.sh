@@ -153,7 +153,7 @@ setup_network () {
 # Configure TV card and scan for channels.
 setup_tvscan () {
   MPTV="mplayer tv:// -really-quiet -msglevel tv=4 -ao null -vo null"
-  title="$BACKTITLE : Analog TV Channels Scanner"
+  title="$BACKTITLE : $MSG_TV_CONFIG"
 
   INPUTS=`$MPTV -frames 0 2>/dev/null | grep "inputs:" | sed -e 's/ inputs: //' -e 's/= //g' -e 's/;//g'`
 
@@ -162,16 +162,16 @@ setup_tvscan () {
   CHANLISTS="us-bcast '' us-cable '' us-cable-hrc '' japan-bcast '' japan-cable '' europe-west '' europe-east '' italy '' newzealand '' australia '' ireland '' france '' china-bcast '' southafrica '' argentina '' russia ''"
 
   while [ -z "$DONE" ]; do
-    INPUT=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "TV Input Selection" --menu "\nBelow is the list of your TV card's available inputs. Please select the one you want to use for channels scan (should be Television)." 0 0 0 $INPUTS`
+    INPUT=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_TV_INPUT" --menu "\n${MSG_TV_INPUT_DESC}\n" 0 0 0 $INPUTS`
 
-    NORM=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "TV Norm Selection" --menu "\nBelow is the list of your TV card's supported video standards. Please select the one you want to use, according to your localization." 0 0 0 $NORMS`
+    NORM=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_TV_NORM" --menu "\n${MSG_TV_NORM_DESC}\n" 0 0 0 $NORMS`
 
-    CHANLIST=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "TV Chanlist Selection" --menu "\nBelow is the list of pre-configured chanlists for scan. Select the one corresponding to your location." 0 0 0 $CHANLISTS`
+    CHANLIST=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_TV_CHANLIST" --menu "\n${MSG_TV_CHANLIST_DESC}\n" 0 0 0 $CHANLISTS`
 
-    CHANNELS_MPLAYER_PARAM=`$MPTV -tvscan autostart -frames 600 -tv driver=v4l2:input=$INPUT:norm=$NORM:chanlist=$CHANLIST 2>/dev/null | grep "^channels="`  | dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "Scanning Channels" --gauge "\nGeeXboX is currently scanning your channels. This operation may take a while. Please wait while processing ..." 0 0
+    CHANNELS_MPLAYER_PARAM=`$MPTV -tvscan autostart -frames 600 -tv driver=v4l2:input=$INPUT:norm=$NORM:chanlist=$CHANLIST 2>/dev/null | grep "^channels="`  | dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_TV_SCAN" --gauge "\n${MSG_TV_SCAN_DESC}\n" 0 0
 
     CHANNELS=`echo $CHANNELS_MPLAYER_PARAM | sed -e 's/channels=//g' -e 's/-/ - /g' -e 's/,/\\\\n/g' -e 's/$/\\\\n/g'`
-    dialog --aspect 12 --stdout --yes-label "Accept" --no-label "Retry" --backtitle "$title" --title "Scan Done ..." --yesno "\nCongratulations, the TV channels scan is done. The following channels has been discoverd (if no channel has been found, you can then try again with new card/tuner/norm/chanlist settings).\n\n$CHANNELS" 0 0 && DONE=true
+    dialog --aspect 12 --stdout --yes-label "$MSG_TV_ACCEPT" --no-label "MSG_TV_RETRY" --backtitle "$title" --title "$MSG_TV_SCAN_DONE" --yesno "\n${MSG_TV_SCAN_DONE_DESC}\n\n$CHANNELS" 0 0 && DONE=true
   done
 
   [ `echo $CHANNELS_MPLAYER_PARAM | grep -c "channels="` -eq 1 ] && echo "tv=$CHANNELS_MPLAYER_PARAM" >> /etc/mplayer/mplayer.conf
@@ -188,12 +188,12 @@ dvb_do_scan() {
 setup_dvbscan () {
   DVB_LIST=/usr/share/dvb
 
-  TITLE="$BACKTITLE : Digital TV Channels Scanner"
+  TITLE="$BACKTITLE : $MSG_DVB_CONFIG"
   CHANNELS_CONF="$1/etc/mplayer/channels.conf"
 
   [ -f /usr/share/dvb.tar.lzma -a ! -d $DVB_LIST ] && tar xaf /usr/share/dvb.tar.lzma -C /usr/share
 
-  DVB_TYPE=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "DVB Card Type Selection" --menu "\nBelow is the list of available DVB card types. Please select the one you want to use for channels scan." 0 0 0 dvb-s "DVB Sattelite" dvb-t "DVB Terrestrial" dvb-c "DVB Cable" atsc "ATSC (US)"`
+  DVB_TYPE=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "$MSG_DVB_TYPE" --menu "\n${MSG_DVB_TYPE_DESC}\n" 0 0 0 dvb-s "$MSG_DVB_SAT" dvb-t "$MSG_DVB_TER" dvb-c "$MSG_DVB_CABLE" atsc "$MSG_DVB_ATSC"`
 
   # DVB Terrestrial cards
   if [ $DVB_TYPE = "dvb-t" ]; then
@@ -201,13 +201,13 @@ setup_dvbscan () {
       COUNTRIES="$COUNTRIES $i ''"
     done
 
-    COUNTRY=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "Country Selection" --menu "\nBelow is the list of countries with known DVB-T transponders frequencies. Please select the one where you live." 0 0 0 $COUNTRIES`
+    COUNTRY=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "$MSG_DVB_COUNTRY" --menu "\n${MSG_DVB_COUNTRY_DESC}\n" 0 0 0 $COUNTRIES`
 
     for i in `ls $DVB_LIST/$DVB_TYPE/$COUNTRY`; do
       CITIES="$CITIES $i ''"
     done
 
-    CITY=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "City Selection" --menu "\nBelow is the list of locations from your country with known DVB-T transponders frequencies. If you live in place not present in this list, please contact your DVB provider, asking for your local transponders frequencies and send this information to the LinuxTV (http://www.linuxtv.org/) team. Otherwise, simply choose the town nearest to where you live." 0 0 0 $CITIES`
+    CITY=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "$MSG_DVB_CITY" --menu "\n${MSG_DVB_CITY_DESC}\n" 0 0 0 $CITIES`
 
     dvb_do_scan "$DVB_LIST/$DVB_TYPE/$COUNTRY/$CITY" "$CHANNELS_CONF"
   elif [ $DVB_TYPE = "dvb-s" ]; then
@@ -215,7 +215,7 @@ setup_dvbscan () {
       SATS="$SATS $i ''"
     done
 
-    SAT=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "Satellite Selection" --menu "\nBelow is the list of known DVB-S satellite transponders you may be able to be connected to. If you are using another transponder which is not present in this list, please contact your DVB provider, asking for your transponder frequencies and send this information to the LinuxTV (http://www.linuxtv.org/) team. Otherwise, simply choose the one that fits your needs." 0 0 0 $SATS`
+    SAT=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "$MSG_DVB_SAT_SEL" --menu "\n${MSG_DVB_SAT_SEL_DESC}\n" 0 0 0 $SATS`
 
     dvb_do_scan "$DVB_LIST/$DVB_TYPE/$SAT" "$CHANNELS_CONF"
   elif [ $DVB_TYPE = "dvb-c" ]; then
@@ -223,13 +223,13 @@ setup_dvbscan () {
       COUNTRIES="$COUNTRIES $i ''"
     done
 
-    COUNTRY=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "Country Selection" --menu "\nBelow is the list of countries with known DVB-C transponders frequencies. Please select the one where you live." 0 0 0 $COUNTRIES`
+    COUNTRY=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "$MSG_DVB_COUNTRY" --menu "\n${MSG_DVB_COUNTRY_DESC}\n" 0 0 0 $COUNTRIES`
 
     for i in `ls $DVB_LIST/$DVB_TYPE/$COUNTRY`; do
       CITIES="$CITIES $i ''"
     done
 
-    CITY=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "City Selection" --menu "\nBelow is the list of locations from your country with known DVB-C transponders frequencies. If you live in place not present in this list, please contact your DVB provider, asking for your local transponders frequencies and send this information to the LinuxTV (http://www.linuxtv.org/) team. Otherwise, simply choose the town nearest to the place you live." 0 0 0 $CITIES`
+    CITY=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "$MSG_DVB_CITY" --menu "\n${MSG_DVB_CITY_DESC}\n" 0 0 0 $CITIES`
 
     dvb_do_scan "$DVB_LIST/$DVB_TYPE/$COUNTRY/$CITY" "$CHANNELS_CONF"
   elif [ $DVB_TYPE = "atsc" ]; then
@@ -237,7 +237,7 @@ setup_dvbscan () {
       ATSC="$ATSC $i ''"
     done
 
-    FREQ=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "ATSC Transponder Selection" --menu "\nBelow is the list of known ATSC transponders you may be able to be connected to. If you are using another transponder which is not present in this list, please contact your ATSC provider, asking for your transponder frequencies and send this information to the LinuxTV (http://www.linuxtv.org/) team. Otherwise, simply choose the one that fits your needs." 0 0 0 $ATSC`
+    FREQ=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "$MSG_DVB_ATSC_SEL" --menu "\n${MSG_DVB_ATSC_SEL_DESC}" 0 0 0 $ATSC`
 
     dvb_do_scan "$DVB_LIST/$DVB_TYPE/$FREQ" "$CHANNELS_CONF"
   fi
@@ -253,7 +253,7 @@ setup_dvbscan () {
 setup_xorg () {
   XORG_CONFIG=/usr/bin/xorgconfig
 
-  TITLE="$BACKTITLE : X.Org Video Server Configuration"
+  TITLE="$BACKTITLE : $MSG_XORG_CONFIG"
   DRIVERS_FILE="$1/etc/X11/drivers"
   USER_RESOLUTION_LABEL="custom"
   USER_RESOLUTION_AUTO="auto"
@@ -270,7 +270,7 @@ setup_xorg () {
     OLD_RES="${XORG_RESX}x${XORG_RESY}"
   fi
   
-  RES=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "User defined custom resolution" --inputbox "\nPlease enter the resolution you want X.Org to use for your display. It has to be under the form of \"width x height\" (in pixels) such as 1360x768, 1024x768 ...\n" 0 0 $OLD_RES`
+  RES=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "$MSG_XORG_RES" --inputbox "\n${MSG_XORG_RES_DESC}\n" 0 0 $OLD_RES`
 
   if [ "$RES" = "$USER_RESOLUTION_AUTO" ]; then
     NEW_RESX="auto"
@@ -280,18 +280,18 @@ setup_xorg () {
     NEW_RESY=`echo $RES | sed 's%.*x\(.*\)%\1%'`
   fi
 
-  NEW_RATE=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "Prefered display refresh rate" --inputbox "\nPlease enter the video refresh rate you want X.Org to use for your display (in Hz). You may also keep it to \"auto\" for autodetection (recommended, unless you'd set a custom resolution).\n" 0 0 $XORG_RATE`
+  NEW_RATE=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "$MSG_XORG_RATE" --inputbox "\n${MSG_XORG_RATE_DESC}\n" 0 0 $XORG_RATE`
 
   DRIVERS="$USER_DRIVERS_AUTO ''"
   for i in `cat $DRIVERS_FILE`; do
     DRIVERS="$DRIVERS $i ''"
   done
 
-  NEW_DRIVER=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "Prefered video driver" --menu "\nPlease choose one of the video drivers in the list below. You can also keep it to automatic, in order for X.Org to set the best suited one according to your hardware." 0 0 0 $DRIVERS`
+  NEW_DRIVER=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "$MSG_XORG_DRIVER" --menu "\n${MSG_XORG_DRIVER_DESC}\n" 0 0 0 $DRIVERS`
 
-  NEW_HORIZSYNC=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "Prefered monitor's horizontal synchronization" --inputbox "\nPlease enter your monitor exact horizontal synchronization range (in kHz), under the form \"28-51\" for example (check your monitor's documentation). It is highly recommended that you keep it autodetected, unless you know exactly what you're doing.\n" 0 0 $XORG_HORIZSYNC`
+  NEW_HORIZSYNC=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "$MSG_XORG_HORIZSYNC" --inputbox "\n${MSG_XORG_HORIZSYNC_DESC}\n" 0 0 $XORG_HORIZSYNC`
 
-  NEW_VERTREFRESH=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "Prefered monitor's vertical refresh rate" --inputbox "\nPlease enter your monitor exact vertical refresh rate range (in kHz), under the form \"43-60\" for example (check your monitor's documentation). It is highly recommended that you keep it autodetected, unless you know exactly what you're doing.\n" 0 0 $XORG_VERTREFRESH`
+  NEW_VERTREFRESH=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "$MSG_XORG_VERTREFRESH" --inputbox "\n${MSG_XORG_VERTREFRESH_DESC}\n" 0 0 $XORG_VERTREFRESH`
 
   # write settings to config file
   echo "XORG_RESX=\"$NEW_RESX\"" > $X_CFG
@@ -339,7 +339,7 @@ echo 0 > /proc/sys/kernel/printk
 KEYMAP_OLD=`grep keymap= /proc/cmdline | sed "s%.*keymap=\([^ ]*\).*%\1%"`
 test -z $KEYMAP_OLD && KEYMAP_OLD=qwerty
 
-title="$BACKTITLE : Keymap selection"
+title="$BACKTITLE : $MSG_KEYMAP_CONFIG"
 
 KEYMAPS="qwerty qwerty"
 for i in `ls /etc/keymaps`
@@ -347,23 +347,23 @@ do
    KEYMAPS="$KEYMAPS $i $i"
 done
 
-KEYMAP=`dialog --no-cancel --stdout --backtitle "$title" --title "Choose Keymap" --default-item $KEYMAP_OLD --menu "Which keymap do you want to use ?" 0 0 0 $KEYMAPS` || exit 1
+KEYMAP=`dialog --no-cancel --stdout --backtitle "$title" --title "$MSG_KEYMAP" --default-item $KEYMAP_OLD --menu "$MSG_KEYMAP_DESC" 0 0 0 $KEYMAPS` || exit 1
 
 test -f "/etc/keymaps/$KEYMAP" && loadkmap < "/etc/keymaps/$KEYMAP"
 
 while true; do
   DISKS=`cat /proc/partitions | sed -n "s/\ *[0-9][0-9]*\ *[0-9][0-9]*\ *\([0-9][0-9]*\)\ \([a-z]*\)$/\2 (\1_blocks)/p"`
   if [ -z "$DISKS" ]; then
-    dialog --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --yesno "\nNo disks found on this system.\nCheck again ?" 0 0 || exit 1
+    dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_ERROR" --yesno "\n${MSG_DISK_NOT_FOUND}" 0 0 || exit 1
   else
-    DISKS="$DISKS refresh list"
-    DISK=`dialog --stdout --backtitle "$BACKTITLE" --title "Installation device" --menu "\nYou are going to install GeeXboX. For this you will need an empty partition with about 8 MB of free space.\nBe careful to choose the right disk! We won't take responsibility for any data loss." 0 0 0 $DISKS` || exit 1
+    DISKS="$DISKS $MSG_DISK_REFRESH"
+    DISK=`dialog --stdout --backtitle "$BACKTITLE" --title "$MSG_DISK_DEVICE" --menu "\n${MSG_DISK_DEVICE_DESC}" 0 0 0 $DISKS` || exit 1
     [ $DISK != refresh ] && break
   fi
 done
 
 if [ "`cat /sys/block/$DISK/removable`" = 1 ]; then
-  BOOTLOADER=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Linux partition type" --menu "Which type of boot loader you want ? " 0 0 0 grub "GNU GRUB - Doesn't work with oldest BIOS" syslinux "Syslinux - For oldest BIOS compatbility"` || exit 1
+  BOOTLOADER=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_PART_LINUX" --menu "$MSG_DISK_PART_LINUX_DESC" 0 0 0 grub "$MSG_DISK_BOOT_GRUB" syslinux "$MSG_DISK_BOOT_SYSLINUX"` || exit 1
   TYPE=REMOVABLE
 else
   BOOTLOADER=grub
