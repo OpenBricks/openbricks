@@ -338,27 +338,6 @@ BACKTITLE="GeeXboX $VERSION installator"
 # include language definitions
 . /etc/installator/en.install
 
-if [ "$UID" != "0" ]; then
-  echo ""
-  echo "**** You need to be root to install GeeXboX ****"
-  echo ""
-  exit 1
-fi
-
-if [ -z "$SFDISK" -o -z "$GRUB" -o -z "$DIALOG" ]; then
-  echo ""
-  echo "**** You need to have sfdisk, grub and dialog installed to install GeeXboX ****"
-  echo ""
-  exit 1
-fi
-
-if [ ! -d "/sys/block" ]; then
-  echo ""
-  echo "**** You need to have a mounted sysfs at /sys. try executing: mount -t sysfs none /sys ****"
-  echo ""
-  exit 1
-fi
-
 # disable kernel messages to avoid screen corruption
 echo 0 > /proc/sys/kernel/printk
 
