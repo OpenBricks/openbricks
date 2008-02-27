@@ -356,7 +356,6 @@ KEYMAP=`$DIALOG --no-cancel --stdout --backtitle "$title" --title "Choose Keymap
 
 test -f "/etc/keymaps/$KEYMAP" && loadkmap < "/etc/keymaps/$KEYMAP"
 
-
 while true; do
   if [ -e /dev/.devfsd ]; then
     DISKS=`cat /proc/partitions | sed -n "s/\ *[0-9][0-9]*\ *[0-9][0-9]*\ *\([0-9][0-9]*\)\ \([a-z0-9/]*disc\).*$/\2 (\1_blocks)/p"`
