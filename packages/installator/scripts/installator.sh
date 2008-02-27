@@ -188,9 +188,7 @@ setup_dvbscan () {
   TITLE="$BACKTITLE : Digital TV Channels Scanner"
   CHANNELS_CONF="$1/etc/mplayer/channels.conf"
 
-  if [ -f /usr/share/dvb.tar.lzma -a ! -d $DVB_LIST ]; then
-    tar xaf /usr/share/dvb.tar.lzma -C /usr/share
-  fi
+  [ -f /usr/share/dvb.tar.lzma -a ! -d $DVB_LIST ] && tar xaf /usr/share/dvb.tar.lzma -C /usr/share
 
   DVB_TYPE=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "DVB Card Type Selection" --menu "\nBelow is the list of available DVB card types. Please select the one you want to use for channels scan." 0 0 0 dvb-s "DVB Sattelite" dvb-t "DVB Terrestrial" dvb-c "DVB Cable" atsc "ATSC (US)"`
 
