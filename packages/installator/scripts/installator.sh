@@ -371,9 +371,6 @@ fi
 # disable kernel messages to avoid screen corruption
 echo 0 > /proc/sys/kernel/printk
 
-KEYMAP_OLD=`grep keymap= /proc/cmdline | sed "s%.*keymap=\([^ ]*\).*%\1%"`
-test -z $KEYMAP_OLD && KEYMAP_OLD=qwerty
-
 title="$BACKTITLE : Keymap selection"
 
 KEYMAPS="qwerty qwerty"
@@ -382,7 +379,7 @@ do
    KEYMAPS="$KEYMAPS $i $i"
 done
 
-KEYMAP=`$DIALOG --no-cancel --stdout --backtitle "$title" --title "Choose Keymap" --default-item $KEYMAP_OLD --menu "Which keymap do you want to use ?" 0 0 0 $KEYMAPS` || exit 1
+KEYMAP=`$DIALOG --no-cancel --stdout --backtitle "$title" --title "Choose Keymap" --default-item qwerty --menu "Which keymap do you want to use ?" 0 0 0 $KEYMAPS` || exit 1
 
 test -f "/etc/keymaps/$KEYMAP" && loadkmap < "/etc/keymaps/$KEYMAP"
 
