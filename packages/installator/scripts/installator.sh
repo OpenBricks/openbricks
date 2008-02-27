@@ -659,10 +659,10 @@ done
 RECEIVER=`$DIALOG --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Receiver" --menu "Select the receiver to use" 000 0 0 $LRECEIVERS`
 
 if grep -q "splash=silent" di/isolinux.cfg; then
-  SPLASH_ARGUMENT=""
+  SPLASH_ARGUMENT="--defaultno"
   SPLASH_OLD="silent"
 else
-  SPLASH_ARGUMENT="--defaultno"
+  SPLASH_ARGUMENT=""
   SPLASH_OLD="0"
 fi
 
