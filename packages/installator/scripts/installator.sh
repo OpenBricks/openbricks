@@ -310,6 +310,12 @@ setup_grub () {
   sed -i "s/_RECEIVER_/$RECEIVER/g" $1
 }
 
+cmdline_default () {
+  RET=`grep $1= /proc/cmdline | sed "s%.*$1=\([^ ]*\).*%\1%"`
+  test -z $RET && RET=$2
+  echo $RET
+}
+
 VERSION=`cat VERSION`
 BACKTITLE="GeeXboX $VERSION installator"
 
@@ -322,8 +328,7 @@ LANG=`sed -n "s/.*lang=\([^ ]*\).*/\1/p" /proc/cmdline`
 # disable kernel messages to avoid screen corruption
 echo 0 > /proc/sys/kernel/printk
 
-KEYMAP_OLD=`grep keymap= /proc/cmdline | sed "s%.*keymap=\([^ ]*\).*%\1%"`
-test -z $KEYMAP_OLD && KEYMAP_OLD=qwerty
+KEYMAP_OLD=`cmdline_default keymap qwerty`
 
 title="$BACKTITLE : $MSG_KEYMAP_CONFIG"
 
@@ -540,7 +545,7 @@ else
   rm -f di/GEEXBOX/X.tar.lzma
 fi
 
-VESA_MODE_OLD=`grep vga= di/isolinux.cfg | head -n 1 | sed "s%.*vga=\([^ ]*\).*%\1%"`
+VESA_MODE_OLD=`cmdline_default vga 789`
 
 VESA_RES=$((($VESA_MODE_OLD - 784) / 3))
 VESA_DEPTH=$((($VESA_MODE_OLD - 784) % 3))
@@ -562,8 +567,7 @@ VESA_MODE=$((784 + VESA_RES*3 + VESA_DEPTH))
 
 title="$BACKTITLE : Menu Language selection"
 
-MENU_LANG_OLD=`grep lang= di/isolinux.cfg | head -n 1 | sed "s%.*lang=\([^ ]*\).*%\1%"`
-test -z $MENU_LANG_OLD && MENU_LANG_OLD=en
+MENU_LANG_OLD=`cmdline_default lang en`
 
 LANGS=`ls di/GEEXBOX/etc/mplayer/*.lang | sed -e 's$di/GEEXBOX/etc/mplayer/\(.*\).lang$\1$g'`
 for l in $LANGS; do
