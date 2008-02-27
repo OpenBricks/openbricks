@@ -381,11 +381,8 @@ elif [ $BOOTLOADER = grub ]; then
   PART_MSG="FAT partition (type=0B) or Linux ext2/3 partition (type=83)"
 fi
 
-if [ -z "$CFDISK" ]; then
-  CFDISK_MSG="As you don't have cfdisk installed, the installator won't be able to create the partition for you. You'll have to create it yourself before installing."
-else
   CFDISK_MSG="Please edit your partition table to create a $PART_MSG with about 8 MB of free space.\nRemember to write the changes when done. We won't take responsibility for any data loss."
-fi
+
 $DIALOG --stdout --backtitle "$BACKTITLE" --title "Installation device" --msgbox "$CFDISK_MSG" 0 0 || exit 1
 
 [ -n "$CFDISK" ] && $CFDISK /dev/$DISK || exit 1
