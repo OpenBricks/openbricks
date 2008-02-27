@@ -575,17 +575,21 @@ for l in $LANGS; do
 done
 MENU_LANG=`dialog --no-cancel --stdout --backtitle "$title" --title "Choose Menu Language" --default-item $MENU_LANG_OLD --menu "Which language do you want to use for the menu ?" 0 0 0 $LLANGS` || exit 1
 
+REMOTE_OLD=`cmdline_default remote atiusb`
+
 REMOTES=`ls di/GEEXBOX/etc/lirc/lircrc_* | sed -e 's/.*lircrc_//g'`
 for r in $REMOTES; do
  LREMOTES="$LREMOTES $r $r"
 done
-REMOTE=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Remote" --menu "Select the remote to use" 000 0 0 $LREMOTES`
+REMOTE=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Remote" --default-item $REMOTE_OLD --menu "Select the remote to use" 000 0 0 $LREMOTES`
+
+RECEIVER_OLD=`cmdline_default receiver atiusb`
 
 RECEIVERS=`ls di/GEEXBOX/etc/lirc/lircd_* | grep -v ".conf" | sed -e 's/.*lircd_//g'`
 for r in $RECEIVERS; do
   LRECEIVERS="$LRECEIVERS $r $r"
 done
-RECEIVER=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Receiver" --menu "Select the receiver to use" 000 0 0 $LRECEIVERS`
+RECEIVER=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Receiver" --default-item $RECEIVER_OLD --menu "Select the receiver to use" 000 0 0 $LRECEIVERS`
 
 if grep -q "splash=silent" di/isolinux.cfg; then
   SPLASH_ARGUMENT="--defaultno"
