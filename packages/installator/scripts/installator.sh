@@ -91,50 +91,50 @@ setup_network () {
 
   # Get type of physical interface
   val=`grep PHY_TYPE $f | cut -d'"' -f2`
-  phy_type=`$DIALOG --no-cancel --aspect 15 --default-item $val --stdout --backtitle "$title" --title "$MSG_NET_PHY" --menu "\n${MSG_NET_PHY_DESC}\n" 0 0 0 auto "$MSG_NET_PHY_AUTO" ethernet "$MSG_NET_PHY_ETH" wifi "$MSG_NET_PHY_WIFI"` || exit 1
+  phy_type=`dialog --no-cancel --aspect 15 --default-item $val --stdout --backtitle "$title" --title "$MSG_NET_PHY" --menu "\n${MSG_NET_PHY_DESC}\n" 0 0 0 auto "$MSG_NET_PHY_AUTO" ethernet "$MSG_NET_PHY_ETH" wifi "$MSG_NET_PHY_WIFI"` || exit 1
 
   # Get wireless settings only if required
   if [ $phy_type = "auto" -o $phy_type = "wifi" ]; then
-    wifi_mode=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_WIFI" --menu "\n${MSG_NET_WIFI_DESC}\n" 0 0 0 managed "$MSG_NET_WIFI_AP" ad-hoc "$MSG_NET_WIFI_ADHOC"` || exit 1
+    wifi_mode=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_WIFI" --menu "\n${MSG_NET_WIFI_DESC}\n" 0 0 0 managed "$MSG_NET_WIFI_AP" ad-hoc "$MSG_NET_WIFI_ADHOC"` || exit 1
 
-    wifi_enc=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_CRYPTO" --menu "\n${MSG_NET_CRYPTO_DESC}\n" 0 0 0 none "$MSG_NET_CRYPTO_NONE" WEP "$MSG_NET_CRYPTO_WEP" WPA "$MSG_NET_CRYPTO_WPA"` || exit 1
+    wifi_enc=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_CRYPTO" --menu "\n${MSG_NET_CRYPTO_DESC}\n" 0 0 0 none "$MSG_NET_CRYPTO_NONE" WEP "$MSG_NET_CRYPTO_WEP" WPA "$MSG_NET_CRYPTO_WPA"` || exit 1
 
     val=`grep WIFI_ESSID $f | cut -d'"' -f2`
-    wifi_essid=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_SSID" --inputbox "\n${MSG_NET_SSID_DESC}\n" 0 0 "$val"` || exit 1
+    wifi_essid=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_SSID" --inputbox "\n${MSG_NET_SSID_DESC}\n" 0 0 "$val"` || exit 1
 
     if [ $wifi_enc = WEP -o $wifi_enc = WPA ]; then
       val=`grep WIFI_KEY $f | cut -d'"' -f2`
-      wifi_key=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_KEY" --inputbox "\n${MSG_NET_KEY_DESC}\n" 0 0 "$val"` || exit 1
+      wifi_key=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_KEY" --inputbox "\n${MSG_NET_KEY_DESC}\n" 0 0 "$val"` || exit 1
     fi
 
     if [ $wifi_enc = WPA ]; then
-      wpa_drv=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_WPA_DRIVER" --menu "\n${MSG_NET_WPA_DRIVER_DESC}\n" 0 0 0 wext "$MSG_NET_WPA_DRIVER_WEXT" atmel "$MSG_NET_WPA_DRIVER_ATMEL"` || exit 1
+      wpa_drv=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_WPA_DRIVER" --menu "\n${MSG_NET_WPA_DRIVER_DESC}\n" 0 0 0 wext "$MSG_NET_WPA_DRIVER_WEXT" atmel "$MSG_NET_WPA_DRIVER_ATMEL"` || exit 1
     fi
   fi
 
   # get GeeXboX IP address
   val=`grep HOST $f | cut -d'"' -f2`
-  host_ip=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_IP" --inputbox "\n${MSG_NET_IP_DESC}\n" 0 0 "$val"` || exit 1
+  host_ip=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_IP" --inputbox "\n${MSG_NET_IP_DESC}\n" 0 0 "$val"` || exit 1
 
   # do not get more settings if DHCP
   if [ ! -z $host_ip ]; then
     val=`grep SUBNET $f | cut -d'"' -f2`
-    subnet=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_SUBNET" --inputbox "\n${MSG_NET_SUBNET_DESC}\n" 0 0 "$val"` || exit 1
+    subnet=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_SUBNET" --inputbox "\n${MSG_NET_SUBNET_DESC}\n" 0 0 "$val"` || exit 1
 
     val=`grep GATEWAY $f | cut -d'"' -f2`
-    gw_ip=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_GATEWAY" --inputbox "\n${MSG_NET_GATEWAY_DESC}\n" 0 0 "$val"` || exit 1
+    gw_ip=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_GATEWAY" --inputbox "\n${MSG_NET_GATEWAY_DESC}\n" 0 0 "$val"` || exit 1
 
     val=`grep DNS_SERVER $f | cut -d'"' -f2`
-    dns_ip=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_DNS" --inputbox "\n${MSG_NET_DNS_DESC}\n" 0 0 "$val"` || exit 1
+    dns_ip=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_DNS" --inputbox "\n${MSG_NET_DNS_DESC}\n" 0 0 "$val"` || exit 1
   fi
 
   # get samba user name
   val=`grep SMB_USER $f | cut -d'"' -f2`
-  smb_user=`$DIALOG --no-cancel --stdout --backtitle "$title" --title "$MSG_NET_SMB_USER" --inputbox "\n${MSG_NET_SMB_USER_DESC}\n" 0 0 "$val"` || exit 1
+  smb_user=`dialog --no-cancel --stdout --backtitle "$title" --title "$MSG_NET_SMB_USER" --inputbox "\n${MSG_NET_SMB_USER_DESC}\n" 0 0 "$val"` || exit 1
 
   # get samba password
   val=`grep SMB_PWD $f | cut -d'"' -f2`
-  smb_pwd=`$DIALOG --no-cancel --stdout --backtitle "$title" --title "$MSG_NET_SMB_PWD" --inputbox "\n${MSG_NET_SMB_PWD_DESC}\n" 0 0 "$val"` || exit 1
+  smb_pwd=`dialog --no-cancel --stdout --backtitle "$title" --title "$MSG_NET_SMB_PWD" --inputbox "\n${MSG_NET_SMB_PWD_DESC}\n" 0 0 "$val"` || exit 1
 
   sed -i "s%^PHY_TYPE=\".*\"\(.*\)%PHY_TYPE=\"$phy_type\"\1%" $f
   sed -i "s%^WIFI_MODE=\".*\"\(.*\)%WIFI_MODE=\"$wifi_mode\"\1%" $f
@@ -162,16 +162,16 @@ setup_tvscan () {
   CHANLISTS="us-bcast '' us-cable '' us-cable-hrc '' japan-bcast '' japan-cable '' europe-west '' europe-east '' italy '' newzealand '' australia '' ireland '' france '' china-bcast '' southafrica '' argentina '' russia ''"
 
   while [ -z "$DONE" ]; do
-    INPUT=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "TV Input Selection" --menu "\nBelow is the list of your TV card's available inputs. Please select the one you want to use for channels scan (should be Television)." 0 0 0 $INPUTS`
+    INPUT=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "TV Input Selection" --menu "\nBelow is the list of your TV card's available inputs. Please select the one you want to use for channels scan (should be Television)." 0 0 0 $INPUTS`
 
-    NORM=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "TV Norm Selection" --menu "\nBelow is the list of your TV card's supported video standards. Please select the one you want to use, according to your localization." 0 0 0 $NORMS`
+    NORM=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "TV Norm Selection" --menu "\nBelow is the list of your TV card's supported video standards. Please select the one you want to use, according to your localization." 0 0 0 $NORMS`
 
-    CHANLIST=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "TV Chanlist Selection" --menu "\nBelow is the list of pre-configured chanlists for scan. Select the one corresponding to your location." 0 0 0 $CHANLISTS`
+    CHANLIST=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "TV Chanlist Selection" --menu "\nBelow is the list of pre-configured chanlists for scan. Select the one corresponding to your location." 0 0 0 $CHANLISTS`
 
-    CHANNELS_MPLAYER_PARAM=`$MPTV -tvscan autostart -frames 600 -tv driver=v4l2:input=$INPUT:norm=$NORM:chanlist=$CHANLIST 2>/dev/null | grep "^channels="`  | $DIALOG --no-cancel --aspect 15 --stdout --backtitle "$title" --title "Scanning Channels" --gauge "\nGeeXboX is currently scanning your channels. This operation may take a while. Please wait while processing ..." 0 0
+    CHANNELS_MPLAYER_PARAM=`$MPTV -tvscan autostart -frames 600 -tv driver=v4l2:input=$INPUT:norm=$NORM:chanlist=$CHANLIST 2>/dev/null | grep "^channels="`  | dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "Scanning Channels" --gauge "\nGeeXboX is currently scanning your channels. This operation may take a while. Please wait while processing ..." 0 0
 
     CHANNELS=`echo $CHANNELS_MPLAYER_PARAM | sed -e 's/channels=//g' -e 's/-/ - /g' -e 's/,/\\\\n/g' -e 's/$/\\\\n/g'`
-    $DIALOG --aspect 12 --stdout --yes-label "Accept" --no-label "Retry" --backtitle "$title" --title "Scan Done ..." --yesno "\nCongratulations, the TV channels scan is done. The following channels has been discoverd (if no channel has been found, you can then try again with new card/tuner/norm/chanlist settings).\n\n$CHANNELS" 0 0 && DONE=true
+    dialog --aspect 12 --stdout --yes-label "Accept" --no-label "Retry" --backtitle "$title" --title "Scan Done ..." --yesno "\nCongratulations, the TV channels scan is done. The following channels has been discoverd (if no channel has been found, you can then try again with new card/tuner/norm/chanlist settings).\n\n$CHANNELS" 0 0 && DONE=true
   done
 
   [ `echo $CHANNELS_MPLAYER_PARAM | grep -c "channels="` -eq 1 ] && echo "tv=$CHANNELS_MPLAYER_PARAM" >> /etc/mplayer/mplayer.conf
@@ -193,7 +193,7 @@ setup_dvbscan () {
     tar xaf /usr/share/dvb.tar.lzma -C /usr/share
   fi
 
-  DVB_TYPE=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "DVB Card Type Selection" --menu "\nBelow is the list of available DVB card types. Please select the one you want to use for channels scan." 0 0 0 dvb-s "DVB Sattelite" dvb-t "DVB Terrestrial" dvb-c "DVB Cable" atsc "ATSC (US)"`
+  DVB_TYPE=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "DVB Card Type Selection" --menu "\nBelow is the list of available DVB card types. Please select the one you want to use for channels scan." 0 0 0 dvb-s "DVB Sattelite" dvb-t "DVB Terrestrial" dvb-c "DVB Cable" atsc "ATSC (US)"`
 
   # DVB Terrestrial cards
   if [ $DVB_TYPE = "dvb-t" ]; then
@@ -201,13 +201,13 @@ setup_dvbscan () {
       COUNTRIES="$COUNTRIES $i ''"
     done
 
-    COUNTRY=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "Country Selection" --menu "\nBelow is the list of countries with known DVB-T transponders frequencies. Please select the one where you live." 0 0 0 $COUNTRIES`
+    COUNTRY=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "Country Selection" --menu "\nBelow is the list of countries with known DVB-T transponders frequencies. Please select the one where you live." 0 0 0 $COUNTRIES`
 
     for i in `ls $DVB_LIST/$DVB_TYPE/$COUNTRY`; do
       CITIES="$CITIES $i ''"
     done
 
-    CITY=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "City Selection" --menu "\nBelow is the list of locations from your country with known DVB-T transponders frequencies. If you live in place not present in this list, please contact your DVB provider, asking for your local transponders frequencies and send this information to the LinuxTV (http://www.linuxtv.org/) team. Otherwise, simply choose the town nearest to where you live." 0 0 0 $CITIES`
+    CITY=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "City Selection" --menu "\nBelow is the list of locations from your country with known DVB-T transponders frequencies. If you live in place not present in this list, please contact your DVB provider, asking for your local transponders frequencies and send this information to the LinuxTV (http://www.linuxtv.org/) team. Otherwise, simply choose the town nearest to where you live." 0 0 0 $CITIES`
 
     $DVBSCAN $SCAN_ARGS $DVB_LIST/$DVB_TYPE/$COUNTRY/$CITY > $CHANNELS_CONF 2> /dev/null
   elif [ $DVB_TYPE = "dvb-s" ]; then
@@ -215,7 +215,7 @@ setup_dvbscan () {
       SATS="$SATS $i ''"
     done
 
-    SAT=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "Satellite Selection" --menu "\nBelow is the list of known DVB-S satellite transponders you may be able to be connected to. If you are using another transponder which is not present in this list, please contact your DVB provider, asking for your transponder frequencies and send this information to the LinuxTV (http://www.linuxtv.org/) team. Otherwise, simply choose the one that fits your needs." 0 0 0 $SATS`
+    SAT=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "Satellite Selection" --menu "\nBelow is the list of known DVB-S satellite transponders you may be able to be connected to. If you are using another transponder which is not present in this list, please contact your DVB provider, asking for your transponder frequencies and send this information to the LinuxTV (http://www.linuxtv.org/) team. Otherwise, simply choose the one that fits your needs." 0 0 0 $SATS`
 
     $DVBSCAN $SCAN_ARGS $DVB_LIST/$DVB_TYPE/$SAT > $CHANNELS_CONF 2>/dev/null
   elif [ $DVB_TYPE = "dvb-c" ]; then
@@ -223,13 +223,13 @@ setup_dvbscan () {
       COUNTRIES="$COUNTRIES $i ''"
     done
 
-    COUNTRY=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "Country Selection" --menu "\nBelow is the list of countries with known DVB-C transponders frequencies. Please select the one where you live." 0 0 0 $COUNTRIES`
+    COUNTRY=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "Country Selection" --menu "\nBelow is the list of countries with known DVB-C transponders frequencies. Please select the one where you live." 0 0 0 $COUNTRIES`
 
     for i in `ls $DVB_LIST/$DVB_TYPE/$COUNTRY`; do
       CITIES="$CITIES $i ''"
     done
 
-    CITY=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "City Selection" --menu "\nBelow is the list of locations from your country with known DVB-C transponders frequencies. If you live in place not present in this list, please contact your DVB provider, asking for your local transponders frequencies and send this information to the LinuxTV (http://www.linuxtv.org/) team. Otherwise, simply choose the town nearest to the place you live." 0 0 0 $CITIES`
+    CITY=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "City Selection" --menu "\nBelow is the list of locations from your country with known DVB-C transponders frequencies. If you live in place not present in this list, please contact your DVB provider, asking for your local transponders frequencies and send this information to the LinuxTV (http://www.linuxtv.org/) team. Otherwise, simply choose the town nearest to the place you live." 0 0 0 $CITIES`
 
     $DVBSCAN $SCAN_ARGS $DVB_LIST/$DVB_TYPE/$COUNTRY/$CITY > $CHANNELS_CONF 2>/dev/null
   elif [ $DVB_TYPE = "atsc" ]; then
@@ -237,7 +237,7 @@ setup_dvbscan () {
       ATSC="$ATSC $i ''"
     done
 
-    FREQ=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "ATSC Transponder Selection" --menu "\nBelow is the list of known ATSC transponders you may be able to be connected to. If you are using another transponder which is not present in this list, please contact your ATSC provider, asking for your transponder frequencies and send this information to the LinuxTV (http://www.linuxtv.org/) team. Otherwise, simply choose the one that fits your needs." 0 0 0 $ATSC`
+    FREQ=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "ATSC Transponder Selection" --menu "\nBelow is the list of known ATSC transponders you may be able to be connected to. If you are using another transponder which is not present in this list, please contact your ATSC provider, asking for your transponder frequencies and send this information to the LinuxTV (http://www.linuxtv.org/) team. Otherwise, simply choose the one that fits your needs." 0 0 0 $ATSC`
 
     $DVBSCAN $SCAN_ARGS $DVB_LIST/$DVB_TYPE/$FREQ > $CHANNELS_CONF 2>/dev/null
   fi
@@ -270,7 +270,7 @@ setup_xorg () {
     OLD_RES="${XORG_RESX}x${XORG_RESY}"
   fi
   
-  RES=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "User defined custom resolution" --inputbox "\nPlease enter the resolution you want X.Org to use for your display. It has to be under the form of \"width x height\" (in pixels) such as 1360x768, 1024x768 ...\n" 0 0 $OLD_RES`
+  RES=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "User defined custom resolution" --inputbox "\nPlease enter the resolution you want X.Org to use for your display. It has to be under the form of \"width x height\" (in pixels) such as 1360x768, 1024x768 ...\n" 0 0 $OLD_RES`
 
   if [ "$RES" = "$USER_RESOLUTION_AUTO" ]; then
     NEW_RESX="auto"
@@ -280,18 +280,18 @@ setup_xorg () {
     NEW_RESY=`echo $RES | sed 's%.*x\(.*\)%\1%'`
   fi
 
-  NEW_RATE=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "Prefered display refresh rate" --inputbox "\nPlease enter the video refresh rate you want X.Org to use for your display (in Hz). You may also keep it to \"auto\" for autodetection (recommended, unless you'd set a custom resolution).\n" 0 0 $XORG_RATE`
+  NEW_RATE=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "Prefered display refresh rate" --inputbox "\nPlease enter the video refresh rate you want X.Org to use for your display (in Hz). You may also keep it to \"auto\" for autodetection (recommended, unless you'd set a custom resolution).\n" 0 0 $XORG_RATE`
 
   DRIVERS="$USER_DRIVERS_AUTO ''"
   for i in `cat $DRIVERS_FILE`; do
     DRIVERS="$DRIVERS $i ''"
   done
 
-  NEW_DRIVER=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "Prefered video driver" --menu "\nPlease choose one of the video drivers in the list below. You can also keep it to automatic, in order for X.Org to set the best suited one according to your hardware." 0 0 0 $DRIVERS`
+  NEW_DRIVER=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "Prefered video driver" --menu "\nPlease choose one of the video drivers in the list below. You can also keep it to automatic, in order for X.Org to set the best suited one according to your hardware." 0 0 0 $DRIVERS`
 
-  NEW_HORIZSYNC=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "Prefered monitor's horizontal synchronization" --inputbox "\nPlease enter your monitor exact horizontal synchronization range (in kHz), under the form \"28-51\" for example (check your monitor's documentation). It is highly recommended that you keep it autodetected, unless you know exactly what you're doing.\n" 0 0 $XORG_HORIZSYNC`
+  NEW_HORIZSYNC=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "Prefered monitor's horizontal synchronization" --inputbox "\nPlease enter your monitor exact horizontal synchronization range (in kHz), under the form \"28-51\" for example (check your monitor's documentation). It is highly recommended that you keep it autodetected, unless you know exactly what you're doing.\n" 0 0 $XORG_HORIZSYNC`
 
-  NEW_VERTREFRESH=`$DIALOG --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "Prefered monitor's vertical refresh rate" --inputbox "\nPlease enter your monitor exact vertical refresh rate range (in kHz), under the form \"43-60\" for example (check your monitor's documentation). It is highly recommended that you keep it autodetected, unless you know exactly what you're doing.\n" 0 0 $XORG_VERTREFRESH`
+  NEW_VERTREFRESH=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "Prefered monitor's vertical refresh rate" --inputbox "\nPlease enter your monitor exact vertical refresh rate range (in kHz), under the form \"43-60\" for example (check your monitor's documentation). It is highly recommended that you keep it autodetected, unless you know exactly what you're doing.\n" 0 0 $XORG_VERTREFRESH`
 
   # write settings to config file
   echo "XORG_RESX=\"$NEW_RESX\"" > $X_CFG
@@ -324,14 +324,6 @@ setup_grub () {
   sed -i "s/_RECEIVER_/$RECEIVER/g" $1
 }
 
-DIALOG=/usr/bin/dialog
-CFDISK=/usr/bin/cfdisk
-SFDISK=/usr/bin/sfdisk
-MKDOSFS=/usr/bin/mkdosfs
-MKE2FS=/sbin/mke2fs
-GRUB=/usr/bin/grub
-SYSLINUX=/usr/bin/syslinux
-
 VERSION=`cat VERSION`
 BACKTITLE="GeeXboX $VERSION installator"
 
@@ -352,23 +344,23 @@ do
    KEYMAPS="$KEYMAPS $i $i"
 done
 
-KEYMAP=`$DIALOG --no-cancel --stdout --backtitle "$title" --title "Choose Keymap" --default-item $KEYMAP_OLD --menu "Which keymap do you want to use ?" 0 0 0 $KEYMAPS` || exit 1
+KEYMAP=`dialog --no-cancel --stdout --backtitle "$title" --title "Choose Keymap" --default-item $KEYMAP_OLD --menu "Which keymap do you want to use ?" 0 0 0 $KEYMAPS` || exit 1
 
 test -f "/etc/keymaps/$KEYMAP" && loadkmap < "/etc/keymaps/$KEYMAP"
 
 while true; do
   DISKS=`cat /proc/partitions | sed -n "s/\ *[0-9][0-9]*\ *[0-9][0-9]*\ *\([0-9][0-9]*\)\ \([a-z]*\)$/\2 (\1_blocks)/p"`
   if [ -z "$DISKS" ]; then
-    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --yesno "\nNo disks found on this system.\nCheck again ?" 0 0 || exit 1
+    dialog --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --yesno "\nNo disks found on this system.\nCheck again ?" 0 0 || exit 1
   else
     DISKS="$DISKS refresh list"
-    DISK=`$DIALOG --stdout --backtitle "$BACKTITLE" --title "Installation device" --menu "\nYou are going to install GeeXboX. For this you will need an empty partition with about 8 MB of free space.\nBe careful to choose the right disk! We won't take responsibility for any data loss." 0 0 0 $DISKS` || exit 1
+    DISK=`dialog --stdout --backtitle "$BACKTITLE" --title "Installation device" --menu "\nYou are going to install GeeXboX. For this you will need an empty partition with about 8 MB of free space.\nBe careful to choose the right disk! We won't take responsibility for any data loss." 0 0 0 $DISKS` || exit 1
     [ $DISK != refresh ] && break
   fi
 done
 
 if [ "`cat /sys/block/$DISK/removable`" = 1 ]; then
-  BOOTLOADER=`$DIALOG --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Linux partition type" --menu "Which type of boot loader you want ? " 0 0 0 grub "GNU GRUB - Doesn't work with oldest BIOS" syslinux "Syslinux - For oldest BIOS compatbility"` || exit 1
+  BOOTLOADER=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Linux partition type" --menu "Which type of boot loader you want ? " 0 0 0 grub "GNU GRUB - Doesn't work with oldest BIOS" syslinux "Syslinux - For oldest BIOS compatbility"` || exit 1
   TYPE=REMOVABLE
 else
   BOOTLOADER=grub
@@ -383,40 +375,40 @@ fi
 
 CFDISK_MSG="Please edit your partition table to create a $PART_MSG with about 8 MB of free space.\nRemember to write the changes when done. We won't take responsibility for any data loss."
 
-$DIALOG --stdout --backtitle "$BACKTITLE" --title "Installation device" --msgbox "$CFDISK_MSG" 0 0 || exit 1
+dialog --stdout --backtitle "$BACKTITLE" --title "Installation device" --msgbox "$CFDISK_MSG" 0 0 || exit 1
 
-[ -n "$CFDISK" ] && $CFDISK /dev/$DISK || exit 1
+cfdisk /dev/$DISK || exit 1
 
 while [ ! -b "$DEV" ]; do
   DISKS=""
-  for i in `$SFDISK -l /dev/$DISK | grep ${DISK%disc} | cut -f1 -d' '`; do
-    case `$SFDISK --print-id ${i%%[0-9]*} ${i#${i%%[0-9]*}}` in
+  for i in `sfdisk -l /dev/$DISK | grep ${DISK%disc} | cut -f1 -d' '`; do
+    case `sfdisk --print-id ${i%%[0-9]*} ${i#${i%%[0-9]*}}` in
       1|11|6|e|16|1e|b|c|1b|1c) #FAT12/16/32 are supported both in syslinux and grub.
-        S=`$SFDISK -s "$i" | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
+        S=`sfdisk -s "$i" | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
         DISKS="$DISKS $i ${S}MB"
         ;;
       83) #Linux is supported only in grub.
         if [ $BOOTLOADER = grub ]; then
-          S=`$SFDISK -s "$i" | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
+          S=`sfdisk -s "$i" | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
           DISKS="$DISKS $i ${S}MB"
         fi
         ;;
     esac
   done
   if [ -z "$DISKS" ]; then
-    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\nYou don't have any $PART_MSG partition on your system. Please create a partition first using for example cfdisk.\n" 0 0
+    dialog --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\nYou don't have any $PART_MSG partition on your system. Please create a partition first using for example cfdisk.\n" 0 0
     exit 1
   else
-    DEV=`$DIALOG --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Installation device" --menu "Where do you want to install GeeXboX ?" 0 0 0 $DISKS` || exit 1
+    DEV=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Installation device" --menu "Where do you want to install GeeXboX ?" 0 0 0 $DISKS` || exit 1
   fi
   if [ ! -b "$DEV" ]; then
-    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\n'$DEV' is not a valid block device.\n" 0 0
+    dialog --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\n'$DEV' is not a valid block device.\n" 0 0
   fi
 done
 
 DEVNAME="${DEV#/dev/}"
 
-case `$SFDISK --print-id ${DEV%%[0-9]*} ${DEV#${DEV%%[0-9]*}}` in
+case `sfdisk --print-id ${DEV%%[0-9]*} ${DEV#${DEV%%[0-9]*}}` in
   1|11|6|e|16|1e|14|b|c|1b|1c)
     SUPPORTED_TYPES="vfat"
     PART_TYPE="FAT"
@@ -456,33 +448,33 @@ else
   fi
 fi
 
-$DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Formatting" $FORMAT_DEFAULT --yesno "$FORMAT_MSG\nDo you want to format '$DEV' ?\n" 0 0 && FORMAT=yes
+dialog --aspect 15 --backtitle "$BACKTITLE" --title "Formatting" $FORMAT_DEFAULT --yesno "$FORMAT_MSG\nDo you want to format '$DEV' ?\n" 0 0 && FORMAT=yes
 
 if [ "$FORMAT" = yes ]; then
-  case `$SFDISK --print-id ${DEV%%[0-9]*} ${DEV#${DEV%%[0-9]*}}` in
+  case `sfdisk --print-id ${DEV%%[0-9]*} ${DEV#${DEV%%[0-9]*}}` in
     1|11|6|e|16|1e|14) # FAT12 and FAT16
-      MKFS=$MKDOSFS
+      MKFS=mkdosfs
       MKFS_OPT="-n GEEXBOX"
       MKFS_TYPE=vfat
       MKFS_TYPENAME="FAT"
       ;;
     b|c|1b|1c) # FAT32
-      MKFS=$MKDOSFS
+      MKFS=mkdosfs
       MKFS_OPT="-n GEEXBOX -F 32"
       MKFS_TYPE=vfat
       MKFS_TYPENAME="FAT"
       ;;
     83) # Linux
-      MKFS_TYPE=`$DIALOG --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Linux partition type" --menu "Which type of Linux partition you want ?" 0 0 0 ext2 "Linux ext2" ext3 "Linux ext3"` || exit 1
+      MKFS_TYPE=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Linux partition type" --menu "Which type of Linux partition you want ?" 0 0 0 ext2 "Linux ext2" ext3 "Linux ext3"` || exit 1
 
       case $MKFS_TYPE in
         ext2)
-          MKFS=$MKE2FS
+          MKFS=mke2fs
           MKFS_OPT="-L GEEXBOX"
           MKFS_TYPENAME="Linux ext2"
           ;;
         ext3)
-          MKFS=$MKE2FS
+          MKFS=mke2fs
           MKFS_OPT="-L GEEXBOX -j"
           MKFS_TYPENAME="Linux ext3"
           ;;
@@ -490,26 +482,26 @@ if [ "$FORMAT" = yes ]; then
       ;;
   esac
 
-  if [ -z "$MKFS" -o ! -x $MKFS ]; then
+  if [ -z "$MKFS" ]; then
     if [ "$NEED_FORMAT" = yes ]; then
-      $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\n'$DEV' must be formated. As you don't have formatting tool installed, I won't be able to format the partition.\n" 0 0
+      dialog --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\n'$DEV' must be formated. As you don't have formatting tool installed, I won't be able to format the partition.\n" 0 0
       rmdir di
       exit 1
     else
-      $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Warning" --msgbox "\n'$DEV' needs to be a $MKFS_TYPENAME partition. As you don't have formatting tool installed, I won't be able to format the partition. Hopefully it is already formatted.\n" 0 0
+      dialog --aspect 15 --backtitle "$BACKTITLE" --title "Warning" --msgbox "\n'$DEV' needs to be a $MKFS_TYPENAME partition. As you don't have formatting tool installed, I won't be able to format the partition. Hopefully it is already formatted.\n" 0 0
     fi
   else
     $MKFS $MKFS_OPT "$DEV"
   fi
 elif [ "$NEED_FORMAT" = yes ]; then
-  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\n'$DEV' needs to be a formatted.\n" 0 0
+  dialog --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\n'$DEV' needs to be a formatted.\n" 0 0
   rmdir di
   exit 1
 fi
 
 mount -t $MKFS_TYPE "$DEV" di
 if [ $? -ne 0 ]; then
-  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\nFailed to mount '$DEV' as $MKFS_TYPENAME partition.\n" 0 0
+  dialog --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\nFailed to mount '$DEV' as $MKFS_TYPENAME partition.\n" 0 0
   rmdir di
   exit 1
 fi
@@ -523,10 +515,10 @@ fi
 rm -rf di/GEEXBOX
 cp -a "$GEEXBOX" di/GEEXBOX
 
-[ "$PART_TYPE" = "Linux" ] && $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Faster boot- HDD sleepless mode ?" --defaultno --yesno "\nDo you want to install so that boot times are faster, but boot HDD cannot spin down ?\n" 0 0 && FASTBOOT=yes && echo "" > "di/GEEXBOX/var/fastboot"
+[ "$PART_TYPE" = "Linux" ] && dialog --aspect 15 --backtitle "$BACKTITLE" --title "Faster boot- HDD sleepless mode ?" --defaultno --yesno "\nDo you want to install so that boot times are faster, but boot HDD cannot spin down ?\n" 0 0 && FASTBOOT=yes && echo "" > "di/GEEXBOX/var/fastboot"
 
 if [ "$FASTBOOT" = "yes" ]; then
-  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Faster boot- Larger HDD space requirement ?" --defaultno --yesno "\nDo you want to install so that boot times are faster, but more HDD space is required for installation ?\n" 0 0 && UNCOMPRESS_INSTALL=yes && rm di/GEEXBOX/bin.tar.lzma
+  dialog --aspect 15 --backtitle "$BACKTITLE" --title "Faster boot- Larger HDD space requirement ?" --defaultno --yesno "\nDo you want to install so that boot times are faster, but more HDD space is required for installation ?\n" 0 0 && UNCOMPRESS_INSTALL=yes && rm di/GEEXBOX/bin.tar.lzma
   [ "$UNCOMPRESS_INSTALL" = "yes" -a -f "$GEEXBOX/bin.tar.lzma" ] && tar xaf "$GEEXBOX/bin.tar.lzma" -C di/GEEXBOX
 fi
 
@@ -536,23 +528,23 @@ cd ../../../
 rm -rf di/GEEXBOX/boot
 
 # Setup network
-$DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Configure Network ?" --yesno "\nDo you want to configure your network parameters before installing GeeXboX to disk ?\n" 0 0 && setup_network "di/GEEXBOX"
+dialog --aspect 15 --backtitle "$BACKTITLE" --title "Configure Network ?" --yesno "\nDo you want to configure your network parameters before installing GeeXboX to disk ?\n" 0 0 && setup_network "di/GEEXBOX"
 
 # Configure TV card and scan for channels.
-[ -f /var/tvcard ] && $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Scan for Analog TV Channels ?" --yesno "\nDo you want to configure your analog tv card and scan for channels before installing GeeXboX to disk ?\n" 0 0 && setup_tvscan "di/GEEXBOX"
+[ -f /var/tvcard ] && dialog --aspect 15 --backtitle "$BACKTITLE" --title "Scan for Analog TV Channels ?" --yesno "\nDo you want to configure your analog tv card and scan for channels before installing GeeXboX to disk ?\n" 0 0 && setup_tvscan "di/GEEXBOX"
 
 # Configure DVB card and scan for channels.
-[ -f /var/dvbcard ] &&  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Scan for Digital (DVB) TV Channels ?" --yesno "\nDo you want to configure your digital (DVB) tv card and scan for channels before installing GeeXboX to disk ?\n" 0 0 && setup_dvbscan "di/GEEXBOX"
+[ -f /var/dvbcard ] &&  dialog --aspect 15 --backtitle "$BACKTITLE" --title "Scan for Digital (DVB) TV Channels ?" --yesno "\nDo you want to configure your digital (DVB) tv card and scan for channels before installing GeeXboX to disk ?\n" 0 0 && setup_dvbscan "di/GEEXBOX"
 
 # Configure X.Org
 # Only configure if support for X has been compiled in
 if [ -f /etc/X11/X.cfg.sample -o -f /etc/X11/X.cfg ]; then
   USE_XORG=yes # default is to use X if present
-  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Support for HDTV through X.Org ?" --yesno "\nIt appears that this version of GeeXboX has been compiled with support for HDTV through X.Org video server. Remember that X.Org is only useful if you want to display high-resolution movies on a wide display (LCD TVs, Plasma screens ...). It doesn't provide TVOut support any longer. Do you want to enable support for HDTV as a default ? (previous non-HD mode will still be available)\n" 0 0 || USE_XORG=no
+  dialog --aspect 15 --backtitle "$BACKTITLE" --title "Support for HDTV through X.Org ?" --yesno "\nIt appears that this version of GeeXboX has been compiled with support for HDTV through X.Org video server. Remember that X.Org is only useful if you want to display high-resolution movies on a wide display (LCD TVs, Plasma screens ...). It doesn't provide TVOut support any longer. Do you want to enable support for HDTV as a default ? (previous non-HD mode will still be available)\n" 0 0 || USE_XORG=no
 fi
 
 if [ "$USE_XORG" = yes ]; then
-  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Manual X.Org Setup ?" --defaultno --yesno "\nX.Org server features great hardware autodetection capabilities and should be able to find the best suited drivers for your monitor and video card. It is however possible to manually force this autodetection step with your custom settings. Do you want to proceed to (not recommended, unless autodetection fails) ?\n" 0 0 && setup_xorg "di/GEEXBOX"
+  dialog --aspect 15 --backtitle "$BACKTITLE" --title "Manual X.Org Setup ?" --defaultno --yesno "\nX.Org server features great hardware autodetection capabilities and should be able to find the best suited drivers for your monitor and video card. It is however possible to manually force this autodetection step with your custom settings. Do you want to proceed to (not recommended, unless autodetection fails) ?\n" 0 0 && setup_xorg "di/GEEXBOX"
   [ "$UNCOMPRESS_INSTALL" = "yes" -a -f "$GEEXBOX/X.tar.lzma" ] && rm di/GEEXBOX/X.tar.lzma && tar xaf "$GEEXBOX/X.tar.lzma" -C di/GEEXBOX
 else
   # Since X is disabled, remove the files from HDD install to speed up boot
@@ -571,9 +563,9 @@ if [ $VESA_DEPTH != 0 -a $VESA_DEPTH != 1 -a $VESA_DEPTH != 2 ] ||
 fi
 
 if [ "$USE_XORG" = no ]; then
-  VESA_RES=`$DIALOG --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Screen Resolution" --default-item $VESA_RES --menu "Select from options below" 000 0 0 0 "640x480" 1 "800x600" 2 "1024x768" 3 "1280x1024" 4 "1600x1200"`
+  VESA_RES=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Screen Resolution" --default-item $VESA_RES --menu "Select from options below" 000 0 0 0 "640x480" 1 "800x600" 2 "1024x768" 3 "1280x1024" 4 "1600x1200"`
 
-  VESA_DEPTH=`$DIALOG --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Screen Color Depth" --default-item $VESA_DEPTH --menu "Select from options below" 000 0 0 0 "15 bit" 1 "16 bit" 2 "24 bit"`
+  VESA_DEPTH=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Screen Color Depth" --default-item $VESA_DEPTH --menu "Select from options below" 000 0 0 0 "15 bit" 1 "16 bit" 2 "24 bit"`
 fi
 
 VESA_MODE=$((784 + VESA_RES*3 + VESA_DEPTH))
@@ -588,19 +580,19 @@ LANGS=`ls di/GEEXBOX/etc/mplayer/*.lang | sed -e 's$di/GEEXBOX/etc/mplayer/\(.*\
 for l in $LANGS; do
   LLANGS="$LLANGS $l $l"
 done
-MENU_LANG=`$DIALOG --no-cancel --stdout --backtitle "$title" --title "Choose Menu Language" --default-item $MENU_LANG_OLD --menu "Which language do you want to use for the menu ?" 0 0 0 $LLANGS` || exit 1
+MENU_LANG=`dialog --no-cancel --stdout --backtitle "$title" --title "Choose Menu Language" --default-item $MENU_LANG_OLD --menu "Which language do you want to use for the menu ?" 0 0 0 $LLANGS` || exit 1
 
 REMOTES=`ls di/GEEXBOX/etc/lirc/lircrc_* | sed -e 's/.*lircrc_//g'`
 for r in $REMOTES; do
  LREMOTES="$LREMOTES $r $r"
 done
-REMOTE=`$DIALOG --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Remote" --menu "Select the remote to use" 000 0 0 $LREMOTES`
+REMOTE=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Remote" --menu "Select the remote to use" 000 0 0 $LREMOTES`
 
 RECEIVERS=`ls di/GEEXBOX/etc/lirc/lircd_* | grep -v ".conf" | sed -e 's/.*lircd_//g'`
 for r in $RECEIVERS; do
   LRECEIVERS="$LRECEIVERS $r $r"
 done
-RECEIVER=`$DIALOG --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Receiver" --menu "Select the receiver to use" 000 0 0 $LRECEIVERS`
+RECEIVER=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Receiver" --menu "Select the receiver to use" 000 0 0 $LRECEIVERS`
 
 if grep -q "splash=silent" di/isolinux.cfg; then
   SPLASH_ARGUMENT="--defaultno"
@@ -610,7 +602,7 @@ else
   SPLASH_OLD="0"
 fi
 
-$DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Bootsplash" $SPLASH_ARGUMENT --yesno "\nDo you want to disable bootsplash ?\n" 0 0 && SPLASH="0" || SPLASH="silent"
+dialog --aspect 15 --backtitle "$BACKTITLE" --title "Bootsplash" $SPLASH_ARGUMENT --yesno "\nDo you want to disable bootsplash ?\n" 0 0 && SPLASH="0" || SPLASH="silent"
 
 grubprefix=/boot/grub
 grubdir=di$grubprefix
@@ -638,7 +630,7 @@ elif [ $BOOTLOADER = grub ]; then
 fi
 
 if [ $TYPE = HDD ]; then
-  echo "quit" | $GRUB --batch --no-floppy --device-map=$device_map 2>&1 > /dev/null
+  echo "quit" | grub --batch --no-floppy --device-map=$device_map 2>&1 > /dev/null
 elif [ $TYPE = REMOVABLE ]; then
   echo "(hd0) ${DEV%%[0-9]*}" > $device_map
 fi
@@ -646,7 +638,7 @@ fi
 rootdev=$(convert $DEV)
 
 if [ -z "$rootdev" ]; then
-  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\nCouldn't find my GRUB partition representation\n" 0 0
+  dialog --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\nCouldn't find my GRUB partition representation\n" 0 0
   umount di
   rmdir di
   exit 1
@@ -654,7 +646,7 @@ fi
 
 if [ $BOOTLOADER = syslinux ]; then
   umount di
-  $SYSLINUX "$DEV" 2>&1 > /dev/null
+  syslinux "$DEV" 2>&1 > /dev/null
   mount -t $MKFS_TYPE "$DEV" di
 elif [ $BOOTLOADER = grub ]; then
   if [ $TYPE = HDD ]; then
@@ -665,7 +657,7 @@ elif [ $BOOTLOADER = grub ]; then
     fake_device="device $rootdev_single $DEV"
   fi
 
-  $GRUB --batch --no-floppy --device-map=$device_map <<EOF
+  grub --batch --no-floppy --device-map=$device_map <<EOF
 $fake_device
 root $rootdev_single
 install --stage2=$grubdir/stage2_single $grubprefix/stage1 $rootdev_single $grubprefix/stage2_single p $grubprefix/single.lst
@@ -700,9 +692,9 @@ if [ $TYPE = HDD ]; then
   IFS=$saveifs
 
   if [ -n "$supported_os_list" ]; then
-    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Bootloader" --defaultno --yesno "\n'$DEV' is now a GeeXboX partition. To boot from it, you will need to install a bootloader. I can install one for you. If you have any other operating system on your computer, I will also install a multiboot for you. If you do not want me to install a new bootloader, you will need to configure yours alone.\nI have found: $supported_os_list\nDo you want to install me to install the boot loader (GRUB) for you ?\n" 0 0 && MBR=yes
+    dialog --aspect 15 --backtitle "$BACKTITLE" --title "Bootloader" --defaultno --yesno "\n'$DEV' is now a GeeXboX partition. To boot from it, you will need to install a bootloader. I can install one for you. If you have any other operating system on your computer, I will also install a multiboot for you. If you do not want me to install a new bootloader, you will need to configure yours alone.\nI have found: $supported_os_list\nDo you want to install me to install the boot loader (GRUB) for you ?\n" 0 0 && MBR=yes
   else
-    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Bootloader" --yesno "\n'$DEV' is now a GeeXboX partition. I didn't recognize any other OS on your system, want me to install boot loader on your MBR ?\n" 0 0 && MBR=yes
+    dialog --aspect 15 --backtitle "$BACKTITLE" --title "Bootloader" --yesno "\n'$DEV' is now a GeeXboX partition. I didn't recognize any other OS on your system, want me to install boot loader on your MBR ?\n" 0 0 && MBR=yes
   fi
 elif [ $TYPE = REMOVABLE ]; then
   oslist=
@@ -710,7 +702,7 @@ elif [ $TYPE = REMOVABLE ]; then
 fi
 
 if [ "$MBR" = "yes" ]; then
-  $GRUB --batch --no-floppy --device-map=$device_map <<EOF
+  grub --batch --no-floppy --device-map=$device_map <<EOF
 root $rootdev
 setup --stage2=$grubdir/stage2 --prefix=$grubprefix (hd0)
 EOF
@@ -761,7 +753,7 @@ EOF
 
   setup_grub $grubdir/menu.lst
 else
-  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Bootloader" --msgbox "\nYou must install a boot loader to boot GeeXboX\n" 0 0
+  dialog --aspect 15 --backtitle "$BACKTITLE" --title "Bootloader" --msgbox "\nYou must install a boot loader to boot GeeXboX\n" 0 0
 fi
 
 umount di
@@ -769,4 +761,4 @@ rmdir di
 
 [ -n "$CDROM" ] && eject &
 
-$DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Have Fun!" --msgbox "\nGeeXboX is now installed on '$DEV'\n" 0 0
+dialog --aspect 15 --backtitle "$BACKTITLE" --title "Have Fun!" --msgbox "\nGeeXboX is now installed on '$DEV'\n" 0 0
