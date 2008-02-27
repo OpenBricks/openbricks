@@ -550,7 +550,6 @@ if grep -q -e '0400: 109e:' \
 fi
 
 # Configure DVB card and scan for channels.
-# Only scan if a DVB card is detected
 [ -f /var/dvbcard ] &&  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Scan for Digital (DVB) TV Channels ?" --yesno "\nDo you want to configure your digital (DVB) tv card and scan for channels before installing GeeXboX to disk ?\n" 0 0 && setup_dvbscan "di/GEEXBOX"
 
 # Configure X.Org
