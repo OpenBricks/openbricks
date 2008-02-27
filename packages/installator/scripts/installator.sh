@@ -314,14 +314,14 @@ setup_grub () {
   # add console mode menu
   cat /etc/grub/grub.conf.console >> $1
 
-  sed -i 's/_ROOTDEV_SINGLE_/$rootdev_single/g' $1
-  sed -i 's/_DEVNAME_/$DEVNAME/g' $1
-  sed -i 's/_MENU_LANG_/$MENU_LANG/g' $1
-  sed -i 's/_SPLASH_/$SPLASH/g' $1
-  sed -i 's/_VESA_MODE_/$VESA_MODE/g' $1
-  sed -i 's/_KEYMAP_/$KEYMAP/g' $1
-  sed -i 's/_REMOTE_/$REMOTE/g' $1
-  sed -i 's/_RECEIVER_/$RECEIVER/g' $1
+  sed -i "s/_ROOTDEV_SINGLE_/$rootdev_single/g" $1
+  sed -i "s/_DEVNAME_/$DEVNAME/g" $1
+  sed -i "s/_MENU_LANG_/$MENU_LANG/g" $1
+  sed -i "s/_SPLASH_/$SPLASH/g" $1
+  sed -i "s/_VESA_MODE_/$VESA_MODE/g" $1
+  sed -i "s/_KEYMAP_/$KEYMAP/g" $1
+  sed -i "s/_REMOTE_/$REMOTE/g" $1
+  sed -i "s/_RECEIVER_/$RECEIVER/g" $1
 }
 
 if [ "$1" = geexbox ]; then
