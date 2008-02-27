@@ -324,13 +324,13 @@ setup_grub () {
   sed -i "s/_RECEIVER_/$RECEIVER/g" $1
 }
 
-  DIALOG=/usr/bin/dialog
-  CFDISK=/usr/bin/cfdisk
-  SFDISK=/usr/bin/sfdisk
-  MKDOSFS=/usr/bin/mkdosfs
-  MKE2FS=/sbin/mke2fs
-  GRUB=/usr/bin/grub
-  SYSLINUX=/usr/bin/syslinux
+DIALOG=/usr/bin/dialog
+CFDISK=/usr/bin/cfdisk
+SFDISK=/usr/bin/sfdisk
+MKDOSFS=/usr/bin/mkdosfs
+MKE2FS=/sbin/mke2fs
+GRUB=/usr/bin/grub
+SYSLINUX=/usr/bin/syslinux
 
 VERSION=`cat VERSION`
 BACKTITLE="GeeXboX $VERSION installator"
@@ -565,39 +565,39 @@ cd ../../../
 rm -rf di/GEEXBOX/boot
 
 # Setup network
-  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Configure Network ?" --yesno "\nDo you want to configure your network parameters before installing GeeXboX to disk ?\n" 0 0 && setup_network "di/GEEXBOX"
+$DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Configure Network ?" --yesno "\nDo you want to configure your network parameters before installing GeeXboX to disk ?\n" 0 0 && setup_network "di/GEEXBOX"
 
 # Configure TV card and scan for channels.
-  if grep -q -e '0400: 109e:' \
-             -e '0480: 1131:' \
-             -e '0480: 14f1:88' \
-             /tmp/pci; then
-    # Only scan if a TV card device is present
-    if [ -c /dev/video0 ]; then
-      $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Scan for Analog TV Channels ?" --yesno "\nDo you want to configure your analog tv card and scan for channels before installing GeeXboX to disk ?\n" 0 0 && setup_tvscan "di/GEEXBOX"
-    fi
+if grep -q -e '0400: 109e:' \
+           -e '0480: 1131:' \
+           -e '0480: 14f1:88' \
+           /tmp/pci; then
+  # Only scan if a TV card device is present
+  if [ -c /dev/video0 ]; then
+    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Scan for Analog TV Channels ?" --yesno "\nDo you want to configure your analog tv card and scan for channels before installing GeeXboX to disk ?\n" 0 0 && setup_tvscan "di/GEEXBOX"
   fi
+fi
 
 # Configure DVB card and scan for channels.
-  # Only scan if a DVB card is detected
-  if [ -f /var/dvbcard ]; then
-    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Scan for Digital (DVB) TV Channels ?" --yesno "\nDo you want to configure your digital (DVB) tv card and scan for channels before installing GeeXboX to disk ?\n" 0 0 && setup_dvbscan "di/GEEXBOX"
-  fi
+# Only scan if a DVB card is detected
+if [ -f /var/dvbcard ]; then
+  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Scan for Digital (DVB) TV Channels ?" --yesno "\nDo you want to configure your digital (DVB) tv card and scan for channels before installing GeeXboX to disk ?\n" 0 0 && setup_dvbscan "di/GEEXBOX"
+fi
 
 # Configure X.Org
-  # Only configure if support for X has been compiled in
-  if [ -f /etc/X11/X.cfg.sample -o -f /etc/X11/X.cfg ]; then
-    USE_XORG=yes # default is to use X if present
-    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Support for HDTV through X.Org ?" --yesno "\nIt appears that this version of GeeXboX has been compiled with support for HDTV through X.Org video server. Remember that X.Org is only useful if you want to display high-resolution movies on a wide display (LCD TVs, Plasma screens ...). It doesn't provide TVOut support any longer. Do you want to enable support for HDTV as a default ? (previous non-HD mode will still be available)\n" 0 0 || USE_XORG=no
-  fi
+# Only configure if support for X has been compiled in
+if [ -f /etc/X11/X.cfg.sample -o -f /etc/X11/X.cfg ]; then
+  USE_XORG=yes # default is to use X if present
+  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Support for HDTV through X.Org ?" --yesno "\nIt appears that this version of GeeXboX has been compiled with support for HDTV through X.Org video server. Remember that X.Org is only useful if you want to display high-resolution movies on a wide display (LCD TVs, Plasma screens ...). It doesn't provide TVOut support any longer. Do you want to enable support for HDTV as a default ? (previous non-HD mode will still be available)\n" 0 0 || USE_XORG=no
+fi
 
-  if [ "$USE_XORG" = yes ]; then
-    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Manual X.Org Setup ?" --defaultno --yesno "\nX.Org server features great hardware autodetection capabilities and should be able to find the best suited drivers for your monitor and video card. It is however possible to manually force this autodetection step with your custom settings. Do you want to proceed to (not recommended, unless autodetection fails) ?\n" 0 0 && setup_xorg "di/GEEXBOX"
-    [ "$UNCOMPRESS_INSTALL" = "yes" -a -f "$GEEXBOX/X.tar.lzma" ] && rm di/GEEXBOX/X.tar.lzma && tar xaf "$GEEXBOX/X.tar.lzma" -C di/GEEXBOX
-  else
-    # Since X is disabled, remove the files from HDD install to speed up boot
-    rm -f di/GEEXBOX/X.tar.lzma
-  fi
+if [ "$USE_XORG" = yes ]; then
+  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Manual X.Org Setup ?" --defaultno --yesno "\nX.Org server features great hardware autodetection capabilities and should be able to find the best suited drivers for your monitor and video card. It is however possible to manually force this autodetection step with your custom settings. Do you want to proceed to (not recommended, unless autodetection fails) ?\n" 0 0 && setup_xorg "di/GEEXBOX"
+  [ "$UNCOMPRESS_INSTALL" = "yes" -a -f "$GEEXBOX/X.tar.lzma" ] && rm di/GEEXBOX/X.tar.lzma && tar xaf "$GEEXBOX/X.tar.lzma" -C di/GEEXBOX
+else
+  # Since X is disabled, remove the files from HDD install to speed up boot
+  rm -f di/GEEXBOX/X.tar.lzma
+fi
 
 VESA_MODE_OLD=`grep vga= di/isolinux.cfg | head -n 1 | sed "s%.*vga=\([^ ]*\).*%\1%"`
 
