@@ -643,7 +643,7 @@ VESA_MODE=$((784 + VESA_RES*3 + VESA_DEPTH))
 
 title="$BACKTITLE : Menu Language selection"
 
-MENU_MENU_LANG_OLD=`grep lang= di/isolinux.cfg | head -n 1 | sed "s%.*lang=\([^ ]*\).*%\1%"`
+MENU_LANG_OLD=`grep lang= di/isolinux.cfg | head -n 1 | sed "s%.*lang=\([^ ]*\).*%\1%"`
 test -z $MENU_LANG_OLD && MENU_LANG_OLD=en
 
 LANGS=`ls di/GEEXBOX/etc/mplayer/*.lang | sed -e 's$di/GEEXBOX/etc/mplayer/\(.*\).lang$\1$g'`
