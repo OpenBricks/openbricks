@@ -618,7 +618,7 @@ if [ "$1" = geexbox ]; then
   fi
 fi
 
-VESA_MODE_OLD=`grep vga= di/isolinux.cfg | head -1 | sed "s%.*vga=\([^ ]*\).*%\1%"`
+VESA_MODE_OLD=`grep vga= di/isolinux.cfg | head -n 1 | sed "s%.*vga=\([^ ]*\).*%\1%"`
 
 VESA_RES=$((($VESA_MODE_OLD - 784) / 3))
 VESA_DEPTH=$((($VESA_MODE_OLD - 784) % 3))
