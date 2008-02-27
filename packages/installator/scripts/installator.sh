@@ -196,7 +196,7 @@ setup_dvbscan () {
   DVB_TYPE=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "$MSG_DVB_TYPE" --menu "\n${MSG_DVB_TYPE_DESC}\n" 0 0 0 dvb-s "$MSG_DVB_SAT" dvb-t "$MSG_DVB_TER" dvb-c "$MSG_DVB_CABLE" atsc "$MSG_DVB_ATSC"`
 
   # DVB Terrestrial cards
-  if [ $DVB_TYPE = "dvb-t" ]; then
+  if [ $DVB_TYPE = "dvb-t" -o $DVB_TYPE = "dvb-c" ]; then
     for i in `ls $DVB_LIST/$DVB_TYPE`; do
       COUNTRIES="$COUNTRIES $i ''"
     done
@@ -218,20 +218,6 @@ setup_dvbscan () {
     SAT=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "$MSG_DVB_SAT_SEL" --menu "\n${MSG_DVB_SAT_SEL_DESC}\n" 0 0 0 $SATS`
 
     dvb_do_scan "$DVB_LIST/$DVB_TYPE/$SAT" "$CHANNELS_CONF"
-  elif [ $DVB_TYPE = "dvb-c" ]; then
-    for i in `ls $DVB_LIST/$DVB_TYPE`; do
-      COUNTRIES="$COUNTRIES $i ''"
-    done
-
-    COUNTRY=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "$MSG_DVB_COUNTRY" --menu "\n${MSG_DVB_COUNTRY_DESC}\n" 0 0 0 $COUNTRIES`
-
-    for i in `ls $DVB_LIST/$DVB_TYPE/$COUNTRY`; do
-      CITIES="$CITIES $i ''"
-    done
-
-    CITY=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "$MSG_DVB_CITY" --menu "\n${MSG_DVB_CITY_DESC}\n" 0 0 0 $CITIES`
-
-    dvb_do_scan "$DVB_LIST/$DVB_TYPE/$COUNTRY/$CITY" "$CHANNELS_CONF"
   elif [ $DVB_TYPE = "atsc" ]; then
     for i in `ls $DVB_LIST/$DVB_TYPE`; do
       ATSC="$ATSC $i ''"
