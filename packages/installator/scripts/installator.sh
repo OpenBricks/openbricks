@@ -539,15 +539,7 @@ rm -rf di/GEEXBOX/boot
 $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Configure Network ?" --yesno "\nDo you want to configure your network parameters before installing GeeXboX to disk ?\n" 0 0 && setup_network "di/GEEXBOX"
 
 # Configure TV card and scan for channels.
-if grep -q -e '0400: 109e:' \
-           -e '0480: 1131:' \
-           -e '0480: 14f1:88' \
-           /tmp/pci; then
-  # Only scan if a TV card device is present
-  if [ -c /dev/video0 ]; then
-    $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Scan for Analog TV Channels ?" --yesno "\nDo you want to configure your analog tv card and scan for channels before installing GeeXboX to disk ?\n" 0 0 && setup_tvscan "di/GEEXBOX"
-  fi
-fi
+[ -f /var/tvcard ] && $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Scan for Analog TV Channels ?" --yesno "\nDo you want to configure your analog tv card and scan for channels before installing GeeXboX to disk ?\n" 0 0 && setup_tvscan "di/GEEXBOX"
 
 # Configure DVB card and scan for channels.
 [ -f /var/dvbcard ] &&  $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "Scan for Digital (DVB) TV Channels ?" --yesno "\nDo you want to configure your digital (DVB) tv card and scan for channels before installing GeeXboX to disk ?\n" 0 0 && setup_dvbscan "di/GEEXBOX"
