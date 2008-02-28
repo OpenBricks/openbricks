@@ -325,6 +325,17 @@ cmdline_default () {
   echo $RET
 }
 
+# Choose default remote
+setup_remote () {
+  REMOTE_OLD=`cmdline_default remote atiusb`
+
+  REMOTES=`ls di/GEEXBOX/etc/lirc/lircrc_* | sed -e 's/.*lircrc_//g'`
+  for r in $REMOTES; do
+   LREMOTES="$LREMOTES $r $r"
+  done
+  REMOTE=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_REMOTE" --default-item $REMOTE_OLD --menu "$MSG_REMOTE_DESC" 000 0 0 $LREMOTES`
+}
+
 VERSION=`cat VERSION`
 BACKTITLE="GeeXboX $VERSION installator"
 
@@ -573,14 +584,7 @@ VESA_MODE=$((784 + VESA_RES*3 + VESA_DEPTH))
 [ $VESA_MODE -ge 796 ] && VESA_MODE=$((VESA_MODE + 1))
 
 setup_lang
-
-REMOTE_OLD=`cmdline_default remote atiusb`
-
-REMOTES=`ls di/GEEXBOX/etc/lirc/lircrc_* | sed -e 's/.*lircrc_//g'`
-for r in $REMOTES; do
- LREMOTES="$LREMOTES $r $r"
-done
-REMOTE=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_REMOTE" --default-item $REMOTE_OLD --menu "$MSG_REMOTE_DESC" 000 0 0 $LREMOTES`
+setup_remote
 
 RECEIVER_OLD=`cmdline_default receiver atiusb`
 
