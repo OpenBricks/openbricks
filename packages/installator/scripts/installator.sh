@@ -530,7 +530,6 @@ dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_CFG_NETWORK" --yesno "
 [ -f /var/dvbcard ] &&  dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_CFG_DVB" --yesno "\n${MSG_CFG_DVB_DESC}\n" 0 0 && setup_dvbscan "di/GEEXBOX"
 
 # Configure X.Org
-# Only configure if support for X has been compiled in
 if [ -f /etc/X11/X.cfg.sample -o -f /etc/X11/X.cfg ]; then
   USE_XORG=yes # default is to use X if present
   dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_CFG_HDTV" --yesno "\n${MSG_CFG_HDTV_DESC}\n" 0 0 || USE_XORG=no
