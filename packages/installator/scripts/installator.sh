@@ -311,7 +311,7 @@ setup_grub () {
 }
 
 cmdline_default () {
-  RET=`grep $1= /proc/cmdline | sed "s%.*$1=\([^ ]*\).*%\1%"`
+  RET=`sed -n "s/.*$1=\([^ ]*\).*/\1/p" /proc/cmdline`
   test -z $RET && RET=$2
   echo $RET
 }
