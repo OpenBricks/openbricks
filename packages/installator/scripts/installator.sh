@@ -361,14 +361,14 @@ else
 fi
 
 if [ $BOOTLOADER = syslinux ]; then
-  PART_MSG="FAT partition (type=06)"
+  PART_MSG="$MSG_DISK_PART_FAT"
 elif [ $BOOTLOADER = grub ]; then
-  PART_MSG="FAT partition (type=0B) or Linux ext2/3 partition (type=83)"
+  PART_MSG="$MSG_DISK_PART_EXT"
 fi
 
-CFDISK_MSG="Please edit your partition table to create a $PART_MSG with about 8 MB of free space.\nRemember to write the changes when done. We won't take responsibility for any data loss."
+CFDISK_MSG="$MSG_CFDISK_BEGIN $PART_MSG $MSG_CFDISK_END"
 
-dialog --stdout --backtitle "$BACKTITLE" --title "Installation device" --msgbox "$CFDISK_MSG" 0 0 || exit 1
+dialog --stdout --backtitle "$BACKTITLE" --title "$MSG_INSTALL_DEV_CONFIG" --msgbox "$CFDISK_MSG" 0 0 || exit 1
 
 cfdisk /dev/$DISK || exit 1
 
@@ -389,13 +389,13 @@ while [ ! -b "$DEV" ]; do
     esac
   done
   if [ -z "$DISKS" ]; then
-    dialog --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\nYou don't have any $PART_MSG partition on your system. Please create a partition first using for example cfdisk.\n" 0 0
+    dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_ERROR" --msgbox "\n$MSG_INSTALL_DEV_NOPART_BEGIN $PART_MSG $MSG_INSTALL_DEV_NOPART_END\n" 0 0
     exit 1
   else
-    DEV=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Installation device" --menu "Where do you want to install GeeXboX ?" 0 0 0 $DISKS` || exit 1
+    DEV=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_INSTALL_DEV_CONFIG" --menu "$MSG_INSTALL_DEV_DESC" 0 0 0 $DISKS` || exit 1
   fi
   if [ ! -b "$DEV" ]; then
-    dialog --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\n'$DEV' is not a valid block device.\n" 0 0
+    dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_ERROR" --msgbox "\n'$DEV' $MSG_INSTALL_DEV_BAD_BLOCK\n" 0 0
   fi
 done
 
@@ -427,7 +427,7 @@ done
 NEED_FORMAT=yes
 FORMAT_DEFAULT="--defaultno"
 if [ -z "$MKFS_TYPE" ]; then
-  FORMAT_MSG="Partition is not formated. "
+  FORMAT_MSG="$MSG_INSTALL_DEV_NO_FORMAT"
   FORMAT_DEFAULT=""
 else
   for type in $SUPPORTED_TYPES; do
@@ -435,13 +435,13 @@ else
   done
 
   if [ "$NEED_FORMAT" = yes ]; then
-    FORMAT_MSG="Partition format type ($MKFS_TYPE) is not supported in your partition type ($PART_TYPE). "
+    FORMAT_MSG="$MSG_INSTALL_DEV_FORMAT_BEGIN ($MKFS_TYPE) $MSG_INSTALL_DEV_FORMAT_END ($PART_TYPE)."
   else
-    FORMAT_MSG="Partition is already formated. "
+    FORMAT_MSG="$MSG_INSTALL_DEV_FORMATED"
   fi
 fi
 
-dialog --aspect 15 --backtitle "$BACKTITLE" --title "Formatting" $FORMAT_DEFAULT --yesno "$FORMAT_MSG\nDo you want to format '$DEV' ?\n" 0 0 && FORMAT=yes
+dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_INSTALL_DEV_FORMAT" $FORMAT_DEFAULT --yesno "${FORMAT_MSG}\n${MSG_INSTALL_DEV_FORMAT_DESC} '$DEV' ?\n" 0 0 && FORMAT=yes
 
 if [ "$FORMAT" = yes ]; then
   case `sfdisk --print-id ${DEV%%[0-9]*} ${DEV#${DEV%%[0-9]*}}` in
@@ -458,7 +458,7 @@ if [ "$FORMAT" = yes ]; then
       MKFS_TYPENAME="FAT"
       ;;
     83) # Linux
-      MKFS_TYPE=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Linux partition type" --menu "Which type of Linux partition you want ?" 0 0 0 ext2 "Linux ext2" ext3 "Linux ext3"` || exit 1
+      MKFS_TYPE=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_INSTALL_PART_TYPE" --menu "$MSG_INSTALL_PART_TYPE_DESC" 0 0 0 ext2 "Linux ext2" ext3 "Linux ext3"` || exit 1
 
       case $MKFS_TYPE in
         ext2)
@@ -477,24 +477,24 @@ if [ "$FORMAT" = yes ]; then
 
   if [ -z "$MKFS" ]; then
     if [ "$NEED_FORMAT" = yes ]; then
-      dialog --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\n'$DEV' must be formated. As you don't have formatting tool installed, I won't be able to format the partition.\n" 0 0
+      dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_ERROR" --msgbox "\n${MSG_INSTALL_DEV_NO_FORMAT} ('$DEV'). ${MSG_INSTALL_FORMAT_NO_TOOLS}\n" 0 0
       rmdir di
       exit 1
     else
-      dialog --aspect 15 --backtitle "$BACKTITLE" --title "Warning" --msgbox "\n'$DEV' needs to be a $MKFS_TYPENAME partition. As you don't have formatting tool installed, I won't be able to format the partition. Hopefully it is already formatted.\n" 0 0
+      dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_WARNING" --msgbox "\n'$DEV' $MSG_INSTALL_FORMAT_BAD_TYPE $MKFS_TYPENAME. ${MSG_INSTALL_FORMAT_NO_TOOLS}. ${MSG_INSTALL_FORMAT_ALREADY}\n" 0 0
     fi
   else
     $MKFS $MKFS_OPT "$DEV"
   fi
 elif [ "$NEED_FORMAT" = yes ]; then
-  dialog --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\n'$DEV' needs to be a formatted.\n" 0 0
+  dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_ERROR" --msgbox "\n${MSG_INSTALL_DEV_NO_FORMAT} ('$DEV')\n" 0 0
   rmdir di
   exit 1
 fi
 
 mount -t $MKFS_TYPE "$DEV" di
 if [ $? -ne 0 ]; then
-  dialog --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\nFailed to mount '$DEV' as $MKFS_TYPENAME partition.\n" 0 0
+  dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_ERROR" --msgbox "\n${MSG_INSTALL_MOUNT_FAILED} '$DEV' ($MKFS_TYPENAME).\n" 0 0
   rmdir di
   exit 1
 fi
@@ -508,10 +508,10 @@ fi
 rm -rf di/GEEXBOX
 cp -a "$GEEXBOX" di/GEEXBOX
 
-[ "$PART_TYPE" = "Linux" ] && dialog --aspect 15 --backtitle "$BACKTITLE" --title "Faster boot- HDD sleepless mode ?" --defaultno --yesno "\nDo you want to install so that boot times are faster, but boot HDD cannot spin down ?\n" 0 0 && FASTBOOT=yes && echo "" > "di/GEEXBOX/var/fastboot"
+[ "$PART_TYPE" = "Linux" ] && dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_BOOT_SLEEPLESS" --defaultno --yesno "\n${MSG_BOOT_SLEEPLESS_DESC}\n" 0 0 && FASTBOOT=yes && echo "" > "di/GEEXBOX/var/fastboot"
 
 if [ "$FASTBOOT" = "yes" ]; then
-  dialog --aspect 15 --backtitle "$BACKTITLE" --title "Faster boot- Larger HDD space requirement ?" --defaultno --yesno "\nDo you want to install so that boot times are faster, but more HDD space is required for installation ?\n" 0 0 && UNCOMPRESS_INSTALL=yes && rm di/GEEXBOX/bin.tar.lzma
+  dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_BOOT_LARGE_HDD" --defaultno --yesno "\n${MSG_BOOT_LARGE_HDD_DESC}\n" 0 0 && UNCOMPRESS_INSTALL=yes && rm di/GEEXBOX/bin.tar.lzma
   [ "$UNCOMPRESS_INSTALL" = "yes" -a -f "$GEEXBOX/bin.tar.lzma" ] && tar xaf "$GEEXBOX/bin.tar.lzma" -C di/GEEXBOX
 fi
 
@@ -521,23 +521,23 @@ cd ../../../
 rm -rf di/GEEXBOX/boot
 
 # Setup network
-dialog --aspect 15 --backtitle "$BACKTITLE" --title "Configure Network ?" --yesno "\nDo you want to configure your network parameters before installing GeeXboX to disk ?\n" 0 0 && setup_network "di/GEEXBOX"
+dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_CFG_NETWORK" --yesno "\n${MSG_CFG_NETWORK_DESC}\n" 0 0 && setup_network "di/GEEXBOX"
 
 # Configure TV card and scan for channels.
-[ -f /var/tvcard ] && dialog --aspect 15 --backtitle "$BACKTITLE" --title "Scan for Analog TV Channels ?" --yesno "\nDo you want to configure your analog tv card and scan for channels before installing GeeXboX to disk ?\n" 0 0 && setup_tvscan "di/GEEXBOX"
+[ -f /var/tvcard ] && dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_CFG_TV" --yesno "\n${MSG_CFG_TV_DESC}\n" 0 0 && setup_tvscan "di/GEEXBOX"
 
 # Configure DVB card and scan for channels.
-[ -f /var/dvbcard ] &&  dialog --aspect 15 --backtitle "$BACKTITLE" --title "Scan for Digital (DVB) TV Channels ?" --yesno "\nDo you want to configure your digital (DVB) tv card and scan for channels before installing GeeXboX to disk ?\n" 0 0 && setup_dvbscan "di/GEEXBOX"
+[ -f /var/dvbcard ] &&  dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_CFG_DVB" --yesno "\n${MSG_CFG_DVB_DESC}\n" 0 0 && setup_dvbscan "di/GEEXBOX"
 
 # Configure X.Org
 # Only configure if support for X has been compiled in
 if [ -f /etc/X11/X.cfg.sample -o -f /etc/X11/X.cfg ]; then
   USE_XORG=yes # default is to use X if present
-  dialog --aspect 15 --backtitle "$BACKTITLE" --title "Support for HDTV through X.Org ?" --yesno "\nIt appears that this version of GeeXboX has been compiled with support for HDTV through X.Org video server. Remember that X.Org is only useful if you want to display high-resolution movies on a wide display (LCD TVs, Plasma screens ...). It doesn't provide TVOut support any longer. Do you want to enable support for HDTV as a default ? (previous non-HD mode will still be available)\n" 0 0 || USE_XORG=no
+  dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_CFG_HDTV" --yesno "\n${MSG_CFG_HDTV_DESC}\n" 0 0 || USE_XORG=no
 fi
 
 if [ "$USE_XORG" = yes ]; then
-  dialog --aspect 15 --backtitle "$BACKTITLE" --title "Manual X.Org Setup ?" --defaultno --yesno "\nX.Org server features great hardware autodetection capabilities and should be able to find the best suited drivers for your monitor and video card. It is however possible to manually force this autodetection step with your custom settings. Do you want to proceed to (not recommended, unless autodetection fails) ?\n" 0 0 && setup_xorg "di/GEEXBOX"
+  dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_CFG_XORG" --defaultno --yesno "\n${MSG_CFG_XORG_DESC}\n" 0 0 && setup_xorg "di/GEEXBOX"
   [ "$UNCOMPRESS_INSTALL" = "yes" -a -f "$GEEXBOX/X.tar.lzma" ] && rm di/GEEXBOX/X.tar.lzma && tar xaf "$GEEXBOX/X.tar.lzma" -C di/GEEXBOX
 else
   # Since X is disabled, remove the files from HDD install to speed up boot
@@ -556,21 +556,21 @@ if [ $VESA_DEPTH != 0 -a $VESA_DEPTH != 1 -a $VESA_DEPTH != 2 ] ||
 fi
 
 if [ "$USE_XORG" = no ]; then
-  VESA_RES=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Screen Resolution" --default-item $VESA_RES --menu "Select from options below" 000 0 0 0 "640x480" 1 "800x600" 2 "1024x768" 3 "1280x1024" 4 "1600x1200"`
+  VESA_RES=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_SCREEN_RES" --default-item $VESA_RES --menu "$MSG_SCREEN_DESC" 000 0 0 0 "640x480" 1 "800x600" 2 "1024x768" 3 "1280x1024" 4 "1600x1200"`
 
-  VESA_DEPTH=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Screen Color Depth" --default-item $VESA_DEPTH --menu "Select from options below" 000 0 0 0 "15 bit" 1 "16 bit" 2 "24 bit"`
+  VESA_DEPTH=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_SCREEN_DEPTH" --default-item $VESA_DEPTH --menu "$MSG_SCREEN_DESC" 000 0 0 0 "15 bits" 1 "16 bits" 2 "24 bits"`
 fi
 
 VESA_MODE=$((784 + VESA_RES*3 + VESA_DEPTH))
 [ $VESA_MODE -ge 796 ] && VESA_MODE=$((VESA_MODE + 1))
 
-title="$BACKTITLE : Menu Language selection"
+title="$BACKTITLE : $MSG_LANG_CONFIG"
 
 LANGS=`ls di/GEEXBOX/etc/mplayer/*.lang | sed -e 's$di/GEEXBOX/etc/mplayer/\(.*\).lang$\1$g'`
 for l in $LANGS; do
   LLANGS="$LLANGS $l $l"
 done
-MENU_LANG=`dialog --no-cancel --stdout --backtitle "$title" --title "Choose Menu Language" --default-item $LANG --menu "Which language do you want to use for the menu ?" 0 0 0 $LLANGS` || exit 1
+MENU_LANG=`dialog --no-cancel --stdout --backtitle "$title" --title "$MSG_LANG" --default-item $LANG --menu "$MSG_LANG_DESC" 0 0 0 $LLANGS` || exit 1
 
 REMOTE_OLD=`cmdline_default remote atiusb`
 
@@ -578,7 +578,7 @@ REMOTES=`ls di/GEEXBOX/etc/lirc/lircrc_* | sed -e 's/.*lircrc_//g'`
 for r in $REMOTES; do
  LREMOTES="$LREMOTES $r $r"
 done
-REMOTE=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Remote" --default-item $REMOTE_OLD --menu "Select the remote to use" 000 0 0 $LREMOTES`
+REMOTE=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_REMOTE" --default-item $REMOTE_OLD --menu "$MSG_REMOTE_DESC" 000 0 0 $LREMOTES`
 
 RECEIVER_OLD=`cmdline_default receiver atiusb`
 
@@ -586,7 +586,7 @@ RECEIVERS=`ls di/GEEXBOX/etc/lirc/lircd_* | grep -v ".conf" | sed -e 's/.*lircd_
 for r in $RECEIVERS; do
   LRECEIVERS="$LRECEIVERS $r $r"
 done
-RECEIVER=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "Receiver" --default-item $RECEIVER_OLD --menu "Select the receiver to use" 000 0 0 $LRECEIVERS`
+RECEIVER=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_RECEIVER" --default-item $RECEIVER_OLD --menu "$MSG_RECEIVER_DESC" 000 0 0 $LRECEIVERS`
 
 if grep -q "splash=silent" di/isolinux.cfg; then
   SPLASH_ARGUMENT="--defaultno"
@@ -596,7 +596,7 @@ else
   SPLASH_OLD="0"
 fi
 
-dialog --aspect 15 --backtitle "$BACKTITLE" --title "Bootsplash" $SPLASH_ARGUMENT --yesno "\nDo you want to disable bootsplash ?\n" 0 0 && SPLASH="0" || SPLASH="silent"
+dialog --aspect 15 --backtitle "$BACKTITLE" --title "" $SPLASH_ARGUMENT --yesno "\n${MSG_SPLASH_DESC}\n" 0 0 && SPLASH="0" || SPLASH="silent"
 
 grubprefix=/boot/grub
 grubdir=di$grubprefix
@@ -632,7 +632,7 @@ fi
 rootdev=$(convert $DEV)
 
 if [ -z "$rootdev" ]; then
-  dialog --aspect 15 --backtitle "$BACKTITLE" --title "ERROR" --msgbox "\nCouldn't find my GRUB partition representation\n" 0 0
+  dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_ERROR" --msgbox "\n${MSG_GRUB_NO_ROOTDEV}\n" 0 0
   umount di
   rmdir di
   exit 1
@@ -686,9 +686,9 @@ if [ $TYPE = HDD ]; then
   IFS=$saveifs
 
   if [ -n "$supported_os_list" ]; then
-    dialog --aspect 15 --backtitle "$BACKTITLE" --title "Bootloader" --defaultno --yesno "\n'$DEV' is now a GeeXboX partition. To boot from it, you will need to install a bootloader. I can install one for you. If you have any other operating system on your computer, I will also install a multiboot for you. If you do not want me to install a new bootloader, you will need to configure yours alone.\nI have found: $supported_os_list\nDo you want to install me to install the boot loader (GRUB) for you ?\n" 0 0 && MBR=yes
+    dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_BOOTLOADER" --defaultno --yesno "\n'$DEV' $MSG_LOADER_MULTIBOOT_BEGIN $supported_os_list\n${MSG_LOADER_MULTIBOOT_END}\n" 0 0 && MBR=yes
   else
-    dialog --aspect 15 --backtitle "$BACKTITLE" --title "Bootloader" --yesno "\n'$DEV' is now a GeeXboX partition. I didn't recognize any other OS on your system, want me to install boot loader on your MBR ?\n" 0 0 && MBR=yes
+    dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_BOOTLOADER" --yesno "\n'$DEV' ${MSG_LOADER_NONE}\n" 0 0 && MBR=yes
   fi
 elif [ $TYPE = REMOVABLE ]; then
   oslist=
@@ -747,7 +747,7 @@ EOF
 
   setup_grub $grubdir/menu.lst
 else
-  dialog --aspect 15 --backtitle "$BACKTITLE" --title "Bootloader" --msgbox "\nYou must install a boot loader to boot GeeXboX\n" 0 0
+  dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_BOOTLOADER" --msgbox "\n${MSG_LOADER_ERROR}\n" 0 0
 fi
 
 umount di
@@ -755,4 +755,4 @@ rmdir di
 
 [ -n "$CDROM" ] && eject &
 
-dialog --aspect 15 --backtitle "$BACKTITLE" --title "Have Fun!" --msgbox "\nGeeXboX is now installed on '$DEV'\n" 0 0
+dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_SUCCESS" --msgbox "\n${MSG_SUCCESS_DESC} '$DEV'\n" 0 0
