@@ -320,8 +320,7 @@ VERSION=`cat VERSION`
 BACKTITLE="GeeXboX $VERSION installator"
 
 # include language definitions
-LANG=`sed -n "s/.*lang=\([^ ]*\).*/\1/p" /proc/cmdline`
-[ -z $LANG ] && LANG=en
+LANG=`cmdline_default lang en`
 . /etc/installator/en.install # default language file, always present
 [ -f /etc/installator/${LANG}.install ] && . /etc/installator/${LANG}.install
 
@@ -567,13 +566,11 @@ VESA_MODE=$((784 + VESA_RES*3 + VESA_DEPTH))
 
 title="$BACKTITLE : Menu Language selection"
 
-MENU_LANG_OLD=`cmdline_default lang en`
-
 LANGS=`ls di/GEEXBOX/etc/mplayer/*.lang | sed -e 's$di/GEEXBOX/etc/mplayer/\(.*\).lang$\1$g'`
 for l in $LANGS; do
   LLANGS="$LLANGS $l $l"
 done
-MENU_LANG=`dialog --no-cancel --stdout --backtitle "$title" --title "Choose Menu Language" --default-item $MENU_LANG_OLD --menu "Which language do you want to use for the menu ?" 0 0 0 $LLANGS` || exit 1
+MENU_LANG=`dialog --no-cancel --stdout --backtitle "$title" --title "Choose Menu Language" --default-item $LANG --menu "Which language do you want to use for the menu ?" 0 0 0 $LLANGS` || exit 1
 
 REMOTE_OLD=`cmdline_default remote atiusb`
 
