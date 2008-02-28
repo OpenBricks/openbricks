@@ -310,6 +310,15 @@ setup_grub () {
   sed -i "s/_RECEIVER_/$RECEIVER/g" $1
 }
 
+# Choose default language
+setup_lang () {
+  LANGS=`ls di/GEEXBOX/etc/mplayer/*.lang | sed -e 's$di/GEEXBOX/etc/mplayer/\(.*\).lang$\1$g'`
+  for l in $LANGS; do
+    LLANGS="$LLANGS $l $l"
+  done
+  MENU_LANG=`dialog --no-cancel --stdout --backtitle "$BACKTITLE : $MSG_LANG_CONFIG" --title "$MSG_LANG" --default-item $LANG --menu "$MSG_LANG_DESC" 0 0 0 $LLANGS` || exit 1
+}
+
 cmdline_default () {
   RET=`sed -n "s/.*$1=\([^ ]*\).*/\1/p" /proc/cmdline`
   test -z $RET && RET=$2
@@ -563,13 +572,7 @@ fi
 VESA_MODE=$((784 + VESA_RES*3 + VESA_DEPTH))
 [ $VESA_MODE -ge 796 ] && VESA_MODE=$((VESA_MODE + 1))
 
-title="$BACKTITLE : $MSG_LANG_CONFIG"
-
-LANGS=`ls di/GEEXBOX/etc/mplayer/*.lang | sed -e 's$di/GEEXBOX/etc/mplayer/\(.*\).lang$\1$g'`
-for l in $LANGS; do
-  LLANGS="$LLANGS $l $l"
-done
-MENU_LANG=`dialog --no-cancel --stdout --backtitle "$title" --title "$MSG_LANG" --default-item $LANG --menu "$MSG_LANG_DESC" 0 0 0 $LLANGS` || exit 1
+setup_lang
 
 REMOTE_OLD=`cmdline_default remote atiusb`
 
