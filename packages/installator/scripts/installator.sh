@@ -347,6 +347,20 @@ setup_receiver () {
   RECEIVER=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_RECEIVER" --default-item $RECEIVER_OLD --menu "$MSG_RECEIVER_DESC" 000 0 0 $LRECEIVERS`
 }
 
+# Select keymap
+setup_keymap () {
+  KEYMAP_OLD=`cmdline_default keymap qwerty`
+
+  KEYMAPS="qwerty qwerty"
+  for i in `ls /etc/keymaps`; do
+    KEYMAPS="$KEYMAPS $i $i"
+  done
+
+  KEYMAP=`dialog --no-cancel --stdout --backtitle "$BACKTITLE : $MSG_KEYMAP_CONFIG" --title "$MSG_KEYMAP" --default-item $KEYMAP_OLD --menu "$MSG_KEYMAP_DESC" 0 0 0 $KEYMAPS` || exit 1
+
+  test -f "/etc/keymaps/$KEYMAP" && loadkmap < "/etc/keymaps/$KEYMAP"
+}
+
 VERSION=`cat VERSION`
 BACKTITLE="GeeXboX $VERSION installator"
 
@@ -358,19 +372,7 @@ LANG=`cmdline_default lang en`
 # disable kernel messages to avoid screen corruption
 echo 0 > /proc/sys/kernel/printk
 
-KEYMAP_OLD=`cmdline_default keymap qwerty`
-
-title="$BACKTITLE : $MSG_KEYMAP_CONFIG"
-
-KEYMAPS="qwerty qwerty"
-for i in `ls /etc/keymaps`
-do
-   KEYMAPS="$KEYMAPS $i $i"
-done
-
-KEYMAP=`dialog --no-cancel --stdout --backtitle "$title" --title "$MSG_KEYMAP" --default-item $KEYMAP_OLD --menu "$MSG_KEYMAP_DESC" 0 0 0 $KEYMAPS` || exit 1
-
-test -f "/etc/keymaps/$KEYMAP" && loadkmap < "/etc/keymaps/$KEYMAP"
+setup_keymap
 
 while true; do
   DISKS=`cat /proc/partitions | sed -n "s/\ *[0-9][0-9]*\ *[0-9][0-9]*\ *\([0-9][0-9]*\)\ \([a-z]*\)$/\2 (\1_blocks)/p"`
