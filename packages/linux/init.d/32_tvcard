@@ -4,6 +4,23 @@
 #
 # runlevels: geexbox, debug, install
 
+append_tv_option () {
+  TV_OPTIONS="$TV_OPTIONS $1"
+}
+
+append_radio_option () {
+  RADIO_OPTIONS="$RADIO_OPTIONS $1"
+}
+
+set_module_options () {
+  OPT_FILE=/etc/modprobe.d/options
+
+  # check if options file is not already set for this module
+  grep "options $1" $OPT_FILE && return
+
+  echo "options $1 $2" >> $OPT_FILE
+}
+
 echo "### Setting up TV card ###"
 
 if ! grep -q -e '0400: 109e:' \
@@ -19,45 +36,23 @@ fi
 . /etc/tvcard
 [ -f /etc/radio ] && . /etc/radio
 
-test "$TV_CARD" != "AUTO" && CARD="card=$TV_CARD" || CARD=
-test "$TV_TUNER" != "AUTO" && TUNER="tuner=$TV_TUNER" || TUNER=
-test "$RADIO" = yes && RADIO_OPT="radio=1" || RADIO_OPT=
+test "$TV_CARD" != "AUTO" && append_tv_option "card=$TV_CARD"
+test "$TV_TUNER" != "AUTO" && append_tv_option "tuner=$TV_TUNER"
+test "$RADIO" = yes && append_radio_option "radio=1"
+
+set_module_options bttv "$TV_OPTIONS $RADIO_OPTIONS"
+set_module_options saa7134 "$TV_OPTIONS"
+set_module_options cx88xx "$TV_OPTIONS"
 
 if grep -q '0400: 109e:' /tmp/pci; then
   # BT8x8 Card
-  modprobe bttv $CARD $TUNER $RADIO_OPT >/dev/null 2>&1
-
-  if test "$TV_CARD" = "AUTO" \
-       -a -z "`dmesg | grep 'bttv0: detected'`"; then
-    # Not autodetected
-    test -z "$TUNER" && TUNER="tuner=3"
-    rmmod bttv
-    modprobe bttv card=1 $TUNER $RADIO_OPT >/dev/null 2>&1
-  fi
-
   echo "TV_WIDTH=768" > /var/tvcard
   echo "TV_HEIGHT=576" >> /var/tvcard
 elif grep -q '0480: 1131:' /tmp/pci; then
   # SAA7134 Card
-  modprobe saa7134 $CARD $TUNER >/dev/null 2>&1
-
   echo -n "" > /var/tvcard
 elif grep -q ': 14f1:88' /tmp/pci; then
   # Conexant BT881/CX88 Card
-  modprobe tveeprom >/dev/null 2>&1
-  modprobe cx88xx $CARD $TUNER >/dev/null 2>&1
-  modprobe cx8800 >/dev/null 2>&1
-
-  # cx8800 module tries to autodetect/force tuner model according to eeprom.
-  # It fails if eeprom is corrupted so force tuner module loading before cx8800
-  if test "$TV_CARD" != "AUTO" \
-       -a -n "`dmesg | grep 'tveeprom: Encountered bad packet header'`"; then
-    rmmod cx8800 cx88xx tuner
-    modprobe cx88xx $CARD $TUNER >/dev/null 2>&1
-    modprobe tuner >/dev/null 2>&1
-    modprobe cx8800 >/dev/null 2>&1
-  fi
-
   echo "TV_WIDTH=768" > /var/tvcard
   echo "TV_HEIGHT=576" >> /var/tvcard
 
@@ -71,13 +66,5 @@ elif grep -q -e '4444:0016' -e '4444:0803'  /tmp/pci; then
   modprobe ivtv 2>&1 >/dev/null
   echo '' > /var/use_pvr
 fi
-
-modprobe tuner >/dev/null 2>&1
-modprobe tvaudio >/dev/null 2>&1
-modprobe msp3400 >/dev/null 2>&1
-modprobe tda7432 >/dev/null 2>&1
-modprobe tda9875 >/dev/null 2>&1
-modprobe tda9887 >/dev/null 2>&1
-modprobe tlv320aic23b >/dev/null 2>&1
 
 exit 0
