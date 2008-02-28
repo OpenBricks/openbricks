@@ -336,6 +336,17 @@ setup_remote () {
   REMOTE=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_REMOTE" --default-item $REMOTE_OLD --menu "$MSG_REMOTE_DESC" 000 0 0 $LREMOTES`
 }
 
+# Choose default receiver
+setup_receiver () {
+  RECEIVER_OLD=`cmdline_default receiver atiusb`
+
+  RECEIVERS=`ls di/GEEXBOX/etc/lirc/lircd_* | grep -v ".conf" | sed -e 's/.*lircd_//g'`
+  for r in $RECEIVERS; do
+    LRECEIVERS="$LRECEIVERS $r $r"
+  done
+  RECEIVER=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_RECEIVER" --default-item $RECEIVER_OLD --menu "$MSG_RECEIVER_DESC" 000 0 0 $LRECEIVERS`
+}
+
 VERSION=`cat VERSION`
 BACKTITLE="GeeXboX $VERSION installator"
 
@@ -585,14 +596,7 @@ VESA_MODE=$((784 + VESA_RES*3 + VESA_DEPTH))
 
 setup_lang
 setup_remote
-
-RECEIVER_OLD=`cmdline_default receiver atiusb`
-
-RECEIVERS=`ls di/GEEXBOX/etc/lirc/lircd_* | grep -v ".conf" | sed -e 's/.*lircd_//g'`
-for r in $RECEIVERS; do
-  LRECEIVERS="$LRECEIVERS $r $r"
-done
-RECEIVER=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_RECEIVER" --default-item $RECEIVER_OLD --menu "$MSG_RECEIVER_DESC" 000 0 0 $LRECEIVERS`
+setup_receiver
 
 if grep -q "splash=silent" di/isolinux.cfg; then
   SPLASH_ARGUMENT="--defaultno"
