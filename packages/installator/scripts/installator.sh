@@ -384,6 +384,19 @@ setup_vesa () {
   [ $VESA_MODE -ge 796 ] && VESA_MODE=$((VESA_MODE + 1))
 }
 
+# Setup BootSplash
+setup_bootsplash () {
+  if grep -q "splash=silent" di/isolinux.cfg; then
+    SPLASH_ARGUMENT="--defaultno"
+    SPLASH_OLD="silent"
+  else
+    SPLASH_ARGUMENT=""
+    SPLASH_OLD="0"
+  fi
+
+  dialog --aspect 15 --backtitle "$BACKTITLE" --title "" $SPLASH_ARGUMENT --yesno "\n${MSG_SPLASH_DESC}\n" 0 0 && SPLASH="0" || SPLASH="silent"
+}
+
 VERSION=`cat VERSION`
 BACKTITLE="GeeXboX $VERSION installator"
 
@@ -603,16 +616,7 @@ setup_vesa
 setup_lang
 setup_remote
 setup_receiver
-
-if grep -q "splash=silent" di/isolinux.cfg; then
-  SPLASH_ARGUMENT="--defaultno"
-  SPLASH_OLD="silent"
-else
-  SPLASH_ARGUMENT=""
-  SPLASH_OLD="0"
-fi
-
-dialog --aspect 15 --backtitle "$BACKTITLE" --title "" $SPLASH_ARGUMENT --yesno "\n${MSG_SPLASH_DESC}\n" 0 0 && SPLASH="0" || SPLASH="silent"
+setup_bootsplash
 
 grubprefix=/boot/grub
 grubdir=di$grubprefix
