@@ -310,10 +310,91 @@ setup_grub () {
   sed -i "s/_RECEIVER_/$RECEIVER/g" $1
 }
 
+# Choose default language
+setup_lang () {
+  LANGS=`ls di/GEEXBOX/etc/mplayer/*.lang | sed -e 's$di/GEEXBOX/etc/mplayer/\(.*\).lang$\1$g'`
+  for l in $LANGS; do
+    LLANGS="$LLANGS $l $l"
+  done
+  MENU_LANG=`dialog --no-cancel --stdout --backtitle "$BACKTITLE : $MSG_LANG_CONFIG" --title "$MSG_LANG" --default-item $LANG --menu "$MSG_LANG_DESC" 0 0 0 $LLANGS` || exit 1
+}
+
 cmdline_default () {
   RET=`sed -n "s/.*$1=\([^ ]*\).*/\1/p" /proc/cmdline`
   test -z $RET && RET=$2
   echo $RET
+}
+
+# Choose default remote
+setup_remote () {
+  REMOTE_OLD=`cmdline_default remote atiusb`
+
+  REMOTES=`ls di/GEEXBOX/etc/lirc/lircrc_* | sed -e 's/.*lircrc_//g'`
+  for r in $REMOTES; do
+   LREMOTES="$LREMOTES $r $r"
+  done
+  REMOTE=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_REMOTE" --default-item $REMOTE_OLD --menu "$MSG_REMOTE_DESC" 000 0 0 $LREMOTES`
+}
+
+# Choose default receiver
+setup_receiver () {
+  RECEIVER_OLD=`cmdline_default receiver atiusb`
+
+  RECEIVERS=`ls di/GEEXBOX/etc/lirc/lircd_* | grep -v ".conf" | sed -e 's/.*lircd_//g'`
+  for r in $RECEIVERS; do
+    LRECEIVERS="$LRECEIVERS $r $r"
+  done
+  RECEIVER=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_RECEIVER" --default-item $RECEIVER_OLD --menu "$MSG_RECEIVER_DESC" 000 0 0 $LRECEIVERS`
+}
+
+# Select keymap
+setup_keymap () {
+  KEYMAP_OLD=`cmdline_default keymap qwerty`
+
+  KEYMAPS="qwerty qwerty"
+  for i in `ls /etc/keymaps`; do
+    KEYMAPS="$KEYMAPS $i $i"
+  done
+
+  KEYMAP=`dialog --no-cancel --stdout --backtitle "$BACKTITLE : $MSG_KEYMAP_CONFIG" --title "$MSG_KEYMAP" --default-item $KEYMAP_OLD --menu "$MSG_KEYMAP_DESC" 0 0 0 $KEYMAPS` || exit 1
+
+  test -f "/etc/keymaps/$KEYMAP" && loadkmap < "/etc/keymaps/$KEYMAP"
+}
+
+# Setup VESA properties
+setup_vesa () {
+  VESA_MODE_OLD=`cmdline_default vga 789`
+
+  VESA_RES=$((($VESA_MODE_OLD - 784) / 3))
+  VESA_DEPTH=$((($VESA_MODE_OLD - 784) % 3))
+
+  if [ $VESA_DEPTH != 0 -a $VESA_DEPTH != 1 -a $VESA_DEPTH != 2 ] ||
+     [ $VESA_RES != 0 -a $VESA_RES != 1 -a $VESA_RES != 2 -a $VESA_RES != 3 ]; then
+    VESA_RES=1
+    VESA_DEPTH=2
+  fi
+
+  if [ "$USE_XORG" = no ]; then
+    VESA_RES=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_SCREEN_RES" --default-item $VESA_RES --menu "$MSG_SCREEN_DESC" 000 0 0 0 "640x480" 1 "800x600" 2 "1024x768" 3 "1280x1024" 4 "1600x1200"`
+
+    VESA_DEPTH=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_SCREEN_DEPTH" --default-item $VESA_DEPTH --menu "$MSG_SCREEN_DESC" 000 0 0 0 "15 bits" 1 "16 bits" 2 "24 bits"`
+  fi
+
+  VESA_MODE=$((784 + VESA_RES*3 + VESA_DEPTH))
+  [ $VESA_MODE -ge 796 ] && VESA_MODE=$((VESA_MODE + 1))
+}
+
+# Setup BootSplash
+setup_bootsplash () {
+  if grep -q "splash=silent" di/isolinux.cfg; then
+    SPLASH_ARGUMENT="--defaultno"
+    SPLASH_OLD="silent"
+  else
+    SPLASH_ARGUMENT=""
+    SPLASH_OLD="0"
+  fi
+
+  dialog --aspect 15 --backtitle "$BACKTITLE" --title "" $SPLASH_ARGUMENT --yesno "\n${MSG_SPLASH_DESC}\n" 0 0 && SPLASH="0" || SPLASH="silent"
 }
 
 VERSION=`cat VERSION`
@@ -327,19 +408,7 @@ LANG=`cmdline_default lang en`
 # disable kernel messages to avoid screen corruption
 echo 0 > /proc/sys/kernel/printk
 
-KEYMAP_OLD=`cmdline_default keymap qwerty`
-
-title="$BACKTITLE : $MSG_KEYMAP_CONFIG"
-
-KEYMAPS="qwerty qwerty"
-for i in `ls /etc/keymaps`
-do
-   KEYMAPS="$KEYMAPS $i $i"
-done
-
-KEYMAP=`dialog --no-cancel --stdout --backtitle "$title" --title "$MSG_KEYMAP" --default-item $KEYMAP_OLD --menu "$MSG_KEYMAP_DESC" 0 0 0 $KEYMAPS` || exit 1
-
-test -f "/etc/keymaps/$KEYMAP" && loadkmap < "/etc/keymaps/$KEYMAP"
+setup_keymap
 
 while true; do
   DISKS=`cat /proc/partitions | sed -n "s/\ *[0-9][0-9]*\ *[0-9][0-9]*\ *\([0-9][0-9]*\)\ \([a-z]*\)$/\2 (\1_blocks)/p"`
@@ -530,7 +599,6 @@ dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_CFG_NETWORK" --yesno "
 [ -f /var/dvbcard ] &&  dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_CFG_DVB" --yesno "\n${MSG_CFG_DVB_DESC}\n" 0 0 && setup_dvbscan "di/GEEXBOX"
 
 # Configure X.Org
-# Only configure if support for X has been compiled in
 if [ -f /etc/X11/X.cfg.sample -o -f /etc/X11/X.cfg ]; then
   USE_XORG=yes # default is to use X if present
   dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_CFG_HDTV" --yesno "\n${MSG_CFG_HDTV_DESC}\n" 0 0 || USE_XORG=no
@@ -544,59 +612,11 @@ else
   rm -f di/GEEXBOX/X.tar.lzma
 fi
 
-VESA_MODE_OLD=`cmdline_default vga 789`
-
-VESA_RES=$((($VESA_MODE_OLD - 784) / 3))
-VESA_DEPTH=$((($VESA_MODE_OLD - 784) % 3))
-
-if [ $VESA_DEPTH != 0 -a $VESA_DEPTH != 1 -a $VESA_DEPTH != 2 ] ||
-   [ $VESA_RES != 0 -a $VESA_RES != 1 -a $VESA_RES != 2 -a $VESA_RES != 3 ]; then
-  VESA_RES=1
-  VESA_DEPTH=2
-fi
-
-if [ "$USE_XORG" = no ]; then
-  VESA_RES=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_SCREEN_RES" --default-item $VESA_RES --menu "$MSG_SCREEN_DESC" 000 0 0 0 "640x480" 1 "800x600" 2 "1024x768" 3 "1280x1024" 4 "1600x1200"`
-
-  VESA_DEPTH=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_SCREEN_DEPTH" --default-item $VESA_DEPTH --menu "$MSG_SCREEN_DESC" 000 0 0 0 "15 bits" 1 "16 bits" 2 "24 bits"`
-fi
-
-VESA_MODE=$((784 + VESA_RES*3 + VESA_DEPTH))
-[ $VESA_MODE -ge 796 ] && VESA_MODE=$((VESA_MODE + 1))
-
-title="$BACKTITLE : $MSG_LANG_CONFIG"
-
-LANGS=`ls di/GEEXBOX/etc/mplayer/*.lang | sed -e 's$di/GEEXBOX/etc/mplayer/\(.*\).lang$\1$g'`
-for l in $LANGS; do
-  LLANGS="$LLANGS $l $l"
-done
-MENU_LANG=`dialog --no-cancel --stdout --backtitle "$title" --title "$MSG_LANG" --default-item $LANG --menu "$MSG_LANG_DESC" 0 0 0 $LLANGS` || exit 1
-
-REMOTE_OLD=`cmdline_default remote atiusb`
-
-REMOTES=`ls di/GEEXBOX/etc/lirc/lircrc_* | sed -e 's/.*lircrc_//g'`
-for r in $REMOTES; do
- LREMOTES="$LREMOTES $r $r"
-done
-REMOTE=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_REMOTE" --default-item $REMOTE_OLD --menu "$MSG_REMOTE_DESC" 000 0 0 $LREMOTES`
-
-RECEIVER_OLD=`cmdline_default receiver atiusb`
-
-RECEIVERS=`ls di/GEEXBOX/etc/lirc/lircd_* | grep -v ".conf" | sed -e 's/.*lircd_//g'`
-for r in $RECEIVERS; do
-  LRECEIVERS="$LRECEIVERS $r $r"
-done
-RECEIVER=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_RECEIVER" --default-item $RECEIVER_OLD --menu "$MSG_RECEIVER_DESC" 000 0 0 $LRECEIVERS`
-
-if grep -q "splash=silent" di/isolinux.cfg; then
-  SPLASH_ARGUMENT="--defaultno"
-  SPLASH_OLD="silent"
-else
-  SPLASH_ARGUMENT=""
-  SPLASH_OLD="0"
-fi
-
-dialog --aspect 15 --backtitle "$BACKTITLE" --title "" $SPLASH_ARGUMENT --yesno "\n${MSG_SPLASH_DESC}\n" 0 0 && SPLASH="0" || SPLASH="silent"
+setup_vesa
+setup_lang
+setup_remote
+setup_receiver
+setup_bootsplash
 
 grubprefix=/boot/grub
 grubdir=di$grubprefix
