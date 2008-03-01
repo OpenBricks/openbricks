@@ -146,6 +146,12 @@ setup_keymap () {
   test -f "/etc/keymaps/$KEYMAP" && loadkmap < "/etc/keymaps/$KEYMAP"
 }
 
+configure () {
+  mkdir -p /mnt/install_disk
+  mount $DEV /mnt/install_disk
+  configurator
+}
+
 VERSION=`cat VERSION`
 BACKTITLE="GeeXboX $VERSION installator"
 
@@ -508,4 +514,4 @@ rmdir di
 
 [ -n "$CDROM" ] && eject &
 
-dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_SUCCESS" --msgbox "\n${MSG_SUCCESS_DESC} '$DEV'\n" 0 0
+dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_SUCCESS" --yesno "\n${MSG_SUCCESS_DESC_BEGIN} '$DEV' !! ${MSG_SUCCESS_DESC_END}\n" 0 0 && configure
