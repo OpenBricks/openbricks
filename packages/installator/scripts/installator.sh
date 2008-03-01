@@ -293,21 +293,47 @@ setup_xorg () {
 }
 
 # Create grub.conf file
+update_grub_conf_bootargs () {
+  # don't try to set an item with a non-existing value
+  test -z "$3" && return;
+  sed -i "s/$2=[^ ]*/$2=$3/g" "$1"
+}
+
+append_grub_conf () {
+  TMP_GRUB_CONF=/tmp/grub.conf
+  cp /etc/grub/grub.conf $TMP_GRUB_CONF
+
+  sed -i "s/_TITLE_/$2/" $TMP_GRUB_CONF
+  sed -i "s/_HDTV_/$3/" $TMP_GRUB_CONF
+  sed -i "s/_DEBUG_/$4/" $TMP_GRUB_CONF
+  sed -i "s/_CONFIG_/$5/" $TMP_GRUB_CONF
+
+  cat $TMP_GRUB_CONF >> $1
+  echo "" >> $1
+}
+
 setup_grub () {
   # conditional HDTV menu entry if X.org is found
-  [ "$USE_XORG" = yes ] && cat /etc/grub/grub.conf.hdtv >> $1
+  if [ "$USE_XORG" = yes ]; then
+    append_grub_conf $1 "GeeXboX HDTV" hdtv "" ""
+    append_grub_conf $1 "GeeXboX HDTV (debug)" hdtv debugging ""
+    append_grub_conf $1 "GeeXboX HDTV (reconfigure)" hdtv "" configure
+  fi
 
   # add console mode menu
-  cat /etc/grub/grub.conf.console >> $1
+  append_grub_conf $1 "GeeXboX" "" "" ""
+  append_grub_conf $1 "GeeXboX (debug)" "" debugging ""
+  append_grub_conf $1 "GeeXboX (reconfigure)" "" "" configure
 
+  # put default options
+  update_grub_conf_bootargs $1 lang `cmdline_default lang en`
+  update_grub_conf_bootargs $1 remote `cmdline_default remote atiusb`
+  update_grub_conf_bootargs $1 receiver `cmdline_default receiver atiusb`
+  update_grub_conf_bootargs $1 keymap `cmdline_default keymap qwerty`
+
+  # now setup installation specific options
   sed -i "s/_ROOTDEV_SINGLE_/$rootdev_single/g" $1
   sed -i "s/_DEVNAME_/$DEVNAME/g" $1
-  sed -i "s/_MENU_LANG_/$MENU_LANG/g" $1
-  sed -i "s/_SPLASH_/$SPLASH/g" $1
-  sed -i "s/_VESA_MODE_/$VESA_MODE/g" $1
-  sed -i "s/_KEYMAP_/$KEYMAP/g" $1
-  sed -i "s/_REMOTE_/$REMOTE/g" $1
-  sed -i "s/_RECEIVER_/$RECEIVER/g" $1
 }
 
 # Choose default language
