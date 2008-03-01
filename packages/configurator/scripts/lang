@@ -1,0 +1,53 @@
+#!/bin/sh
+
+DONE=0
+
+setup_keymap () {
+  keymap_old=`cmdline_default keymap qwerty`
+
+  keymaps="qwerty qwerty"
+  for i in `ls /etc/keymaps`; do
+    keymaps="$keymaps $i $i"
+  done
+
+  keymap=`dialog --no-cancel --stdout --backtitle "$MSG_CFG_TITLE" --title "$MSG_KEYMAP" --default-item $keymap_old --menu "$MSG_KEYMAP_DESC" 0 0 0 $keymaps`
+
+  test -f "/etc/keymaps/$keymap" && loadkmap < "/etc/keymaps/$keymap"
+  set_config CFG_KEYMAP "$keymap"
+}
+
+setup_lang () {
+  langs=`ls /etc/mplayer/*.lang | sed -e 's%/etc/mplayer/\(.*\).lang%\1%g'`
+  for l in $langs; do
+    llangs="$llangs $l $l"
+  done
+  
+  lang=`dialog --no-cancel --stdout --backtitle "$MSG_CFG_TITLE" --title "$MSG_LANG" --default-item $lang --menu "$MSG_LANG_DESC" 0 0 0 $llangs`
+  set_config CFG_LANG "$lang"
+}
+
+lang_menu () {
+  menu=`dialog --no-cancel --aspect 15 --stdout --backtitle "$MSG_CFG_TITLE" --title "$MSG_MENU_LANG" --menu "$MSG_LANG_DESC" 0 0 0 keymap "$MSG_LANG_MENU_KEYMAP ..." lang "$MSG_LANG_MENU_LANG ..." "" "" quit "$MSG_RETURN ..."`
+
+  case $menu in
+    keymap)
+      setup_keymap
+      ;;
+    lang)
+      setup_lang
+      ;;
+    quit)
+      DONE=1
+      ;;
+  esac
+}
+
+# include configurator common file
+. /usr/share/configurator/common
+
+# get i18n strings
+get_i18n
+
+while [ $DONE != 1 ]; do
+  lang_menu
+done

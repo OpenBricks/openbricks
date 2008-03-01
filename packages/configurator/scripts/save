@@ -1,0 +1,88 @@
+#!/bin/sh
+
+get_device () {
+  dev=`mount | grep "$1" | sed 's/\(.*\) on.*/\1/`
+  echo $dev
+}
+
+remount () {
+  mount -o remount,$1 "$2" "$3"
+}
+
+copy_cfg_file () {
+  src="$1"
+  mount_point="$2/GEEXBOX"
+  dest="${mount_point}$3"
+ 
+  if [ -f "$src" ]; then
+    # echo "Copying $src to $dest" # for debug purpose only
+    cp "$src" "$dest"
+  fi
+}
+
+update_grub () {
+  mount_point="$1/boot/grub"
+  item="$2"
+  value="$3"
+
+  # don't try to set an item with a non-existing value
+  test -z "$value" && return;
+
+  for file in "$mount_point/single.lst" "$mount_point/menu.lst"; do
+    # echo "Editing $file with $2=$3" # for debug purpose only
+    sed -i "s/$2=[^ ]*/$2=$3/g" "$file"
+  done
+}
+
+save_configs () {
+  # lang settings
+  update_grub "$partition" keymap "$CFG_KEYMAP"
+  update_grub "$partition" lang "$CFG_LANG"
+
+  # video settings
+  update_grub "$partition" splash "$CFG_BOOTSPLASH"
+  update_grub "$partition" vga "$CFG_VESA_MODE"
+  copy_cfg_file /etc/X11/X.cfg "$partition" /etc/X11
+  copy_cfg_file /etc/X11/xorg.conf "$partition" /etc/X11
+
+  # network settings
+  copy_cfg_file /etc/network "$partition" /etc
+
+  # tv settings
+  copy_cfg_file /etc/mplayer/mplayer.conf "$partition" /etc/mplayer
+  copy_cfg_file /etc/mplayer/channels.conf "$partition" /etc/mplayer
+  copy_cfg_file /etc/tvcard "$partition" /etc
+
+  # remote settings
+  update_grub "$partition" remote "$CFG_REMOTE"
+  update_grub "$partition" receiver "$CFG_RECEIVER"
+}
+
+# include configurator common file
+. /usr/share/configurator/common
+
+# get i18n strings
+get_i18n
+
+# read potential configurator file
+test -f $CONFIG_FILE && . $CONFIG_FILE
+
+for i in /mnt/*; do
+  # ensure that this mount point is a disk
+  echo "$i" | grep -q disk || continue;
+
+  # check for a potential GeeXboX installation partition
+  test -d "$i/GEEXBOX" && partition="$i" && break;
+done
+
+test -z "$partition" && dialog --aspect 15 --backtitle "$MSG_CFG_TITLE" --title "$MSG_ERROR" --msgbox "$MSG_SAVE_NO_DISK" 0 0 && exit 1
+
+dialog --aspect 15 --backtitle "$MSG_CFG_TITLE" --title "$MSG_MENU_SAVE" --yesno "$MSG_SAVE_DESC_BEGIN ($partition) $MSG_SAVE_DESC_END" 0 0 || exit 1
+
+device=`get_device "$partition"`
+
+remount rw "$device" "$partition"
+save_configs
+remount ro "$device" "$partition"
+
+dialog --aspect 15 --backtitle "$MSG_CFG_TITLE" --title "$MSG_SUCCESS" --msgbox "$MSG_SAVE_OK" 0 0

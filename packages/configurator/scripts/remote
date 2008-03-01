@@ -1,0 +1,55 @@
+#!/bin/sh
+
+DONE=0
+
+setup_remote () {
+  remote_old=`cmdline_default remote atiusb`
+
+  remotes=`ls /etc/lirc/lircrc_* | sed -e 's/.*lircrc_//g'`
+  for r in $remotes; do
+   lremotes="$lremotes $r $r"
+  done
+
+  remote=`dialog --stdout --aspect 15 --backtitle "$MSG_CFG_TITLE" --title "$MSG_REMOTE" --default-item $remote_old --menu "$MSG_REMOTE_DESC" 000 0 0 $lremotes`
+
+  set_config CFG_REMOTE "$remote"
+}
+
+setup_receiver () {
+  receiver_old=`cmdline_default receiver atiusb`
+
+  receivers=`ls /etc/lirc/lircd_* | grep -v ".conf" | sed -e 's/.*lircd_//g'`
+  for r in $receivers; do
+    lreceivers="$lreceivers $r $r"
+  done
+
+  receiver=`dialog --stdout --aspect 15 --backtitle "$MSG_CFG_TITLE" --title "$MSG_RECEIVER" --default-item $receiver_old --menu "$MSG_RECEIVER_DESC" 000 0 0 $lreceivers`
+
+  set_config CFG_RECEIVER "$receiver"
+}
+
+remote_menu () {
+  menu=`dialog --no-cancel --aspect 15 --stdout --backtitle "$MSG_CFG_TITLE" --title "$MSG_MENU_REMOTE" --menu "$MSG_REMOTE_DESC" 0 0 0 remote "$MSG_REMOTE_MENU_REMOTE ..." receiver "$MSG_REMOTE_MENU_RECEIVER ..." "" "" quit "$MSG_RETURN ..."`
+
+  case $menu in
+    remote)
+      setup_remote
+      ;;
+    receiver)
+      setup_receiver
+      ;;
+    quit)
+      DONE=1
+      ;;
+  esac
+}
+
+# include configurator common file
+. /usr/share/configurator/common
+
+# get i18n strings
+get_i18n
+
+while [ $DONE != 1 ]; do
+  remote_menu
+done

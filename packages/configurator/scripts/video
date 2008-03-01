@@ -1,0 +1,131 @@
+#!/bin/sh
+
+DONE=0
+
+setup_splash () {
+  if grep -q "splash=silent" /proc/cmdline; then
+    splash_argument="--defaultno"
+    splash_old="silent"
+  else
+    splash_argument=""
+    splash_old="0"
+  fi
+
+  dialog --aspect 15 --backtitle "$MSG_CFG_TITLE" --title "" $splash_argument --yesno "$MSG_SPLASH_DESC" 0 0 && splash="0" || splash="silent"
+  set_config CFG_BOOTSPLASH "$splash"
+}
+
+setup_console () {
+  vesa_mode_old=`cmdline_default vga 789`
+
+  res=$((($vesa_mode_old - 784) / 3))
+  depth=$((($vesa_mode_old - 784) % 3))
+
+  if [ $depth != 0 -a $depth != 1 -a $depth != 2 ] ||
+     [ $res != 0 -a $res != 1 -a $res != 2 -a $res != 3 ]; then
+    res=1
+    depth=2
+  fi
+
+  res=`dialog --stdout --aspect 15 --backtitle "$MSG_CFG_TITLE" --title "$MSG_SCREEN_RES" --default-item $res --menu "$MSG_SCREEN_DESC" 000 0 0 0 "640x480" 1 "800x600" 2 "1024x768" 3 "1280x1024" 4 "1600x1200"`
+
+  depth=`dialog --stdout --aspect 15 --backtitle "$MSG_CFG_TITLE" --title "$MSG_SCREEN_DEPTH" --default-item $depth --menu "$MSG_SCREEN_DESC" 000 0 0 0 "15 bits" 1 "16 bits" 2 "24 bits"`
+
+  vesa_mode=$((784 + vesa_res*3 + vesa_depth))
+  [ $vesa_mode -ge 796 ] && vesa_mode=$((vesa_mode + 1))
+
+  set_config CFG_VESA_MODE_OLD "$vesa_mode_old"
+  set_config CFG_VESA_MODE "$vesa_mode"
+}
+
+setup_xorg () {
+  XORG_CONFIG=/usr/bin/xorgconfig
+
+  USER_RESOLUTION_LABEL="custom"
+  USER_RESOLUTION_AUTO="auto"
+  USER_DRIVERS_AUTO="auto"
+
+  X_DRIVERS_FILE="/etc/X11/drivers"
+  X_CFG_SAMPLE="/etc/X11/X.cfg.sample"
+  X_CFG="/etc/X11/X.cfg"
+
+  # is X.org present ?
+  if [ ! -f $X_CFG_SAMPLE -a ! -f $X_CFG ]; then
+    dialog --aspect 15 --backtitle "$MSG_CFG_TITLE" --title "$MSG_ERROR" --msgbox "$MSG_NO_XORG" 0 0
+    return;
+  fi
+
+  # ask user for manual X.org setup
+  dialog --aspect 15 --backtitle "$MSG_CFG_TITLE" --title "$MSG_CFG_XORG" --defaultno --yesno "$MSG_CFG_XORG_DESC" 0 0 || return
+
+  # retrieve current X settings
+  test -f $X_CFG_SAMPLE && . $X_CFG_SAMPLE
+  test -f $X_CFG && . $X_CFG
+
+  old_res=auto
+  if [ "$XORG_RESX" != auto -a "$XORG_RESY" != auto ]; then
+    old_res="${XORG_RESX}x${XORG_RESY}"
+  fi
+  
+  res=`dialog --no-cancel --aspect 15 --stdout --backtitle "$MSG_CFG_TITLE" --title "$MSG_XORG_RES" --inputbox "$MSG_XORG_RES_DESC" 0 0 $old_res`
+
+  if [ "$res" = "$USER_RESOLUTION_AUTO" ]; then
+    new_resx="auto"
+    new_resy="auto"
+  else
+    new_resx=`echo $res | sed 's%\(.*\)x.*%\1%'`
+    new_resy=`echo $res | sed 's%.*x\(.*\)%\1%'`
+  fi
+
+  new_rate=`dialog --no-cancel --aspect 15 --stdout --backtitle "$MSG_CFG_TITLE" --title "$MSG_XORG_RATE" --inputbox "$MSG_XORG_RATE_DESC" 0 0 $XORG_RATE`
+
+  drivers="$USER_DRIVERS_AUTO ''"
+  for i in `cat $X_DRIVERS_FILE`; do
+    drivers="$drivers $i ''"
+  done
+
+  new_driver=`dialog --no-cancel --aspect 15 --stdout --backtitle "$MSG_CFG_TITLE" --title "$MSG_XORG_DRIVER" --menu "$MSG_XORG_DRIVER_DESC\n" 0 0 0 $drivers`
+
+  new_horizsync=`dialog --no-cancel --aspect 15 --stdout --backtitle "$MSG_CFG_TITLE" --title "$MSG_XORG_HORIZSYNC" --inputbox "$MSG_XORG_HORIZSYNC_DESC" 0 0 $xorg_horizsync`
+
+  new_vertrefresh=`dialog --no-cancel --aspect 15 --stdout --backtitle "$MSG_CFG_TITLE" --title "$MSG_XORG_VERTREFRESH" --inputbox "$MSG_XORG_VERTREFRESH_DESC" 0 0 $xorg_vertrefresh`
+
+  # write settings to config file
+  echo "XORG_RESX=\"$new_resx\"" > $X_CFG
+  echo "XORG_RESY=\"$new_resy\"" >> $X_CFG
+  echo "XORG_RATE=\"$new_rate\"" >> $X_CFG
+  echo "XORG_DRIVER=\"$new_driver\"" >> $X_CFG
+  echo "XORG_HORIZSYNC=\"$new_horizsync\"" >> $X_CFG
+  echo "XORG_VERTREFRESH=\"$new_vertrefresh\"" >> $X_CFG
+
+  test -x $XORG_CONFIG && $XORG_CONFIG > /dev/null 2>&1 # create xorg.conf file
+}
+
+video_menu () {
+  menu=`dialog --no-cancel --aspect 15 --stdout --backtitle "$MSG_CFG_TITLE" --title "$MSG_MENU_VIDEO" --menu "$MSG_VIDEO_DESC" 0 0 0 bootsplash "$MSG_VIDEO_MENU_SPLASH ..." console "$MSG_VIDEO_MENU_CONSOLE ..." xorg "$MSG_VIDEO_MENU_XORG ..." "" "" quit "$MSG_RETURN ..."`
+
+  case $menu in
+    bootsplash)
+      setup_splash
+      ;;
+    console)
+      setup_console
+      ;;
+    xorg)
+      setup_xorg
+      ;;
+    quit)
+      DONE=1
+      ;;
+  esac
+}
+
+# include configurator common file
+. /usr/share/configurator/common
+
+# get i18n strings
+get_i18n
+
+while [ $DONE != 1 ]; do
+  video_menu
+done
