@@ -177,19 +177,6 @@ setup_keymap () {
   test -f "/etc/keymaps/$KEYMAP" && loadkmap < "/etc/keymaps/$KEYMAP"
 }
 
-# Setup BootSplash
-setup_bootsplash () {
-  if grep -q "splash=silent" di/isolinux.cfg; then
-    SPLASH_ARGUMENT="--defaultno"
-    SPLASH_OLD="silent"
-  else
-    SPLASH_ARGUMENT=""
-    SPLASH_OLD="0"
-  fi
-
-  dialog --aspect 15 --backtitle "$BACKTITLE" --title "" $SPLASH_ARGUMENT --yesno "\n${MSG_SPLASH_DESC}\n" 0 0 && SPLASH="0" || SPLASH="silent"
-}
-
 VERSION=`cat VERSION`
 BACKTITLE="GeeXboX $VERSION installator"
 
@@ -398,7 +385,6 @@ fi
 setup_lang
 setup_remote
 setup_receiver
-setup_bootsplash
 
 grubprefix=/boot/grub
 grubdir=di$grubprefix
