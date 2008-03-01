@@ -132,28 +132,6 @@ cmdline_default () {
   echo $RET
 }
 
-# Choose default remote
-setup_remote () {
-  REMOTE_OLD=`cmdline_default remote atiusb`
-
-  REMOTES=`ls di/GEEXBOX/etc/lirc/lircrc_* | sed -e 's/.*lircrc_//g'`
-  for r in $REMOTES; do
-   LREMOTES="$LREMOTES $r $r"
-  done
-  REMOTE=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_REMOTE" --default-item $REMOTE_OLD --menu "$MSG_REMOTE_DESC" 000 0 0 $LREMOTES`
-}
-
-# Choose default receiver
-setup_receiver () {
-  RECEIVER_OLD=`cmdline_default receiver atiusb`
-
-  RECEIVERS=`ls di/GEEXBOX/etc/lirc/lircd_* | grep -v ".conf" | sed -e 's/.*lircd_//g'`
-  for r in $RECEIVERS; do
-    LRECEIVERS="$LRECEIVERS $r $r"
-  done
-  RECEIVER=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_RECEIVER" --default-item $RECEIVER_OLD --menu "$MSG_RECEIVER_DESC" 000 0 0 $LRECEIVERS`
-}
-
 # Select keymap
 setup_keymap () {
   KEYMAP_OLD=`cmdline_default keymap qwerty`
@@ -372,9 +350,6 @@ else
   # Since X is disabled, remove the files from HDD install to speed up boot
   rm -f di/GEEXBOX/X.tar.lzma
 fi
-
-setup_remote
-setup_receiver
 
 grubprefix=/boot/grub
 grubdir=di$grubprefix
