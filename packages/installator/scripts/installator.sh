@@ -82,74 +82,6 @@ convert () {
   fi
 }
 
-# Configure network interface and parameters before installing GeeXboX to disk.
-setup_network () {
-  local title phy_type wifi_mode wifi_enc wifi_key wpa_drv wifi_essid host_ip subnet gw_ip dns_ip smb_user smb_pwd val f
-
-  title="$BACKTITLE : $MSG_NET_CONFIG"
-  f="$1/etc/network"
-
-  # Get type of physical interface
-  val=`grep PHY_TYPE $f | cut -d'"' -f2`
-  phy_type=`dialog --no-cancel --aspect 15 --default-item $val --stdout --backtitle "$title" --title "$MSG_NET_PHY" --menu "\n${MSG_NET_PHY_DESC}\n" 0 0 0 auto "$MSG_NET_PHY_AUTO" ethernet "$MSG_NET_PHY_ETH" wifi "$MSG_NET_PHY_WIFI"` || exit 1
-
-  # Get wireless settings only if required
-  if [ $phy_type = "auto" -o $phy_type = "wifi" ]; then
-    wifi_mode=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_WIFI" --menu "\n${MSG_NET_WIFI_DESC}\n" 0 0 0 managed "$MSG_NET_WIFI_AP" ad-hoc "$MSG_NET_WIFI_ADHOC"` || exit 1
-
-    wifi_enc=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_CRYPTO" --menu "\n${MSG_NET_CRYPTO_DESC}\n" 0 0 0 none "$MSG_NET_CRYPTO_NONE" WEP "$MSG_NET_CRYPTO_WEP" WPA "$MSG_NET_CRYPTO_WPA"` || exit 1
-
-    val=`grep WIFI_ESSID $f | cut -d'"' -f2`
-    wifi_essid=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_SSID" --inputbox "\n${MSG_NET_SSID_DESC}\n" 0 0 "$val"` || exit 1
-
-    if [ $wifi_enc = WEP -o $wifi_enc = WPA ]; then
-      val=`grep WIFI_KEY $f | cut -d'"' -f2`
-      wifi_key=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_KEY" --inputbox "\n${MSG_NET_KEY_DESC}\n" 0 0 "$val"` || exit 1
-    fi
-
-    if [ $wifi_enc = WPA ]; then
-      wpa_drv=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_WPA_DRIVER" --menu "\n${MSG_NET_WPA_DRIVER_DESC}\n" 0 0 0 wext "$MSG_NET_WPA_DRIVER_WEXT" atmel "$MSG_NET_WPA_DRIVER_ATMEL"` || exit 1
-    fi
-  fi
-
-  # get GeeXboX IP address
-  val=`grep HOST $f | cut -d'"' -f2`
-  host_ip=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_IP" --inputbox "\n${MSG_NET_IP_DESC}\n" 0 0 "$val"` || exit 1
-
-  # do not get more settings if DHCP
-  if [ ! -z $host_ip ]; then
-    val=`grep SUBNET $f | cut -d'"' -f2`
-    subnet=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_SUBNET" --inputbox "\n${MSG_NET_SUBNET_DESC}\n" 0 0 "$val"` || exit 1
-
-    val=`grep GATEWAY $f | cut -d'"' -f2`
-    gw_ip=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_GATEWAY" --inputbox "\n${MSG_NET_GATEWAY_DESC}\n" 0 0 "$val"` || exit 1
-
-    val=`grep DNS_SERVER $f | cut -d'"' -f2`
-    dns_ip=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_DNS" --inputbox "\n${MSG_NET_DNS_DESC}\n" 0 0 "$val"` || exit 1
-  fi
-
-  # get samba user name
-  val=`grep SMB_USER $f | cut -d'"' -f2`
-  smb_user=`dialog --no-cancel --stdout --backtitle "$title" --title "$MSG_NET_SMB_USER" --inputbox "\n${MSG_NET_SMB_USER_DESC}\n" 0 0 "$val"` || exit 1
-
-  # get samba password
-  val=`grep SMB_PWD $f | cut -d'"' -f2`
-  smb_pwd=`dialog --no-cancel --stdout --backtitle "$title" --title "$MSG_NET_SMB_PWD" --inputbox "\n${MSG_NET_SMB_PWD_DESC}\n" 0 0 "$val"` || exit 1
-
-  sed -i "s%^PHY_TYPE=\".*\"\(.*\)%PHY_TYPE=\"$phy_type\"\1%" $f
-  sed -i "s%^WIFI_MODE=\".*\"\(.*\)%WIFI_MODE=\"$wifi_mode\"\1%" $f
-  sed -i "s%^WIFI_ENC=\".*\"\(.*\)%WIFI_ENC=\"$wifi_enc\"\1%" $f
-  sed -i "s%^WIFI_KEY=\".*\"\(.*\)%WIFI_KEY=\"$wifi_key\"\1%" $f
-  sed -i "s%^WIFI_ESSID=\".*\"\(.*\)%WIFI_ESSID=\"$wifi_essid\"\1%" $f
-  sed -i "s%^WPA_DRV=\".*\"\(.*\)%WPA_DRV=\"$wpa_drv\"\1%" $f
-  sed -i "s%^HOST=.*%HOST=\"$host_ip\"%" $f
-  sed -i "s%^SUBNET=.*%SUBNET=\"$subnet\"%" $f
-  sed -i "s%^GATEWAY=.*%GATEWAY=\"$gw_ip\"%" $f
-  sed -i "s%^DNS_SERVER=.*%DNS_SERVER=\"$dns_ip\"%" $f
-  sed -i "s%^SMB_USER=.*%SMB_USER=\"$smb_user\"%" $f
-  sed -i "s%^SMB_PWD=.*%SMB_PWD=\"$smb_pwd\"%" $f
-}
-
 # Configure TV card and scan for channels.
 setup_tvscan () {
   MPTV="mplayer tv:// -really-quiet -msglevel tv=4 -ao null -vo null"
@@ -614,9 +546,6 @@ cd di/GEEXBOX/boot
 mv vmlinuz initrd.gz isolinux.cfg boot.msg help.msg splash.rle ../../
 cd ../../../
 rm -rf di/GEEXBOX/boot
-
-# Setup network
-dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_CFG_NETWORK" --yesno "\n${MSG_CFG_NETWORK_DESC}\n" 0 0 && setup_network "di/GEEXBOX"
 
 # Configure TV card and scan for channels.
 [ -f /var/tvcard ] && dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_CFG_TV" --yesno "\n${MSG_CFG_TV_DESC}\n" 0 0 && setup_tvscan "di/GEEXBOX"
