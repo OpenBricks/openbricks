@@ -82,62 +82,6 @@ convert () {
   fi
 }
 
-# Configure DVB card and scan for channels.
-dvb_do_scan() {
-  # Scan FreeToAir channels only
-  dvbscan -x 0 "$1" > "$2" 2> /dev/null
-}
-
-setup_dvbscan () {
-  DVB_LIST=/usr/share/dvb
-
-  TITLE="$BACKTITLE : $MSG_DVB_CONFIG"
-  CHANNELS_CONF="$1/etc/mplayer/channels.conf"
-
-  [ -f /usr/share/dvb.tar.lzma -a ! -d $DVB_LIST ] && tar xaf /usr/share/dvb.tar.lzma -C /usr/share
-
-  DVB_TYPE=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "$MSG_DVB_TYPE" --menu "\n${MSG_DVB_TYPE_DESC}\n" 0 0 0 dvb-s "$MSG_DVB_SAT" dvb-t "$MSG_DVB_TER" dvb-c "$MSG_DVB_CABLE" atsc "$MSG_DVB_ATSC"`
-
-  # DVB Terrestrial cards
-  if [ $DVB_TYPE = "dvb-t" -o $DVB_TYPE = "dvb-c" ]; then
-    for i in `ls $DVB_LIST/$DVB_TYPE`; do
-      COUNTRIES="$COUNTRIES $i ''"
-    done
-
-    COUNTRY=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "$MSG_DVB_COUNTRY" --menu "\n${MSG_DVB_COUNTRY_DESC}\n" 0 0 0 $COUNTRIES`
-
-    for i in `ls $DVB_LIST/$DVB_TYPE/$COUNTRY`; do
-      CITIES="$CITIES $i ''"
-    done
-
-    CITY=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "$MSG_DVB_CITY" --menu "\n${MSG_DVB_CITY_DESC}\n" 0 0 0 $CITIES`
-
-    dvb_do_scan "$DVB_LIST/$DVB_TYPE/$COUNTRY/$CITY" "$CHANNELS_CONF"
-  elif [ $DVB_TYPE = "dvb-s" ]; then
-    for i in `ls $DVB_LIST/$DVB_TYPE`; do
-      SATS="$SATS $i ''"
-    done
-
-    SAT=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "$MSG_DVB_SAT_SEL" --menu "\n${MSG_DVB_SAT_SEL_DESC}\n" 0 0 0 $SATS`
-
-    dvb_do_scan "$DVB_LIST/$DVB_TYPE/$SAT" "$CHANNELS_CONF"
-  elif [ $DVB_TYPE = "atsc" ]; then
-    for i in `ls $DVB_LIST/$DVB_TYPE`; do
-      ATSC="$ATSC $i ''"
-    done
-
-    FREQ=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "$MSG_DVB_ATSC_SEL" --menu "\n${MSG_DVB_ATSC_SEL_DESC}" 0 0 0 $ATSC`
-
-    dvb_do_scan "$DVB_LIST/$DVB_TYPE/$FREQ" "$CHANNELS_CONF"
-  fi
-
-  if [ -s $CHANNELS_CONF ]; then
-    # remove non-coherent detected channels
-    grep -v "^\[.*\]:" $CHANNELS_CONF > /tmp/channels.conf
-    mv /tmp/channels.conf $CHANNELS_CONF
-  fi
-}
-
 # Configure X.Org
 setup_xorg () {
   XORG_CONFIG=/usr/bin/xorgconfig
@@ -517,9 +461,6 @@ cd di/GEEXBOX/boot
 mv vmlinuz initrd.gz isolinux.cfg boot.msg help.msg splash.rle ../../
 cd ../../../
 rm -rf di/GEEXBOX/boot
-
-# Configure DVB card and scan for channels.
-[ -f /var/dvbcard ] &&  dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_CFG_DVB" --yesno "\n${MSG_CFG_DVB_DESC}\n" 0 0 && setup_dvbscan "di/GEEXBOX"
 
 # Configure X.Org
 if [ -f /etc/X11/X.cfg.sample -o -f /etc/X11/X.cfg ]; then
