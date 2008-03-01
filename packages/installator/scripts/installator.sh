@@ -150,6 +150,7 @@ configure () {
   mkdir -p /mnt/install_disk
   mount $DEV /mnt/install_disk
   configurator
+  umount /mnt/install_disk
 }
 
 VERSION=`cat VERSION`
