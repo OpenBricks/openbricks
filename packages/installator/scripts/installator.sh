@@ -126,15 +126,6 @@ setup_grub () {
   sed -i "s/_DEVNAME_/$DEVNAME/g" $1
 }
 
-# Choose default language
-setup_lang () {
-  LANGS=`ls di/GEEXBOX/etc/mplayer/*.lang | sed -e 's$di/GEEXBOX/etc/mplayer/\(.*\).lang$\1$g'`
-  for l in $LANGS; do
-    LLANGS="$LLANGS $l $l"
-  done
-  MENU_LANG=`dialog --no-cancel --stdout --backtitle "$BACKTITLE : $MSG_LANG_CONFIG" --title "$MSG_LANG" --default-item $LANG --menu "$MSG_LANG_DESC" 0 0 0 $LLANGS` || exit 1
-}
-
 cmdline_default () {
   RET=`sed -n "s/.*$1=\([^ ]*\).*/\1/p" /proc/cmdline`
   test -z $RET && RET=$2
@@ -382,7 +373,6 @@ else
   rm -f di/GEEXBOX/X.tar.lzma
 fi
 
-setup_lang
 setup_remote
 setup_receiver
 
