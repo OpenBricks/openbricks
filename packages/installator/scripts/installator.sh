@@ -177,29 +177,6 @@ setup_keymap () {
   test -f "/etc/keymaps/$KEYMAP" && loadkmap < "/etc/keymaps/$KEYMAP"
 }
 
-# Setup VESA properties
-setup_vesa () {
-  VESA_MODE_OLD=`cmdline_default vga 789`
-
-  VESA_RES=$((($VESA_MODE_OLD - 784) / 3))
-  VESA_DEPTH=$((($VESA_MODE_OLD - 784) % 3))
-
-  if [ $VESA_DEPTH != 0 -a $VESA_DEPTH != 1 -a $VESA_DEPTH != 2 ] ||
-     [ $VESA_RES != 0 -a $VESA_RES != 1 -a $VESA_RES != 2 -a $VESA_RES != 3 ]; then
-    VESA_RES=1
-    VESA_DEPTH=2
-  fi
-
-  if [ "$USE_XORG" = no ]; then
-    VESA_RES=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_SCREEN_RES" --default-item $VESA_RES --menu "$MSG_SCREEN_DESC" 000 0 0 0 "640x480" 1 "800x600" 2 "1024x768" 3 "1280x1024" 4 "1600x1200"`
-
-    VESA_DEPTH=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_SCREEN_DEPTH" --default-item $VESA_DEPTH --menu "$MSG_SCREEN_DESC" 000 0 0 0 "15 bits" 1 "16 bits" 2 "24 bits"`
-  fi
-
-  VESA_MODE=$((784 + VESA_RES*3 + VESA_DEPTH))
-  [ $VESA_MODE -ge 796 ] && VESA_MODE=$((VESA_MODE + 1))
-}
-
 # Setup BootSplash
 setup_bootsplash () {
   if grep -q "splash=silent" di/isolinux.cfg; then
@@ -418,7 +395,6 @@ else
   rm -f di/GEEXBOX/X.tar.lzma
 fi
 
-setup_vesa
 setup_lang
 setup_remote
 setup_receiver
