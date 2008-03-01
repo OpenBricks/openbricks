@@ -13,9 +13,6 @@ fulldist:
 generator:
 	scripts/generator
 
-installator:
-	scripts/installator
-
 pxe:
 	scripts/pxe
 
