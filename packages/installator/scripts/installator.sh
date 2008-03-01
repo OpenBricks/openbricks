@@ -147,10 +147,11 @@ setup_keymap () {
 }
 
 configure () {
-  mkdir -p /mnt/install_disk
-  mount $DEV /mnt/install_disk
+  IDISK=/mnt/install_disk
+  mkdir -p $IDISK
+  mount $DEV $IDISK
   configurator
-  umount /mnt/install_disk
+  umount $IDISK
 }
 
 VERSION=`cat VERSION`
