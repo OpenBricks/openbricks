@@ -141,7 +141,7 @@ setup_keymap () {
     KEYMAPS="$KEYMAPS $i $i"
   done
 
-  KEYMAP=`dialog --no-cancel --stdout --backtitle "$BACKTITLE : $MSG_KEYMAP_CONFIG" --title "$MSG_KEYMAP" --default-item $KEYMAP_OLD --menu "$MSG_KEYMAP_DESC" 0 0 0 $KEYMAPS` || exit 1
+  KEYMAP=`dialog --no-cancel --stdout --backtitle "$BACKTITLE : $MSG_KEYMAP_CONFIG" --title "$MSG_KEYMAP" --default-item $KEYMAP_OLD --menu "$MSG_KEYMAP_DESC" 0 0 0 $KEYMAPS`
 
   test -f "/etc/keymaps/$KEYMAP" && loadkmap < "/etc/keymaps/$KEYMAP"
 }
