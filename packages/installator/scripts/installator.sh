@@ -82,35 +82,6 @@ convert () {
   fi
 }
 
-# Configure TV card and scan for channels.
-setup_tvscan () {
-  MPTV="mplayer tv:// -really-quiet -msglevel tv=4 -ao null -vo null"
-  title="$BACKTITLE : $MSG_TV_CONFIG"
-
-  INPUTS=`$MPTV -frames 0 2>/dev/null | grep "inputs:" | sed -e 's/ inputs: //' -e 's/= //g' -e 's/;//g'`
-
-  NORMS=`$MPTV -frames 0 2>/dev/null | grep "supported norms:" | sed -e 's/ supported norms: //' -e 's/= //g' -e 's/;//g'`
-
-  CHANLISTS="us-bcast '' us-cable '' us-cable-hrc '' japan-bcast '' japan-cable '' europe-west '' europe-east '' italy '' newzealand '' australia '' ireland '' france '' china-bcast '' southafrica '' argentina '' russia ''"
-
-  while [ -z "$DONE" ]; do
-    INPUT=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_TV_INPUT" --menu "\n${MSG_TV_INPUT_DESC}\n" 0 0 0 $INPUTS`
-
-    NORM=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_TV_NORM" --menu "\n${MSG_TV_NORM_DESC}\n" 0 0 0 $NORMS`
-
-    CHANLIST=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_TV_CHANLIST" --menu "\n${MSG_TV_CHANLIST_DESC}\n" 0 0 0 $CHANLISTS`
-
-    CHANNELS_MPLAYER_PARAM=`$MPTV -tvscan autostart -frames 600 -tv driver=v4l2:input=$INPUT:norm=$NORM:chanlist=$CHANLIST 2>/dev/null | grep "^channels="`  | dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_TV_SCAN" --gauge "\n${MSG_TV_SCAN_DESC}\n" 0 0
-
-    CHANNELS=`echo $CHANNELS_MPLAYER_PARAM | sed -e 's/channels=//g' -e 's/-/ - /g' -e 's/,/\\\\n/g' -e 's/$/\\\\n/g'`
-    dialog --aspect 12 --stdout --yes-label "$MSG_TV_ACCEPT" --no-label "MSG_TV_RETRY" --backtitle "$title" --title "$MSG_TV_SCAN_DONE" --yesno "\n${MSG_TV_SCAN_DONE_DESC}\n\n$CHANNELS" 0 0 && DONE=true
-  done
-
-  [ `echo $CHANNELS_MPLAYER_PARAM | grep -c "channels="` -eq 1 ] && echo "tv=$CHANNELS_MPLAYER_PARAM" >> /etc/mplayer/mplayer.conf
-  sed -i "s/^TVIN_STANDARD=.*/TVIN_STANDARD=$NORM/" $1/etc/tvcard
-  sed -i "s/^CHANLIST=.*/CHANLIST=$CHANLIST/" $1/etc/tvcard
-}
-
 # Configure DVB card and scan for channels.
 dvb_do_scan() {
   # Scan FreeToAir channels only
@@ -546,9 +517,6 @@ cd di/GEEXBOX/boot
 mv vmlinuz initrd.gz isolinux.cfg boot.msg help.msg splash.rle ../../
 cd ../../../
 rm -rf di/GEEXBOX/boot
-
-# Configure TV card and scan for channels.
-[ -f /var/tvcard ] && dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_CFG_TV" --yesno "\n${MSG_CFG_TV_DESC}\n" 0 0 && setup_tvscan "di/GEEXBOX"
 
 # Configure DVB card and scan for channels.
 [ -f /var/dvbcard ] &&  dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_CFG_DVB" --yesno "\n${MSG_CFG_DVB_DESC}\n" 0 0 && setup_dvbscan "di/GEEXBOX"
