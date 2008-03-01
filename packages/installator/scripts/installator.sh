@@ -82,63 +82,6 @@ convert () {
   fi
 }
 
-# Configure X.Org
-setup_xorg () {
-  XORG_CONFIG=/usr/bin/xorgconfig
-
-  TITLE="$BACKTITLE : $MSG_XORG_CONFIG"
-  DRIVERS_FILE="$1/etc/X11/drivers"
-  USER_RESOLUTION_LABEL="custom"
-  USER_RESOLUTION_AUTO="auto"
-  USER_DRIVERS_AUTO="auto"
-  X_CFG_SAMPLE="$1/etc/X11/X.cfg.sample"
-  X_CFG="$1/etc/X11/X.cfg"
-
-  # retrieve current X settings
-  test -f $X_CFG_SAMPLE && . $X_CFG_SAMPLE
-  test -f $X_CFG && . $X_CFG
-
-  OLD_RES=auto
-  if [ "$XORG_RESX" != auto -a "$XORG_RESY" != auto ]; then
-    OLD_RES="${XORG_RESX}x${XORG_RESY}"
-  fi
-  
-  RES=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "$MSG_XORG_RES" --inputbox "\n${MSG_XORG_RES_DESC}\n" 0 0 $OLD_RES`
-
-  if [ "$RES" = "$USER_RESOLUTION_AUTO" ]; then
-    NEW_RESX="auto"
-    NEW_RESY="auto"
-  else
-    NEW_RESX=`echo $RES | sed 's%\(.*\)x.*%\1%'`
-    NEW_RESY=`echo $RES | sed 's%.*x\(.*\)%\1%'`
-  fi
-
-  NEW_RATE=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "$MSG_XORG_RATE" --inputbox "\n${MSG_XORG_RATE_DESC}\n" 0 0 $XORG_RATE`
-
-  DRIVERS="$USER_DRIVERS_AUTO ''"
-  for i in `cat $DRIVERS_FILE`; do
-    DRIVERS="$DRIVERS $i ''"
-  done
-
-  NEW_DRIVER=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "$MSG_XORG_DRIVER" --menu "\n${MSG_XORG_DRIVER_DESC}\n" 0 0 0 $DRIVERS`
-
-  NEW_HORIZSYNC=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "$MSG_XORG_HORIZSYNC" --inputbox "\n${MSG_XORG_HORIZSYNC_DESC}\n" 0 0 $XORG_HORIZSYNC`
-
-  NEW_VERTREFRESH=`dialog --no-cancel --aspect 15 --stdout --backtitle "$TITLE" --title "$MSG_XORG_VERTREFRESH" --inputbox "\n${MSG_XORG_VERTREFRESH_DESC}\n" 0 0 $XORG_VERTREFRESH`
-
-  # write settings to config file
-  echo "XORG_RESX=\"$NEW_RESX\"" > $X_CFG
-  echo "XORG_RESY=\"$NEW_RESY\"" >> $X_CFG
-  echo "XORG_RATE=\"$NEW_RATE\"" >> $X_CFG
-  echo "XORG_DRIVER=\"$NEW_DRIVER\"" >> $X_CFG
-  echo "XORG_HORIZSYNC=\"$NEW_HORIZSYNC\"" >> $X_CFG
-  echo "XORG_VERTREFRESH=\"$NEW_VERTREFRESH\"" >> $X_CFG
-
-  cp $X_CFG /etc/X11 # for xorgconfig to work with new params
-  $XORG_CONFIG > /dev/null 2>&1 # create xorg.conf file
-  cp /etc/X11/xorg.conf $1/etc/X11/ # save back new xorg.conf to HDD
-}
-
 # Create grub.conf file
 update_grub_conf_bootargs () {
   # don't try to set an item with a non-existing value
@@ -469,7 +412,6 @@ if [ -f /etc/X11/X.cfg.sample -o -f /etc/X11/X.cfg ]; then
 fi
 
 if [ "$USE_XORG" = yes ]; then
-  dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_CFG_XORG" --defaultno --yesno "\n${MSG_CFG_XORG_DESC}\n" 0 0 && setup_xorg "di/GEEXBOX"
   [ "$UNCOMPRESS_INSTALL" = "yes" -a -f "$GEEXBOX/X.tar.lzma" ] && rm di/GEEXBOX/X.tar.lzma && tar xaf "$GEEXBOX/X.tar.lzma" -C di/GEEXBOX
 else
   # Since X is disabled, remove the files from HDD install to speed up boot
