@@ -612,11 +612,13 @@ main (int argc, char **argv)
                                   {
                                     exts=xcd_exts;
                                     if (build_playlist (drive->mnt, -1) >= 1)
+                                    {
                                       sprintf(system_buf, "mp_set_option cdrom-device %s", drive->dev);
                                       system(system_buf);
                                       printf ("set_option cdrom-device %s\n", drive->dev);
                                       if (!off_silent)
                                         printf ("menu hide\nloadfile vcd://\n");
+                                    }
                                   }
                               }
                           }
