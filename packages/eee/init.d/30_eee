@@ -1,0 +1,64 @@
+#!/bin/sh
+#
+# setup the ASUS EeePC
+#
+# runlevels: geexbox, debug, configure
+
+unload_wifi() {
+   rmmod wlan_scan_sta
+   rmmod wlan_tkip
+   rmmod wlan_wep
+   rmmod wlan_ccmp
+   rmmod wlan_acl
+   rmmod ath_pci
+   sleep 1
+   rmmod ath_rate_atheros
+   rmmod ath_hal
+   rmmod wlan
+   rmmod ath_dfs
+}
+
+load_wifi() {
+   modprobe ath_pci
+}
+
+wifi_on() {
+   unload_wifi
+   # Force PCI Express Hotplug to reinit
+   rmmod pciehp
+   sleep 1
+   # pciehp_force may be unnecessary; Xandros did it.
+   modprobe pciehp pciehp_force=1
+   sleep 1
+   # Switch on the hardware
+   echo 1 > /proc/acpi/asus/wlan
+   sleep 1
+   load_wifi
+}
+
+eee_overclock () {
+  # start overclocker module, overclock in 2 steps to prevent freezes)
+  modprobe i2c_i801
+  modprobe asus_eee
+  echo 85 24 1 > /proc/eee/fsb
+  sleep 1
+  echo 100 24 1 > /proc/eee/fsb
+}
+
+eee_cpufreq () {
+  # start frequency scaling modules
+  modprobe p4-clockmod
+  modprobe cpufreq-ondemand
+  echo ondemand > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+  # set low frequency, to minimize fan rotation if no CPU is needed
+  echo 675000 > /sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq
+}
+
+dmidecode | grep -q "Serial Number: EeePC" || exit 1
+
+echo "### Setting up ASUS EeePC ###"
+eee_overclock
+eee_cpufreq
+
+
+exit 0
