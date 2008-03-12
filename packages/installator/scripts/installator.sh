@@ -179,11 +179,15 @@ while true; do
 done
 
 if [ "`cat /sys/block/$DISK/removable`" = 1 ]; then
+  TYPE=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_REMOVABLE" --menu "$MSG_DISK_REMOVABLE_DESC" 0 0 0 REMOVABLE "$MSG_DISK_REMOVABLE" HDD "$MSG_DISK_HDD"` || exit 1
+else
+  TYPE=HDD
+fi
+
+if [ $TYPE = REMOVABLE ]; then
   BOOTLOADER=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_PART_LINUX" --menu "$MSG_DISK_PART_LINUX_DESC" 0 0 0 grub "$MSG_DISK_BOOT_GRUB" syslinux "$MSG_DISK_BOOT_SYSLINUX"` || exit 1
-  TYPE=REMOVABLE
 else
   BOOTLOADER=grub
-  TYPE=HDD
 fi
 
 if [ $BOOTLOADER = syslinux ]; then
