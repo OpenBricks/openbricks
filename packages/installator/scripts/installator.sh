@@ -335,6 +335,20 @@ elif [ "$NEED_FORMAT" = yes ]; then
   exit 1
 fi
 
+# restart UDEV scan to get device UUID if
+# user just created/formatted a new disk/partition
+udevadm trigger
+udevadm settle --timeout=180
+
+DEV_REALNAME=`ls -l $DEV | sed "s/.*-> \(.*\)/\1/"`
+for dev in `ls /dev/storage/by-uuid/*`; do
+  NAME=`ls -l "$dev" | sed "s/.*-> \(.*\)/\1/" | sed 's%../../%%'`
+  if [ "$NAME" = "$DEV_REALNAME" ]; then
+    DEV_UUID=`echo $dev | sed 's%/dev/storage/by-uuid/%%'`
+    break
+  fi
+done
+
 mount -t $MKFS_TYPE "$DEV" di
 if [ $? -ne 0 ]; then
   dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_ERROR" --msgbox "\n${MSG_INSTALL_MOUNT_FAILED} '$DEV' ($MKFS_TYPENAME).\n" 0 0
