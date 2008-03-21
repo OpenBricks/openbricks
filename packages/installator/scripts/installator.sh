@@ -168,7 +168,14 @@ echo 0 > /proc/sys/kernel/printk
 setup_keymap
 
 while true; do
-  DISKS=`cat /proc/partitions | sed -n "s/\ *[0-9][0-9]*\ *[0-9][0-9]*\ *\([0-9][0-9]*\)\ \([a-z]*\)$/\2 (\1_blocks)/p"`
+  for i in `cat /proc/partitions | sed -n "s/\ *[0-9][0-9]*\ *[0-9][0-9]*\ *[0-9][0-9]*\ \([a-z]*\)$/\1/p"`; do
+    S=`sfdisk -s /dev/$i | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
+    VENDOR=`cat /sys/block/$i/device/vendor`
+    MODEL=`cat /sys/block/$i/device/model`
+    DISKNAME=`echo $VENDOR $MODEL ${S}MB | sed 's/ /_/g'`
+    DISKS="$DISKS $i $DISKNAME"
+  done
+
   if [ -z "$DISKS" ]; then
     dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_ERROR" --yesno "\n${MSG_DISK_NOT_FOUND}" 0 0 || exit 1
   else
@@ -208,12 +215,18 @@ while [ ! -b "$DEV" ]; do
     case `sfdisk --print-id ${i%%[0-9]*} ${i#${i%%[0-9]*}}` in
       1|11|6|e|16|1e|b|c|1b|1c) #FAT12/16/32 are supported both in syslinux and grub.
         S=`sfdisk -s "$i" | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
-        DISKS="$DISKS $i ${S}MB"
+        VENDOR=`cat /sys/block/$DISK/device/vendor`
+        MODEL=`cat /sys/block/$DISK/device/model`
+        DISKNAME=`echo $VENDOR $MODEL ${S}MB | sed 's/ /_/g'`
+        DISKS="$DISKS $i $DISKNAME"
         ;;
       83) #Linux is supported only in grub.
         if [ $BOOTLOADER = grub ]; then
           S=`sfdisk -s "$i" | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
-          DISKS="$DISKS $i ${S}MB"
+          VENDOR=`cat /sys/block/$DISK/device/vendor`
+          MODEL=`cat /sys/block/$DISK/device/model`
+          DISKNAME=`echo $VENDOR $MODEL ${S}MB | sed 's/ /_/g'`
+          DISKS="$DISKS $i $DISKNAME"
         fi
         ;;
     esac
