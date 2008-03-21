@@ -349,6 +349,9 @@ for dev in `ls /dev/storage/by-uuid/*`; do
   fi
 done
 
+# ensure UDEV hasn't remounted the install partition
+umount /dev/$NAME
+
 mount -t $MKFS_TYPE "$DEV" di
 if [ $? -ne 0 ]; then
   dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_ERROR" --msgbox "\n${MSG_INSTALL_MOUNT_FAILED} '$DEV' ($MKFS_TYPENAME).\n" 0 0
