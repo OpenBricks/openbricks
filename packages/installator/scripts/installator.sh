@@ -123,7 +123,7 @@ setup_grub () {
 
   # now setup installation specific options
   sed -i "s/_ROOTDEV_SINGLE_/$rootdev_single/g" $1
-  sed -i "s/_DEVNAME_/$DEVNAME/g" $1
+  sed -i "s/_DEVNAME_/UUID=${DEV_UUID}/g" $1
 }
 
 cmdline_default () {
@@ -408,7 +408,7 @@ splashimage="$grubprefix/grub-splash.xpm.gz"
 
 if [ $BOOTLOADER = syslinux ]; then
   cp "di/GEEXBOX/usr/share/ldlinux.sys" di
-  sed -e "s/boot=cdrom/boot=${DEV#/dev/}/" di/isolinux.cfg > di/syslinux.cfg
+  sed -e "s/boot=cdrom/boot=UUID=${DEV_UUID}/" di/isolinux.cfg > di/syslinux.cfg
   rm di/isolinux.cfg
 elif [ $BOOTLOADER = grub ]; then
   cp $grubdir/stage2 $grubdir/stage2_single
