@@ -28,6 +28,50 @@ progress() {
   echo "### $2 ###"
 }
 
+boot_from_nfs () {
+  progress 11000 "Getting NFS tree"
+  GEEXBOX=/nfs
+  mkdir -p $GEEXBOX
+  udhcpc -q -H geexbox -n && mount -t nfs -o ro,nolock $NFS $GEEXBOX
+  if [ ! -f "$GEEXBOX/bin.tar.lzma" -a ! -f "$GEEXBOX/usr/bin/mplayer" ]; then
+    umount $GEEXBOX
+    rmdir $GEEXBOX
+    GEEXBOX=
+  fi
+}
+
+boot_from_cdrom () {
+  progress 11000 "Searching for CD-ROM drives"
+  for i in 0 1 2 3 4 5 6 7 8 9; do
+    for DEV in `grep '^/dev/cdrom' /etc/mnts | cut -f1`; do
+      CDROM=`grep "^$DEV	" /etc/mnts | cut -f2-`
+      if [ -d "$CDROM/GEEXBOX" ]; then
+        GEEXBOX="$CDROM/GEEXBOX"
+        ln -s "$DEV" /dev/cdrom
+        break
+      fi
+    done
+    [ -n "$GEEXBOX" ] && break
+    sleep 1
+  done
+  [ ! -e /dev/cdrom -a -b /dev/cdrom1 ] && ln -s /dev/cdrom1 /dev/cdrom
+}
+
+boot_from_hdd () {
+  progress 11000 "HDD Boot Device Detection"
+  for i in 0 1 2 3 4 5 6 7 8 9; do
+    grep -q "^/dev/$BOOT_DEV " /proc/mounts && break
+    sleep 1
+  done
+  for DEV in `grep '^/dev/disk' /etc/mnts | cut -f1`; do
+    DIR=`grep "^$DEV	" /etc/mnts | cut -f2-`
+    if [ -d "$DIR/GEEXBOX" ]; then
+      GEEXBOX="$DIR/GEEXBOX"
+      [ "/dev/$BOOT_DEV" = "$DEV" ] && break
+    fi
+  done
+}
+
 progress 8000 "setting up ramfs tree"
 mkdir -p /dev
 mkdir -p /lib
@@ -88,52 +132,20 @@ done
 # determine if we use X.Org or not
 [ "$XORG" = yes ] && echo "" > /var/use_xorg
 
-if test "$BOOT" = nfs; then
-  progress 11000 "getting nfs tree"
-  GEEXBOX=/nfs
-  mkdir -p $GEEXBOX
-  udhcpc -q -H geexbox -n && mount -t nfs -o ro,nolock $NFS $GEEXBOX
-  if [ ! -f "$GEEXBOX/bin.tar.lzma" -a ! -f "$GEEXBOX/usr/bin/mplayer" ]; then
-    umount $GEEXBOX
-    rmdir $GEEXBOX
-    GEEXBOX=
-  fi
-fi
-
-progress 12000 "searching cdrom drives"
-if [ "$BOOT" = cdrom ]; then
-  for i in 0 1 2 3 4 5 6 7 8 9; do
-    for DEV in `grep '^/dev/cdrom' /etc/mnts | cut -f1`; do
-      CDROM=`grep "^$DEV	" /etc/mnts | cut -f2-`
-      if [ -d "$CDROM/GEEXBOX" ]; then
-        GEEXBOX="$CDROM/GEEXBOX"
-        ln -s "$DEV" /dev/cdrom
-        break
-      fi
-    done
-    [ -n "$GEEXBOX" ] && break
-    sleep 1
-  done
-fi
-[ ! -e /dev/cdrom -a -b /dev/cdrom1 ] && ln -s /dev/cdrom1 /dev/cdrom
-
-if [ "$BOOT" != cdrom -a "$BOOT" != nfs ]; then
-  if [ "$INSTALLATOR" != yes ]; then
-    progress 17000 "boot device detection"
-    for i in 0 1 2 3 4 5 6 7 8 9; do
-      [ -z "$BOOTDISK" ] && BOOTDISK=`cd /dev; ls -l $BOOT | sed 's/.* \([^ ]*\)$/\1/'`
-      [ -n "$BOOTDISK" ] && grep -q "^/dev/$BOOTDISK " /proc/mounts && break
-      sleep 1
-    done
-    for DEV in `grep '^/dev/disk' /etc/mnts | cut -f1`; do
-      DIR=`grep "^$DEV	" /etc/mnts | cut -f2-`
-      if [ -d "$DIR/GEEXBOX" ]; then
-        GEEXBOX="$DIR/GEEXBOX"
-        [ "/dev/$BOOTDISK" = "$DEV" ] && break
-      fi
-    done
-  fi
-fi
+# select boot device for 2nd stage
+case "$BOOT" in
+  nfs)
+    boot_from_nfs
+    ;;
+  cdrom)
+    boot_from_cdrom
+    ;;
+  hdd)
+    boot_from_hdd
+    ;;
+  *)
+   ;;
+esac
 
 if test -n "$GEEXBOX" ; then
   progress 25000 "copying system into ram"
