@@ -376,7 +376,7 @@ if [ "$FASTBOOT" = "yes" ]; then
 fi
 
 cd di/GEEXBOX/boot
-mv vmlinuz initrd.gz isolinux.cfg boot.msg help.msg splash.rle ../../
+mv vmlinuz initrd.gz isolinux.cfg vesamenu.c32 help.msg splash.png ../../
 cd ../../../
 rm -rf di/GEEXBOX/boot
 
@@ -415,7 +415,7 @@ if [ $BOOTLOADER = syslinux ]; then
   rm di/isolinux.cfg
 elif [ $BOOTLOADER = grub ]; then
   cp $grubdir/stage2 $grubdir/stage2_single
-  rm di/isolinux.cfg di/boot.msg di/help.msg di/splash.rle
+  rm di/isolinux.cfg di/vesamenu.c32 di/help.msg di/splash.png
 fi
 
 if [ $TYPE = HDD ]; then
