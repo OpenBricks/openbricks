@@ -2,8 +2,9 @@
 
 . config/options
 
-$SCRIPTS/build genext2fs
 $SCRIPTS/install lzma
+$SCRIPTS/build bootsplash
+$SCRIPTS/build theme-$THEME
 
 export INSTALL=$BUILD/$1/mnt
 
@@ -13,10 +14,25 @@ rm -f $BUILD/$1/$1 $BUILD/$1/$1.gz
 
 mkdir $INSTALL/bin
 mkdir $INSTALL/etc
-mkdir $INSTALL/ramfs
 mkdir $INSTALL/sbin
 mkdir $INSTALL/usr
 mkdir $INSTALL/usr/bin
+mkdir $INSTALL/usr/sbin
+mkdir $INSTALL/usr/lib
+mkdir $INSTALL/dev
+mkdir $INSTALL/mnt
+mkdir $INSTALL/tmp
+mkdir $INSTALL/root
+mkdir $INSTALL/var
+mkdir $INSTALL/var/run
+mkdir $INSTALL/var/log
+mkdir $INSTALL/var/lock
+mkdir $INSTALL/proc
+mkdir $INSTALL/sys
+
+echo -n "" > $INSTALL/etc/mtab
+echo -n "" > $INSTALL/etc/fstab
+echo -n "" > $INSTALL/etc/mnts
 
 $SCRIPTS/install $TARGET_LIBC
 $SCRIPTS/install busybox
@@ -32,7 +48,14 @@ cp $PACKAGES/$1/scripts/r[ow] $INSTALL/usr/bin
 ln -s /bin/busybox $INSTALL/bin/sh
 echo $TARGET_ARCH > $INSTALL/etc/arch
 
-$BUILD/genext2fs*/genext2fs -d $INSTALL -b $RAMDISK_SIZE -i 512 $BUILD/$1/$1
+# Append BootSplash
+splashdat=$BUILD/theme-$THEME/bootsplash-$RESOLUTION.dat
+[ -f $splashdat ] && cp $splashdat $INSTALL/bootsplash
+
+# Create a CPIO InitRamfs archive
+cd $INSTALL
+find . | cpio -o -H newc > $ROOT/$BUILD/$1/$1
+cd -
 
 if [ $TARGET_ARCH = powerpc ]; then
   gzip -9 $BUILD/$1/$1
