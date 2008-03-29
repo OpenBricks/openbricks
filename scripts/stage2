@@ -1,0 +1,65 @@
+#!/bin/sh
+
+. config/options
+
+mkdir -p $INSTALL/sbin
+mkdir -p $INSTALL/etc/init.d
+mkdir -p $INSTALL/codecs
+mkdir -p $INSTALL/firmware
+mkdir -p $INSTALL/etc/ndiswrapper
+
+cp $CONFIG/init $INSTALL/sbin
+cp $CONFIG/file_ext $INSTALL/etc
+cp $CONFIG/list_ext $INSTALL/etc
+cp $CONFIG/subs_ext $INSTALL/etc
+
+for P in $PACKAGES/*; do
+  [ -f $P/arch ] && grep -vq $TARGET_ARCH $P/arch && continue
+  [ -f $P/platform ] && grep -vq $TARGET_PLATFORM $P/platform && continue
+  [ -d $P/init.d ] && cp $P/init.d/* $INSTALL/etc/init.d/
+done
+
+$SCRIPTS/install linux config $1
+$SCRIPTS/install linux modules-stage2 $1
+$SCRIPTS/install alsa $1
+$SCRIPTS/install tvout $1
+$SCRIPTS/install pciutils $1
+[ "$XORG" = yes ] && $SCRIPTS/install Xorg $1
+[ "$SDL" = yes ] && $SCRIPTS/install SDL $1
+$SCRIPTS/install debug $1
+$SCRIPTS/install MPlayer $1
+$SCRIPTS/install installator $1
+$SCRIPTS/install configurator $1
+$SCRIPTS/install i18n $1
+[ "$UI_VERSION" = 1 ] && $SCRIPTS/install webgui $1
+$SCRIPTS/install sleeptimer $1
+$SCRIPTS/install theme $1
+$SCRIPTS/install powernowd $1
+$SCRIPTS/install acpid $1
+$SCRIPTS/install dmidecode $1
+$SCRIPTS/install eee $1
+[ "$LCD4LINUX" = yes ] && $SCRIPTS/install lcd4linux $1
+[ "$DEVTOOLS" = yes ] && $SCRIPTS/install strace $1
+[ "$NETWORK" = yes ] && $SCRIPTS/install network $1
+[ "$OLSR" = yes ] && $SCRIPTS/install olsrd $1
+[ "$DXR3" = yes ] && $SCRIPTS/install em8300 $1
+[ "$PYTHON" = yes ] && $SCRIPTS/install Python $1
+[ "$FREEVO" = yes ] && $SCRIPTS/install freevo $1
+[ "$EMULATORS" = yes ] && $SCRIPTS/install emulators $1
+[ "$VIEW_IMG" = yes ] && $SCRIPTS/install fbi $1
+[ "$GDB" = yes ] && $SCRIPTS/install gdb $1
+[ "$EXTRACODECS" = yes ] && $SCRIPTS/install extra-codecs-nonfree $1
+[ "$EXTRAFIRMWARES" = yes ] && $SCRIPTS/install extra-firmwares-nonfree $1
+[ "$DIGIMATRIX" = yes ] && $SCRIPTS/install digitools $1
+[ "$DEBUG" = yes ] && echo -n "" >$INSTALL/etc/debug
+
+# strip modules from 2nd-stage
+for MOD in `find $INSTALL/lib/modules/ -name *.ko`; do
+  $STRIP --strip-debug $MOD
+done
+
+ln -s /firmware $INSTALL/lib
+tar cf - -C $INSTALL lib usr/bin usr/lib | lzma e $INSTALL/bin.tar.lzma -si -a2
+rm -rf $INSTALL/lib $INSTALL/usr/bin $INSTALL/usr/lib
+[ "$XORG" = yes ] && mv $INSTALL/X/etc/* $INSTALL/etc/ && tar cf - -C $INSTALL/X usr | lzma e $INSTALL/X.tar.lzma -si -a2 && rm -fr $INSTALL/X
+echo "$GEEXBOX_VERSION" > $INSTALL/etc/version
