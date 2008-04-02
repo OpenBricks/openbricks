@@ -168,6 +168,7 @@ echo 0 > /proc/sys/kernel/printk
 setup_keymap
 
 while true; do
+  DISKS=""
   for i in `cat /proc/partitions | sed -n "s/\ *[0-9][0-9]*\ *[0-9][0-9]*\ *[0-9][0-9]*\ \([a-z]*\)$/\1/p"`; do
     S=`sfdisk -s /dev/$i | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
     VENDOR=`cat /sys/block/$i/device/vendor`
