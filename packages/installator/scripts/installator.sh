@@ -413,6 +413,7 @@ splashimage="$grubprefix/grub-splash.xpm.gz"
 if [ $BOOTLOADER = syslinux ]; then
   cp "di/GEEXBOX/usr/share/ldlinux.sys" di
   sed -e "s/boot=cdrom/boot=UUID=${DEV_UUID}/" di/isolinux.cfg > di/syslinux.cfg
+  sed -i s%^#CFG#%% di/syslinux.cfg
   rm di/isolinux.cfg
 elif [ $BOOTLOADER = grub ]; then
   cp $grubdir/stage2 $grubdir/stage2_single
