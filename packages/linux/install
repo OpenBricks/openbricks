@@ -2,6 +2,10 @@
 
 . config/options
 
+RAMFS_DRV_SUBSYSTEMS="ata cdrom ieee1394 mmc scsi usb"
+
+VER=`ls $BUILD/$1*/modules/lib/modules`
+
 case "$2" in
   image)
     test "$3" != installator && INSTALL="$INSTALL/boot"
@@ -17,12 +21,76 @@ case "$2" in
     esac
     ;;
 
-  modules)
-    $SCRIPTS/install module-init-tools
+  modules-ramfs)
+    $SCRIPTS/install module-init-tools $2
+
+    # add block subsystems drivers
+    for drv in $RAMFS_DRV_SUBSYSTEMS; do
+      DRV_PATH=lib/modules/$VER/kernel/drivers/$drv
+      if [ -d $BUILD/$1*/modules/$DRV_PATH ]; then
+        mkdir -p $INSTALL/$DRV_PATH
+        cp -r $BUILD/$1*/modules/$DRV_PATH/* $INSTALL/$DRV_PATH
+      fi
+    done
+
+    # add ethernet drivers (for PXE boot)
+    DRV_PATH=lib/modules/$VER/kernel/drivers/net
+    mkdir -p $INSTALL/$DRV_PATH
+    cp -r $BUILD/$1*/modules/$DRV_PATH/* $INSTALL/$DRV_PATH
+    rm -rf $INSTALL/$DRV_PATH/usb
+    rm -rf $INSTALL/$DRV_PATH/wireless
+
+    # add filesystem drivers
+    DRV_PATH=lib/modules/$VER/kernel/fs
+    mkdir -p $INSTALL/$DRV_PATH
+    cp -r $BUILD/$1*/modules/$DRV_PATH/* $INSTALL/$DRV_PATH
+    DRV_PATH=lib/modules/$VER/kernel/net/sunrpc
+    mkdir -p $INSTALL/$DRV_PATH
+    cp -r $BUILD/$1*/modules/$DRV_PATH/* $INSTALL/$DRV_PATH
+
+    # add lib drivers
+    DRV_PATH=lib/modules/$VER/kernel/lib
+    mkdir -p $INSTALL/$DRV_PATH
+    cp -r $BUILD/$1*/modules/$DRV_PATH/* $INSTALL/$DRV_PATH
+
+    # create RAMfs modules dependancies
+    $BUILD/module-init-tool*/host/depmod -b $INSTALL -v $VER > /dev/null
+    for i in `ls $INSTALL/lib/modules/*/modules.* | grep -v modules.dep | grep -v modules.alias | grep -v modules.symbols`; do
+      rm -f $i
+    done
+
+    # strip modules from RAMfs
+    for MOD in `find $INSTALL/lib/modules/ -name *.ko`; do
+      $STRIP --strip-debug $MOD
+    done
+    ;;
+
+  modules-stage2)
+    mkdir -p $INSTALL/lib/modules/$VER
+    cp -r $BUILD/$1*/modules/* $INSTALL
+    rm -f $INSTALL/lib/modules/$VER/modules.*
+
+    # remove all block subsystems modules that were already included in ramfs
+    for drv in $RAMFS_DRV_SUBSYSTEMS; do
+      rm -rf $INSTALL/lib/modules/$VER/kernel/drivers/$drv
+    done
+
+    # remove all network drivers modules that were already included in ramfs
+    rm -rf `find $INSTALL/lib/modules/$VER/kernel/drivers/net | grep -v wireless | grep -v usb`
+
+    # remove all filesystem drivers modules (already included in ramfs)
+    rm -rf $INSTALL/lib/modules/$VER/kernel/fs
+    rm -rf $INSTALL/lib/modules/$VER/kernel/net/sunrpc
+
+    # remove all lib drivers modules (already included in ramfs)
+    rm -rf $INSTALL/lib/modules/$VER/kernel/lib
+    ;;
+
+  config)
+    $SCRIPTS/install module-init-tools $2
 
     mkdir -p $INSTALL/sbin
     cp $PACKAGES/$1/scripts/setup_tvcard_options $INSTALL/sbin
-    cp -r $BUILD/$1*/modules/* $INSTALL
     mkdir -p $INSTALL/etc
     cp $PACKAGES/$1/config/modules $INSTALL/etc
     cp $PACKAGES/$1/config/tvcard $INSTALL/etc
