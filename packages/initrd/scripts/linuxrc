@@ -1,21 +1,8 @@
 #!/bin/sh
 
-busybox mount -t ramfs none /ramfs
-IFS='
-'
-for i in `busybox find /`; do
-  if busybox test -d $i; then
-    busybox mkdir -p /ramfs$i
-  else
-    busybox ln -s /initrd$i /ramfs$i
-  fi
-done
-
-busybox mkdir /ramfs/initrd
-busybox pivot_root /ramfs /ramfs/initrd
-busybox mkdir -p /proc /sys /usr/bin /usr/sbin /usr/lib
-busybox mount -t proc none /proc
-busybox mount -t sysfs none /sys
+/bin/mount -t proc none /proc
+/bin/mount -t sysfs none /sys
+busybox mknod /dev/null c 1 3
 busybox --install -s
 
 echo geexbox > /proc/sys/kernel/hostname
@@ -25,40 +12,12 @@ echo 0 > /proc/sys/dev/cdrom/lock
 export PATH=/bin:/sbin:/usr/bin:/usr/sbin
 
 progress() {
-  if test -f /proc/splash; then
-    echo "show $1" > /proc/splash
-  fi
+  [ -f /proc/splash ] && echo "show $1" > /proc/splash
   echo "### $2 ###"
 }
 
-progress 8000 "setting up ramfs tree"
-mkdir -p /dev
-mkdir -p /lib
-mkdir -p /mnt
-mkdir -p /tmp
-mkdir -p /root
-mkdir -p /var/run
-mkdir -p /var/log
-mkdir -p /var/lock
-
-echo -n "" > /etc/mtab
-echo -n "" > /etc/fstab
-echo -n "" > /etc/mnts
-
-echo > /proc/sys/kernel/hotplug
-udevd --daemon
-udevadm trigger
-udevadm settle --timeout=180
-
-grep -q hdtv /proc/cmdline && echo "" > /var/use_xorg
-grep -q installator /proc/cmdline && INSTALLATOR=yes && echo "" > /var/use_xorg
-grep -q configure /proc/cmdline && CONFIGURATOR=yes
-grep -q debugging /proc/cmdline && DEBUG=yes
-BOOT=`sed 's/.*boot=\([^\ ]*\).*/\1/' /proc/cmdline`
-
-if test "$BOOT" = nfs; then
-  progress 11000 "getting nfs tree"
-  NFS=`sed 's/.*nfsroot=\([^\ ]*\).*/\1/' /proc/cmdline`
+boot_from_nfs () {
+  progress 11000 "Getting NFS tree"
   GEEXBOX=/nfs
   mkdir -p $GEEXBOX
   udhcpc -q -H geexbox -n && mount -t nfs -o ro,nolock $NFS $GEEXBOX
@@ -67,10 +26,10 @@ if test "$BOOT" = nfs; then
     rmdir $GEEXBOX
     GEEXBOX=
   fi
-fi
+}
 
-progress 12000 "searching cdrom drives"
-if [ "$BOOT" = cdrom ]; then
+boot_from_cdrom () {
+  progress 11000 "Searching for CD-ROM drives"
   for i in 0 1 2 3 4 5 6 7 8 9; do
     for DEV in `grep '^/dev/cdrom' /etc/mnts | cut -f1`; do
       CDROM=`grep "^$DEV	" /etc/mnts | cut -f2-`
@@ -83,26 +42,82 @@ if [ "$BOOT" = cdrom ]; then
     [ -n "$GEEXBOX" ] && break
     sleep 1
   done
-fi
-[ ! -e /dev/cdrom -a -b /dev/cdrom1 ] && ln -s /dev/cdrom1 /dev/cdrom
+  [ ! -e /dev/cdrom -a -b /dev/cdrom1 ] && ln -s /dev/cdrom1 /dev/cdrom
+}
 
-if [ "$BOOT" != cdrom -a "$BOOT" != nfs ]; then
-  if [ "$INSTALLATOR" != yes ]; then
-    progress 17000 "boot device detection"
-    for i in 0 1 2 3 4 5 6 7 8 9; do
-      [ -z "$BOOTDISK" ] && BOOTDISK=`cd /dev; ls -l $BOOT | sed 's/.* \([^ ]*\)$/\1/'`
-      [ -n "$BOOTDISK" ] && grep -q "^/dev/$BOOTDISK " /proc/mounts && break
-      sleep 1
-    done
-    for DEV in `grep '^/dev/disk' /etc/mnts | cut -f1`; do
-      DIR=`grep "^$DEV	" /etc/mnts | cut -f2-`
-      if [ -d "$DIR/GEEXBOX" ]; then
-        GEEXBOX="$DIR/GEEXBOX"
-        [ "/dev/$BOOTDISK" = "$DEV" ] && break
-      fi
-    done
-  fi
-fi
+boot_from_hdd () {
+  progress 11000 "HDD Boot Device Detection"
+  for i in 0 1 2 3 4 5 6 7 8 9; do
+    grep -q "^/dev/$BOOT_DEV " /proc/mounts && break
+    sleep 1
+  done
+  for DEV in `grep '^/dev/disk' /etc/mnts | cut -f1`; do
+    DIR=`grep "^$DEV	" /etc/mnts | cut -f2-`
+    if [ -d "$DIR/GEEXBOX" ]; then
+      GEEXBOX="$DIR/GEEXBOX"
+      [ "/dev/$BOOT_DEV" = "$DEV" ] && break
+    fi
+  done
+}
+
+echo > /proc/sys/kernel/hotplug
+udevd --daemon
+udevadm trigger
+udevadm settle --timeout=180
+udevadm monitor 2>&1 >/var/log/udev &
+
+# parse command line arguments
+for arg in $(cat /proc/cmdline); do
+  case $arg in
+    boot=*)
+      BOOT="${arg#boot=}"
+      case $BOOT in
+        UUID=*)
+          BOOT_DEV="/dev/storage/by-uuid/${BOOT#UUID=}"
+          BOOT=hdd
+          ;;
+        *)
+          if [ "$BOOT" != cdrom -a "$BOOT" != nfs ]; then
+            BOOT_DEV=$BOOT
+            BOOT=hdd
+          fi
+          ;;
+      esac
+      ;;
+    nfsroot=*)
+      NFS="${arg#nfsroot=}"
+      ;;
+    hdtv)
+      XORG=yes
+      ;;
+    installator)
+      INSTALLATOR=yes
+      XORG=yes
+      ;;
+    configure)
+      CONFIGURATOR=yes
+      ;;
+    debugging)
+      DEBUG=yes
+      ;;
+  esac
+done
+
+# determine if we use X.Org or not
+[ "$XORG" = yes ] && echo "" > /var/use_xorg
+
+# select boot device for 2nd stage
+case "$BOOT" in
+  nfs)
+    boot_from_nfs
+    ;;
+  cdrom)
+    boot_from_cdrom
+    ;;
+  hdd)
+    boot_from_hdd
+    ;;
+esac
 
 if test -n "$GEEXBOX" ; then
   progress 25000 "copying system into ram"
@@ -128,6 +143,9 @@ else
   progress 65535 "cleaning ram disk"
 fi
 
+# Rebuild module dependancies (initramfs + bin archive)
+depmod -a
+
 udevadm trigger
 udevadm settle --timeout=180
 
@@ -139,9 +157,7 @@ if test "$BOOT" = nfs; then
   fi
 fi
 
-if test "$BOOT" = cdrom; then
-  export CDROM="${GEEXBOX%/GEEXBOX}"
-fi
+[ "$BOOT" = cdrom ] && export CDROM="${GEEXBOX%/GEEXBOX}"
 
 RUNLEVEL="geexbox"
 if test "$INSTALLATOR" = yes; then
@@ -152,9 +168,7 @@ elif test "$CONFIGURATOR" = yes; then
   RUNLEVEL="configure"
 fi
 
-if test "$DEBUG" = yes; then
-  /sbin/console </dev/tty2 >/dev/tty2 2>&1 &
-fi
+[ "$DEBUG" = yes ] && /sbin/console </dev/tty2 >/dev/tty2 2>&1 &
 /bin/sh $INIT $RUNLEVEL </dev/tty1 >/dev/tty1 2>&1
 
 if test "$INSTALLATOR" = yes; then

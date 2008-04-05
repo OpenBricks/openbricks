@@ -13,25 +13,27 @@ case "$2" in
   *)
     mkdir -p $INSTALL/boot/pxelinux.cfg
     cp $BUILD/$1*/isolinux.bin $INSTALL/boot
-    cp $PACKAGES/$1/config/isolinux.cfg $INSTALL/boot
+    if [ -n "$BOOT_DEFAULT" ]; then
+      grep -v ".*MENU DEFAULT$" $PACKAGES/$1/config/isolinux.cfg > $INSTALL/boot/isolinux.cfg
+      sed -i "s%\(.*\)\(LABEL $BOOT_DEFAULT\)$%\1\2\n\1  MENU DEFAULT%" $INSTALL/boot/isolinux.cfg
+    else
+      cp $PACKAGES/$1/config/isolinux.cfg $INSTALL/boot
+    fi
+    [ "$XORG" = yes ] && HDTV_PARAMS="^#HD#" || HDTV_PARAMS="^#HD#.*"
+    sed -i s%$HDTV_PARAMS%% $INSTALL/boot/isolinux.cfg
     sed -i s%remote=default_remote%remote=$REMOTE% $INSTALL/boot/isolinux.cfg
     sed -i s%receiver=default_receiver%receiver=$RECEIVER% $INSTALL/boot/isolinux.cfg
     sed -i s%keymap=qwerty%keymap=$KEYMAP% $INSTALL/boot/isolinux.cfg
     sed -i s%lang=en%lang=$MENU_LANG% $INSTALL/boot/isolinux.cfg
-    cp $PACKAGES/$1/config/boot.msg $INSTALL/boot
     cp $PACKAGES/$1/config/help.msg $INSTALL/boot
     cp $BUILD/$1*/pxelinux.0 $INSTALL/boot
-    [ -n "$BOOT_DEFAULT" ] && sed -i "s/DEFAULT .*/DEFAULT $BOOT_DEFAULT/" $INSTALL/boot/isolinux.cfg
     [ "$VMWARE" = yes ] && sed -i "s/vga=789/vga=788/g" $INSTALL/boot/isolinux.cfg
+    sed -i s%release-nr%$GEEXBOX_VERSION% $INSTALL/boot/isolinux.cfg
     sed "s/boot=[^ ]*/boot=nfs/" $INSTALL/boot/isolinux.cfg > $INSTALL/boot/pxelinux.cfg/default
     sed -i "s%\(.*APPEND.*\)%\1 nfsroot=$DEFAULT_NFS_SERVER:$DEFAULT_NFS_DIR.$VERSION_SUFFIX%" $INSTALL/boot/pxelinux.cfg/default
-    sed -i s%release-nr%$GEEXBOX_VERSION% $INSTALL/boot/boot.msg
 
-    if [ "$2" != generator ]; then
-      $SCRIPTS/unpack theme-$THEME
-
-      [ -f $BUILD/theme-$THEME/splash-isolinux.rle ] && cp $BUILD/theme-$THEME/splash-isolinux.rle $INSTALL/boot/splash.rle
-    fi
+    cp $BUILD/$1*/com32/menu/vesamenu.c32 $INSTALL/boot
+    cp $PACKAGES/$1/config/splash.png $INSTALL/boot
     ;;
 esac
 

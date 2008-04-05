@@ -123,7 +123,7 @@ setup_grub () {
 
   # now setup installation specific options
   sed -i "s/_ROOTDEV_SINGLE_/$rootdev_single/g" $1
-  sed -i "s/_DEVNAME_/$DEVNAME/g" $1
+  sed -i "s/_DEVNAME_/UUID=${DEV_UUID}/g" $1
 }
 
 cmdline_default () {
@@ -168,7 +168,15 @@ echo 0 > /proc/sys/kernel/printk
 setup_keymap
 
 while true; do
-  DISKS=`cat /proc/partitions | sed -n "s/\ *[0-9][0-9]*\ *[0-9][0-9]*\ *\([0-9][0-9]*\)\ \([a-z]*\)$/\2 (\1_blocks)/p"`
+  DISKS=""
+  for i in `cat /proc/partitions | sed -n "s/\ *[0-9][0-9]*\ *[0-9][0-9]*\ *[0-9][0-9]*\ \([a-z]*\)$/\1/p"`; do
+    S=`sfdisk -s /dev/$i | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
+    VENDOR=`cat /sys/block/$i/device/vendor`
+    MODEL=`cat /sys/block/$i/device/model`
+    DISKNAME=`echo $VENDOR $MODEL ${S}MB | sed 's/ /_/g'`
+    DISKS="$DISKS $i $DISKNAME"
+  done
+
   if [ -z "$DISKS" ]; then
     dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_ERROR" --yesno "\n${MSG_DISK_NOT_FOUND}" 0 0 || exit 1
   else
@@ -208,12 +216,18 @@ while [ ! -b "$DEV" ]; do
     case `sfdisk --print-id ${i%%[0-9]*} ${i#${i%%[0-9]*}}` in
       1|11|6|e|16|1e|b|c|1b|1c) #FAT12/16/32 are supported both in syslinux and grub.
         S=`sfdisk -s "$i" | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
-        DISKS="$DISKS $i ${S}MB"
+        VENDOR=`cat /sys/block/$DISK/device/vendor`
+        MODEL=`cat /sys/block/$DISK/device/model`
+        DISKNAME=`echo $VENDOR $MODEL ${S}MB | sed 's/ /_/g'`
+        DISKS="$DISKS $i $DISKNAME"
         ;;
       83) #Linux is supported only in grub.
         if [ $BOOTLOADER = grub ]; then
           S=`sfdisk -s "$i" | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
-          DISKS="$DISKS $i ${S}MB"
+          VENDOR=`cat /sys/block/$DISK/device/vendor`
+          MODEL=`cat /sys/block/$DISK/device/model`
+          DISKNAME=`echo $VENDOR $MODEL ${S}MB | sed 's/ /_/g'`
+          DISKS="$DISKS $i $DISKNAME"
         fi
         ;;
     esac
@@ -322,6 +336,23 @@ elif [ "$NEED_FORMAT" = yes ]; then
   exit 1
 fi
 
+# restart UDEV scan to get device UUID if
+# user just created/formatted a new disk/partition
+udevadm trigger
+udevadm settle --timeout=180
+
+DEV_REALNAME=`ls -l $DEV | sed "s/.*-> \(.*\)/\1/"`
+for dev in `ls /dev/storage/by-uuid/*`; do
+  NAME=`ls -l "$dev" | sed "s/.*-> \(.*\)/\1/" | sed 's%../../%%'`
+  if [ "$NAME" = "$DEV_REALNAME" ]; then
+    DEV_UUID=`echo $dev | sed 's%/dev/storage/by-uuid/%%'`
+    break
+  fi
+done
+
+# ensure UDEV hasn't remounted the install partition
+umount /dev/$NAME
+
 mount -t $MKFS_TYPE "$DEV" di
 if [ $? -ne 0 ]; then
   dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_ERROR" --msgbox "\n${MSG_INSTALL_MOUNT_FAILED} '$DEV' ($MKFS_TYPENAME).\n" 0 0
@@ -346,7 +377,7 @@ if [ "$FASTBOOT" = "yes" ]; then
 fi
 
 cd di/GEEXBOX/boot
-mv vmlinuz initrd.gz isolinux.cfg boot.msg help.msg splash.rle ../../
+mv vmlinuz initrd.gz isolinux.cfg vesamenu.c32 help.msg splash.png ../../
 cd ../../../
 rm -rf di/GEEXBOX/boot
 
@@ -381,11 +412,12 @@ splashimage="$grubprefix/grub-splash.xpm.gz"
 
 if [ $BOOTLOADER = syslinux ]; then
   cp "di/GEEXBOX/usr/share/ldlinux.sys" di
-  sed -e "s/boot=cdrom/boot=${DEV#/dev/}/" di/isolinux.cfg > di/syslinux.cfg
+  sed -e "s/boot=cdrom/boot=UUID=${DEV_UUID}/" di/isolinux.cfg > di/syslinux.cfg
+  sed -i s%^#CFG#%% di/syslinux.cfg
   rm di/isolinux.cfg
 elif [ $BOOTLOADER = grub ]; then
   cp $grubdir/stage2 $grubdir/stage2_single
-  rm di/isolinux.cfg di/boot.msg di/help.msg di/splash.rle
+  rm di/isolinux.cfg di/vesamenu.c32 di/help.msg di/splash.png
 fi
 
 if [ $TYPE = HDD ]; then
