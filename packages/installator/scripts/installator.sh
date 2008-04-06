@@ -1,5 +1,6 @@
 #!/bin/sh
 
+LOGFILE=/tmp/install.log
 USE_XORG=no
 
 # Detect whether partition ($1) mounted at ($2) with type ($3) is microsoft.
@@ -328,7 +329,8 @@ if [ "$FORMAT" = yes ]; then
       dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_WARNING" --msgbox "\n'$DEV' $MSG_INSTALL_FORMAT_BAD_TYPE $MKFS_TYPENAME. ${MSG_INSTALL_FORMAT_NO_TOOLS}. ${MSG_INSTALL_FORMAT_ALREADY}\n" 0 0
     fi
   else
-    $MKFS $MKFS_OPT "$DEV"
+    echo "$MKFS $MKFS_OPT \"$DEV\"" >> $LOGFILE
+    $MKFS $MKFS_OPT "$DEV" >> $LOGFILE 2>&1
   fi
 elif [ "$NEED_FORMAT" = yes ]; then
   dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_ERROR" --msgbox "\n${MSG_INSTALL_DEV_NO_FORMAT} ('$DEV')\n" 0 0
@@ -367,13 +369,13 @@ else
 fi
 
 rm -rf di/GEEXBOX
-cp -a "$GEEXBOX" di/GEEXBOX
+cp -a "$GEEXBOX" di/GEEXBOX >> $LOGFILE 2>&1 
 
 [ "$PART_TYPE" = "Linux" ] && dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_BOOT_SLEEPLESS" --defaultno --yesno "\n${MSG_BOOT_SLEEPLESS_DESC}\n" 0 0 && FASTBOOT=yes && echo "" > "di/GEEXBOX/var/fastboot"
 
 if [ "$FASTBOOT" = "yes" ]; then
   dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_BOOT_LARGE_HDD" --defaultno --yesno "\n${MSG_BOOT_LARGE_HDD_DESC}\n" 0 0 && UNCOMPRESS_INSTALL=yes && rm di/GEEXBOX/bin.tar.lzma
-  [ "$UNCOMPRESS_INSTALL" = "yes" -a -f "$GEEXBOX/bin.tar.lzma" ] && tar xaf "$GEEXBOX/bin.tar.lzma" -C di/GEEXBOX
+  [ "$UNCOMPRESS_INSTALL" = "yes" -a -f "$GEEXBOX/bin.tar.lzma" ] && tar xaf "$GEEXBOX/bin.tar.lzma" -C di/GEEXBOX >> $LOGFILE 2>&1
 fi
 
 cd di/GEEXBOX/boot
@@ -400,7 +402,7 @@ device_map=$grubdir/device.map
 
 rm -rf $grubdir
 mkdir -p $grubdir
-[ -f "di/GEEXBOX/usr/share/grub-i386-pc.tar.lzma" ] && tar xaf "di/GEEXBOX/usr/share/grub-i386-pc.tar.lzma" -C $grubdir
+[ -f "di/GEEXBOX/usr/share/grub-i386-pc.tar.lzma" ] && tar xaf "di/GEEXBOX/usr/share/grub-i386-pc.tar.lzma" -C $grubdir >> $LOGFILE 2>&1
 
 if [ -f "di/GEEXBOX/usr/share/grub-splash.xpm.gz" ]; then
   cp -f "di/GEEXBOX/usr/share/grub-splash.xpm.gz" $grubdir || exit 1
@@ -415,13 +417,16 @@ if [ $BOOTLOADER = syslinux ]; then
   sed -e "s/boot=cdrom/boot=UUID=${DEV_UUID}/" di/isolinux.cfg > di/syslinux.cfg
   sed -i s%^#CFG#%% di/syslinux.cfg
   rm di/isolinux.cfg
+
+  echo "*** Syslinux.cfg ***" >> $LOGFILE
+  cat di/syslinux.cfg >> $LOGFILE
 elif [ $BOOTLOADER = grub ]; then
   cp $grubdir/stage2 $grubdir/stage2_single
   rm di/isolinux.cfg di/vesamenu.c32 di/help.msg di/splash.png
 fi
 
 if [ $TYPE = HDD ]; then
-  echo "quit" | grub --batch --no-floppy --device-map=$device_map 2>&1 > /dev/null
+  echo "quit" | grub --batch --no-floppy --device-map=$device_map >> $LOGFILE 2>&1
 elif [ $TYPE = REMOVABLE ]; then
   echo "(hd0) ${DEV%%[0-9]*}" > $device_map
 fi
@@ -437,7 +442,7 @@ fi
 
 if [ $BOOTLOADER = syslinux ]; then
   umount di
-  syslinux "$DEV" 2>&1 > /dev/null
+  syslinux "$DEV" >> $LOGFILE 2>&1
   mount -t $MKFS_TYPE "$DEV" di
 elif [ $BOOTLOADER = grub ]; then
   if [ $TYPE = HDD ]; then
@@ -448,7 +453,13 @@ elif [ $BOOTLOADER = grub ]; then
     fake_device="device $rootdev_single $DEV"
   fi
 
-  grub --batch --no-floppy --device-map=$device_map <<EOF
+  echo "grub --batch --no-floppy --device-map=$device_map" >> $LOGFILE
+  echo "$fake_device" >> $LOGFILE
+  echo "root $rootdev_single" >> $LOGFILE
+  echo "install --stage2=$grubdir/stage2_single $grubprefix/stage1 $rootdev_single $grubprefix/stage2_single p $grubprefix/single.lst" >> $LOGFILE
+  echo "" >> $LOGFILE
+
+  grub --batch --no-floppy --device-map=$device_map >> $LOGFILE 2>&1 <<EOF
 $fake_device
 root $rootdev_single
 install --stage2=$grubdir/stage2_single $grubprefix/stage1 $rootdev_single $grubprefix/stage2_single p $grubprefix/single.lst
@@ -463,6 +474,9 @@ ${disable_splashimage}splashimage=$rootdev_single$splashimage
 EOF
 
   setup_grub $grubdir/single.lst
+
+  echo "*** GRUB Single.lst ***" >> $LOGFILE
+  cat $grubdir/single.lst >> $LOGFILE
 fi
 
 if [ $TYPE = HDD ]; then
@@ -493,7 +507,13 @@ elif [ $TYPE = REMOVABLE ]; then
 fi
 
 if [ "$MBR" = "yes" ]; then
-  grub --batch --no-floppy --device-map=$device_map <<EOF
+
+  echo "grub --batch --no-floppy --device-map=$device_map" >> $LOGFILE
+  echo "root $rootdev" >> $LOGFILE
+  echo "setup --stage2=$grubdir/stage2 --prefix=$grubprefix (hd0)" >> $LOGFILE
+  echo "" >> $LOGFILE
+
+  grub --batch --no-floppy --device-map=$device_map >> $LOGFILE 2>&1 <<EOF
 root $rootdev
 setup --stage2=$grubdir/stage2 --prefix=$grubprefix (hd0)
 EOF
@@ -543,6 +563,9 @@ EOF
   IFS=$saveifs
 
   setup_grub $grubdir/menu.lst
+
+  echo "*** GRUB menu.lst ***" >> $LOGFILE
+  cat $grubdir/menu.lst >> $LOGFILE
 else
   dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_BOOTLOADER" --msgbox "\n${MSG_LOADER_ERROR}\n" 0 0
 fi
@@ -551,5 +574,7 @@ umount di
 rmdir di
 
 [ -n "$CDROM" ] && eject -s &
+
+dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_LOG" --defaultno --yesno "$MSG_LOG_DESC" 0 0 && dialog --textbox $LOGFILE 0 0
 
 dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_SUCCESS" --yesno "\n${MSG_SUCCESS_DESC_BEGIN} '$DEV' !! ${MSG_SUCCESS_DESC_END}\n" 0 0 && configure
