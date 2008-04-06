@@ -550,6 +550,6 @@ fi
 umount di
 rmdir di
 
-[ -n "$CDROM" ] && eject &
+[ -n "$CDROM" ] && eject -s &
 
 dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_SUCCESS" --yesno "\n${MSG_SUCCESS_DESC_BEGIN} '$DEV' !! ${MSG_SUCCESS_DESC_END}\n" 0 0 && configure
