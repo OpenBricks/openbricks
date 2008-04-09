@@ -26,6 +26,18 @@ boot_from_nfs () {
   fi
 }
 
+boot_from_smb () {
+  progress 11000 "Getting SMB tree"
+  GEEXBOX=/smb
+  mkdir -p $GEEXBOX
+  udhcpc -q -H geexbox -n && mount $SMB $GEEXBOX -t cifs -o "ro,iocharset=utf8,user=$SMBUSER,pass=$SMBPASS"
+  if [ ! -f "$GEEXBOX/bin.tar.lzma" -a ! -f "$GEEXBOX/usr/bin/mplayer" ]; then
+    umount $GEEXBOX
+    rmdir $GEEXBOX
+    GEEXBOX=
+  fi
+}
+
 boot_from_cdrom () {
   progress 11000 "Searching for CD-ROM drives"
   for i in 0 1 2 3 4 5 6 7 8 9; do
@@ -78,7 +90,7 @@ for arg in $(cat /proc/cmdline); do
           BOOT=hdd
           ;;
         *)
-          if [ "$BOOT" != cdrom -a "$BOOT" != nfs ]; then
+          if [ "$BOOT" != cdrom -a "$BOOT" != nfs -a "$BOOT" != smb ]; then
             BOOT_DEV=$BOOT
             BOOT=hdd
           fi
@@ -87,6 +99,15 @@ for arg in $(cat /proc/cmdline); do
       ;;
     nfsroot=*)
       NFS="${arg#nfsroot=}"
+      ;;
+    smbroot=*)
+      SMB="${arg#smbroot=}"
+      ;;
+    smbuser=*)
+      SMBUSER="${arg#smbuser=}"
+      ;;
+    smbpass=*)
+      SMBPASS="${arg#smbpass=}"
       ;;
     hdtv)
       XORG=yes
@@ -111,6 +132,9 @@ done
 case "$BOOT" in
   nfs)
     boot_from_nfs
+    ;;
+  smb)
+    boot_from_smb
     ;;
   cdrom)
     boot_from_cdrom
@@ -150,9 +174,10 @@ depmod -a
 udevadm trigger
 udevadm settle --timeout=180
 
-if test "$BOOT" = nfs; then
+if test "$BOOT" = nfs -o "$BOOT" = smb; then
   if test "$INSTALLATOR" = yes; then
     export NFS="$GEEXBOX"
+    export SMB="$GEEXBOX"
   elif test -n "$GEEXBOX"; then
     umount "$GEEXBOX"
   fi
