@@ -362,8 +362,8 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
-if [ -n "$NFS" ]; then
-  GEEXBOX="$NFS"
+if [ -n "$NET" ]; then
+  GEEXBOX="$NET"
 else
   GEEXBOX="$CDROM/GEEXBOX"
 fi
