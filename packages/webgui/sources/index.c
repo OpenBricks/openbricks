@@ -33,6 +33,7 @@ void printMenu2system();
 void printMenu2player();
 void printPageSystem();
 void printPagePlayer();
+int isInternetExplorerUserAgent();
 
 
 int main(int argc, char *argv[]) {
@@ -165,7 +166,12 @@ void printPagePlayer() {
 }
 
 void printPageHead() {
-	printf("Content-type: application/xhtml+xml\n\n");
+	/* Internet Explorer all versions can't handle properly XHTML 1.1 */
+	if (isInternetExplorerUserAgent())
+		printf("Content-type: text/html\n\n");
+	else
+		printf("Content-type: application/xhtml+xml\n\n");
+
 	printf("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
 	printf("<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.1//EN\" \"http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd\">\n");
 	printf("<html xmlns=\"http://www.w3.org/1999/xhtml\"\n");
@@ -201,4 +207,14 @@ const char * getMenuLevel2() {
 
 void setMenuLevel2(const char *data) {
 	setFileContent(MENU2_DIR, data);
+}
+
+int isInternetExplorerUserAgent() {
+	if (!cgi_http_user_agent)
+		return 0;
+
+	if (strstr(cgi_http_user_agent, "MSIE"))
+		return 1;
+
+	return 0;
 }
