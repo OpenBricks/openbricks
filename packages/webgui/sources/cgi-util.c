@@ -40,6 +40,7 @@ int cgi_num_cookies = 0;
 int cgi_errno = CGIERR_NONE;
 int cgi_request_method = CGIREQ_NONE;
 int cgi_content_type = CGITYPE_NONE;
+char * cgi_http_user_agent = NULL;
 char * cgi_query = NULL;
 
 
@@ -145,6 +146,7 @@ int cgi_init(void)
 {
   int cl, i, in_multipart_headers, which_entry, length_gotten, in_name;
   char * boundary;
+  char * user_agent;
   
   
   /* Default, no errors, no name/value pairs ("entries"): */
@@ -154,6 +156,10 @@ int cgi_init(void)
   length_gotten = 0;
  
   cgi_parse_cookies();
+
+  user_agent = getenv("HTTP_USER_AGENT");
+  if (user_agent)
+    cgi_http_user_agent = strdup(user_agent);
  
   
   /* Check for REQUEST_METHOD (set by HTTP server): */
@@ -606,6 +612,8 @@ void cgi_quit(void)
   if (cgi_cookies != NULL)
     free(cgi_cookies);
 
+  if (cgi_http_user_agent != NULL)
+    free(cgi_http_user_agent);
   
   cgi_entries = NULL;
   cgi_num_entries = 0;

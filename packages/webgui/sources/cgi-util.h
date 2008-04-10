@@ -110,6 +110,12 @@ enum {
 
 extern int cgi_content_type;
 
+/*
+  User-Agent:
+*/
+
+extern char * cgi_http_user_agent;
+
 
 /*
   Initializes CGI - receives form data (via either "post" or "get" method).
