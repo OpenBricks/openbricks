@@ -1,19 +1,23 @@
 diff -Naur linux-2.6.23-rc9.orig/arch/i386/boot/compressed/lzma_misc.c linux-2.6.23-rc9/arch/i386/boot/compressed/lzma_misc.c
 --- linux-2.6.23-rc9.orig/arch/x86/boot/compressed/lzma_misc.c	1970-01-01 01:00:00.000000000 +0100
 +++ linux-2.6.23-rc9/arch/x86/boot/compressed/lzma_misc.c	2007-10-06 12:29:58.000000000 +0200
-@@ -0,0 +1,293 @@
+@@ -0,0 +1,279 @@
 +/*
 + * lzma_misc.c
 + * 
-+ * Decompress LZMA compressed vmlinuz
-+ * Version 0.9 Copyright (c) Ming-Ching Tiew mctiew@yahoo.com
-+ * Program adapted from misc.c for 2.6.20.1 kernel
-+ * Please refer to misc.c for authorship and copyright.
-+ * Date: 25 March 2007
++ * Decompress LZMA compressed vmlinuz 
++ * Version 0.91 Copyright (c) Ming-Ching Tiew mctiew@yahoo.com
++ * Program adapted from misc.c for 2.6 kernel
++ * Date: 5 Feb 2008 for kernel 2.6.24-git14
 + * Source released under GPL
 + */
 +
 +#undef CONFIG_PARAVIRT
++#ifdef CONFIG_X86_64
++#define _LINUX_STRING_H_ 1
++#define __LINUX_BITMAP_H 1
++#endif
++
 +#include <linux/linkage.h>
 +#include <linux/vmalloc.h>
 +#include <linux/screen_info.h>
@@ -21,46 +25,27 @@ diff -Naur linux-2.6.23-rc9.orig/arch/i386/boot/compressed/lzma_misc.c linux-2.6
 +#include <asm/page.h>
 +#include <asm/boot.h>
 +
-+/* WARNING!!
-+ * This code is compiled with -fPIC and it is relocated dynamically
-+ * at run time, but no relocation processing is performed.
-+ * This means that it is not safe to place pointers in static structures.
-+ */
-+
 +#define OF(args)  args
 +#define STATIC static
 +
 +#undef memset
 +#undef memcpy
++#define memzero(s, n)     memset ((s), 0, (n))
++static void* memcpy(void *, __const void *, unsigned n);
 +
 +typedef unsigned char  uch;
 +typedef unsigned short ush;
 +typedef unsigned long  ulg;
 +
-+#define WSIZE 0x80000000	/* Window size must be at least 32k,
-+				 * and a power of two
-+				 * We don't actually have a window just
-+				 * a huge output buffer so I report
-+				 * a 2G windows size, as that should
-+				 * always be larger than our output buffer.
-+				 */
++#define WSIZE 0x8000		/* Window size must be at least 32k, */
++				/* and a power of two */
 +
-+static uch *inbuf;	/* input buffer */
-+static uch *window;	/* Sliding window buffer, (and final output buffer) */
++static uch *inbuf;	     /* input buffer */
 +
-+static unsigned insize;  /* valid bytes in inbuf */
-+static unsigned inptr;   /* index of next byte to be processed in inbuf */
++static unsigned insize = 0;  /* valid bytes in inbuf */
++static unsigned inptr = 0;   /* index of next byte to be processed in inbuf */
 +
-+/* gzip flag byte */
-+#define ASCII_FLAG   0x01 /* bit 0 set: file probably ASCII text */
-+#define CONTINUATION 0x02 /* bit 1 set: continuation of multi-part gzip file */
-+#define EXTRA_FIELD  0x04 /* bit 2 set: extra field present */
-+#define ORIG_NAME    0x08 /* bit 3 set: original file name present */
-+#define COMMENT      0x10 /* bit 4 set: file comment present */
-+#define ENCRYPTED    0x20 /* bit 5 set: file is encrypted */
-+#define RESERVED     0xC0 /* bit 6,7:   reserved */
-+
-+#define get_byte()  (inptr < insize ? inbuf[inptr++] : fill_inbuf())
++#define get_byte()  inbuf[inptr++]
 +		
 +/* Diagnostic functions */
 +#ifdef DEBUG
@@ -79,7 +64,6 @@ diff -Naur linux-2.6.23-rc9.orig/arch/i386/boot/compressed/lzma_misc.c linux-2.6
 +#  define Tracecv(c,x)
 +#endif
 +
-+static int  fill_inbuf(void);
 +static void error(char *m);
 +  
 +/*
@@ -93,27 +77,26 @@ diff -Naur linux-2.6.23-rc9.orig/arch/i386/boot/compressed/lzma_misc.c linux-2.6
 +#endif
 +#define RM_SCREEN_INFO (*(struct screen_info *)(real_mode+0))
 +
-+extern unsigned char input_data[];
-+extern int input_len;
-+
-+static long bytes_out = 0;
-+
-+static void *memcpy(void *dest, const void *src, unsigned n);
-+
 +static void putstr(const char *);
 +
-+static unsigned long free_mem_ptr;
-+static unsigned long free_mem_end_ptr;
++#ifdef CONFIG_X86_64
++#define memptr long
++#else
++#define memptr unsigned
++#endif
 +
-+#define HEAP_SIZE             0x3000
++static memptr free_mem_ptr;
++static memptr free_mem_end_ptr;
++
++#ifdef CONFIG_X86_64
++#define HEAP_SIZE             0x7000
++#else
++#define HEAP_SIZE             0x4000
++#endif
 +
 +static char *vidmem = (char *)0xb8000;
 +static int vidport;
 +static int lines, cols;
-+
-+#ifdef CONFIG_X86_NUMAQ
-+void *xquad_portio;
-+#endif
 +
 +static void scroll(void)
 +{
@@ -129,6 +112,11 @@ diff -Naur linux-2.6.23-rc9.orig/arch/i386/boot/compressed/lzma_misc.c linux-2.6
 +	int x,y,pos;
 +	char c;
 +
++#ifdef CONFIG_X86_32
++        if (RM_SCREEN_INFO.orig_video_mode == 0 && lines == 0 && cols == 0)
++               return;
++#endif
++
 +	x = RM_SCREEN_INFO.orig_x;
 +	y = RM_SCREEN_INFO.orig_y;
 +
@@ -140,7 +128,7 @@ diff -Naur linux-2.6.23-rc9.orig/arch/i386/boot/compressed/lzma_misc.c linux-2.6
 +				y--;
 +			}
 +		} else {
-+			vidmem [ ( x + cols * y ) * 2 ] = c;
++			vidmem [ ( x + cols * y ) * 2 ] = c; 
 +			if ( ++x >= cols ) {
 +				x = 0;
 +				if ( ++y >= lines ) {
@@ -155,33 +143,22 @@ diff -Naur linux-2.6.23-rc9.orig/arch/i386/boot/compressed/lzma_misc.c linux-2.6
 +	RM_SCREEN_INFO.orig_y = y;
 +
 +	pos = (x + cols * y) * 2;	/* Update cursor position */
-+	outb_p(14, vidport);
-+	outb_p(0xff & (pos >> 9), vidport+1);
-+	outb_p(15, vidport);
-+	outb_p(0xff & (pos >> 1), vidport+1);
++	outb(14, vidport);
++	outb(0xff & (pos >> 9), vidport+1);
++	outb(15, vidport);
++	outb(0xff & (pos >> 1), vidport+1);
 +}
 +
 +static void* memcpy(void* dest, const void* src, unsigned n)
 +{
 +	int i;
-+	char *d = (char *)dest, *s = (char *)src;
++	const char *s = src;
++	char *d = dest;
 +
 +	for (i=0;i<n;i++) d[i] = s[i];
 +	return dest;
 +}
 +
-+/* ===========================================================================
-+ * Fill the input buffer. This is called only when the buffer is empty
-+ * and at least one byte is really needed.
-+ */
-+static int fill_inbuf(void)
-+{
-+	error("ran out of input data");
-+	return 0;
-+}
-+
-+/* ===========================================================================
-+ */
 +static void error(char *x)
 +{
 +	putstr("\n\n");
@@ -191,16 +168,21 @@ diff -Naur linux-2.6.23-rc9.orig/arch/i386/boot/compressed/lzma_misc.c linux-2.6
 +	while(1);	/* Halt */
 +}
 +
++#ifdef CONFIG_X86_NUMAQ
++void *xquad_portio;
++#endif
++
 +#define _LZMA_IN_CB
 +#include "LzmaDecode.h"
 +#include "LzmaDecode.c"
 +
 +static int read_byte(void *object, const unsigned char **buffer, SizeT *bufferSize);
 +
++
 +/*
 + * Do the lzma decompression
 + */
-+static int lzma_unzip(uch* output)
++static int lzma_unzip( uch* output )
 +{
 +
 +	unsigned int i;
@@ -227,16 +209,15 @@ diff -Naur linux-2.6.23-rc9.orig/arch/i386/boot/compressed/lzma_misc.c linux-2.6
 +        // skip high order bytes
 +        for (i = 0; i < 4; i++) 
 +        	get_byte();
-+
-+	// Just point it beyond
-+        state.Probs = (CProb*) ( free_mem_ptr );
++        	
++        // point it beyond uncompresedSize
++        state.Probs = (CProb*) (free_mem_ptr);
 +	// decompress kernel
 +	if (LzmaDecode( &state, &callback,
-+	   (unsigned char*)output, uncompressedSize, &i) == LZMA_RESULT_OK)
++	   output, uncompressedSize, &i) == LZMA_RESULT_OK)
 +	{
 +		if ( i != uncompressedSize )
 +		   error( "kernel corrupted!\n");
-+		bytes_out = i;
 +		return 0;
 +	}
 +	return 1;
@@ -255,7 +236,7 @@ diff -Naur linux-2.6.23-rc9.orig/arch/i386/boot/compressed/lzma_misc.c linux-2.6
 +	return LZMA_RESULT_OK;
 +}	
 +
-+asmlinkage void decompress_kernel(void *rmode, unsigned long end,
++asmlinkage void decompress_kernel(void *rmode, memptr heap,
 +			uch *input_data, unsigned long input_len, uch *output)
 +{
 +	real_mode = rmode;
@@ -271,48 +252,53 @@ diff -Naur linux-2.6.23-rc9.orig/arch/i386/boot/compressed/lzma_misc.c linux-2.6
 +	lines = RM_SCREEN_INFO.orig_video_lines;
 +	cols = RM_SCREEN_INFO.orig_video_cols;
 +
-+	window = output;  	/* Output buffer (Normally at 1M) */
-+	free_mem_ptr     = end;	/* Heap  */
-+	free_mem_end_ptr = end + HEAP_SIZE;
++	free_mem_ptr     = heap;	/* Heap  */
++	free_mem_end_ptr = heap + HEAP_SIZE;
 +	inbuf  = input_data;	/* Input buffer */
 +	insize = input_len;
 +	inptr  = 0;
 +
-+	if ((u32)output & (CONFIG_PHYSICAL_ALIGN -1))
-+		error("Destination address not CONFIG_PHYSICAL_ALIGN aligned");
-+	if (end > ((-__PAGE_OFFSET-(512 <<20)-1) & 0x7fffffff))
-+		error("Destination address too large");
++#ifdef CONFIG_X86_64
++        if ((ulg)output & (__KERNEL_ALIGN - 1))
++                error("Destination address not 2M aligned");
++        if ((ulg)output >= 0xffffffffffUL)
++                error("Destination address too large");
++#else
++        if ((u32)output & (CONFIG_PHYSICAL_ALIGN -1))
++                error("Destination address not CONFIG_PHYSICAL_ALIGN aligned");
++        if (heap > ((-__PAGE_OFFSET-(512<<20)-1) & 0x7fffffff))
++                error("Destination address too large");
 +#ifndef CONFIG_RELOCATABLE
-+	if ((u32)output != LOAD_PHYSICAL_ADDR)
-+		error("Wrong destination address");
++        if ((u32)output != LOAD_PHYSICAL_ADDR)
++                error("Wrong destination address");
 +#endif
-+	putstr("LZMA vmlinuz: Ming-Ching Tiew <mctiew@yahoo.com> ...");
-+        if( lzma_unzip(output) != 0 )
-+        {
-+           error("inflate error\n");
-+        }
-+        putstr("Ok, booting the kernel.\n");
++#endif
 +
-+	return;
++	putstr("LZMA vmlinuz: Ming-Ching Tiew <mctiew@yahoo.com> ...");
++	if( lzma_unzip( output ) != 0 )
++	{
++	   error("inflate error\n");
++	}
++	putstr("Ok, booting the kernel.\n");
 +}
 diff -Naur linux-2.6.23-rc9.orig/arch/i386/boot/compressed/Makefile linux-2.6.23-rc9/arch/i386/boot/compressed/Makefile
---- linux-2.6.23-rc9.orig/arch/x86/boot/compressed/Makefile_32	2007-10-06 12:26:14.000000000 +0200
-+++ linux-2.6.23-rc9/arch/x86/boot/compressed/Makefile_32	2007-10-06 12:31:59.000000000 +0200
+--- linux-2.6.23-rc9.orig/arch/x86/boot/compressed/Makefile	2007-10-06 12:26:14.000000000 +0200
++++ linux-2.6.23-rc9/arch/x86/boot/compressed/Makefile	2007-10-06 12:31:59.000000000 +0200
 @@ -4,7 +4,7 @@
  # create a compressed vmlinux image from the original vmlinux
  #
  
--targets		:= vmlinux vmlinux.bin vmlinux.bin.gz head_32.o misc_32.o piggy.o \
-+targets		:= vmlinux vmlinux.bin vmlinux.bin.gz head_32.o lzma_misc.o piggy.o \
- 			vmlinux.bin.all vmlinux.relocs
- EXTRA_AFLAGS	:= -traditional
+-targets := vmlinux vmlinux.bin vmlinux.bin.gz head_$(BITS).o misc.o piggy.o
++targets := vmlinux vmlinux.bin vmlinux.bin.gz head_$(BITS).o lzma_misc.o piggy.o
  
+ KBUILD_CFLAGS := -m$(BITS) -D__KERNEL__ $(LINUX_INCLUDE) -O2
+ KBUILD_CFLAGS += -fno-strict-aliasing -fPIC
 @@ -17,7 +17,7 @@
- 	   $(call cc-option,-fno-stack-protector)
- LDFLAGS := -m elf_i386
+ LDFLAGS := -m elf_$(UTS_MACHINE)
+ LDFLAGS_vmlinux := -T
  
--$(obj)/vmlinux: $(src)/vmlinux_32.lds $(obj)/head_32.o $(obj)/misc_32.o $(obj)/piggy.o FORCE
-+$(obj)/vmlinux: $(src)/vmlinux_32.lds $(obj)/head_32.o $(obj)/lzma_misc.o $(obj)/piggy.o FORCE
+-$(obj)/vmlinux: $(src)/vmlinux_$(BITS).lds $(obj)/head_$(BITS).o $(obj)/misc.o $(obj)/piggy.o FORCE
++$(obj)/vmlinux: $(src)/vmlinux_$(BITS).lds $(obj)/head_$(BITS).o $(obj)/lzma_misc.o $(obj)/piggy.o FORCE
  	$(call if_changed,ld)
  	@:
  
@@ -327,19 +313,19 @@ diff -Naur linux-2.6.23-rc9.orig/arch/i386/boot/compressed/Makefile linux-2.6.23
 -	$(call if_changed,gzip)
 +	$(call if_changed,lzma)
  endif
- 
  LDFLAGS_piggy.o := -r --format binary --oformat elf32-i386 -T
+ 
 diff -Naur linux-2.6.23-rc9.orig/arch/i386/boot/compressed/vmlinux.scr linux-2.6.23-rc9/arch/i386/boot/compressed/vmlinux.scr
---- linux-2.6.23-rc9.orig/arch/x86/boot/compressed/vmlinux_32.scr	2007-10-06 12:26:14.000000000 +0200
-+++ linux-2.6.23-rc9/arch/x86/boot/compressed/vmlinux_32.scr	2007-10-06 12:29:58.000000000 +0200
+--- linux-2.6.23-rc9.orig/arch/x86/boot/compressed/vmlinux.scr	2007-10-06 12:26:14.000000000 +0200
++++ linux-2.6.23-rc9/arch/x86/boot/compressed/vmlinux.scr	2007-10-06 12:29:58.000000000 +0200
 @@ -3,8 +3,8 @@
-   .data.compressed : {
+   .rodata.compressed : {
  	input_len = .;
- 	LONG(input_data_end - input_data) input_data = .; 
+ 	LONG(input_data_end - input_data) input_data = .;
 +	output_len = . + 5;
- 	*(.data) 
+ 	*(.data)
 -	output_len = . - 4;
- 	input_data_end = .; 
+ 	input_data_end = .;
  	}
  }
 diff -Naur linux-2.6.23-rc9.orig/scripts/Makefile.lib linux-2.6.23-rc9/scripts/Makefile.lib
