@@ -1,4 +1,3 @@
 #!/bin/sh
 
-amixer set iSpeaker on > /dev/null
-amixer set LineOut 3.20dB- > /dev/null
+echo "volume -1" > /var/mp_control
