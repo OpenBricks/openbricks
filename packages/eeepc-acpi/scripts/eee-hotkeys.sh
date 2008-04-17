@@ -22,7 +22,7 @@ restart_mplayer () {
     # use the wide HD background screen
     echo "" > /tmp/widescreen
   else
-    rm /tmp/widescreen
+    rm -f /tmp/widescreen
   fi
 
   killall mplayer
