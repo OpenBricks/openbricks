@@ -438,8 +438,26 @@ Yes, the GeeXboX is able to boot from the network on a diskless station !
 To achieve this you will need :
  - a DHCP server
  - a TFTP server
- - a NFS server
+ - a NFS or SMB server
  - a PXE capable station :-)
+
+* The network boot process :
+  ------------------------
+The DHCP server not only supplies the Geexbox client it's DHCP address lease, but
+also points geexbox to tftp location to download the pxe linux loader.
+On execution this pxe linux loader gets the configuration file ./pxelinux.cfg/default
+from the tftpserver.
+PXE boot related stuff in this config file:
+-path/filename of kernel and ramdisk image to download using tftp
+-additional kernel command line options, which tell Geexbox where to get files for loading 
+stage 2 from.
+
+These 2 examples show pxe boot related kernel command line options:
+NFS mode:
+boot=nfs nfsroot=192.168.0.1:/tftpboot/gbdev/geexbox/geexbox-pxe/GEEXBOX.i386.i386
+SMB mode:
+boot=smb smbroot=//192.168.0.1/geexbox smbuser=user smbpass=password
+
 
 * Using a GNU/Linux system :
   ------------------------
@@ -468,9 +486,9 @@ If you've built the GeeXboX yourself from sources, you can also generate
 the GEEXBOX tree with make pxe.
 
 Then you should edit the file /tftpboot/GEEXBOX/boot/pxelinux.cfg/default
-to set nfsroot to the right NFS path to the GEEXBOX tree.
+to configure NFS or SMB settings as shown in example above.
 
-Finaly set up your NFS to export the GEEXBOX tree with a /etc/exports
+When using NFS, set up your NFS to export the GEEXBOX tree with a /etc/exports
 containing something like this :
 
 /tftpboot/GEEXBOX (ro)
@@ -479,7 +497,17 @@ and a /etc/hosts.allow containing something like :
 
 ALL: ALL
 
-That should do the trick. Boot your PXE station and see what happen.
+
+When using SMB, setup your the smb.conf file with a share something like this:
+
+[geexbox]
+   comment = Geexbox SMB boot files
+   writable = no
+   locking = no
+   path = /tftpboot/GEEXBOX
+   public = yes
+
+
 
 * Using a Microsoft Windows system :
   --------------------------------
@@ -487,11 +515,14 @@ That should do the trick. Boot your PXE station and see what happen.
 In order to boot in PXE mode from a Windows host,
 you'll need the following software :
 
+* A computer supporting PXE boot mode ;-)
 * An TFTP and a DHCP Server
   (for example "tftpd32", available at http://tftpd32.jounin.net/)
-* An NFS Server (for example "Allegro NFS server",
+* For stage 2 loading of files, there are 2 options: 
+  -use the SMB server build into windows
+  -or use an add-on NFS Server (for example "Allegro NFS server",
   available at http://opensource.franz.com/nfs/)
-* A computer supporting PXE boot mode.
+
 
 Download and uncompress (No need to install) the tftpd32 folder
 somewhere on your disk. In this example, lets assume it is : C:\tftpd32
@@ -517,8 +548,23 @@ Start tftpd32 :
 
 First part is done, you can now boot the client computer (the one starting
 GeeXboX), and will see it loading until the logo appears.
-After a while it'll freeze because your NFS server is not set yet.
+After a while it'll freeze because stage 2 loading (NFS or SMB) isn't configured
+yet.
 
+
+Using SMB mode:
+Share the directory c:\tftpd32\GEEXBOX as geexbox (read-only will do).
+Use a linux-aware editor to open
+C:\tftp32\geexbox\geexbox-pxe\GEEXBOX\boot\pxelinux.cfg\default
+On each boot menu entry:
+  -change boot=nfs into boot=smb
+  -remove nfsroot=....  entry
+  -add following options
+       smbroot=//192.168.0.1/geexbox   
+       smbuser=username
+       smbpass=password
+
+Using NFS mode:
 Install "Allegro NFS server" and fill in the boxes following these settings :
 
 Exports tab :
