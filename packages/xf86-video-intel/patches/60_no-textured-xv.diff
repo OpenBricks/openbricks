@@ -1,0 +1,93 @@
+diff -Naur xf86-video-intel-2.3.1.orig/src/common.h xf86-video-intel-2.3.1/src/common.h
+--- xf86-video-intel-2.3.1.orig/src/common.h	2008-05-12 12:33:17.000000000 +0200
++++ xf86-video-intel-2.3.1/src/common.h	2008-05-12 12:34:59.000000000 +0200
+@@ -353,6 +353,8 @@
+ /* chipsets require graphics mem for hardware status page */
+ #define HWS_NEED_GFX(pI810) (IS_G33CLASS(pI810) || IS_IGD_GM(pI810))
+ 
++#define HW_HAS_OVERLAY(pI810) (1)
++
+ #define GTT_PAGE_SIZE			KB(4)
+ #define ROUND_TO(x, y)			(((x) + (y) - 1) / (y) * (y))
+ #define ROUND_DOWN_TO(x, y)		((x) / (y) * (y))
+diff -Naur xf86-video-intel-2.3.1.orig/src/i830_driver.c xf86-video-intel-2.3.1/src/i830_driver.c
+--- xf86-video-intel-2.3.1.orig/src/i830_driver.c	2008-05-12 12:33:17.000000000 +0200
++++ xf86-video-intel-2.3.1/src/i830_driver.c	2008-05-12 12:44:29.000000000 +0200
+@@ -311,6 +311,7 @@
+ #ifdef INTEL_XVMC
+    OPTION_XVMC,
+ #endif
++   OPTION_TEXTURED_XV,
+ } I830Opts;
+ 
+ static OptionInfoRec I830Options[] = {
+@@ -339,6 +340,7 @@
+ #ifdef INTEL_XVMC
+    {OPTION_XVMC,	"XvMC",		OPTV_BOOLEAN,	{0},	TRUE},
+ #endif
++   {OPTION_TEXTURED_XV,	"TexturedVideo",OPTV_BOOLEAN,	{0},	FALSE},
+    {-1,			NULL,		OPTV_NONE,	{0},	FALSE}
+ };
+ /* *INDENT-ON* */
+@@ -1609,6 +1611,9 @@
+    pI830->XvDisabled =
+ 	!xf86ReturnOptValBool(pI830->Options, OPTION_XVIDEO, TRUE);
+ 
++   pI830->TexturedXvEnabled =
++     xf86ReturnOptValBool(pI830->Options, OPTION_TEXTURED_XV, FALSE);
++   
+ #ifdef I830_XV
+    if (xf86GetOptValInteger(pI830->Options, OPTION_VIDEO_KEY,
+ 			    &(pI830->colorKey))) {
+diff -Naur xf86-video-intel-2.3.1.orig/src/i830.h xf86-video-intel-2.3.1/src/i830.h
+--- xf86-video-intel-2.3.1.orig/src/i830.h	2008-05-12 12:33:17.000000000 +0200
++++ xf86-video-intel-2.3.1/src/i830.h	2008-05-12 12:39:25.000000000 +0200
+@@ -513,7 +513,8 @@
+ 
+    Bool XvDisabled;			/* Xv disabled in PreInit. */
+    Bool XvEnabled;			/* Xv enabled for this generation. */
+-
++   Bool TexturedXvEnabled;              /* Use Textured video for Xv ? */
++  
+ #ifdef I830_XV
+    int colorKey;
+    XF86VideoAdaptorPtr adaptor;
+diff -Naur xf86-video-intel-2.3.1.orig/src/i830_video.c xf86-video-intel-2.3.1/src/i830_video.c
+--- xf86-video-intel-2.3.1.orig/src/i830_video.c	2008-05-12 12:33:17.000000000 +0200
++++ xf86-video-intel-2.3.1/src/i830_video.c	2008-05-12 14:05:54.000000000 +0200
+@@ -606,7 +606,7 @@
+     /* Set up textured video if we can do it at this depth and we are on
+      * supported hardware.
+      */
+-    if (pScrn->bitsPerPixel >= 16 && (IS_I9XX(pI830) || IS_I965G(pI830)) &&
++    if (pI830->TexturedXvEnabled && pScrn->bitsPerPixel >= 16 && (IS_I9XX(pI830) || IS_I965G(pI830)) &&
+ 	!(!IS_I965G(pI830) && pScrn->displayWidth > 2048))
+     {
+ 	texturedAdaptor = I830SetupImageVideoTextured(pScreen);
+@@ -620,7 +620,7 @@
+     }
+ 
+     /* Set up overlay video if we can do it at this depth. */
+-    if (!IS_IGD_GM(pI830) && pScrn->bitsPerPixel != 8 &&
++    if (!IS_IGD_GM(pI830) && HW_HAS_OVERLAY(pI830) && pScrn->bitsPerPixel != 8 &&
+ 	    pI830->overlay_regs != NULL)
+     {
+ 	overlayAdaptor = I830SetupImageVideoOverlay(pScreen);
+@@ -2650,7 +2650,7 @@
+     I830PortPrivPtr pPriv;
+ 
+     /* no overlay */
+-    if (pI830->adaptor == NULL)
++    if (!HW_HAS_OVERLAY(pI830) || pI830->adaptor == NULL)
+         return;
+ 
+     pPriv = GET_PORT_PRIVATE(pScrn);
+@@ -2930,7 +2930,7 @@
+     I830PortPrivPtr pPriv;
+ 
+     /* no overlay */
+-    if (pI830->adaptor == NULL)
++    if (!HW_HAS_OVERLAY(pI830) || pI830->adaptor == NULL)
+ 	return;
+ 
+     pPriv = GET_PORT_PRIVATE(pScrn);
