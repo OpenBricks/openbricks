@@ -26,6 +26,7 @@ MODULE_LICENSE (DRIVER_LICENSE);
 
 #define USB_VENDOR_ID_APPLE	0x05ac
 #define USB_DEVICE_ID_APPLE_IR  0x8240
+#define USB_DEVICE_ID_APPLE_IR2 0x8242
 
 #define URB_SIZE 32
 
@@ -48,6 +49,7 @@ struct appleir
 
 static struct usb_device_id appleir_ids[] = {
   {USB_DEVICE (USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_IR),.driver_info = 0},
+  {USB_DEVICE (USB_VENDOR_ID_APPLE, USB_DEVICE_ID_APPLE_IR2),.driver_info = 0},
   {}
 };
 
