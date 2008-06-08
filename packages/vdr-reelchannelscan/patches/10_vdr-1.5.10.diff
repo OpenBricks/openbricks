@@ -1,0 +1,82 @@
+Index: reelchannelscan-0.4.3/filter.h
+===================================================================
+--- reelchannelscan-0.4.3.orig/filter.h
++++ reelchannelscan-0.4.3/filter.h
+@@ -90,7 +90,9 @@ public:
+ #ifdef REELVDR 
+ #define MAXNITS 256
+ #endif
++#ifndef MAXNETWORKNAME
+ #define MAXNETWORKNAME 256
++#endif
+ 
+ 
+ class NitFilter : public cFilter {
+Index: reelchannelscan-0.4.3/filter.c
+===================================================================
+--- reelchannelscan-0.4.3.orig/filter.c
++++ reelchannelscan-0.4.3/filter.c
+@@ -400,16 +400,17 @@ void PatFilter::Process(u_short Pid, u_c
+         int Ppid = pmt.getPCRPid();
+         int Apids[MAXAPIDS + 1] = { 0 };
+         int Dpids[MAXDPIDS + 1] = { 0 };
+-#if VDRVERSNUM >= 10332
++        int Spids[MAXSPIDS + 1] = { 0 };
++#ifndef MAXLANGCODE2
++#define MAXLANGCODE2 4
++#endif
+         char ALangs[MAXAPIDS + 1][MAXLANGCODE2] = { "" };
+         char DLangs[MAXDPIDS + 1][MAXLANGCODE2] = { "" };
+-#else
+-        char ALangs[MAXAPIDS + 1][4] = { "" };
+-        char DLangs[MAXDPIDS + 1][4] = { "" };
+-#endif
++        char SLangs[MAXSPIDS][MAXLANGCODE2] = { "" };
+         int Tpid = 0;
+         int NumApids = 0;
+         int NumDpids = 0;
++        int NumSpids = 0;
+         for (SI::Loop::Iterator it; pmt.streamLoop.getNext(stream, it); ) {
+             //  printf("sid: %5d pid %5d str_t%2X \n", pmt.getServiceId(), stream.getPid(), stream.getStreamType());
+ 
+@@ -454,6 +455,28 @@ void PatFilter::Process(u_short Pid, u_c
+                             case SI::AC3DescriptorTag:
+                                  dpid = stream.getPid();
+                                  break;
++#if VDRVERSNUM >= 10510
++                            case SI::SubtitlingDescriptorTag:
++                                 if (NumSpids < MAXSPIDS) {
++                                    Spids[NumSpids] = stream.getPid();
++                                    SI::SubtitlingDescriptor *sd = (SI::SubtitlingDescriptor *)d;
++                                    SI::SubtitlingDescriptor::Subtitling sub;
++                                    char *s = SLangs[NumSpids];
++                                    int n = 0;
++                                    for (SI::Loop::Iterator it; sd->subtitlingLoop.getNext(sub, it); ) {
++                                        if (sub.languageCode[0]) {
++                                           if (n > 0)
++                                              *s++ = '+';
++                                           strn0cpy(s, I18nNormalizeLanguageCode(sub.languageCode), MAXLANGCODE1);
++                                           s += strlen(s);
++                                           if (n++ > 1)
++                                              break;
++                                           }
++                                        }
++                                    NumSpids++;
++                                    }
++                                 break;
++#endif
+                             case SI::TeletextDescriptorTag:
+                                  Tpid = stream.getPid();
+                                  break;
+@@ -481,7 +504,11 @@ void PatFilter::Process(u_short Pid, u_c
+                 delete d;
+                 }
+             }
++#if VDRVERSNUM >= 10510
++        Channel->SetPids(Vpid, Vpid ? Ppid : 0, Apids, ALangs, Dpids, DLangs, Spids, SLangs, Tpid);
++#else
+         Channel->SetPids(Vpid, Vpid ? Ppid : 0, Apids, ALangs, Dpids, DLangs, Tpid);
++#endif
+         //printf("#### %i %s %i %i SID  %i\n",num,Channel->Name(),Vpid, Apids[0], Channel->Sid());
+         Channel->SetCaIds(CaDescriptors->CaIds());
+         Channel->SetCaDescriptors(CaDescriptorHandler.AddCaDescriptors(CaDescriptors));
