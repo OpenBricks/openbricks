@@ -1,0 +1,105 @@
++* fix gcc4 compliation - "error: invalid lvalue in increment"
+
+diff -Nur iconv-base-2.0.orig/ces/ucs-2-internal.c iconv-base-2.0/ces/ucs-2-internal.c
+--- iconv-base-2.0.orig/ces/ucs-2-internal.c	Sun Nov 26 14:49:53 2000
++++ iconv-base-2.0/ces/ucs-2-internal.c	Fri Mar  3 20:27:48 2006
+@@ -43,7 +43,8 @@
+ 		return -1;	/* No corresponding character in UCS-2 */
+ 	if (*outbytesleft < sizeof(ucs2_t))
+ 		return 0;	/* No space in the output buffer */
+-	*((ucs2_t *)(*outbuf))++ = in;
++	*((ucs2_t *)(*outbuf)) = in;
++	*outbuf = (unsigned char *)((ucs2_t *)(*outbuf) + 1);
+ 	(*outbytesleft) -= sizeof(ucs2_t);
+ 	return 1;
+ }
+@@ -52,10 +53,14 @@
+ convert_to_ucs(struct iconv_ces *ces,
+ 	const unsigned char **inbuf, size_t *inbytesleft)
+ {
++	ucs2_t out;
++
+ 	if (*inbytesleft < sizeof(ucs2_t))
+ 		return UCS_CHAR_NONE;	/* Not enough bytes in the input buffer */
+ 	(*inbytesleft) -= sizeof(ucs2_t);
+-	return *((const ucs2_t *)(*inbuf))++;
++	out = *((ucs2_t *)(*inbuf));
++	*inbuf = (unsigned char *)((ucs2_t *)(*inbuf) + 1);
++	return out;
+ }
+ 
+ ICONV_CES_STATELESS_MODULE_DECL(ucs_2_internal);
+diff -Nur iconv-base-2.0.orig/ces/ucs-4-internal.c iconv-base-2.0/ces/ucs-4-internal.c
+--- iconv-base-2.0.orig/ces/ucs-4-internal.c	Sun Nov 26 14:49:59 2000
++++ iconv-base-2.0/ces/ucs-4-internal.c	Fri Mar  3 20:28:44 2006
+@@ -41,7 +41,8 @@
+ 		return 1;	/* No state reinitialization for table charsets */
+ 	if (*outbytesleft < sizeof(ucs4_t))
+ 		return 0;	/* No space in the output buffer */
+-	*((ucs4_t *)(*outbuf))++ = in;
++	*((ucs4_t *)(*outbuf)) = in;
++	*outbuf = (unsigned char *)((ucs4_t *)(*outbuf) + 1);
+ 	(*outbytesleft) -= sizeof(ucs4_t);
+ 	return 1;
+ }
+@@ -50,10 +51,14 @@
+ convert_to_ucs(struct iconv_ces *ces,
+ 	const unsigned char **inbuf, size_t *inbytesleft)
+ {
++	ucs4_t out;
++
+ 	if (*inbytesleft < sizeof(ucs4_t))
+ 		return UCS_CHAR_NONE;	/* Not enough bytes in the input buffer */
+ 	(*inbytesleft) -= sizeof(ucs4_t);
+-	return *((const ucs4_t *)(*inbuf))++;
++	out = *((ucs4_t *)(*inbuf));
++	*inbuf = (unsigned char *)((ucs4_t *)(*inbuf) + 1);
++	return out;
+ }
+ 
+ ICONV_CES_STATELESS_MODULE_DECL(ucs_4_internal);
+diff -Nur iconv-base-2.0.orig/lib/ces_euc.c iconv-base-2.0/lib/ces_euc.c
+--- iconv-base-2.0.orig/lib/ces_euc.c	Sat Nov 18 22:21:43 2000
++++ iconv-base-2.0/lib/ces_euc.c	Fri Mar  3 20:32:31 2006
+@@ -65,7 +65,7 @@
+ 		}
+ 	}
+ 	state->nccs = num;
+-	(iconv_ces_euc_state *)*data = state;
++	*data = state;
+ 	return 0;
+ }
+ 
+diff -Nur iconv-base-2.0.orig/lib/ces_table.c iconv-base-2.0/lib/ces_table.c
+--- iconv-base-2.0.orig/lib/ces_table.c	Sun Nov 26 14:01:25 2000
++++ iconv-base-2.0/lib/ces_table.c	Fri Mar  3 20:32:44 2006
+@@ -47,7 +47,7 @@
+ 	if (res)
+ 		free(ccs);
+ 	else
+-		(struct iconv_ccs *)(*data) = ccs;
++		*data = ccs;
+ 	return res;
+ }
+ 
+diff -Nur iconv-base-2.0.orig/util/iconv_stream.c iconv-base-2.0/util/iconv_stream.c
+--- iconv-base-2.0.orig/util/iconv_stream.c	Sun Sep  3 22:38:36 2000
++++ iconv-base-2.0/util/iconv_stream.c	Fri Mar  3 20:33:41 2006
+@@ -114,7 +114,7 @@
+             if (left > size)
+                 left = size;
+             memcpy(stream->buf_ptr, buf, left);
+-            (const char *)buf += left;
++            buf = (const char *)buf + left;
+             size -= left;
+             stream->buf_ptr += left;
+             res = iconv_write(handle, stream->buffer,
+@@ -141,7 +141,7 @@
+                 return -1;
+             res = 0;
+         }
+-        (const char *)buf += res;
++        buf = (const char *)buf + res;
+         size -= res;
+     } while (size && res);
+     if (!size)
