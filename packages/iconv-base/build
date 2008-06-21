@@ -1,0 +1,31 @@
+#!/bin/sh
+
+. config/options
+
+$SCRIPTS/build toolchain
+
+export MODULEDIR="/usr/share/iconv"
+export TABLEDIR="/usr/share/iconv"
+export ICONV_BUILTIN_CHARSETS="utf-8"
+
+cd $BUILD/$1*
+make all
+
+mkdir -p $LIB_PREFIX/lib
+mkdir -p $LIB_PREFIX/include
+mkdir -p $ROOT/$TOOLCHAIN/bin
+
+cp lib/libiconv.* $LIB_PREFIX/lib
+cp lib/iconv.h $LIB_PREFIX/include
+cp ccs/iconv_mktbl $ROOT/$TOOLCHAIN/bin
+
+grep -v '#' ccs/charset.aliases | ./iconv_builtin -n $ICONV_BUILTIN_CHARSETS | cut -f 1 | while read i; do
+  echo "$i $i.cct" >> charset.db
+done
+
+grep -v '#' ces/charset.aliases | ./iconv_builtin -n $ICONV_BUILTIN_CHARSETS | cut -f 1 | while read i; do
+  echo "$i $i.so" >> charset.db
+  grep '{"' ces/$i.c | cut -d '"' -f 2 | while read j; do
+    echo "$i $j.cct" >> charset.db
+  done
+done

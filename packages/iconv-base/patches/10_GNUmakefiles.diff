@@ -1,0 +1,211 @@
+diff -Nur iconv-base-2.0.orig/GNUmakefile iconv-base-2.0/GNUmakefile
+--- iconv-base-2.0.orig/GNUmakefile	Thu Jan  1 02:00:00 1970
++++ iconv-base-2.0/GNUmakefile	Fri Mar  4 21:31:24 2005
+@@ -0,0 +1,11 @@
++all:
++	$(MAKE) -C lib all
++	$(MAKE) -C ccs all
++	$(MAKE) -C ces all
++	$(MAKE) -C util all
++
++clean:
++	$(MAKE) -C lib clean
++	$(MAKE) -C ccs clean
++	$(MAKE) -C ces clean
++	$(MAKE) -C util clean
+diff -Nur iconv-base-2.0.orig/GNUmakefile.inc iconv-base-2.0/GNUmakefile.inc
+--- iconv-base-2.0.orig/GNUmakefile.inc	Thu Jan  1 02:00:00 1970
++++ iconv-base-2.0/GNUmakefile.inc	Fri Mar  4 21:31:24 2005
+@@ -0,0 +1,8 @@
++ICONV_BUILTIN_CHARSETS ?= us-ascii utf-8 ucs-4-internal
++
++PREFIX ?=	/usr
++
++MODULEDIR ?=	${PREFIX}/libexec/iconv
++TABLEDIR ?=	${PREFIX}/share/iconv
++
++CFLAGS +=	-I../lib
+diff -Nur iconv-base-2.0.orig/ccs/GNUmakefile iconv-base-2.0/ccs/GNUmakefile
+--- iconv-base-2.0.orig/ccs/GNUmakefile	Thu Jan  1 02:00:00 1970
++++ iconv-base-2.0/ccs/GNUmakefile	Fri Mar  4 21:31:24 2005
+@@ -0,0 +1,63 @@
++include ../GNUmakefile.inc
++
++CHARSETS_C = $(shell ../iconv_builtin -s .c $(ICONV_BUILTIN_CHARSETS) < charset.aliases)
++CHARSETS_TBL = $(shell ../iconv_builtin -ns .cct $(ICONV_BUILTIN_CHARSETS) < charset.aliases)
++
++LIB =	ccs
++SRCS =	ccs_builtin.c ${CHARSETS_C}
++
++SOBJS = ${SRCS:.c=.So}
++
++all:		${CHARSETS_TBL}
++
++lib:		lib${LIB}.a ${SOBJS}
++
++lib${LIB}.a: ${SRCS:.c=.o}
++	@${AR} cq ${@} ${^}
++
++ccs_builtin.c:	${CHARSETS_C}
++	../iconv_builtin -o ${@} ${<}
++
++.txt.cct:
++	./iconv_mktbl -o ${@} ${<}
++
++.txt.c:
++	./iconv_mktbl -Co ${@} ${<}
++
++us-ascii.cct:	iso-8859-1.txt
++	./iconv_mktbl -ao ${@} ${<}
++
++us-ascii.c:	iso-8859-1.txt
++	./iconv_mktbl -Cao ${@} ${<}
++
++jis_x0208-1983.cct:	jis_x0208-1983.txt
++	./iconv_mktbl -c 1 -u 2 -o ${@} ${<}
++
++jis_x0208-1983.c:	jis_x0208-1983.txt
++	./iconv_mktbl -C -c 1 -u 2 -o ${@} ${<}
++
++cns11643-plane1.cct:	cns11643.txt
++	./iconv_mktbl -p 0x1 -o ${@} ${<}
++
++cns11643-plane1.c:	cns11643.txt
++	./iconv_mktbl -C -p 0x1 -o ${@} ${<}
++
++cns11643-plane2.cct:	cns11643.txt
++	./iconv_mktbl -p 0x2 -o ${@} ${<}
++
++cns11643-plane2.c:	cns11643.txt
++	./iconv_mktbl -C -p 0x2 -o ${@} ${<}
++
++cns11643-plane14.cct:	cns11643.txt
++	./iconv_mktbl -p 0xE -o ${@} ${<}
++
++cns11643-plane14.c:	cns11643.txt
++	./iconv_mktbl -C -p 0xE -o ${@} ${<}
++
++.c.So:
++	${CC} -fPIC -DPIC ${CFLAGS} -c ${^} -o ${@}
++
++clean:
++	rm -f *.o *.So *.so *.c
++
++.SUFFIXES:	.cct .txt .So
+diff -Nur iconv-base-2.0.orig/ces/GNUmakefile iconv-base-2.0/ces/GNUmakefile
+--- iconv-base-2.0.orig/ces/GNUmakefile	Thu Jan  1 02:00:00 1970
++++ iconv-base-2.0/ces/GNUmakefile	Fri Mar  4 21:31:24 2005
+@@ -0,0 +1,35 @@
++include ../GNUmakefile.inc
++
++CHARSETS_C = $(shell ../iconv_builtin -s .c $(ICONV_BUILTIN_CHARSETS) < charset.aliases)
++CHARSETS_SO= $(shell ../iconv_builtin -ns .so $(ICONV_BUILTIN_CHARSETS) < charset.aliases)
++CHARSETS_O = $(shell ../iconv_builtin -ns .o $(ICONV_BUILTIN_CHARSETS) < charset.aliases)
++
++LIB=		ces
++SRCS=		ces_builtin.c ${CHARSETS_C}
++
++LDADD =		-L../lib -liconv
++
++all:		${CHARSETS_SO} ${SRCS:.c=.So}
++
++lib:		lib${LIB}.a
++
++lib${LIB}.a:	${SRCS:.c=.o}
++		@${AR} cq ${@} ${^}
++
++lib${LIB}_static.a:	${CHARSETS_O}
++		@${AR} cq ${@} ${^}
++
++ces_builtin.c:	${CHARSETS_C} ${CHARSETS_O}
++		../iconv_builtin -mo ${@} \
++			${CHARSETS_C} PIC ${CHARSETS_O}
++
++.c.So:
++	${CC} -fPIC -DPIC ${CFLAGS} -c ${^} -o ${@}
++
++.So.so:
++	${CC} -shared -Wl,-x -o ${@} -Wl,-soname,${@} ${^}
++
++clean:
++	rm -f *.o *.So *.so *.lst ces_builtin.c
++
++.SUFFIXES:	.So .so
+diff -Nur iconv-base-2.0.orig/lib/GNUmakefile iconv-base-2.0/lib/GNUmakefile
+--- iconv-base-2.0.orig/lib/GNUmakefile	Thu Jan  1 02:00:00 1970
++++ iconv-base-2.0/lib/GNUmakefile	Fri Mar  4 21:31:24 2005
+@@ -0,0 +1,56 @@
++include ../GNUmakefile.inc
++
++LIB =		iconv
++SHLIB_MAJOR =	2
++SHLIB_MINOR =	0
++
++SRCS =		aliases.c ccs.c ces.c ces_euc.c ces_iso2022.c ces_table.c \
++		converter.c iconv.c utils.c
++
++BUILTIN_CCS = $(shell cd ../ccs/ && $(MAKE) lib >/dev/null && ${AR} t libccs.a)
++BUILTIN_CES = $(shell cd ../ces/ && $(MAKE) lib >/dev/null && ${AR} t libces.a)
++BUILTIN_CES_STATIC = $(shell cd ../ces && $(MAKE) libces_static.a >/dev/null && ${AR} t libces_static.a)
++
++OBJS = $(patsubst %,../ccs/%,$(BUILTIN_CCS)) $(patsubst %,../ces/%,$(BUILTIN_CES)) $(SRCS:.c=.o)
++STATICOBJS = $(patsubst %,../ces/%,$(BUILTIN_CES_STATIC))
++
++SOBJS = ${OBJS:.o=.So}
++
++LIBDIR =	${PREFIX}/lib
++
++INCDIR =	${PREFIX}/include
++INCS =		iconv.h
++
++CFLAGS +=	-DICONV_MODULE_PATH=\"${MODULEDIR}\" \
++		-DICONV_TABLE_PATH=\"${TABLEDIR}\"
++
++MAN3 =		iconv.3 iconv_open.3 iconv_close.3
++
++ALIASES =	../ccs/charset.aliases \
++		../ces/charset.aliases
++
++all: lib${LIB}.a lib${LIB}.so
++
++lib${LIB}.a: ${OBJS} ${STATICOBJS}
++	${AR} cq ${@} ${^}
++
++lib${LIB}.so.${SHLIB_MAJOR}: ${SOBJS}
++	${CC} ${LDFLAGS} -shared -Wl,-x -o ${@} -Wl,-soname,${@} ${^}
++
++lib${LIB}.so: lib${LIB}.so.${SHLIB_MAJOR}
++	ln -s lib${LIB}.so.${SHLIB_MAJOR} lib${LIB}.so
++
++aliases.c:	aliases.h
++
++aliases.h:	${ALIASES}
++		cat ${^} | ../iconv_builtin ${BUILTIN_CCS} \
++			${BUILTIN_CES} PIC ${BUILTIN_CES_STATIC} > ${@}
++
++.c.So:
++	${CC} -fPIC -DPIC ${CFLAGS} -c ${^} -o ${@}
++
++clean:
++	rm -f ../ccs/libccs.a ../ces/libces*.a *.o *.So
++	rm -f lib${LIB}.a lib${LIB}.so.${SHLIB_MAJOR} lib${LIB}.so
++
++.SUFFIXES:	.So
+diff -Nur iconv-base-2.0.orig/util/GNUmakefile iconv-base-2.0/util/GNUmakefile
+--- iconv-base-2.0.orig/util/GNUmakefile	Thu Jan  1 02:00:00 1970
++++ iconv-base-2.0/util/GNUmakefile	Fri Mar  4 21:31:24 2005
+@@ -0,0 +1,14 @@
++include ../GNUmakefile.inc
++
++PROG=		iconv
++SRCS=		iconv.c iconv_stream.c
++
++LDADD=		-L../lib/ -liconv -ldl
++
++all: $(PROG)
++
++$(PROG): $(SRCS:.c=.o)
++	$(CC) $(CFLAGS) $(LDFLAGS) -o $(@) $(^) $(LDADD)
++
++clean:
++	rm -f *.o iconv
