@@ -215,7 +215,7 @@ appleir_urb (struct urb *urb)
 static int
 appleir_open (struct input_dev *dev)
 {
-  struct appleir *appleir = dev->private;
+  struct appleir *appleir = input_get_drvdata(dev);
 
   //appleir->urb->dev = appleir->usbdev;
 
@@ -228,7 +228,7 @@ appleir_open (struct input_dev *dev)
 static void
 appleir_close (struct input_dev *dev)
 {
-  struct appleir *appleir = dev->private;
+  struct appleir *appleir = input_get_drvdata(dev);
   usb_kill_urb (appleir->urb);
   del_timer_sync (&appleir->key_up_timer);
 }
