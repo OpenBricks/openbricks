@@ -1,0 +1,125 @@
+diff -Naur em8300-0.16.4.orig/include/linux/em8300.h em8300-0.16.4/include/linux/em8300.h
+--- em8300-0.16.4.orig/include/linux/em8300.h	2008-01-03 00:17:29.000000000 +0100
++++ em8300-0.16.4/include/linux/em8300.h	2008-06-28 13:40:31.000000000 +0200
+@@ -271,10 +271,10 @@
+ 	
+ 	/* Sysfs */
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,5,46)
+-	struct class_device *classdev;
+-	struct class_device *classdev_mv;
+-	struct class_device *classdev_ma;
+-	struct class_device *classdev_sp;
++	struct device *classdev;
++	struct device *classdev_mv;
++	struct device *classdev_ma;
++	struct device *classdev_sp;
+ #endif
+ 
+ #if defined(CONFIG_SND) || defined(CONFIG_SND_MODULE)
+diff -Naur em8300-0.16.4.orig/modules/em8300_procfs.c em8300-0.16.4/modules/em8300_procfs.c
+--- em8300-0.16.4.orig/modules/em8300_procfs.c	2007-03-07 00:04:32.000000000 +0100
++++ em8300-0.16.4/modules/em8300_procfs.c	2008-06-28 13:40:57.000000000 +0200
+@@ -169,7 +169,7 @@
+ static void em8300_procfs_unregister_driver(void)
+ {
+ 	if (em8300_proc) {
+-		remove_proc_entry(EM8300_PROCFS_DIR, &proc_root);
++		remove_proc_entry(EM8300_PROCFS_DIR, NULL);
+ 	}
+ }
+ 
+@@ -177,7 +177,7 @@
+ {
+ 	em8300_proc = create_proc_entry(EM8300_PROCFS_DIR,
+ 					S_IFDIR | S_IRUGO | S_IXUGO,
+-					&proc_root);
++					NULL);
+ 	if (em8300_proc) {
+ 		em8300_proc->owner = THIS_MODULE;
+ 	} else {
+diff -Naur em8300-0.16.4.orig/modules/em8300_udev.c em8300-0.16.4/modules/em8300_udev.c
+--- em8300-0.16.4.orig/modules/em8300_udev.c	2007-03-03 00:00:35.000000000 +0100
++++ em8300-0.16.4/modules/em8300_udev.c	2008-06-28 13:40:48.000000000 +0200
+@@ -45,58 +45,46 @@
+ 
+ static void em8300_udev_register_card(struct em8300_s *em)
+ {
+-	em->classdev = class_device_create(em8300_class,
+-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,15)
+-					   NULL,
+-#endif
+-					   MKDEV(major, em->card_nr * 4 + 0),
+-					   &em->dev->dev,
+-					   "%s-%d",
+-					   EM8300_LOGNAME, em->card_nr);
++	em->classdev = device_create(em8300_class,
++				     &em->dev->dev,
++				     MKDEV(major, em->card_nr * 4 + 0),
++				     "%s-%d",
++				     EM8300_LOGNAME, em->card_nr);
+ }
+ 
+ static void em8300_udev_enable_card(struct em8300_s *em)
+ {
+-	em->classdev_mv = class_device_create(em8300_class,
+-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,15)
+-					      em->classdev,
+-#endif
+-					      MKDEV(major, em->card_nr * 4 + 1),
+-					      &em->dev->dev,
+-					      "%s_mv-%d",
+-					      EM8300_LOGNAME, em->card_nr);
++	em->classdev_mv = device_create(em8300_class,
++					&em->dev->dev,
++					MKDEV(major, em->card_nr * 4 + 1),
++					"%s_mv-%d",
++					EM8300_LOGNAME, em->card_nr);
+ 	if ((audio_driver_nr[em->card_nr] == AUDIO_DRIVER_OSSLIKE)
+ 	    || (audio_driver_nr[em->card_nr] == AUDIO_DRIVER_OSS))
+-		em->classdev_ma = class_device_create(em8300_class,
+-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,15)
+-						      em->classdev,
+-#endif
+-						      MKDEV(major, em->card_nr * 4 + 2),
+-						      &em->dev->dev,
+-						      "%s_ma-%d",
+-						      EM8300_LOGNAME, em->card_nr);
+-	em->classdev_sp = class_device_create(em8300_class,
+-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,15)
+-					      em->classdev,
+-#endif
+-					      MKDEV(major, em->card_nr * 4 + 3),
+-					      &em->dev->dev,
+-					      "%s_sp-%d",
+-					      EM8300_LOGNAME, em->card_nr);
++		em->classdev_ma = device_create(em8300_class,
++						&em->dev->dev,
++						MKDEV(major, em->card_nr * 4 + 2),
++						"%s_ma-%d",
++						EM8300_LOGNAME, em->card_nr);
++	em->classdev_sp = device_create(em8300_class,
++					&em->dev->dev,
++					MKDEV(major, em->card_nr * 4 + 3),
++					"%s_sp-%d",
++					EM8300_LOGNAME, em->card_nr);
+ }
+ 
+ static void em8300_udev_disable_card(struct em8300_s *em)
+ {
+-	class_device_destroy(em8300_class, MKDEV(major, em->card_nr * 4 + 1));
++	device_destroy(em8300_class, MKDEV(major, em->card_nr * 4 + 1));
+ 	if ((audio_driver_nr[em->card_nr] == AUDIO_DRIVER_OSSLIKE)
+ 	    || (audio_driver_nr[em->card_nr] == AUDIO_DRIVER_OSS))
+-		class_device_destroy(em8300_class, MKDEV(major, em->card_nr * 4 + 2));
+-	class_device_destroy(em8300_class, MKDEV(major, em->card_nr * 4 + 3));
++		device_destroy(em8300_class, MKDEV(major, em->card_nr * 4 + 2));
++	device_destroy(em8300_class, MKDEV(major, em->card_nr * 4 + 3));
+ }
+ 
+ static void em8300_udev_unregister_card(struct em8300_s *em)
+ {
+-	class_device_destroy(em8300_class, MKDEV(major, em->card_nr * 4 + 0));
++	device_destroy(em8300_class, MKDEV(major, em->card_nr * 4 + 0));
+ }
+ 
+ static void em8300_udev_unregister_driver(void)
