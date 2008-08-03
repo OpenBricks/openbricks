@@ -1,0 +1,1781 @@
+diff -urNad nvram-wakeup-0.97/nvram-wakeup-mb.c /tmp/dpep.V8670c/nvram-wakeup-0.97/nvram-wakeup-mb.c
+--- nvram-wakeup-0.97/nvram-wakeup-mb.c	2004-07-21 14:01:02.000000000 +0200
++++ /tmp/dpep.V8670c/nvram-wakeup-0.97/nvram-wakeup-mb.c	2005-12-15 21:40:50.261715500 +0100
+@@ -1,9 +1,9 @@
+ /*
+  *   NVRAM WakeUp
+- *   Copyright (C) 2001-2004, Sergei Haller.
++ *   Copyright (C) 2001-2005, Sergei Haller.
+  *   Copyright (C) 2002 Bernhard "Bero" Rosenkraenzer <bero@arklinux.org>
+  *
+- *   $Id: nvram-wakeup-mb.c,v 1.218 2004/07/21 12:01:02 bistr-o-math Exp $
++ *   $Id: nvram-wakeup-mb.c,v 1.283 2005/07/18 12:32:58 bistr-o-math Exp $
+  *
+  *   This program is free software; you can redistribute it and/or modify
+  *   it under the terms of the GNU General Public License as published by
+@@ -22,10 +22,11 @@
+  */
+ 
+ #define CVSREV_nvram_wakeup_mb_c \
+-     "$Id: nvram-wakeup-mb.c,v 1.218 2004/07/21 12:01:02 bistr-o-math Exp $"
++     "$Id: nvram-wakeup-mb.c,v 1.283 2005/07/18 12:32:58 bistr-o-math Exp $"
+ 
+ #include <stdio.h>
+ #include <string.h>
++#include <syslog.h>
+ 
+ #include "nvram-wakeup.h"
+ 
+@@ -117,6 +118,12 @@
+      b->addr_sec    = 0x3F;
+ }
+ 
++void dfi_ak74_ec(struct biosinfo *b)
++{
++     m6vcg_p6bat_8kta3_common(b);
++     b->addr_day    = 0x37;
++}
++
+ void chaintech_6aja4(struct biosinfo *b)
+ {
+      m6vcg_p6bat_8kta3_common(b);
+@@ -124,16 +131,24 @@
+      b->need_reboot = ON_ANY_CHANGE;
+ }
+ 
++void ecs_p6vxat(struct biosinfo *b)
++{
++     m6vcg_p6bat_8kta3_common(b);
++     b->addr_day    = 0x43;
++     b->need_reboot = OFF;
++}
++
+ void ecs_p6bat(struct biosinfo *b)
+ {
+      m6vcg_p6bat_8kta3_common(b);
+      b->addr_day    = 0x4F;
+ }
+ 
+-void dfi_ak74_ec(struct biosinfo *b)
++void tekram_p5m4_m(struct biosinfo *b)
+ {
+      m6vcg_p6bat_8kta3_common(b);
+-     b->addr_day    = 0x37;
++     b->addr_day    = 0x4F;
++     b->need_reboot = ON_STAT;
+ }
+ 
+ void shuttle_mvp3(struct biosinfo *b)
+@@ -188,13 +203,6 @@
+      CHECKSUM(b, 0x6C);
+      TIMEREGS(b, 0x47);
+      b->addr_stat   = 0x46;
+-}
+-
+-void abit_bh6(struct biosinfo *b)
+-{
+-     CHECKSUM(b, 0x6C);
+-     TIMEREGS(b, 0x47);
+-     b->addr_stat   = 0x46;
+      b->need_reboot = ON_ANY_CHANGE;
+ }
+ 
+@@ -237,6 +245,30 @@
+      b->addr_sec = 0;
+ }
+ 
++void epox_4pgf(struct biosinfo *b)
++{
++     /*                                                        */
++     /*  Disable the "Music-on-Now" feature of his mainboard!  */
++     /*                                                        */
++     ga_6bxc_qdi_common(b);
++     b->addr_sec    = 0;
++     b->shift_stat  = 6;
++}
++
++void msi_ms_6178(struct biosinfo *b)
++{
++     ga_6bxc_qdi_common(b);
++     b->addr_sec = 0;
++     b->need_reboot = ON_STAT;
++}
++
++void chaintech_6oja3t(struct biosinfo *b)
++{
++     ga_6bxc_qdi_common(b);
++     b->addr_sec = 0;
++     b->need_reboot = ON_ANY_CHANGE;
++}
++
+ void asus_tusl2(struct biosinfo *b)
+ {
+      CHECKSUM(b, 0x6C);
+@@ -293,6 +325,19 @@
+      b->shift_stat  = 3;
+      b->rtc_day     = 0x6F;
+      b->reset_day   = ON;
++     b->rtc_time    = ON;
++}
++
++void msi_ms_6593_2(struct biosinfo *b)
++{
++     CHECKSUM(b, 0x30);
++     TIMEREGS(b, 0x59);
++     b->need_reboot = ON_ANY_CHANGE;
++     b->addr_stat   = 0x59;
++     b->shift_stat  = 2;
++     b->shift_day   = 3;
++     b->rtc_day     = 0x6F;
++     b->reset_day   = ON;
+ }
+ 
+ void msi_ms_6380e(struct biosinfo *b)
+@@ -317,6 +362,20 @@
+      b->reset_day   = ON;
+ }
+ 
++void ecs_m863(struct biosinfo *b)
++{
++     CHECKSUM(b, 0x30);
++     b->addr_stat   = 0x6F;
++     b->shift_stat  = 7;
++
++     b->rtc_day     = 0x70;
++     b->reset_day   = ON;
++     b->rtc_day_0_is_c0 = ON;
++     b->nr_rtc_day  = 8;
++
++     b->rtc_time    = ON;
++}
++
+ void asus_cuv4xe(struct biosinfo *b)
+ {
+      CHECKSUM(b, 0x6C);
+@@ -446,6 +505,13 @@
+      b->shift_day   = 1;
+ }
+ 
++void asrock_k7s8xep_m(struct biosinfo *b)
++{
++     gig_ga_7zx_common(b);
++     b->shift_day   = 1;
++     b->rtc_day     = 0x70;
++}
++
+ void gig_ga_7vtxh(struct biosinfo *b)
+ {
+      gig_ga_7zx_common(b);
+@@ -492,19 +558,21 @@
+      b->need_reboot = ON_ANY_CHANGE;
+ }
+ 
+-void shttl_fn41sp(struct biosinfo *b)
++void asus_a7n8x_x(struct biosinfo *b)
+ {
+      shttl_fn41_common(b);
+-     b->need_reboot = ON_STAT;
++     b->need_reboot = ON_ANY_CHANGE;
++     b->addr_stat   = 0x3D;
++     b->shift_stat  = 6;
+ }
+ 
+ void chain_7nif2(struct biosinfo *b)
+ {
+      CHECKSUM(b, 0x6D);
++     TIMEREGS(b, 0x48);
+      b->need_reboot = ON_ANY_CHANGE;
+      b->addr_stat   = 0x46;
+      b->shift_stat  = 3;
+-     TIMEREGS(b, 0x48);
+ }
+ 
+ void msi_ms_6380(struct biosinfo *b)
+@@ -530,6 +598,30 @@
+      b->reset_day   = ON;
+ }
+ 
++void msi_ms_6728_2(struct biosinfo *b)
++{
++     CHECKSUM(b, 0x30);
++     TIMEREGS(b, 0x5A);
++     b->need_reboot = ON_ANY_CHANGE;
++     b->addr_stat   = 0x59;
++     b->shift_stat  = 4;
++     b->rtc_time    = ON;
++     b->rtc_day     = 0x7F;
++     b->reset_day   = ON;
++}
++
++void msi_ms_6788(struct biosinfo *b)
++{
++     CHECKSUM(b, 0x30);
++     TIMEREGS(b, 0x59);
++     b->need_reboot = ON_ANY_CHANGE;
++     b->addr_stat   = 0x58;
++     b->shift_stat  = 4;
++     b->rtc_time    = ON;
++     b->rtc_day     = 0x7F;
++     b->reset_day   = ON;
++}
++
+ void msi_ms_6712_1(struct biosinfo *b)
+ {
+      CHECKSUM(b, 0x30);
+@@ -566,6 +658,19 @@
+      b->rtc_time    = ON;
+ }
+ 
++void asrock_p4i45gx(struct biosinfo *b)
++{
++     CHECKSUM(b, 0x30);
++     TIMEREGS(b, 0x5A);
++     b->need_reboot = ON_ANY_CHANGE;
++     b->addr_stat   = 0x5A;
++     b->shift_stat  = 1;
++     b->shift_day   = 2;
++     b->rtc_day     = 0x7F;
++     b->reset_day   = ON;
++     b->rtc_time    = ON;
++}
++
+ void msi_ms_6580(struct biosinfo *b)
+ {
+      CHECKSUM(b, 0x30);
+@@ -594,6 +699,16 @@
+      b->rtc_time    = ON;
+ }
+ 
++void msi_ms_6704(struct biosinfo *b)
++{
++     CHECKSUM(b, 0x30);
++     TIMEREGS(b, 0x59);
++     b->need_reboot = ON_ANY_CHANGE;
++     b->addr_stat   = 0x59;
++     b->shift_stat  = 1;
++     b->shift_day   = 2;
++}
++
+ void asrock_k7vt4(struct biosinfo *b)
+ {
+      CHECKSUM(b, 0x30);
+@@ -665,6 +780,23 @@
+      b->shift_stat  = 7;
+ }
+ 
++void asrock_k7s8xep(struct biosinfo *b)
++{
++     CHECKSUM(b, 0x30);
++     TIMEREGS(b, 0x53);
++     b->need_reboot = ON_ANY_CHANGE;
++
++     b->addr_stat   = 0x51;
++     b->shift_stat  = 5;
++
++     b->rtc_day     = 0x70;
++     b->reset_day   = ON;
++     b->rtc_day_0_is_c0  = ON;
++     b->nr_rtc_day  = 8;
++
++     b->rtc_time    = ON;
++}
++
+ void asrock_k7s8x2(struct biosinfo *b)
+ {
+      CHECKSUM(b, 0x30);
+@@ -676,8 +808,15 @@
+      b->rtc_day     = 0x70;
+      b->reset_day   = ON;
+      b->rtc_time    = ON;
++     b->rtc_day_0_is_c0 = ON;
++     b->nr_rtc_day      = 8;
+ }
+ 
++void asrock_k7s8x4(struct biosinfo *b)
++{
++     asrock_k7s8x2(b);
++     b->shift_stat  = 7;
++}
+ void asrock_k7s8x3(struct biosinfo *b)
+ {
+      CHECKSUM(b, 0x30);
+@@ -690,6 +829,7 @@
+      b->rtc_time    = ON;
+ }
+ 
++
+ void gig_7vrx(struct biosinfo *b)
+ {
+      CHECKSUM(b, 0x30);
+@@ -702,6 +842,17 @@
+      b->rtc_time    = ON;
+ }
+ 
++void msi_ms_6567(struct biosinfo *b)
++{
++     CHECKSUM(b, 0x30);
++     TIMEREGS(b, 0x57);
++     b->addr_stat   = 0x56;
++     b->shift_stat  = 4;
++     b->rtc_day     = 0x70;
++     b->reset_day   = ON;
++     b->rtc_time    = ON;
++}
++
+ void asrock_k7vm4(struct biosinfo *b)
+ {
+      CHECKSUM(b, 0x30);
+@@ -714,10 +865,22 @@
+      b->reset_day   = ON;
+ }
+ 
++void asrock_k7vt4a(struct biosinfo *b)
++{
++     CHECKSUM(b, 0x30);
++     TIMEREGS(b, 0x56);
++     b->need_reboot = ON_ANY_CHANGE;
++     b->addr_stat   = 0x56;
++     b->shift_day   = 1;
++     b->rtc_day     = 0x6F;
++     b->reset_day   = ON;
++     b->rtc_time    = ON;
++}
++
+ void asus_sp98_x(struct biosinfo *b)
+ {
+      CHECKSUM(b, 0x6C);
+-     b->need_reboot = ON_STAT|ON_WDAYS;
++     b->need_reboot = ON_ANY_CHANGE;
+      b->rtc_time    = ON;
+      b->addr_stat   = 0x3F;
+      b->addr_wdays  = 0x41;
+@@ -748,6 +911,16 @@
+      b->reset_day   = ON;
+ }
+ 
++void gig_ga_8sgxlfs(struct biosinfo *b)
++{
++     CHECKSUM(b, 0x6E);
++     TIMEREGS(b, 0x33);
++     b->need_reboot = ON_ANY_CHANGE;
++     b->addr_stat   = 0x32;
++     b->rtc_day     = 0x70;
++     b->reset_day   = ON;
++}
++
+ void gig_ga_8simlh(struct biosinfo *b)
+ {
+      CHECKSUM(b, 0x6E);
+@@ -779,6 +952,20 @@
+      b->nr_rtc_day  = 8;
+ }
+ 
++void msi_ms_6760_2(struct biosinfo *b)
++{
++     CHECKSUM(b, 0x6E);
++     TIMEREGS(b, 0x33);
++     b->need_reboot = ON_ANY_CHANGE;
++     b->addr_stat   = 0x32;
++
++     b->rtc_time    = ON;
++     b->rtc_day     = 0x70;
++     b->reset_day   = ON;
++     b->rtc_day_0_is_c0 = ON;
++     b->nr_rtc_day  = 8;
++}
++
+ void ecs_k7s5a(struct biosinfo *b)
+ {
+      CHECKSUM(b, 0x30);
+@@ -794,6 +981,23 @@
+      b->nr_rtc_day      = 8;
+ }
+ 
++void ecs_k7s7ag(struct biosinfo *b)
++{
++     CHECKSUM(b, 0x30);
++     TIMEREGS(b, 0x53);
++     b->need_reboot = ON_STAT;
++     b->addr_stat   = 0x52;
++     b->shift_stat  = 7;
++     b->shift_day   = 3;
++
++     b->rtc_day     = 0x70;
++     b->reset_day   = ON;
++     b->rtc_day_0_is_c0 = ON;
++     b->nr_rtc_day      = 8;
++
++     b->rtc_time    = ON;
++}
++
+ void ecs_p4s5a(struct biosinfo *b)
+ {
+      CHECKSUM(b, 0x30);
+@@ -999,10 +1203,24 @@
+      b->need_reboot = ON_ANY_CHANGE;
+      b->rtc_time    = ON;
+      b->addr_stat   = 0x2A;
++     b->shift_stat  = 7;
+      b->addr_day    = 0x44;
+      b->addr_hour   = 0x45;
+      b->addr_min    = 0x46;
++}
++
++void ct_5rsa2(struct biosinfo *b)
++{
++     CHECKSUM(b, 0x6E);
++     b->addr_chk_h2 = 0x2B; /* Checksum for the status byte */
++     b->addr_chk_l2 = 0x2C; /* Checksum for the status byte */
++
++     b->addr_stat   = 0x2A;
+      b->shift_stat  = 7;
++     b->addr_day    = 0x44;
++     b->addr_hour   = 0x45;
++     b->addr_min    = 0x46;
++     b->addr_sec    = 0x47;
+ }
+ 
+ void mp_avt_121(struct biosinfo *b)
+@@ -1032,8 +1250,11 @@
+      b->addr_stat   = 0x53;
+      b->shift_stat  = 7;
+      b->shift_day   = 3;
++     b->rtc_time    = ON;
+      b->rtc_day     = 0x70;
+      b->reset_day   = ON;
++     b->rtc_day_0_is_c0  = ON;
++     b->nr_rtc_day  = 8;
+ }
+ 
+ void asrock_g_pro(struct biosinfo *b)
+@@ -1068,6 +1289,15 @@
+      b->shift_day   = 1;
+ }
+ 
++void ecs_k7ama(struct biosinfo *b)
++{
++     CHECKSUM(b, 0x30);
++     TIMEREGS(b, 0x55);
++     b->addr_stat   = 0x55;
++     b->shift_stat  = 1;
++     b->shift_day   = 2;
++}
++
+ void asus_p4t533(struct biosinfo *b)
+ {
+      CHECKSUM(b, 0x6B);
+@@ -1210,6 +1440,15 @@
+      b->shift_stat  = 3;
+ }
+ 
++void shuttle_fn85(struct biosinfo *b)
++{
++     CHECKSUM(b, 0x6D);
++     TIMEREGS(b, 0x4C);
++     b->need_reboot = ON_ANY_CHANGE;
++     b->addr_stat   = 0x4A;
++     b->shift_stat  = 3;
++}
++
+ void msi_694tpro(struct biosinfo *b)
+ {
+      CHECKSUM(b, 0x30);
+@@ -1232,6 +1471,30 @@
+      b->reset_day   = ON;
+ }
+ 
++void msi_ms_6309_2(struct biosinfo *b)
++{
++     CHECKSUM(b, 0x30);
++     TIMEREGS(b, 0x58);
++     b->need_reboot = ON_ANY_CHANGE;
++     b->addr_stat   = 0x57;
++     b->shift_stat  = 3;
++     b->rtc_day     = 0x6F;
++     b->reset_day   = ON;
++     b->rtc_time    = ON;
++}
++
++void msi_ms_6195(struct biosinfo *b)
++{
++     CHECKSUM(b, 0x30);
++     TIMEREGS(b, 0x58);
++     b->need_reboot = ON_ANY_CHANGE;
++     b->addr_stat   = 0x57;
++     b->shift_stat  = 7;
++     b->rtc_day     = 0x6F;
++     b->reset_day   = ON;
++     b->rtc_time    = ON;
++}
++
+ void gig_ga_7vtx(struct biosinfo *b)
+ {
+      CHECKSUM(b, 0x30);
+@@ -1293,6 +1556,12 @@
+      b->shift_stat  = 5;
+ }
+ 
++void msi_ms_6765(struct biosinfo *b)
++{
++     msi_k7pro_k7pro18_ecs_common(b);
++     b->shift_stat  = 6;
++}
++
+ void msi_k7pro18(struct biosinfo *b)
+ {
+      msi_k7pro_k7pro18_ecs_common(b);
+@@ -1311,6 +1580,16 @@
+      b->rtc_time    = ON;
+ }
+ 
++void msi_ms_6159(struct biosinfo *b)
++{
++     CHECKSUM(b, 0x30);
++     TIMEREGS(b, 0x58);
++     b->addr_stat   = 0x58;
++     b->shift_stat  = 2;
++     b->shift_day   = 3;
++     b->rtc_time    = ON;
++}
++
+ void msi_6535_oldbios(struct biosinfo *b)
+ {
+      CHECKSUM(b, 0x30);
+@@ -1356,12 +1635,13 @@
+ {
+      CHECKSUM(b, 0x30);
+      TIMEREGS(b, 0x56);
++     b->need_reboot = ON_ANY_CHANGE;
+      b->addr_stat   = 0x54;
+      b->shift_stat  = 7;
+      b->rtc_time    = ON;
+      b->rtc_day     = 0x70;
+      b->reset_day   = ON;
+-     b->nr_rtc_day  = 7;
++     b->nr_rtc_day  = 8;
+      b->rtc_day_0_is_c0 = ON;
+ }
+ 
+@@ -1544,6 +1824,19 @@
+      b->reset_day   = ON;
+ }
+ 
++void msi_ms_6702(struct biosinfo *b)
++{
++     CHECKSUM(b, 0x30);
++     TIMEREGS(b, 0x5B);
++     b->need_reboot = ON_ANY_CHANGE;
++     b->addr_stat   = 0x5A;
++     b->shift_stat  = 7;
++     b->shift_day   = 3;
++     b->rtc_day     = 0x6F;
++     b->reset_day   = ON;
++     b->rtc_time    = ON;
++}
++
+ void msi_ms_6764(struct biosinfo *b)
+ {
+      CHECKSUM(b, 0x30);
+@@ -1698,6 +1991,30 @@
+      TIMEREGS(b, 0x9C);
+ }
+ 
++void asus_p4p800_se(struct biosinfo *b)
++{
++     CHECKSUM(b, 0x30);
++     b->need_reboot  = ON_ANY_CHANGE;
++     b->upper_method = INTEL;
++
++     b->addr_stat    = 0x9C;
++     b->shift_stat   = 7;
++
++     TIMEREGS(b, 0x9D);
++}
++
++void asus_p4pe2_x(struct biosinfo *b)
++{
++     CHECKSUM(b, 0x30);
++     b->need_reboot  = ON_ANY_CHANGE;
++     b->upper_method = INTEL;
++
++     b->addr_stat    = 0x87;
++     b->shift_stat   = 4;
++
++     TIMEREGS(b, 0x88);
++}
++
+ void springdale(struct biosinfo *b)
+ {
+      CHECKSUM(b, 0x30);
+@@ -1709,6 +2026,76 @@
+      b->addr_stat    = 0x92;
+ }
+ 
++void springdale2(struct biosinfo *b)
++{
++     CHECKSUM(b, 0x30);
++     b->need_reboot  = ON_ANY_CHANGE;
++     b->upper_method = INTEL;
++
++     TIMEREGS(b, 0x93);
++     b->shift_day    = 3;
++     b->addr_stat    = 0x92;
++     b->shift_stat   = 7;
++}
++
++void asrock_p4i65gv(struct biosinfo *b)
++{
++     CHECKSUM(b, 0x30);
++     b->need_reboot  = OFF; /* ??? */
++     b->upper_method = INTEL;
++
++     TIMEREGS(b, 0x90);
++     b->shift_day    = 3;
++     b->addr_stat    = 0x90;
++     b->shift_stat   = 2;
++}
++
++void asus_p5gd2_lx(struct biosinfo *b)
++{
++     CHECKSUM(b, 0x30);
++     b->need_reboot  = OFF; /* ??? */
++     b->upper_method = INTEL;
++
++     TIMEREGS(b, 0xA0);
++     b->addr_stat    = 0x9F;
++     b->shift_stat   = 5;
++}
++
++void asus_p5p800s(struct biosinfo *b)
++{
++     CHECKSUM(b, 0x30);
++     b->need_reboot  = ON_ANY_CHANGE;
++     b->upper_method = INTEL;
++
++     TIMEREGS(b, 0x9F);
++     b->addr_stat    = 0x9F;
++     b->shift_stat   = 1;
++     b->shift_day    = 2;
++}
++
++void asus_p5ad2(struct biosinfo *b)
++{
++     CHECKSUM(b, 0x30);
++     b->need_reboot  = ON_ANY_CHANGE;
++     b->upper_method = INTEL;
++
++     TIMEREGS(b, 0xA2);
++     b->addr_stat    = 0xA2;
++     b->shift_stat   = 2;
++     b->shift_day    = 3;
++}
++
++void asus_p5ad2_e(struct biosinfo *b)
++{
++     CHECKSUM(b, 0x30);
++     b->need_reboot  = ON_ANY_CHANGE;
++     b->upper_method = INTEL;
++
++     TIMEREGS(b, 0xA1);
++     b->addr_stat    = 0xA0;
++     b->shift_stat   = 4;
++}
++
+ void aopen_mk73le_n(struct biosinfo *b)
+ {
+      b->upper_method = VT82Cxxx;
+@@ -1744,6 +2131,19 @@
+      b->need_reboot  = ON_ANY_CHANGE;
+ }
+ 
++void tyan_tiger_k8w(struct biosinfo *b)
++{
++     b->upper_method = VT82Cxxx;
++
++     CHECKSUM(b, 0x30);
++     TIMEREGS(b, 0x8D);
++     
++     b->addr_stat    = 0x8D;
++     b->shift_stat   = 1;
++     b->shift_day    = 2;
++     b->need_reboot  = OFF; /* ??? */
++}
++
+ void gig_ga_7vt600(struct biosinfo *b)
+ {
+      b->upper_method = VT8235_37;
+@@ -1765,6 +2165,18 @@
+      b->shift_stat   = 5;
+ }
+ 
++void epox_8khap(struct biosinfo *b)
++{
++     b->upper_method = VT8235_37;
++
++     TIMEREGS(b, 0xD8);
++
++     b->addr_stat    = 0xD2;
++     b->shift_stat   = 5;
++     
++     b->need_reboot  = ON_STAT;
++}
++
+ void shuttle_fx41(struct biosinfo *b)
+ {
+      b->upper_method = VT8235_37;
+@@ -1806,6 +2218,57 @@
+      b->need_reboot  = ON_ANY_CHANGE;
+ }
+ 
++void asus_k8v_x(struct biosinfo *b)
++{
++     b->upper_method = VT8235_37;
++
++     CHECKSUM(b, 0x30);
++     TIMEREGS(b, 0xE6);
++
++     b->addr_stat    = 0xE4;
++     b->shift_stat   = 4;
++
++     b->rtc_time     = ON;
++     b->rtc_day      = 0x6F;
++     b->reset_day    = ON;
++
++     b->need_reboot  = ON_ANY_CHANGE;
++}
++
++void asus_p4v8x_x(struct biosinfo *b)
++{
++     b->upper_method = VT8235_37;
++
++     CHECKSUM(b, 0x30);
++     TIMEREGS(b, 0xE7);
++
++     b->addr_stat    = 0xE6;
++     b->shift_stat   = 6;
++
++     b->rtc_time     = ON;
++     b->rtc_day      = 0x6F;
++     b->reset_day    = ON;
++
++     b->need_reboot  = ON_ANY_CHANGE;
++}
++
++void asus_p4vp_mx(struct biosinfo *b)
++{
++     b->upper_method = VT8235_37;
++
++     CHECKSUM(b, 0x30);
++     TIMEREGS(b, 0xE7);
++
++     b->addr_stat    = 0xE5;
++     b->shift_stat   = 6;
++
++     b->rtc_time     = ON;
++     b->rtc_day      = 0x6F;
++     b->reset_day    = ON;
++
++     b->need_reboot  = ON_ANY_CHANGE;
++}
++
+ void asus_k8v(struct biosinfo *b)
+ {
+      b->upper_method = VT8235_37;
+@@ -1822,6 +2285,133 @@
+      b->reset_day    = ON;
+ }
+ 
++void asus_a8v_luxe(struct biosinfo *b)
++{
++     b->upper_method = VT8235_37;
++
++     CHECKSUM(b, 0x30);
++     TIMEREGS(b, 0xEA);
++
++     b->addr_stat    = 0xE7;
++     b->shift_stat   = 3;
++
++     b->rtc_time     = ON;
++     b->rtc_day      = 0x6F;
++     b->reset_day    = ON;
++
++     b->need_reboot  = ON_ANY_CHANGE;
++}
++
++void asrock_k7v88(struct biosinfo *b)
++{
++     b->upper_method = VT8235_37;
++
++     CHECKSUM(b, 0x30);
++     TIMEREGS(b, 0xA4);
++
++     b->addr_stat    = 0x86;
++     b->shift_stat   = 7;
++}
++
++void supermicro(struct biosinfo *b) 
++{
++     CHECKSUM(b, 0x30);
++     TIMEREGS(b, 0x5D);
++     b->need_reboot = ON_ANY_CHANGE;
++     b->addr_stat   = 0x5D;
++     b->shift_day   = 1;
++}
++
++void asrock_p4vt8(struct biosinfo *b) 
++/*
++ * nun zu der Checksumme: dein board hat zwei: eine ist in 0x30+0x31 und eine ist ein-byte gross in 0x6B
++ *
++ * er scheint beim booten allerdings nur eine checksumme zu pruefen, naemlich die in 0x6B
++ * (sonst wuerde er sowohl bei deiner als auch bei meiner Konfiguration meckern)
++ *
++ * Die richtige Loesung waere, beide Checksummen zu berechnen.
++ * Als Workaround wuerde ich sagen, dass 0x30+0x6B ok ist (da er 0x30 nicht zu pruefen
++ * scheint und einbyte-checksummen nicht erlaubt sind)
++ *
++ */
++{
++     b->addr_chk_h = 0x30;
++     b->addr_chk_l = 0x6B;
++
++     TIMEREGS(b, 0x55);
++
++     b->addr_stat  = 0x54;
++     b->shift_day  = 7;
++
++     b->rtc_day    = 0x6F;
++     b->reset_day  = ON;
++     b->rtc_time   = ON;
++}
++
++void asrock_p4vt8p(struct biosinfo *b) 
++/*
++ * nun zu der Checksumme: dein board hat zwei: eine ist in 0x30+0x31 und eine ist ein-byte gross in 0x6B
++ *
++ * er scheint beim booten allerdings nur eine checksumme zu pruefen, naemlich die in 0x6B
++ * (sonst wuerde er sowohl bei deiner als auch bei meiner Konfiguration meckern)
++ *
++ * Die richtige Loesung waere, beide Checksummen zu berechnen.
++ * Als Workaround wuerde ich sagen, dass 0x30+0x6B ok ist (da er 0x30 nicht zu pruefen
++ * scheint und einbyte-checksummen nicht erlaubt sind)
++ *
++ */
++{
++     b->addr_chk_h = 0x30;
++     b->addr_chk_l = 0x6B;
++
++     TIMEREGS(b, 0x55);
++     b->shift_day  = 1;
++
++     b->addr_stat  = 0x55;
++
++     b->rtc_day    = 0x6F;
++     b->reset_day  = ON;
++     b->rtc_time   = ON;
++}
++
++void asus_a7v880(struct biosinfo *b)
++{
++     b->upper_method = VT8235_37;
++
++     CHECKSUM(b, 0x30);
++     TIMEREGS(b, 0x8D);
++
++     b->addr_stat    = 0x8B;
++     b->shift_stat   = 4;
++
++     b->rtc_time     = ON;
++     b->rtc_day      = 0x6F;
++     b->reset_day    = ON;
++}
++
++void aopen_ax63(struct biosinfo *b)
++{
++     CHECKSUM(b, 0x6D);
++     b->need_reboot = ON_STAT;
++     b->addr_stat   = 0x47;
++     b->shift_stat  = 5;
++     b->addr_hour   = 0x35;
++     b->addr_min    = 0x53;
++     b->addr_sec    = 0x54;
++     b->addr_day    = 0x4F;
++}
++
++
++void atia3_m1535d(struct biosinfo *b)
++{
++     CHECKSUM(b, 0x6E);
++     TIMEREGS(b, 0x3A);
++     b->need_reboot = ON_ANY_CHANGE;
++     b->addr_stat   = 0x39;
++     b->shift_stat  = 3;
++}
++
++
+ /*
+  * Definitions of the mainboards below are in the format
+  *
+@@ -1839,12 +2429,19 @@
+                { bio_m6vcg,        "bio_m6vcg",        "Abit <http://www.abit.com.tw/>", "KA7-100", NULL, NULL, NULL, NULL },
+                { bio_m6vcg,        "bio_m6vcg",        "Abit <http://www.abit.com.tw/>", "VP6", NULL, NULL, NULL, NULL },
+                { bio_m6vcg,        "bio_m6vcg",        "<http://www.abit.com.tw>", "8363-686A(KT7[A][-RAID],KT7E)", "v1.0 ~ v1.2", NULL, NULL, NULL },
++               { bio_m6vcg,        "bio_m6vcg",        "<http://www.abit.com.tw>", "8363-686A(KT7,KT7A,KT7-RAID,KT7A-RAID)", "", "Award Software International, Inc.", "6.00 PG", "02/14/2001" },
+                { bio_m6vcg,        "bio_m6vcg",        "<http://www.abit.com.tw>", "8363-686A(KT7,KT7A,KT7-RAID,KT7A-RAID)", "", "Award Software International, Inc.", "6.00 PG", "07/11/2002" },
++               { bio_m6vcg,        "bio_m6vcg",        "<http://www.abit.com.tw>", "8371-686A(KA7,KA7-100)", "", "Award Software International, Inc.", "6.00 PG", "07/20/2000" },
++               { bio_m6vcg,        "bio_m6vcg",        /* ABIT VH6T */ "", "694X-686B", "", "Award Software International, Inc.", "6.00 PG", "03/15/2002" },
+                { bio_m6vcg,        "bio_m6vcg",        "Acer", "M19A", NULL, NULL, NULL, NULL },
+                { bio_m6vcg,        "bio_m6vcg",        "AOPEN", "AK33", NULL, NULL, NULL, NULL },
++               { bio_m6vcg,        "bio_m6vcg",        /* Aopen AK72 */ "", "", "", "Award Software International, Inc.", "6.00 PG", "07/28/2000" },
+                { bio_m6vcg,        "bio_m6vcg",        /* Aopen AK73 */ "", "07", "9189310401", NULL, NULL, NULL },
+-               { bio_m6vcg,        "bio_m6vcg",        "Biostar", "M6VBE", NULL, NULL, NULL, NULL },
++               { bio_m6vcg,        "bio_m6vcg",        "Biostar",       "M6VBE", NULL, NULL, NULL, NULL },
++               { bio_m6vcg,        "bio_m6vcg",        "Biostar Group", "M6VBE",   "1.x", "Award Software International, Inc.", "4.51 PG", "02/23/99" },
++               { bio_m6vcg,        "bio_m6vcg",        "Biostar Group", "M6VBE-A", "1.x", "Award Software International, Inc.", "4.51 PG", "10/13/99" },
+                { bio_m6vcg,        "bio_m6vcg",        "Biostar Group", "M6VBE-A", "1.x", "Award Software International, Inc.", "4.51 PG", "03/23/00" },
++               { msi_ms_6368,      "msi_ms_6368",      "Biostar Group", "M6VBE-A", "1.x", "Award Software International, Inc.", "4.51 PG", "03/23/00" },
+                /* 
+                 *  Unfortunately BIOSTAR M6VCG has no valid DMI entries
+                 *  (at least bios rev. 07/31/2000). Thus,
+@@ -1855,8 +2452,11 @@
+                 */
+                { bio_m6vcg,        "bio_m6vcg",        "Biostar", "M6VCG", NULL, NULL, NULL, NULL },
+                { bio_m6vcg,        "bio_m6vcg",        "",        "M6VCG", "", "Award Software International, Inc.", "6.00 PG", "09/21/2000" },
+-               { bio_m6vcg,        "bio_m6vcg",        /* Biostar M7VKB */    "", "8363-686A", "", "Award Software International, Inc.", "6.00 PG", "05/24/2001" },
+-               { bio_m6vcg,        "bio_m6vcg",        /* Chaintech 6AIV2T */ "",  "601-686A", "", "Award Software International, Inc.", "6.00 PG", "09/26/2001" },
++               { bio_m6vcg,        "bio_m6vcg",        /* Biostar M7VKB     */ "", "8363-686A", "", "Award Software International, Inc.", "6.00 PG", "05/24/2001" },
++               { bio_m6vcg,        "bio_m6vcg",        /* Chaintech 6AIV2T  */ "",  "601-686A", "", "Award Software International, Inc.", "6.00 PG", "09/26/2001" },
++               { bio_m6vcg,        "bio_m6vcg",        /* Chaintech 6AIV2T  */ "",  "601-686A", "", "Award Software International, Inc.", "6.00 PG", "03/12/2002" },
++               { bio_m6vcg,        "bio_m6vcg",        /* ECS K7VZA         */ "", "8363-686",  "", "Award Software International, Inc.", "6.00 PG", "05/31/2001" },
++               { bio_m6vcg,        "bio_m6vcg",        /* ECS K7VZA rev 1.3 */ "", "8363-686",  "", "Award Software International, Inc.", "6.00 PG", "01/12/2004" },
+                { bio_m6vcg,        "bio_m6vcg",        "Elitegroup", "K7VZA", NULL, NULL, NULL, NULL },
+                { bio_m6vcg,        "bio_m6vcg",        "Elitegroup", "P6VAP", NULL, NULL, NULL, NULL },
+                { bio_m6vcg,        "bio_m6vcg",        "Epox", "8KTA", NULL, NULL, NULL, NULL },
+@@ -1875,66 +2475,98 @@
+ 
+                { msi_ms_6323,      "msi_ms_6323",      "MICRO-STAR INTERNATIONAL CO., LTD", "MS-6323", "", "Award Software International, Inc.", "6.00 PG", "06/30/00" },
+ 
+-               { ecs_k7vza,        "ecs_k7vza",        /* Elitegroup K7VZA */ "", "8363-686A", "", "Award Software International, Inc.", "6.00 PG", "12/06/2000" },
++               { ecs_k7vza,        "ecs_k7vza",        /* ECS K7VZA rev 1.1 ? */ "", "8363-686A", "", "Award Software International, Inc.", "6.00 PG", "12/06/2000" },
+                { ecs_k7vza,        "ecs_k7vza",        "<http://www.abit.com.tw>", "8363-686A(KT7,KT7A,KT7A-RAID,KT7E)", "", NULL, NULL, NULL },
++               { ecs_k7vza,        "ecs_k7vza",        "Biostar", "M7VKA", "", "Award Software International, Inc.", "6.00 PG", "08/04/2000" },
+ 
+ 
+ /* MB =  3 */  { gig_ga_6bxc,      "gig_ga_6bxc",      /* Abit TH7-Raid  */ "ABIT", "i850-W83627HF", "Rev:0.1", "Award Software International, Inc.", "6.00 PG", "12/04/2001" },
+                { gig_ga_6bxc,      "gig_ga_6bxc",      /* Acorp 6A815EPD */ "", "i815-W83627", "", "Award Software International, Inc.", "6.00 PG", "08/03/2001" },
+                { gig_ga_6bxc,      "gig_ga_6bxc",      /* AOpen MX3W     */ "", "", "", "Award Software International, Inc.", "6.00 PG", "10/11/99" },
+                { gig_ga_6bxc,      "gig_ga_6bxc",      /* AOpen MX3W Pro */ "", "", "", "Award Software International, Inc.", "6.00 PG", "07/27/2001" },
++               { gig_ga_6bxc,      "gig_ga_6bxc",      "AOpen", "i855GMEm-LFS", "918EM10I5B", "Phoenix/Award Technologies, LTD", "6.00 PG", "01/14/2005" },
++               { gig_ga_6bxc,      "gig_ga_6bxc",      "AOpen", "MX4GER", "918b410201", "Phoenix/Award Technologies, LTD", "6.00 PG", "05/13/2003" },
+                { gig_ga_6bxc,      "gig_ga_6bxc",      "AOpen", "MX4GVR", "918B410101", "Phoenix/Award Technologies, LTD", "6.00 PG", "02/13/2003" },
+                { gig_ga_6bxc,      "gig_ga_6bxc",      "AOpen", "1244",   "918B410201", "Phoenix/Award Technologies, LTD", "6.00 PG", "04/03/2003" },
++               { gig_ga_6bxc,      "gig_ga_6bxc",      "AOpen", "EZ65",   "9172310005", "Phoenix/Award Technologies, LTD", "6.00 PG", "12/03/2003" },
+                { gig_ga_6bxc,      "gig_ga_6bxc",      "BIOSTAR Group", "M6TWG", "1.X", "Award Software International, Inc.", "6.00 PG", "05/14/01" },
+                { gig_ga_6bxc,      "gig_ga_6bxc",      /* Chaintech 6LTM2 */ "", "i440LX-8671", "", "Award Software International, Inc.", "4.51 PG", "07/20/99" },
+                { gig_ga_6bxc,      "gig_ga_6bxc",      /* ECS P6BXT-A+    */ "EliteGroup Computer Systems Co. Ltd.", "i440BX-W977EF", "1.0", "Award Software International, Inc.", "4.51 PG", "06/23/00" },
++               { gig_ga_6bxc,      "gig_ga_6bxc",      /* ECS P6IPAT      */ "", "i815E-ITE8870", "", "Award Software International, Inc.", "6.00 PG", "01/16/2002" },
++               { gig_ga_6bxc,      "gig_ga_6bxc",      /* Epox EP-4PEA9I  */ "", "i845PE-W83627", "", "Phoenix Technologies, LTD", "6.00 PG", "07/30/2004" },
++               { gig_ga_6bxc,      "gig_ga_6bxc",      /* Epox EP-3PTA    */ "", "i815-W83627", "", "Award Software International, Inc.", "6.00 PG", "02/21/2002" },
+                { gig_ga_6bxc,      "gig_ga_6bxc",      "Gigabyte GA-6BA", "i440BX-W977", "1.0", "Award Software International, Inc.", "4.51 PG", "02/05/01" },
+                { gig_ga_6bxc,      "gig_ga_6bxc",      "Gigabyte", "GA-6BXC", NULL, NULL, NULL, NULL },
+                { gig_ga_6bxc,      "gig_ga_6bxc",      "Gigabyte", "GA-6BXD", NULL, NULL, NULL, NULL },
+-               { gig_ga_6bxc,      "gig_ga_6bxc",      /* Gigabyte GA-6BXC */ "Gigabyte Technology Co. Ltd.",  "i440BX-8671", "", "Award Software International, Inc.", "4.51 PG", "09/17/98" },
+-               { gig_ga_6bxc,      "gig_ga_6bxc",      /* Gigabyte GA-6BXC */ "Giga-Byte Technology CO., LTD", "i440BX-8671", "", "Award Software International, Inc.", "4.51 PG", "01/22/02" },
+-               { gig_ga_6bxc,      "gig_ga_6bxc",      /* Gigabyte GA-6BXE */ "Giga-Byte Technology CO., LTD", "i440BX-8671", "", "Award Software International, Inc.", "4.51 PG", "02/06/01" },
++               { gig_ga_6bxc,      "gig_ga_6bxc",      /* Gigabyte GA-6BXC */ "Gigabyte Technology Co. Ltd.",  "i440BX-8671", "",    "Award Software International, Inc.", "4.51 PG", "09/17/98" },
++               { gig_ga_6bxc,      "gig_ga_6bxc",      /* Gigabyte GA-???? */ "Gigabyte Technology Co. Ltd.",  "i440BX-8671", "",    "Award Software International, Inc.", "4.51 PG", "10/30/98" },
++               { gig_ga_6bxc,      "gig_ga_6bxc",      /* Gigabyte GA-???? */ "Gigabyte Technology Co., Ltd.", "i440BX-8671", "1.0", "Award Software International, Inc.", "4.51 PG", "08/26/99" },
++               { gig_ga_6bxc,      "gig_ga_6bxc",      /* Gigabyte GA-???? */ "Gigabyte Technology Co., Ltd.", "i440BX-8671", "1.0", "Award Software International, Inc.", "4.51 PG", "08/08/01" },
++               { gig_ga_6bxc,      "gig_ga_6bxc",      /* Gigabyte GA-6BXE */ "Giga-Byte Technology CO., LTD", "i440BX-8671", "",    "Award Software International, Inc.", "4.51 PG", "02/06/01" },
++               { gig_ga_6bxc,      "gig_ga_6bxc",      /* Gigabyte GA-6BXC */ "Giga-Byte Technology CO., LTD", "i440BX-8671", "",    "Award Software International, Inc.", "4.51 PG", "01/22/02" },
+                { gig_ga_6bxc,      "gig_ga_6bxc",      "Gigabyte Technology Co., Ltd.", "6IEM", "1.x", "Award Software International, Inc.", "6.00 PG", "01/18/2002" },
++               { gig_ga_6bxc,      "gig_ga_6bxc",      "Gigabyte Technology Co., Ltd.", "6OXT", "1.x", "Award Software International, Inc.", "6.00 PG", "08/19/2002" },
+                { gig_ga_6bxc,      "gig_ga_6bxc",      "Gigabyte", "GA-8GE667 Pro", NULL, NULL, NULL, NULL },
+                { gig_ga_6bxc,      "gig_ga_6bxc",      "Gigabyte Technology Co., Ltd.", "8IK1100",   "1.x", "Award Software International, Inc.", "FA", "08/13/2003" },
++               { gig_ga_6bxc,      "gig_ga_6bxc",      "Gigabyte Technology Co., Ltd.", "8IPE775/-G", "x.x", "Award Software International, Inc.", "F3", "09/07/2004" },
+                { gig_ga_6bxc,      "gig_ga_6bxc",      "Gigabyte Technology Co., Ltd.", "8IPE1000P", "1.x", "Award Software International, Inc.", "Fa", "07/29/2003" },
++               { gig_ga_6bxc,      "gig_ga_6bxc",      "Gigabyte Technology Co., Ltd.", "8IRX",      "1.x", "Award Software International, Inc.", "6.00 PG", "12/07/2001" },
++               { gig_ga_6bxc,      "gig_ga_6bxc",      "Gigabyte Technology Co., Ltd.", "8I848E",    "1.x", "Award Software International, Inc.", "F3", "09/09/2004" },
+                { gig_ga_6bxc,      "gig_ga_6bxc",      /* Gigabyte GA-686DL2 */ "Gigabyte Technology Co. Ltd.", "i440LX-8661", "", "Award Software International, Inc.", "4.51 PG", "03/02/98" },
+                { gig_ga_6bxc,      "gig_ga_6bxc",      /* Gigabyte GA-BX2000 */ "Corporation Name", "i440BX-8671", "1.0", NULL, NULL, NULL },
++               { gig_ga_6bxc,      "gig_ga_6bxc",      /* Gigabyte GA-6WMMC7 */ "Gigabyte Technology Co., Ltd.", "i810-47B27X", "", "Award Software International, Inc.", "6.00 PG", "03/19/01" },
+                { gig_ga_6bxc,      "gig_ga_6bxc",      /* Gigabyte GA-6WMMC7 */ "Gigabyte Technology Co., Ltd.", "i810-47B27X", "", "Award Software International, Inc.", "6.00 PG", "10/22/01" },
++               { gig_ga_6bxc,      "gig_ga_6bxc",                               "Giga-Byte Technology Co., LTD", "i810-47B27X", "", "Award Software International, Inc.", "6.00 PG", "10/22/01" },
+                { gig_ga_6bxc,      "gig_ga_6bxc",      "MediaPortal", "QDI Winnex9", NULL, NULL, NULL, NULL },
+                { gig_ga_6bxc,      "gig_ga_6bxc",      /* MediaPortal */ "", "i810-W83627HF", "", "Award Software International, Inc.", "6.00 PG", "09/30/2000" },
+                { gig_ga_6bxc,      "gig_ga_6bxc",      /* MediaPortal */ "", "i810-W83627HF", "", "Award Software International, Inc.", "6.00 PG", "11/13/2000" },
+                { gig_ga_6bxc,      "gig_ga_6bxc",      /* MediaPortal */ "", "i810-W83627HF", "", "Award Software International, Inc.", "6.00 PG", "11/28/2000" },
++               { gig_ga_6bxc,      "gig_ga_6bxc",      /* MediaPortal */ "", "i810-W83627HF", "", "Award Software International, Inc.", "6.00 PG", "08/17/2001" },
+                { gig_ga_6bxc,      "gig_ga_6bxc",      "MICRO-STAR INTERNATIONAL CO., LTD", "MS-6116 (i440BX)", "1.X", NULL, "", "" },
+                { gig_ga_6bxc,      "gig_ga_6bxc",      "MSI", "MS-6117", NULL, NULL, NULL, NULL },
++               { gig_ga_6bxc,      "gig_ga_6bxc",      /* MSI MS-6153 */ "", "i440BX-W977", "", "Award Software International, Inc.", "4.51 PG", "07/11/00" },
+                { gig_ga_6bxc,      "gig_ga_6bxc",      "MSI", "MS-6156", NULL, NULL, NULL, NULL },
+                { gig_ga_6bxc,      "gig_ga_6bxc",      "MICRO-STAR INTERNATIONAL CO., LTD", "MS-6159 (i440LX)", "1.X", "Award Software International, Inc.", "4.51 PG", "04/20/99" },
++               { gig_ga_6bxc,      "gig_ga_6bxc",      "MICRO-STAR INTERNATIONAL CO., LTD", "MS-6183", "",    "Award Software International, Inc.", "W683F411", "11/11/99" },
+                { gig_ga_6bxc,      "gig_ga_6bxc",      "MICRO-STAR INTERNATIONAL CO., LTD", "MS-6337", "5.0", "Award Software International, Inc.", "6.00 PG", "01/11/2002" },
+-               { gig_ga_6bxc,      "gig_ga_6bxc",      "MICRO-STAR INTL, CO.,LTD.", "MS-6743", "Ver1.1A", "Phoenix Technologies, LTD", "6.00 PG", "06/24/2003" },
++               { gig_ga_6bxc,      "gig_ga_6bxc",      "MICRO-STAR INTERNATIONAL CO., LTD", "MS-6528", "",    "Award Software International, Inc.", "6.00 PG", "10/24/2001" },
++               { gig_ga_6bxc,      "gig_ga_6bxc",      "MICRO-STAR INTL, CO.,LTD.",         "MS-6743", "Ver1.1A", "Phoenix Technologies, LTD", "6.00 PG", "06/24/2003" },
++               { gig_ga_6bxc,      "gig_ga_6bxc",      "MICRO-STAR INTL, CO.,LTD.",         "MS-6743", "Ver1.1A", "Phoenix Technologies, LTD", "6.00 PG", "12/01/2003" },
++               { gig_ga_6bxc,      "gig_ga_6bxc",      "MICRO-STAR INTERNATIONAL CO., LTD", "MS-7091", "", "Phoenix Technologies, LTD", "6.00 PG", "10/26/2004" },
++               { gig_ga_6bxc,      "gig_ga_6bxc",      /* NMC 6BAX+ */ "", "i440BX-W977TF", "", "Award Software International, Inc.", "4.51 PG", "12/14/00" },
++               { gig_ga_6bxc,      "gig_ga_6bxc",      "QDI", "WinneX 1 i810-W83627HF", "", "Award Software International, Inc.", "6.00 PG", "11/09/2000" },
+                { gig_ga_6bxc,      "gig_ga_6bxc",      /* Shuttle AE23 */ "", "i815E-627HF", "", "Award Software International, Inc.", "6.00 PG", "09/11/2001" },
+                { gig_ga_6bxc,      "gig_ga_6bxc",      "Shuttle Inc", "FB50", /* Shuttle SB51G  */ "", "Phoenix Technologies, LTD", "6.00 PG", "11/14/2002" }, 
+                { gig_ga_6bxc,      "gig_ga_6bxc",      "Shuttle Inc", "FB50", /* Shuttle SB51G  */ "", "Phoenix Technologies, LTD", "6.00 PG", "11/22/2002" }, 
++               { gig_ga_6bxc,      "gig_ga_6bxc",      "Shuttle Inc", "FB51",                      "", "Phoenix Technologies, LTD", "6.00 PG", "07/16/2003" },
+                { gig_ga_6bxc,      "gig_ga_6bxc",      "SHUTTLE INC", "FB52", /* Shuttle SB52G2 */ "", "Phoenix Technologies, LTD", "6.00 PG", "01/20/2003" },
+-               { gig_ga_6bxc,      "gig_ga_6bxc",      "Shuttle Inc", "FB61", "", "Phoenix Technologies, LTD", "6.00 PG", "04/28/2003" },
+-               { gig_ga_6bxc,      "gig_ga_6bxc",      "Shuttle Inc", "FB61", "", "Phoenix Technologies, LTD", "6.00 PG", "05/16/2003" },
++               { gig_ga_6bxc,      "gig_ga_6bxc",      "Shuttle Inc", "FB61",                      "", "Phoenix Technologies, LTD", "6.00 PG", "04/28/2003" },
++               { gig_ga_6bxc,      "gig_ga_6bxc",      "Shuttle Inc", "FB61",                      "", "Phoenix Technologies, LTD", "6.00 PG", "05/16/2003" },
+                { gig_ga_6bxc,      "gig_ga_6bxc",      "Shuttle Inc.", "(HOT-661)Intel i440BX", "2A69KH2B", NULL, "", NULL },
+                { gig_ga_6bxc,      "gig_ga_6bxc",      "Tekram", "P6B40-A4X", NULL, NULL, NULL, NULL },
+                { gig_ga_6bxc,      "gig_ga_6bxc",      "Tekram Technology Co., Ltd.", "P6B40-A4X-i440BX", "Rev. 1.0", NULL, NULL, NULL },
+                { gig_ga_6bxc,      "gig_ga_6bxc",      "", "i815EP-ITE8712", "", "Award Software International, Inc.", "6.00 PG", "04/27/2001" },
+                { gig_ga_6bxc,      "gig_ga_6bxc",      /* Lex */ "", "i815E-ITE", "", "Award Software International, Inc.", "6.00 PG", "06/06/2002" },
++               { gig_ga_6bxc,      "gig_ga_6bxc",      /* Sumicom S350 from kingyoung */ "", "Springdale-G", "", "Phoenix Technologies, LTD", "6.00 PG", "08/26/2004" },
++               { msi_ms_6178,      "msi_ms_6178",      "MICRO-STAR INTERNATIONAL CO., LTD", "MS-6178", "", "Award Software International, Inc.", "6.00 PG", "11/02/2000" },
+ 
++               { chaintech_6oja3t, "chaintech_6oja3t", "Chaintech CT-6OJA3T/V3t", "i815-47B27X", "", "Award Software International, Inc.", "6.00 PG", "09/13/2001" },
+ 
+ /* MB =  4 */  { epx_8kta3,        "epx_8kta3",        "EPox", "8KTA3", NULL, NULL, NULL, NULL },
+-               { epx_8kta3,        "epx_8kta3",        /* EPox 8KTA2      */ "", "8363-686A",  "", "Award Software International, Inc.", "6.00 PG", "10/23/2001" },
+-               { epx_8kta3,        "epx_8kta3",        /* EPox 8KTA3      */ "", "8363A-686B", "", "Award Software International, Inc.", "6.00 PG", "03/05/2001" },
+-               { epx_8kta3,        "epx_8kta3",        /* ENMIC/NMC 8TTX+ */ "", "8363A-686B", "", "Award Software International, Inc.", "6.00 PG", "08/02/2002" },
++               { epx_8kta3,        "epx_8kta3",        /* EPox 8KTA2      */ "", "8363-686A",   "", "Award Software International, Inc.", "6.00 PG", "10/23/2001" },
++               { epx_8kta3,        "epx_8kta3",        /* EPox 8KTA3  Pro */ "", "8363A-686B",  "", "Award Software International, Inc.", "6.00 PG", "10/19/2001" },
++               { epx_8kta3,        "epx_8kta3",        /* EPox 8KTA3      */ "", "8363A-686B",  "", "Award Software International, Inc.", "6.00 PG", "03/05/2001" },
++               { epx_8kta3,        "epx_8kta3",        /* EPox 8KTA3+ Pro */ "", "8363A-686B",  "", "Award Software International, Inc.", "6.00 PG", "02/05/2002" },
++               { epx_8kta3,        "epx_8kta3",        /* EPox 8KTA3      */ "", "8363A-686B",  "", "Award Software International, Inc.", "6.00 PG", "07/29/2002" },
++               { epx_8kta3,        "epx_8kta3",        /* EPoX 8KTA+      */ "", "8363-686A/B", "", "Award Software International, Inc.", "6.00 PG", "06/24/2002" },
++               { epx_8kta3,        "epx_8kta3",        /* ENMIC/NMC 8TTX+ */ "", "8363A-686B",  "", "Award Software International, Inc.", "6.00 PG", "08/02/2002" },
+ 
+-/* MB =  5 */  { asus_tusl2,       "asus_tusl2",       "ASUSTeK Computer INC.", "TUSL2", NULL, NULL, NULL, NULL },
++/* MB =  5 */  { asus_tusl2,       "asus_tusl2",       "ASUSTeK Computer INC.", "TUSL2",   NULL, NULL, NULL, NULL },
+                { asus_tusl2,       "asus_tusl2",       "ASUSTeK Computer INC.", "TUSL2-C", NULL, NULL, NULL, NULL },
+-               { asus_tusl2,       "asus_tusl2",       "ASUSTeK Computer INC.", "CUSL2", NULL, NULL, NULL, NULL },
++               { asus_tusl2,       "asus_tusl2",       "ASUSTeK Computer INC.", "CUSL2",   NULL, NULL, NULL, NULL },
+                { asus_tusl2,       "asus_tusl2",       "ASUSTeK Computer INC.", "CUSL2-C", "REV 1.xx", "Award Software, Inc.", "ASUS CUSL2-C ACPI BIOS Revision 1003", "10/04/2000" },
+                { asus_tusl2,       "asus_tusl2",       "ASUSTeK Computer INC.", "CUSL2-C", NULL, NULL, NULL, NULL },
+-               { asus_tusl2,       "asus_tusl2",       "ASUSTeK Computer INC.", "P3B-F", NULL, NULL, NULL, NULL },
++               { asus_tusl2,       "asus_tusl2",       "ASUSTeK Computer INC.", "P3B-F",   NULL, NULL, NULL, NULL },
+                { asus_tusl2,       "asus_tusl2",       "ASUSTeK Computer INC.", "<P3B-F>", NULL, NULL, NULL, NULL },
+                { asus_tusl2,       "asus_tusl2",       "ASUSTeK Computer INC.", "P3C-E",    "REV 1.xx", "Award Software, Inc.", "ASUS P3C-E ACPI BIOS Revision 1023",            "10/12/2000" },
+                { asus_tusl2,       "asus_tusl2",       "ASUSTeK Computer INC.", "<CUBX-L>", "REV 1.xx", "Award Software, Inc.", "ASUS CUBX-L/CUBX-E ACPI BIOS Revision 1007.A",  "07/26/2000" },
+@@ -1946,58 +2578,79 @@
+                { asus_cubx,        "asus_cubx",        "ASUSTeK Computer INC.", "<CUBX>", "REV 1.xx", "Award Software, Inc.", "ASUS CUBX ACPI BIOS Revision 1006", "06/27/2000" },
+ 
+                { asus_cusi_fx,     "asus_cusi_fx",     "ASUSTeK Computer INC.", "CUSI-FX", "REV 1.xx", "Award Software, Inc.", "ASUS CUSI-FX ACPI BIOS Revision 1005", "12/11/2000" },
++               { asus_cusi_fx,     "asus_cusi_fx",     "ASUSTeK Computer INC.", "TUSI-M",  "REV 1.xx", "Award Software, Inc.", "ASUS TUSI-M ACPI BIOS Revision 1017",  "09/18/2002" },
+ 
+ /* MB =  6 */  { ecs_p6bat,        "ecs_p6bat",        "AOPEN", "AX59PRO", NULL, NULL, NULL, NULL },
++               { ecs_p6bat,        "ecs_p6bat",        /* AOPEN MX59 Pro */ "", "", "", "Award Software International, Inc.", "4.60 PGMA", "07/26/00" },
+                { ecs_p6bat,        "ecs_p6bat",        "DFI", "K6BV3+", "", "Award Software International, Inc.", "4.51 PG", "01/15/01" },
+                { ecs_p6bat,        "ecs_p6bat",        "DFI", "K6BV3+/66", NULL, NULL, NULL, NULL },
+                { ecs_p6bat,        "ecs_p6bat",        "Apollo", "MVP3", NULL, NULL, NULL, NULL },
+                { ecs_p6bat,        "ecs_p6bat",        /* ECS Elitegroup P6BAT-A+, P6BAP-Me */ "", "693-596-W977EF", "", "Award Software International, Inc.", "4.51 PG", "06/22/00" },
+                { ecs_p6bat,        "ecs_p6bat",        "Elitegroup", "P6BAT-A+", NULL, NULL, NULL, NULL },
+                /* 
+-                *  Unfortunately EPOX MVP3C-M has no valid DMI entries
+-                *  (at least bios rev. 1.01). Thus,
++                *  Unfortunately, 
++                *      EPOX MVP3C-M (at least bios rev. 1.01)
++                *      EPOX MVP3G-M (bios 08/11/2000)
++                *  have no valid DMI entries. Thus,
+                 *
+                 *     --iwname ecs_p6bat
+                 *
+                 *  option is your friend.
+                 */
+                { ecs_p6bat,        "ecs_p6bat",        "EPOX", "MVP3C-M (EP-58)", "Rev 1.0", "Award", NULL, NULL },
++               { ecs_p6bat,        "ecs_p6bat",        "EPOX", "MVP3G-M (1M)", NULL, NULL, NULL, NULL },
++               { ecs_p6bat,        "ecs_p6bat",        "First International Group", "PAG2130", "PCB 1.x", "Award Software International", "4.51 P4", "08/29/00" },
+                { ecs_p6bat,        "ecs_p6bat",        /* GA-6VXE7+ */ "Gigabyte Technology Co., Ltd.", "693A-596B-8671", "", "Award Software International, Inc.", "4.51 PG", "03/21/01" },
++               { ecs_p6bat,        "ecs_p6bat",        /* GA-6VXE7+ */ "Giga-Byte Technology Co., LTD", "693A-596B-8671", "", "Award Software International, Inc.", "4.51 PG", "03/21/01" },
++               { ecs_p6bat,        "ecs_p6bat",        "Legend QDI", "Advance-5/133E", "V1.XX", "Award Software International, Inc.", "4.51 PG", "03/10/2000" },
++               { ecs_p6bat,        "ecs_p6bat",        "Legend QDI", "Advance-5/133E", "V1.XX", "Award Software International, Inc.", "4.51 PG", "10/12/2000" },
+                { ecs_p6bat,        "ecs_p6bat",        "NMC", "5VMXe", NULL, NULL, NULL, NULL },
+                { ecs_p6bat,        "ecs_p6bat",        "Shuttle", "HOT-661V", NULL, NULL, NULL, NULL },
+                { ecs_p6bat,        "ecs_p6bat",        "Shuttle", "AV61", NULL, NULL, NULL, NULL },
+-     
++
++               { ecs_p6vxat,       "ecs_p6vxat",       /* ECS Elitegroup P6VXAT */ "", "694T-686", "", "Award Software International, Inc.", "6.00 PG", "01/14/2002" },
++               { ecs_p6vxat,       "ecs_p6vxat",       /* MSI 694D PRO-A */ "", "MS-6321", "", "Award Software International, Inc.", "6.00 PG", "08/22/2001" },
++
+                { dfi_ak74_ec,      "dfi_ak74_ec",      "DFI AK74-EC", "8363-686A", "", "Award Software International, Inc.", "6.00 PG", "11/05/2001" },
+ 
+                { shuttle_mvp3,     "shuttle_mvp3",     "Shuttle Inc.", "VIA APOLLO MVP3 (HOT-591P)", "2A5LEH2A", NULL, NULL, NULL },
++               { shuttle_mvp3,     "shuttle_mvp3",     "MICRO-STAR INTERNATIONAL CO., LTD", "MS-6156 (VT693)", "1.X", "Award Software International, Inc.", "4.51 PG", "11/16/99" },
+ 
+                { tekram_p5mvp3,    "tekram_p5mvp3",    "Tekram Technology Co., Ltd.", "P5MVP3", "Rev 1.X", "Award Software International, Inc.", "4.51 PG", "06/16/00" },
+-               { tekram_p5mvp3,    "tekram_p5mvp3",    "", "MVP3-596-W877", "", "Award Software International, Inc.", "4.51 PG", "12/14/00" },
++               { tekram_p5mvp3,    "tekram_p5mvp3",                        "", "MVP3-596-W877", "", "Award Software International, Inc.", "4.51 PG", "12/14/00" },
++               { tekram_p5mvp3,    "tekram_p5mvp3",    /* Epox EP-MVP2C */ "", "MVP3-596-W877", "", "Award Software International, Inc.", "4.51 PG", "12/21/00" },
++
++               { tekram_p5m4_m,    "tekram_p5m4_m",    "Tekram Technology Co., Ltd.", "P5M4-M", "Rev 1.X", "Award Software International, Inc.", "4.51 PG", "10/21/99" },
++
+ 
+ /* MB =  7 */  { msi_ms_6120,      "msi_ms_6120",      "MSI", "MS-6120", NULL, NULL, NULL, NULL },
+ 
+-/* MB =  8 */  { asus_cuv4xe,      "asus_cuv4xe",      "ASUSTeK Computer INC.", "CUV4X-E", NULL, NULL, NULL, NULL },
+-               { asus_cuv4xe,      "asus_cuv4xe",      "ASUSTeK Computer INC.", "A7M266", NULL, NULL, NULL, NULL },
++/* MB =  8 */  { asus_cuv4xe,      "asus_cuv4xe",      "ASUSTeK Computer INC.", "A7M266", NULL, NULL, NULL, NULL },
++               { asus_cuv4xe,      "asus_cuv4xe",      "ASUSTeK Computer INC.", "A7M266-D", "REV 1.xx", "Award Software, Inc.", "ASUS A7M266-D ACPI BIOS Revision 1010", "03/03/2003" },
+                { asus_cuv4xe,      "asus_cuv4xe",      "ASUSTeK Computer INC.", "A7V-133", NULL, NULL, NULL, NULL },
+                { asus_cuv4xe,      "asus_cuv4xe",      "ASUSTeK Computer INC.", "<A7V133>", "REV 1.xx", "Award Software, Inc.", "ASUS A7V-133 ACPI BIOS Revision 1009", "04/23/2002" },
+                { asus_cuv4xe,      "asus_cuv4xe",      "ASUSTeK Computer INC.", "<A7V133>", NULL, NULL, NULL, NULL },
+                { asus_cuv4xe,      "asus_cuv4xe",      "ASUSTeK Computer INC.", "A7V266", "REV 1.xx", "Award Software, Inc.", "ASUS A7V266 ACPI BIOS Rev 1011", "08/20/2002" },
+                { asus_cuv4xe,      "asus_cuv4xe",      "ASUSTeK Computer INC.", "A7V266-E", NULL, NULL, NULL, NULL },
++               { asus_cuv4xe,      "asus_cuv4xe",      "ASUSTeK Computer INC.", "CUV4X", "REV 1.xx", "Award Software, Inc.", "ASUS CUV4X ACPI BIOS Revision 1010 Beta 002", "09/04/2002" },
++               { asus_cuv4xe,      "asus_cuv4xe",      "ASUSTeK Computer INC.", "CUV4X-C", "REV 1.xx", "Award Software, Inc.", "ASUS CUV4X-C ACPI BIOS Revision 1008 Beta 003", "09/05/2002" },
++               { asus_cuv4xe,      "asus_cuv4xe",      "ASUSTeK Computer INC.", "CUV4X-E", NULL, NULL, NULL, NULL },
+                { asus_cuv4xe,      "asus_cuv4xe",      "ASUSTeK Computer INC.", "<K7V>", "REV 1.xx", "Award Software, Inc.", "ASUS K7V 1007", "07/26/2000" },
+                { asus_cuv4xe,      "asus_cuv4xe",      "ASUSTeK Computer INC.", "<K7V-T>", "REV 1.xx", "Award Software, Inc.", "ASUS K7V-T ACPI BIOS Revision 1007", "07/26/2000" },
+                { asus_cuv4xe,      "asus_cuv4xe",      "ASUSTeK Computer INC.", "MED 2001", "REV 1.xx", "Award Software, Inc.", "ASUS MED 2001 ACPI BIOS Revision 1006A", "02/01/2001" },
++               { asus_cuv4xe,      "asus_cuv4xe",      "ASUSTeK Computer INC.", "MED 2001", "REV 1.xx", "Award Software, Inc.", "ASUS MED 2001 ACPI BIOS Revision 1009",  "06/12/2001" },
+                { asus_cuv4xe,      "asus_cuv4xe",      "ASUSTeK Computer INC.", "MED2001", NULL, NULL, NULL, NULL },
+                { asus_cuv4xe,      "asus_cuv4xe",      "ASUSTeK Computer INC.", "P3V4X", "REV 1.xx", "Award Software, Inc.", "ASUS P3V4X ACPI BIOS Revision 1005",            "06/12/2000" },
+                { asus_cuv4xe,      "asus_cuv4xe",      "ASUSTeK Computer INC.", "P3V4X", "REV 1.xx", "Award Software, Inc.", "ASUS P3V4X ACPI BIOS Revision 1006 Beta 002",   "10/06/2000" },
+                { asus_cuv4xe,      "asus_cuv4xe",      "ASUSTeK Computer INC.", "TUV4X", NULL, NULL, NULL, NULL },
+                { asus_cuv4xe,      "asus_cuv4xe",      "Gigabyte", "GA-7DXR", NULL, NULL, NULL, NULL },
+-
+                /*
+                 *  the lower two lines of the next few are for the same board with different BIOS revisions.
+                 *  If you have the missing information on the BIOS entries, please submit
+                 */
+-               { asus_cuv4xe,      "asus_cuv4xe",      "ASUSTeK Computer INC.", "<A7V>", "REV 1.xx", "Award Software, Inc.", "ASUS A7V ACPI BIOS Revision 1008", "07/17/2001" },
+-               { asus_cuv4xe,      "asus_cuv4xe",      "ASUSTeK Computer INC.", "<A7V>", "REV 1.xx", "Award Software, Inc.", "ASUS A7V ACPI BIOS Revision 1011", "04/23/2002" },
++               { asus_cuv4xe,      "asus_cuv4xe",      "ASUSTeK Computer INC.", "<A7V>", "REV 1.xx", "Award Software, Inc.", "ASUS A7V ACPI BIOS Revision 1008",            "07/17/2001" },
++               { asus_cuv4xe,      "asus_cuv4xe",      "ASUSTeK Computer INC.", "<A7V>", "REV 1.xx", "Award Software, Inc.", "ASUS A7V ACPI BIOS Revision 1011",            "04/23/2002" },
++               { asus_cuv4xe,      "asus_cuv4xe",      "ASUSTeK Computer INC.", "<A7V>", "REV 1.xx", "Award Software, Inc.", "ASUS A7V ACPI BIOS Revision 1012 Beta 001-A", "09/10/2002" },
+                { bio_m6vcg,        "bio_m6vcg",        "ASUSTeK Computer INC.", "A7V", NULL, NULL, NULL, NULL },
+                { asus_cuv4xe,      "asus_cuv4xe",      "ASUSTeK Computer INC.", "A7V", NULL, NULL, NULL, NULL },
+ 
+@@ -2009,6 +2662,7 @@
+                { asus_p2l97s,      "asus_p2l97s",      "ASUSTeK Computer INC.", "P2B-B", NULL, NULL, NULL, NULL },
+                { asus_p2l97s,      "asus_p2l97s",      "ASUSTeK Computer INC.", "P2B-F", NULL, NULL, NULL, NULL },
+                { asus_p2l97s,      "asus_p2l97s",      "ASUSTeK Computer INC.", "P2B-LS", "REV 1.xx", "Award Software, Inc.", "ASUS P2B-LS ACPI BIOS Revision 1012", "03/03/00" },
++               { asus_p2l97s,      "asus_p2l97s",      "ASUSTeK Computer INC.", "P2B-LS", "REV 1.xx", "Award Software, Inc.", "ASUS P2B-LS ACPI BIOS Revision 1013 Beta 007", "12/08/00" },
+                { asus_p2l97s,      "asus_p2l97s",      "ASUSTeK Computer INC.", "P5A", NULL, NULL, NULL, NULL },
+                { asus_p2l97s,      "asus_p2l97s",      "ASUSTeK Computer INC.", "P5A-B", "REV 1.XX", "Award Software, Inc.", "ASUS P5A-B ACPI BIOS Revision 1011 Beta 004", "12/14/00" },
+                { asus_p2l97s,      "asus_p2l97s",      "ASUSTeK Computer INC.", "P5A-B", "REV 1.XX", NULL, NULL, NULL },
+@@ -2028,10 +2682,15 @@
+  */
+      
+ /* MB = 15 */  { msi_ms_6368,      "msi_ms_6368",      "MSI", "MS-6368", NULL, NULL, NULL, NULL },
+-               { msi_ms_6368,      "msi_ms_6368",      /* MSI MS-6368 Ver. 5.0 */ "", "601-686A", "", "Award Software International, Inc.", "6.00 PG", "03/18/2002" },
++               { msi_ms_6368,      "msi_ms_6368",      /* MSI MS-6368 rev. 5.0 */ "", "601-686A", "", "Award Software International, Inc.", "6.00 PG", "03/18/2002" },
++               { msi_ms_6368,      "msi_ms_6368",      /* MSI MS-6368 rev. ??  */ "", "601-686A", "", "Award Software International, Inc.", "6.00 PG", "07/11/2003" },
+                { msi_ms_6368,      "msi_ms_6368",      "",                                  "MS-6318", "", "Award Software International, Inc.", "6.00 PG", "09/28/00" },
+                { msi_ms_6368,      "msi_ms_6368",      "MSI",                               "MS-6330", "v5.0", NULL, NULL, NULL },
+                { msi_ms_6368,      "msi_ms_6368",      "MICRO-STAR INTERNATIONAL CO., LTD", "MS-6330", "", "Award Software International, Inc.", "6.00 PG", "05/11/2001" },
++               { msi_ms_6368,      "msi_ms_6368",      "MICRO-STAR INTERNATIONAL CO., LTD", "MS-6330", "", "Award Software International, Inc.", "6.00 PG", "11/29/2001" },
++               { msi_ms_6368,      "msi_ms_6368",      "MICRO-STAR INTERNATIONAL CO., LTD", "MS-6330", "", "Award Software International, Inc.", "6.00 PG", "10/07/2002" },
++               { msi_ms_6368,      "msi_ms_6368",      "MICRO-STAR INTERNATIONAL CO., LTD", "MS-6340(VT8363)", "", "Award Software International, Inc.", "6.00 PG", "01/14/2002" },
++               { msi_ms_6368,      "msi_ms_6368",      "MSI", "MS-6368 Micro-ATX mainboard", "Version 5.0 (G52-MA00463)", "Award Software International, Inc.", "6.00 PG", "08/12/2002" },
+                { msi_ms_6368,      "msi_ms_6368",      "MICRO-STAR INTERNATIONAL CO., LTD", "MS-6378(VT8361)", "", NULL, NULL, NULL },
+                { msi_ms_6368,      "msi_ms_6368",      "",     "694X-686B", "",         "Award Software International, Inc.", "6.00 PG", "04/26/2001" },
+                { msi_ms_6368,      "msi_ms_6368",      "Abit", "694X-686B", "VH6T 1.1", "Award Software International, Inc.", "6.00 PG", "03/15/2002" },
+@@ -2045,6 +2704,7 @@
+                { gig_ga_7zx,       "gig_ga_7zx",       "Gigabyte Technology Co. Ltd.", "7VX", "1.0", "American Megatrends Inc.", "62710", "07/15/97" },
+ 
+ /* MB = 17 */  { asus_sp98_x,      "asus_sp98_x",      "ASUSTeK Computer INC.", "SP98AGP-X", NULL, NULL, NULL, NULL },
++               { asus_sp98_x,      "asus_sp98_x",      "ASUSTeK Computer INC.", "SP97-XV", "REV 1.XX", "Award Software, Inc.", "#401A0-0109xv-5", "03/18/99" },
+      
+ /* MB = 18 */  { soyo_sy5ssm,      "soyo_sy5ssm",      "Soyo", "SY-5SSM", NULL, NULL, NULL, NULL },
+                { soyo_sy5ssm,      "soyo_sy5ssm",      "Gigabyte", "GA-586STX2", NULL, NULL, NULL, NULL },
+@@ -2052,15 +2712,17 @@
+ /* MB = 19 */  { msi_k7pro18,      "msi_k7pro18",      "MSI", "K7 Pro", NULL, NULL, NULL, NULL },
+                { msi_k7pro18,      "msi_k7pro18",      /* MSI-Barebone Hermes 845GV   (MS-6557) */ "Micro Star", "MS-6557", "3.00", "American Megatrends Inc.", "V3.3", "07/03/03" },
+ 
+-/* MB = 20 */  { qdi_brlx1,        "qdi_brlx1",        "QDI", "Legend", NULL, NULL, NULL, NULL },
+-               { qdi_brlx1,        "qdi_brlx1",        "QDI", "BrillianX I", NULL, NULL, NULL, NULL },
+-               { qdi_brlx1,        "qdi_brlx1",        "QDI", "P6I440BX/B1", NULL, NULL, NULL, NULL },
++/* MB = 20 */  { qdi_brlx1,        "qdi_brlx1",        "QDI",        "Legend",      NULL, NULL, NULL, NULL },
++               { qdi_brlx1,        "qdi_brlx1",        "QDI",        "BrillianX I", NULL, NULL, NULL, NULL },
++               { qdi_brlx1,        "qdi_brlx1",        "QDI",        "P6I440BX/B1", NULL, NULL, NULL, NULL },
++               { qdi_brlx1,        "qdi_brlx1",        /* QDI */ "", "Brilliant-1", "V1.01", "Award Software International, Inc.", "4.51 PG", "12/16/1999" },
+ 
+                { ga_6bxc_qdi_common,"ga_6bxc_qdi_common","MICRO-STAR INTERNATIONAL CO., LTD", "MS-6391", "", "Award Software International, Inc.", "6.00 PG", "12/31/2001" },
+ 
+                { epox_4g4a,        "epox_4g4a",        /* Epox 4G4A+ */ "", "i845G-W83627", "", "Award Software International, Inc.", "6.00 PG", "11/04/2002" },
+-               { epox_4g4a,        "epox_4g4a",        "Epox", "Springdale-G", "EX5-300 / EP-4GPF", "Phoenix Technologies, LTD", "6.00 PG", "04/27/2004" },
+-
++               { epox_4g4a,        "epox_4g4a",        "Epox",              "Springdale-G", "EX5-300 / EP-4GPF", "Phoenix Technologies, LTD", "6.00 PG", "04/27/2004" },
++               { epox_4pgf,        "epox_4pgf",        /* Epox 4PGF+ */ "", "Springdale-G", "", "Phoenix Technologies, LTD", "6.00 PG", "11/17/2003" },
++               { epox_4g4a,        "epox_4g4a",        "Dell Computer Corporation", "07W080", "A00", "Mitac International", "A02", "03/24/2003" },
+ 
+                /* 
+                 * Unfortunately ECS changed the BIOS without increasing the BIOS release number
+@@ -2081,6 +2743,9 @@
+ /* MB = 24 */  { ecs_k7s5al,       "ecs_k7s5al",       "ECS", "K7S5AL", NULL, NULL, NULL, NULL },
+ /* MB = 43 */  { ecs_k7s5au,       "ecs_k7s5au",       "ECS", "K7S5AU", NULL, NULL, NULL, NULL },
+ 
++
++               { ecs_k7s7ag,       "ecs_k7s7ag",       "ECS", "K7S7AG", "1.0", "American Megatrends Inc.", "07.00T", "04/02/01" },
++
+                { ecs_p4s5a,        "ecs_p4s5a",        "ECS", "P4S5A",  "1.0", "American Megatrends Inc.", "07.00T", "04/02/01" },
+ 
+                { ecs_p4s8ag,       "ecs_p4s8ag",       "ECS", "P4S8AG", "1.0", "American Megatrends Inc.", "07.00T", "04/02/01" },
+@@ -2094,6 +2759,7 @@
+ 
+ /* MB = 25 */  { gig_ga_7zxe,      "gig_ga_7zxe",      "Gigabyte", "GA-7ZXE", NULL, NULL, NULL, NULL },
+                { gig_ga_7zxe,      "gig_ga_7zxe",      "Gigabyte Technology Co., Ltd.", "7IXEH", "1.x", "American Megatrends Inc.", "62710", "10/08/2001" },
++               { gig_ga_7zxe,      "gig_ga_7zxe",      "MSI", "MS-6380", "1.0A", "American Megatrends Inc.", "062710", "01/31/2002" },
+ 
+ /* MB = 26 */  { gig_ga_5ax,       "gig_ga_5ax",       "Gigabyte", "GA-5AX", NULL, NULL, NULL, NULL },
+ 
+@@ -2106,10 +2772,12 @@
+ /* MB = 30 */  { asus_p4t533_c,    "asus_p4t533_c",    "ASUSTeK Computer INC.", "P4T533-C", NULL, NULL, NULL, NULL },
+                { asus_p4t533_c,    "asus_p4t533_c",    "ASUSTeK Computer INC.", "P4S800MX", "REV 1.xx", "Award Software, Inc.", "ASUS P4S800MX ACPI BIOS Revision 1002", "10/06/2003" },
+                { asus_p4t533_c,    "asus_p4t533_c",    "ASUSTeK Computer INC.", "<P4B>", "REV 1.xx", "Award Software, Inc.", "ASUS P4B ACPI BIOS Revision 1010", "05/03/2002" },
++               { asus_p4t533_c,    "asus_p4t533_c",    "ASUSTeK Computer INC.", "<P4B>", "REV 1.xx", "Award Software, Inc.", "ASUS P4B ACPI BIOS Revision 1012", "08/21/2002" },
+ 
+ /* MB = 46 */  { asus_p4pe,        "asus_p4pe",        "ASUSTeK Computer INC.", "P4PE",      NULL, NULL, NULL, NULL },
+                { asus_p4pe,        "asus_p4pe",        "ASUSTeK Computer INC.", "P4PE-X",    "REV 1.xx", "Award Software, Inc.", "ASUS P4PE-X ACPI BIOS Revision 1003",    "05/01/2003" },
+                { asus_p4pe,        "asus_p4pe",        "ASUSTeK Computer INC.", "P4PE-X",    "REV 1.xx", "Award Software, Inc.", "ASUS P4PE-X ACPI BIOS Revision 1004",    "05/21/2003" },
++               { asus_p4pe,        "asus_p4pe",        "ASUSTeK Computer INC.", "P4PE-X",    "REV 1.xx", "Award Software, Inc.", "ASUS P4PE-X/SE ACPI BIOS Revision 1008", "11/10/2003" },
+                { asus_p4pe,        "asus_p4pe",        "ASUSTeK Computer INC.", "P4PE-X/TE", "REV 1.xx", "Award Software, Inc.", "ASUS P4PE-X/TE ACPI BIOS Revision 1006", "01/05/2004" },
+                { asus_p4pe,        "asus_p4pe",        "ASUSTeK Computer INC.", "P4GE-V",    "REV 1.xx", "Award Software, Inc.", "ASUS P4GE-V ACPI BIOS Revision 1001",    "09/16/2002" },
+ 
+@@ -2117,14 +2785,22 @@
+                { gig_ga_7vtxh,     "gig_ga_7vtxh",     "Gigabyte Technology Co., Ltd.", "7VTXH", "1.0", "American Megatrends Inc.", "062710", "12/19/2001" },
+                { gig_ga_7vtxh,     "gig_ga_7vtxh",     "Gigabyte", "GA-7VTXE", NULL, NULL, NULL, NULL },
+ 
++               { gig_7vrx,         "gig_7vrx",         "Gigabyte Technology Co., Ltd.", "7VRX",  "1.0", "American Megatrends Inc.", "07.00T", "08/23/2002" },
++               { gig_7vrx,         "gig_7vrx",         "Gigabyte Technology Co., Ltd.", "7VRXP", "1.x", "American Megatrends Inc.", "07.00T", "11/05/2002" },
++               { gig_7vrx,         "gig_7vrx",         "MSI", /* K7T266 Pro */ "MS-6380", "0.A", "American Megatrends Inc.", "062710", "07/15/97" },
++
+ /* MB = 33 */  { msi_ms_6380,      "msi_ms_6380",      "MSI", "MS-6380", NULL, NULL, NULL, NULL },
+      
+ /* MB = 34 */  { ecs_k7som,        "ecs_k7som",        "Elitegroup", "K7SOM", NULL, NULL, NULL, NULL },
+ 
+ /* MB = 35 */  { via_p4ma,         "via_p4ma",         "VIA", "P4MA", NULL, NULL, NULL, NULL },
+                { via_p4ma,         "via_p4ma",         "", "P4MA", "", "Award Software International, Inc.", "6.00 PG", "05/23/2002" },
++               { via_p4ma,         "via_p4ma",         "Via", "Epia SP8000E", "", "Award", "1.04", "11/01/2004" },
++
++
+ 
+ /* MB = 36 */  { msi_694tpro,      "msi_694tpro",      "MSI", "MS-6309", NULL, NULL, NULL, NULL },
++               { msi_ms_6309_2,    "msi_ms_6309_2"     "Micro-Star Inc.", "MS-6309", "2.0", "American Megatrends Inc.", "62710", "05/20/99" },
+ 
+ /* MB = 37 */  { gig_ga_7vtx,      "gig_ga_7vtx",      "Gigabyte", "GA-7VTXH", NULL, NULL, NULL, NULL },
+                { gig_ga_7vtx,      "gig_ga_7vtx",      "Gigabyte Technology Co., Ltd.", "7VTXE", "1.0", "American Megatrends Inc.", "07.00T", "06/28/2002" },
+@@ -2133,7 +2809,7 @@
+      
+ /* MB = 39 */  { ecs_k7vmm,        "ecs_k7vmm",        "ECS", "K7VMM", NULL, NULL, NULL, NULL },
+                { ecs_k7vmmp,       "ecs_k7vmmp",       "ECS", "K7VMM+", "3.1", "American Megatrends Inc.", "07.00T", "04/02/01" },
+-
++               { ecs_k7vmmp,       "ecs_k7vmmp",       "ECS", "L7VMM3", "3.1", "American Megatrends Inc.", "07.00T", "04/02/01" },
+ 
+                /* 
+                 * Unfortunately MSI changed the BIOS without increasing the BIOS release number
+@@ -2161,14 +2837,20 @@
+ 
+ /* MB = 44 */  { via_epia_m,       "via_epia_m",       "VIA", "Epia M6000", NULL, NULL, NULL, NULL },
+                { via_epia_m,       "via_epia_m",       "VIA", "Epia M9000", NULL, NULL, NULL, NULL },
+-               { via_epia_m,       "via_epia_m",       /*         M10000             */ "", "EPIA-M", "", "Award Software International, Inc.", "6.00 PG", "11/19/2002" },
+-               { via_epia_m,       "via_epia_m",       /*         M10000             */ "", "EPIA-M", "", "Award Software International, Inc.", "6.00 PG", "11/26/2002" },
+-               { via_epia_m,       "via_epia_m",       /* M9000 + M10000             */ "", "EPIA-M", "", "Award Software International, Inc.", "6.00 PG", "03/17/2003" },
+-               { via_epia_m,       "via_epia_m",       /*                    CL6000E */ "", "EPIA-M", "", "Award Software International, Inc.", "6.00 PG", "08/01/2003" },
+-               { via_epia_m,       "via_epia_m",       /*                  MII-60000 */ "", "EPIA-M", "", "Award Software International, Inc.", "6.00 PG", "11/25/2003" },
+-               { via_epia_m,       "via_epia_m",       /* M6000 + M10000 + MII-10000 */ "", "EPIA-M", "", "Award Software International, Inc.", "6.00 PG", "12/11/2003" },
+-               { via_epia_m,       "via_epia_m",       /* M6000 + M10000 + MII-10000 */ "", "EPIA-M", "", "Award Software International, Inc.", "6.00 PG", NULL },
+-               { via_epia_m,       "via_epia_m",       "", "C3M266", "", "Award Software International, Inc.", "6.00 PG", "03/11/2003" },
++               { via_epia_m,       "via_epia_m",       /*         M10000             */ "", "EPIA-M",  "", "Award Software International, Inc.", "6.00 PG", "11/19/2002" },
++               { via_epia_m,       "via_epia_m",       /*         M10000             */ "", "EPIA-M",  "", "Award Software International, Inc.", "6.00 PG", "11/26/2002" },
++               { via_epia_m,       "via_epia_m",       /* M9000 + M10000             */ "", "EPIA-M",  "", "Award Software International, Inc.", "6.00 PG", "03/17/2003" },
++               { via_epia_m,       "via_epia_m",       /*                    CL6000E */ "", "EPIA-M",  "", "Award Software International, Inc.", "6.00 PG", "08/01/2003" },
++               { via_epia_m,       "via_epia_m",       /*                  MII-60000 */ "", "EPIA-M",  "", "Award Software International, Inc.", "6.00 PG", "11/25/2003" },
++               { via_epia_m,       "via_epia_m",       /* M6000 + M10000 + MII-10000 */ "", "EPIA-M",  "", "Award Software International, Inc.", "6.00 PG", "12/11/2003" },
++               { via_epia_m,       "via_epia_m",       /*        M10000B + MII-12000 */ "", "EPIA-M",  "", "Award Software International, Inc.", "6.00 PG", "01/06/2004" },
++               { via_epia_m,       "via_epia_m",       /*                            */ "", "EPIA-M",  "", "Award Software International, Inc.", "6.00 PG", "05/19/2004" },
++               { via_epia_m,       "via_epia_m",       /* M6000 + M10000 + MII-10000 */ "", "EPIA-M",  "", "Award Software International, Inc.", "6.00 PG", NULL },
++               { via_epia_m,       "via_epia_m",                                        "", "C3M266",  "", "Award Software International, Inc.", "6.00 PG", "11/25/2002" },
++               { via_epia_m,       "via_epia_m",                                        "", "C3M266",  "", "Award Software International, Inc.", "6.00 PG", "03/11/2003" },
++               { via_epia_m,       "via_epia_m",       /* ML5000, ML8000A            */ "", "EPIA-ML", "", "Award Software International, Inc.", "6.00 PG", "08/04/2004" },
++               { via_epia_m,       "via_epia_m",       /* ML8000A                    */ "", "EPIA-ML", "", "Award Software International, Inc.", "6.00 PG", "07/12/2004" },
++               { via_epia_m,       "via_epia_m",       /* PD-6000E                   */ "", "EPIA-PD", "", "Award Software International, Inc.", "6.00 PG", "03/11/2004" },
+ 
+ /* MB = 45 */  { gig_ga_7zxr30,    "gig_ga_7zxr30",    "Gigabyte", "GA-7ZXR30", NULL, NULL, NULL, NULL },
+                { gig_ga_7zxr30,    "gig_ga_7zxr30",    "Gigabyte Technology Co., Ltd.", "7ZM",  "1.0", "American Megatrends Inc.", "62710", "10/16/2001" },
+@@ -2183,23 +2865,23 @@
+ 
+                { shuttle_fs40,     "shuttle_fs40",     /* Shuttle FS40 */ "", "", "", "Phoenix Technologies, LTD", "6.00 PG", "04/30/2002" },
+                { shuttle_fs40,     "shuttle_fs40",     /* Shuttle FS40 */ "", "FS40", "", "Phoenix Technologies, LTD", "6.00 PG", "01/21/2003" },
++               { shuttle_fs40,     "shuttle_fs40",     "MICRO-STAR INTERNATIONAL CO., LTD", "MS-6701", "", "Phoenix Technologies, LTD", "6.00 PG", "02/22/2003" },
+ 
+                { ecs_k7s6a,        "ecs_k7s6a",        /* ECS K7S6A */    "", "SiS-745", "", "Award Software International, Inc.", "6.00 PG", "02/19/2002" },
++               { ecs_k7s6a,        "ecs_k7s6a",        /* ECS K7S6A */    "", "SiS-745", "", "Award Software International, Inc.", "6.00 PG", "11/25/2002" },
+                { ecs_k7s6a,        "ecs_k7s6a",        /* Shuttle FS50 */ "", "FS50",    "", "Award Software International, Inc.", "6.00 PG", "07/05/2002" },
++               { ecs_k7s6a,        "ecs_k7s6a",        /* Shuttle FS50 */ "", "FS50",    "", "Award Software International, Inc.", "6.00 PG", "06/02/2003" },
+ 
+                { gig_sis_645,      "gig_sis_645",      "Gigabyte Technology Co., Ltd.", "SiS-645", "1.x", "Award Software International, Inc.", "6.00 PG", "02/06/2002" },
+                { gig_sis_645_new,  "gig_sis_645_new",  "Gigabyte Technology Co., Ltd.", "SiS-645", "1.x", "Award Software International, Inc.", "6.00 PG", "09/16/2002" },
+ 
+                { msi_ms_6243,      "msi_ms_6243",      /* MSI-Barebone Hermes 845GL   (MS-6243) */ "INTEL", "BROKDALE-G", "1.0", "American Megatrends Inc.", "V1.1", "06/10/02" },
+                { msi_ms_6243,      "msi_ms_6243",      /* MSI-Barebone Hermes 845GL-P (MS-6557) */ "INTEL", "BROKDALE-G", NULL, NULL, NULL, NULL },
+-               { msi_ms_6243,      "msi_ms_6243",      /* MSI-Barebone Hermes 845GL   (MS-6243) */ "Micro Star", "MS-6557", "1.00", "American Megatrends Inc.", "V1.2B6", "12/03/02" },
+-               { msi_ms_6243,      "msi_ms_6243",      "MICRO-STAR INC.", "MS-6765", "100", "American Megatrends Inc.", "V1.1 on 07.00T", "09/02/03" },
+-
+-
+-               { asrock_k7vt2,     "asrock_k7vt2",     "ASRock",              "K7VT2", "2.00", "American Megatrends Inc.", "P1.00", "09/24/2002" },
+-               { asrock_k7vt2,     "asrock_k7vt2",     /* ASRock K7VT2 */ "", "K7VT2", "2.00", "American Megatrends Inc.", "P1.20", "12/10/2002" },
+-
+-               { asrock_k7vt4,     "asrock_k7vt4",     /* ASRock K7VT4 */ "", "K7VT4-4X.", "3.0X", "American Megatrends Inc.", "P1.70", "10/02/2003" },
++               { msi_ms_6243,      "msi_ms_6243",      /* MSI-Barebone Hermes 845GL   (MS-6243) */ "Micro Star",      "MS-6557", "1.00", "American Megatrends Inc.", "V1.2B6", "12/03/02" },
++               { msi_ms_6243,      "msi_ms_6243",                                                  "MICRO-STAR INC.", "MS-6765", "100",  "American Megatrends Inc.", "V1.1 on 07.00T", "09/02/03" },
++               { msi_ms_6765,      "msi_ms_6765",      /* MSI-Barebone Hetis  865GV             */ "MICRO-STAR INC.", "MS-6765", "200",  "American Megatrends Inc.", "V5.1 on 07.00T", "01/19/04" },
++               { msi_ms_6243,      "msi_ms_6243",      /* MSI-Barebone Hetis  865GV-E           */ "MICRO-STAR INC.", "MS-7065", "100",  "American Megatrends Inc.", "V1.0 on 07.00T", "10/08/04" },
++               { msi_ms_6765,      "msi_ms_6765",                                                  "MICRO-STAR INC.", "MS-7065", "100",  "American Megatrends Inc.", "V1.1 on 07.00T", "10/22/04" },
+ 
+                { tosh_eq_3300m,    "tosh_eq_3300m",    /* Toshiba Equium 3300M (Typ: GVC MR824) */ "VIA Technologies Inc.", "VIA Apollo Pro 133", "1.0", "American Megatrends Inc.", "1.08.03", "07/10/01" },
+ 
+@@ -2211,16 +2893,20 @@
+                { asrock_k7vm2_new, "asrock_k7vm2_new", "FIRST INTERNALTIONAL COMPUTER", "VB-601-V", "VER:1.3", "American Megatrends, Inc.", "0627", "03/09/99" },
+                { asrock_k7vm2_new, "asrock_k7vm2_new", "MicroStar Inc.", "MS-6340", "1.0", "American Megatrends Inc.", "62710", "07/15/97" },
+ 
+-               { asrock_k7s8xe2,   "asrock_k7s8xe2",         "", "K7S8XE+", "1.0", "American Megatrends Inc.", "P1.40", "11/11/2003" },
+-               { asrock_k7s8xe2,   "asrock_k7s8xe2",         "", "K7S8XE+", "1.0", "American Megatrends Inc.", "P1.60", "01/29/2004" },
+-               { asrock_k7s8xe,    "asrock_k7s8xe",          "", "K7S8XE+", "1.0", "American Megatrends Inc.", "M1.44", "12/16/2003" },
+-               { asrock_k7s8x,     "asrock_k7s8x",           "", "K7S8X.",  "3.0", "American Megatrends Inc.", "P1.40", "10/07/2003" },
+-               { asrock_k7s8x2,    "asrock_k7s8x2",          "", "K7S8X.",  "3.0", "American Megatrends Inc.", "P2.20", "10/07/2003" },
+-               { asrock_k7s8x3,    "asrock_k7s8x3",          "", "K7S8X",   "1.0", "American Megatrends Inc.", "P1.20", "03/10/2003" },
+-               { asrock_k7s8x2,    "asrock_k7s8x2",          "", "K7S8X",   "1.0", "American Megatrends Inc.", "P2.20", "10/07/2003" },
+-
+-               { gig_7vrx,         "gig_7vrx",         "Gigabyte Technology Co., Ltd.", "7VRX", "1.0", "American Megatrends Inc.", "07.00T", "08/23/2002" },
+-               { gig_7vrx,         "gig_7vrx",         "MSI", /* K7T266 Pro */ "MS-6380", "0.A", "American Megatrends Inc.", "062710", "07/15/97" },
++               { asrock_k7s8xe2,   "asrock_k7s8xe2",         "", "K7S8XE+",    "1.0",      "American Megatrends Inc.", "P1.40", "11/11/2003" },
++               { asrock_k7s8xe2,   "asrock_k7s8xe2",         "", "K7S8XE+",    "1.0",      "American Megatrends Inc.", "P1.60", "01/29/2004" },
++               { asrock_k7s8xep,   "asrock_k7s8xep",         "", "K7S8XE+",    "1.0",      "American Megatrends Inc.", "P1.70", "04/27/2004" },
++               { asrock_k7s8xep,   "asrock_k7s8xep",         "", "K7S8XE+",    "1.0",      "American Megatrends Inc.", "P1.90", "07/19/2004" },
++               { asrock_k7s8xe,    "asrock_k7s8xe",          "", "K7S8XE+",    "1.0",      "American Megatrends Inc.", "M1.44", "12/16/2003" },
++               { asrock_k7s8xep_m, "asrock_k7s8xep_m",       "", "K7S8XE+",    "1.0",      "American Megatrends Inc.", "M1.91", "09/08/2004" },
++               { asrock_k7s8x,     "asrock_k7s8x",           "", "K7S8X.",     "3.0",      "American Megatrends Inc.", "P1.40", "10/07/2003" },
++               { asrock_k7s8x2,    "asrock_k7s8x2",          "", "K7S8X.",     "3.0",      "American Megatrends Inc.", "P2.20", "10/07/2003" },
++               { asrock_k7s8x2,    "asrock_k7s8x2",          "", "K7S8X.",     "3.0",      "American Megatrends Inc.", "P2.30", "04/22/2004" },
++               { asrock_k7s8x4,    "asrock_k7s8x4",          "", "K7S8X.",     "3.0",      "American Megatrends Inc.", "P2.50", "07/19/2004" },
++               { asrock_k7s8x3,    "asrock_k7s8x3",          "", "K7S8X",      "1.0",      "American Megatrends Inc.", "P1.20", "03/10/2003" },
++               { asrock_k7s8x2,    "asrock_k7s8x2",          "", "K7S8X",      "1.0",      "American Megatrends Inc.", "P2.20", "10/07/2003" },
++               /* the following one has patched BIOS, so might not run with the official BIOS. */
++               { asrock_k7s8x,     "asrock_k7s8x",           "", "K7S8X..3.0", "30000000", "American Megatrends Inc.", "P2.10", "07/19/2004" },
+ 
+                { asrock_k7vm4,     "asrock_k7vm4",     "ASRock", "K7VM4", "1.00", "American Megatrends Inc.", "P1.40", "07/18/2003" },
+                { asrock_k7vm4,     "asrock_k7vm4",           "", "K7VM4", "1.00", "American Megatrends Inc.", "P1.70", "08/09/2003" },
+@@ -2230,12 +2916,17 @@
+ 
+                { asus_p4s8l,       "asus_p4s8l",       "ASUSTeK Computer INC.", "P4S8L", "REV 1.xx", "Award Software, Inc.", "ASUS P4S8L ACPI BIOS Revision 1004", "03/27/2003" },
+                { asus_p4s8l,       "asus_p4s8l",       "ASUSTeK Computer INC.", "P4S8L", "REV 1.xx", "Award Software, Inc.", "ASUS P4S8L ACPI BIOS Revision 1005", "06/11/2003" },
++               { asus_p4s8l,       "asus_p4s8l",       "ASUSTeK Computer INC.", "P4S8L", "REV 1.xx", "Award Software, Inc.", "ASUS P4S8L ACPI BIOS Revision 1006", "11/21/2003" },
++               { asus_p4s8l,       "asus_p4s8l",       "ASUSTeK Computer INC.", "P4S8L", "REV 1.xx", "Award Software, Inc.", "ASUS P4S8L ACPI BIOS Revision 1009", "10/07/2004" },
++
++               { asus_a7v600,      "asus_a7v600",      "ASUSTeK Computer INC.", "A7V600",   "REV 1.xx", "Award Software, Inc.", "ASUS A7V600 ACPI BIOS Revision 1006",   "11/12/2003" },
++               { asus_a7v600,      "asus_a7v600",      "ASUSTeK Computer INC.", "A7V600",   "REV 1.xx", "Award Software, Inc.", "ASUS A7V600 ACPI BIOS Revision 1008",   "09/02/2004" },
++               { asus_a7v600,      "asus_a7v600",      "ASUSTeK Computer INC.", "A7V600-X", "REV 1.xx", "Award Software, Inc.", "ASUS A7V600-X ACPI BIOS Revision 1006", "09/02/2004" },
+ 
+-               { asus_a7v600,      "asus_a7v600",      "ASUSTeK Computer INC.", "A7V600", "REV 1.xx", "Award Software, Inc.", "ASUS A7V600 ACPI BIOS Revision 1006", "11/12/2003" },
+-               
+                { asus_p4s8x,       "asus_p4s8x",       "ASUSTeK Computer INC.", "P4S8X", "REV 1.xx", "Award Software, Inc.", "ASUS P4S8X ACPI BIOS Revision 1005 Beta 009", "02/21/2003" },
+ 
+                { msi_ms_6524,      "msi_ms_6524",      "MICRO-STAR INTERNATIONAL CO., LTD", "MS-6524", "", "Award Software International, Inc.", "6.00 PG", "04/26/2002" },
++               { msi_ms_6524,      "msi_ms_6524",      "MICRO-STAR INTERNATIONAL CO., LTD", "MS-6533", "", "Phoenix Technologies, LTD", "6.00 PG", "11/01/2002" },
+ 
+                { pcchips_810lmr,   "pcchips_810lmr",   /* pcchips 810LMR version 7.1a */ "", "", "", "American Megatrends Inc.", "062710", "07/15/97" },
+ 
+@@ -2253,65 +2944,98 @@
+                 * in the case you want to use either one of the oter two,
+                 * the --iwname option is your friend.
+                 */
+-               { msi_ms_6712_1,    "msi_ms_6712_1",    "MSI", "MS-6712", "1.0", "American Megatrends Inc.", "Version 07.00T", "04/02/01" },
+-               { msi_ms_6712_2,    "msi_ms_6712_2",    "MSI", "MS-6712", "1.0", "American Megatrends Inc.", "Version 07.00T", "04/02/01" },
+-               { msi_ms_6712_3,    "msi_ms_6712_3",    "MSI", "MS-6712", "1.0", "American Megatrends Inc.", "Version 07.00T", "04/02/01" },
+-               { msi_ms_6764_brkn, "msi_ms_6764_brkn", "MSI", "MS-6712", "1.0", "American Megatrends Inc.", "Version 07.00T", "04/02/01" },
+-               { msi_ms_6593,      "msi_ms_6593",      "MSI", "MS-6712", "1.0", "American Megatrends Inc.", "07.00T", "04/02/01" },
++               { msi_ms_6712_1,    "msi_ms_6712_1",    "MSI",    "MS-6712", "1.0", "American Megatrends Inc.", "Version 07.00T", "04/02/01" },
++               { msi_ms_6712_2,    "msi_ms_6712_2",    "MSI",    "MS-6712", "1.0", "American Megatrends Inc.", "Version 07.00T", "04/02/01" },
++               { msi_ms_6712_3,    "msi_ms_6712_3",    "MSI",    "MS-6712", "1.0", "American Megatrends Inc.", "Version 07.00T", "04/02/01" },
++               { msi_ms_6764_brkn, "msi_ms_6764_brkn", "MSI",    "MS-6712", "1.0", "American Megatrends Inc.", "Version 07.00T", "04/02/01" },
++               { msi_ms_6593,      "msi_ms_6593",      "MSI",    "MS-6712", "1.0", "American Megatrends Inc.", "07.00T", "04/02/01" },
+ 
+-               { msi_ms_6593,      "msi_ms_6593",      "MSI", "MS-6593", "1.0", "American Megatrends Inc.", "07.00T", "04/02/01" },
++               { msi_ms_6593,      "msi_ms_6593",      "MSI",    "MS-6593", "1.0", "American Megatrends Inc.", "07.00T", "04/02/01" },
++               { msi_ms_6593_2,    "msi_ms_6593_2",    "MSI",    "MS-6593", "1.0", "American Megatrends Inc.", "07.00T", "04/02/01" },
++               { msi_ms_6593,      "msi_ms_6593",      "SOLTEK", "75FRV",   "1.0", "American Megatrends Inc.", "07.00T", "04/02/01" },
+ 
+                { msi_ms_7021,      "msi_ms_7021",      "MSI", "MS-7021", "1.0", "American Megatrends Inc.", "Version 07.00T", "04/02/01" },
+     
+                { msi_ms_6160,      "msi_ms_6160",      /* Fujitsu-Siemens-PC */ "MICRO-STAR INTERNATIONAL CO., LTD", "MS-6160 (i440LX)", "1.X", "Award Software International, Inc.", "4.51 PG", "10/20/98" },
+ 
+-               { asus_a7v8x,       "asus_a7v8x",       "ASUSTeK Computer INC.", "A7V8X",   "REV 1.xx", "Award Software, Inc.", "ASUS A7V8X ACPI BIOS Revision 1007",   "10/04/2002" },
+-               { asus_a7v8x,       "asus_a7v8x",       "ASUSTeK Computer INC.", "A7V8X",   "REV 1.xx", "Award Software, Inc.", "ASUS A7V8X ACPI BIOS Revision 1010",   "11/15/2002" },
+-               { asus_a7v8x,       "asus_a7v8x",       "ASUSTeK Computer INC.", "A7V8X",   "REV 1.xx", "Award Software, Inc.", "ASUS A7V8X ACPI BIOS Revision 1012",   "05/08/2003" },
+-               { asus_a7v8x,       "asus_a7v8x",       "ASUSTeK Computer INC.", "A7V8X-X", "REV 1.xx", "Award Software, Inc.", "ASUS A7V8X-X ACPI BIOS Revision 1005", "05/08/2003" },
+-               { asus_a7v8x,       "asus_a7v8x",       "ASUSTeK Computer INC.", "A7V8X-X", "REV 1.xx", "Award Software, Inc.", "ASUS A7V8X-X ACPI BIOS Revision 1006", "08/06/2003" },
+-               { asus_a7v8x,       "asus_a7v8x",       "ASUSTeK Computer INC.", "A7V8X-X", "REV 1.xx", "Award Software, Inc.", "ASUS A7V8X-X ACPI BIOS Revision 1007", "11/13/2003" },
++               { asus_a7v8x,       "asus_a7v8x",       "ASUSTeK Computer INC.", "A7V8X",    "REV 1.xx", "Award Software, Inc.", "ASUS A7V8X ACPI BIOS Revision 1007",             "10/04/2002" },
++               { asus_a7v8x,       "asus_a7v8x",       "ASUSTeK Computer INC.", "A7V8X",    "REV 1.xx", "Award Software, Inc.", "ASUS A7V8X ACPI BIOS Revision 1010",             "11/15/2002" },
++               { asus_a7v8x,       "asus_a7v8x",       "ASUSTeK Computer INC.", "A7V8X",    "REV 1.xx", "Award Software, Inc.", "ASUS A7V8X ACPI BIOS Revision 1012",             "05/08/2003" },
++               { asus_a7v8x,       "asus_a7v8x",       "ASUSTeK Computer INC.", "A7V8X-X",  "REV 1.xx", "Award Software, Inc.", "ASUS A7V8X-X ACPI BIOS Revision 1005",           "05/08/2003" },
++               { asus_a7v8x,       "asus_a7v8x",       "ASUSTeK Computer INC.", "A7V8X-X",  "REV 1.xx", "Award Software, Inc.", "ASUS A7V8X-X ACPI BIOS Revision 1006",           "08/06/2003" },
++               { asus_a7v8x,       "asus_a7v8x",       "ASUSTeK Computer INC.", "A7V8X-X",  "REV 1.xx", "Award Software, Inc.", "ASUS A7V8X-X ACPI BIOS Revision 1007",           "11/13/2003" },
++               { asus_a7v8x,       "asus_a7v8x",       "ASUSTeK Computer INC.", "A7V8X-X",  "REV 1.xx", "Award Software, Inc.", "ASUS A7V8X-X ACPI BIOS Revision 1013",           "09/02/2004" },
++               { asus_a7v8x,       "asus_a7v8x",       "ASUSTeK Computer INC.", "A7V333-X", "REV 1.xx", "Award Software, Inc.", "ASUS A7V333-X ACPI BIOS Revision 1005 Beta 002", "09/10/2004" },
+ 
+-               { abit_bp6,         "abit_bp6",         "<http://www.abit.com.tw>", "i440BX-W83977 (BP6)",   "", "Award Software International, Inc.", "4.51 PG", "04/20/00"   },
+-               { abit_bp6,         "abit_bp6",         "<http://www.abit.com.tw>", "i440BX-W977 (BX6R2.0)", "", "Award Software International, Inc.", "4.51 PG", "04/26/2000" },
++               { abit_bp6,         "abit_bp6",         "<http://www.abit.com.tw>",   "i440BX-W83977 (BH6)",            "", "Award Software International, Inc.", "4.51 PG", "06/28/2000" },
++               { abit_bp6,         "abit_bp6",         "<http://www.abit.com.tw>",   "i440BX-W83977 (BP6)",            "", "Award Software International, Inc.", "4.51 PG", "04/20/00"   },
++               { abit_bp6,         "abit_bp6",         "<http://www.abit.com.tw>",   "i440BX-W977 (BX6R2.0)",          "", "Award Software International, Inc.", "4.51 PG", "04/26/2000" },
++               { abit_bp6,         "abit_bp6",         "<http://www.abit.com.tw>",   "i440BX-W83977 (BX6 V1.0)",       "", "Award Software International, Inc.", "4.51 PG", "02/21/00" },
++               { abit_bp6,         "abit_bp6",         "<<http:\\www.abit.com.tw>>", "I440BX-W977(BE6-II v1.1 / BF6)", "", "Award Software International, Inc.", "6.00 PG", "12/03/2001" },
+ 
+-               { abit_bh6,         "abit_bh6",         "<http://www.abit.com.tw>", "i440BX-W83977 (BH6)",   "", "Award Software International, Inc.", "4.51 PG", "06/28/2000" },
+-               
+                { aopen_ax4pe_max,  "aopen_ax4pe_max",  "AOpen", "AX4PE Max", "", "Phoenix/Award Technologies, LTD", "6.00 PG", "12/23/2002" },             
++               { aopen_ax4pe_max,  "aopen_ax4pe_max",  "AOpen", "EZ65", "9172310005", "Phoenix/Award Technologies, LTD", "6.00 PG", "12/23/2004" },
+                
++               { msi_ms_6570,      "msi_ms_6570",      "AOpen", "AK79D-400VN", "918AI10501", "Phoenix/Award Technologies, LTD", "6.00 PG", "06/05/2003" },
+                { msi_ms_6570,      "msi_ms_6570",      "MICRO-STAR INTERNATIONAL CO., LTD", "MS-6570", "", "Phoenix Technologies, LTD", "6.00 PG", "04/18/2003" },
+                { msi_ms_6570,      "msi_ms_6570",      "MICRO-STAR INTERNATIONAL CO., LTD", "MS-6570", "", "Phoenix Technologies, LTD", "6.00 PG", "08/12/2003" },
+                { msi_ms_6570,      "msi_ms_6570",      "MICRO-STAR INTERNATIONAL CO., LTD", "MS-6570", "", "Phoenix Technologies, LTD", "6.00 PG", "11/07/2003" },
+                { msi_ms_6570,      "msi_ms_6570",      "MICRO-STAR INTERNATIONAL CO., LTD", "MS-6570", "", "Phoenix Technologies, LTD", "6.00 PG", "03/29/2004" },
++               { msi_ms_6570,      "msi_ms_6570",      "MICRO-STAR INTERNATIONAL CO., LTD", "MS-6796", "", "Phoenix Technologies, LTD", "6.00 PG", "10/29/2004" },
+                { msi_ms_6570,      "msi_ms_6570",      /* EPoX EP-8RDA3+            */ "", "nVidia-nForce", "", "Phoenix Technologies, LTD", "6.00 PG", "10/17/2003" },
++               { shttl_fn41,       "shttl_fn41",       /* EPoX EP-8RDA+ rev 1.1     */ "", "nVidia-nForce", "", "Phoenix Technologies, LTD", "6.00 PG", "07/29/2004" },
+                { msi_ms_6570,      "msi_ms_6570",      /* Biostar M7NCG rev. 1.4    */ "", "nVidia-nForce", "", "Phoenix Technologies, LTD", "6.00 PG", "10/17/2003" },
+                { msi_ms_6570,      "msi_ms_6570",      /* Chaintech 7NIF2 (nforce2) */ "", "nVidia-nForce", "", "Phoenix Technologies, LTD", "6.00 PG", "04/18/2003" },
++               { msi_ms_6570,      "msi_ms_6570",      /* DFI nFII ULTRA-AL         */ "", "nVidia-nForce", "", "Phoenix Technologies, LTD", "6.00 PG", "08/16/2004" },
+                { chain_7nif2,      "chain_7nif2",      /* Chaintech 7NIF2 (nforce2) */ "", "nVidia-nForce", "", "Phoenix Technologies, LTD", "6.00 PG", "09/05/2003" },
++               { chain_7nif2,      "chain_7nif2",      /* Chaintech 7NIF2 (nforce2) */ "", "nVidia-nForce", "", "Phoenix Technologies, LTD", "6.00 PG", "07/19/2004" },
+                { chain_7nif2,      "chain_7nif2",      /* ECS Elitegroup N2U400-A   */ "", "nVidia-nForce", "", "Phoenix Technologies, LTD", "6.00 PG", "10/02/2003" },
++               { msi_ms_6570,      "msi_ms_6570",      "DFI", "nVidia-nForce2, Lanparty NFII ULTRA B", "A", "Phoenix Technologies, LTD", "6.00 PG", "11/27/2003" },
++               { chain_7nif2,      "chain_7nif2",      "http://www.abit.com.tw/", "AN7 (nVidia-nForce2)", "1.X", "Phoenix Technologies, LTD", "6.00 PG", "11/23/2004" },
++               { chain_7nif2,      "chain_7nif2",      "http://www.abit.com.tw/", "NF7II series(Nvidia nForce-MCP2S)", "v0.1", "Phoenix Technologies, LTD", "6.00 PG", "04/07/2005" },
+ 
+-               { msi_ms_6570,      "msi_ms_6570",      /* Shuttle XPC SN41G2 */ "Shuttle Inc", "FN41",   "", "Phoenix Technologies, LTD", "6.00 PG", "06/17/2003" },
+-               { shttl_fn41,       "shttl_fn41",       /* Shuttle XPC SN41G2 */ "Shuttle Inc", "FN41",   "", "Phoenix Technologies, LTD", "6.00 PG", "10/03/2003" },
+-               { shttl_fn41,       "shttl_fn41",                                "Shuttle Inc", "FN41",   "", "Phoenix Technologies, LTD", "6.00 PG", "01/15/2003" },
+-               { shttl_fn41sp,     "shttl_fn41sp",                              "Shuttle Inc", "FN41SP", "", "Phoenix Technologies, LTD", "6.00 PG", "10/03/2003" },
+-               { shttl_fn41,       "shttl_fn41",       "ASUSTeK Computer INC.", "A7N8X-E",  "REV 2.xx", "Phoenix Technologies, LTD", "ASUS A7N8X-E Deluxe ACPI BIOS Rev 1008", "12/05/2003" },
+-               { shttl_fn41,       "shttl_fn41",       "ASUSTeK Computer INC.", "A7N8X-E",  "REV 2.xx", "Phoenix Technologies, LTD", "ASUS A7N8X-E Deluxe ACPI BIOS Rev 1010", "03/16/2004" },
+-               { shttl_fn41,       "shttl_fn41",       "ASUSTeK Computer INC.", "A7N8X",    "REV 1.xx", "Phoenix Technologies, LTD", "ASUS A7N8X Deluxe ACPI BIOS Rev 1002.A", "02/25/2003" },
++               { msi_ms_6570,      "msi_ms_6570",      /* AN35N Ultra rev1.1 */ "Shuttle Inc", "AN35",     "", "Phoenix Technologies, LTD", "6.00 PG", "12/05/2003" },
++               { msi_ms_6570,      "msi_ms_6570",                               "Shuttle Inc", "AN35",     "", "Phoenix Technologies, LTD", "6.00 PG", "08/23/2004" },
++               { shttl_fn41,       "shttl_fn41",                                "Shuttle Inc", "FN41",     "", "Phoenix Technologies, LTD", "6.00 PG", "01/15/2003" },
++               { shttl_fn41,       "shttl_fn41",                                "Shuttle Inc", "FN41",     "", "Phoenix Technologies, LTD", "6.00 PG", "05/02/2003" },
++               { msi_ms_6570,      "msi_ms_6570",      /* Shuttle XPC SN41G2 */ "Shuttle Inc", "FN41",     "", "Phoenix Technologies, LTD", "6.00 PG", "06/17/2003" },
++               { shttl_fn41,       "shttl_fn41",       /* Shuttle XPC SN41G2 */ "Shuttle Inc", "FN41",     "", "Phoenix Technologies, LTD", "6.00 PG", "10/03/2003" },
++               { msi_ms_6570,      "msi_ms_6570",                               "Shuttle Inc", "FN41SP",   "", "Phoenix Technologies, LTD", "6.00 PG", "10/03/2003" },
++               { msi_ms_6570,      "msi_ms_6570",      /* Shuttle XPC SN41G2 */ "Shuttle Inc", "FN41SP",   "", "Phoenix Technologies, LTD", "6.00 PG", "01/16/2004" },
++               { msi_ms_6570,      "msi_ms_6570",      /* Shuttle SN41G2V2   */ "Shuttle Inc", "FN41SP",   "", "Phoenix Technologies, LTD", "6.00 PG", "04/14/2004" },
++               { msi_ms_6570,      "msi_ms_6570",      /* Shuttle SN41G2V2   */ "Shuttle Inc", "FN41SP",   "", "Phoenix Technologies, LTD", "6.00 PG", "08/23/2004" },
++               { chain_7nif2,      "chain_7nif2",                               "Shuttle Inc", "FN41UV10", "", "Phoenix Technologies, LTD", "6.00 PG", "08/27/2004" },
++               { shttl_fn41,       "shttl_fn41",       "http://www.abit.com.tw/", "NF7-S/NF7-M/NF7 (nVidia-nForce2)", "1.X", "Phoenix Technologies, LTD", "6.00 PG", "04/22/2004" },
++               { shttl_fn41,       "shttl_fn41",       "ASUSTeK Computer INC.", "A7N8X",    "REV 1.xx", "Phoenix Technologies, LTD", "ASUS A7N8X Deluxe ACPI BIOS Rev 1002.A",  "02/25/2003" },
++               { shttl_fn41,       "shttl_fn41",       "ASUSTeK Computer INC.", "A7N8X",    "REV 1.xx", "Phoenix Technologies, LTD", "ASUS A7N8X Deluxe ACPI BIOS Rev 1008",    "03/29/2004" },
+                { shttl_fn41,       "shttl_fn41",       "ASUSTeK Computer INC.", "A7N8X2.0", "REV 2.xx", "Phoenix Technologies, LTD", "ASUS A7N8X2.0 Deluxe ACPI BIOS Rev 1007", "10/06/2003" },
++               { shttl_fn41,       "shttl_fn41",       "ASUSTeK Computer INC.", "A7N8X-E",  "REV 2.xx", "Phoenix Technologies, LTD", "ASUS A7N8X-E Deluxe ACPI BIOS Rev 1008",  "12/05/2003" },
++               { shttl_fn41,       "shttl_fn41",       "ASUSTeK Computer INC.", "A7N8X-E",  "REV 2.xx", "Phoenix Technologies, LTD", "ASUS A7N8X-E Deluxe ACPI BIOS Rev 1009",  "02/04/2004" },
++               { shttl_fn41,       "shttl_fn41",       "ASUSTeK Computer INC.", "A7N8X-E",  "REV 2.xx", "Phoenix Technologies, LTD", "ASUS A7N8X-E Deluxe ACPI BIOS Rev 1010",  "03/16/2004" },
++               { shttl_fn41,       "shttl_fn41",       "ASUSTeK Computer INC.", "A7N8X-E",  "REV 2.xx", "Phoenix Technologies, LTD", "ASUS A7N8X-E Deluxe ACPI BIOS Rev 1013",  "11/12/2004" },
++               { shttl_fn41,       "shttl_fn41",       "ASUSTeK Computer INC.", "A7N8X-E",  "REV 2.xx", "Phoenix Technologies, LTD", NULL,                                      NULL },
++               { asus_a7n8x_x,     "asus_a7n8x_x",     "ASUSTeK Computer INC.", "A7N8X-X",  "REV 2.xx", "Phoenix Technologies, LTD", "ASUS A7N8X-X ACPI BIOS Rev 1006",         "08/19/2003" },
++               { shttl_fn41,       "shttl_fn41",       "ASUSTeK Computer INC.", "A7N8X-X",  "REV 2.xx", "Phoenix Technologies, LTD", "ASUS A7N8X-X ACPI BIOS Rev 1009",         "02/03/2004" },
++               { shttl_fn41,       "shttl_fn41",       "ASUSTeK Computer INC.", "A7N8X-X",  "REV 2.xx", "Phoenix Technologies, LTD", "ASUS A7N8X-X ACPI BIOS Rev 1011",         "08/04/2004" },
++               { shttl_fn41,       "shttl_fn41",       "EPOX 8RDA+", "nVidia-nForce", "", "Phoenix Technologies, LTD", "6.00 PG", "07/29/2004" },
+ 
+                { ecs_k7som_p,      "ecs_k7som_p",      "ECS", "K7SOM+", "1.0", "American Megatrends Inc.", "07.00T", "04/02/01" },
+ 
+                { asus_a4s333,      "asus_a4s333",      "ASUSTeK Computer INC.", "P4S333VF", "REV 1.xx", "Award Software, Inc.", "ASUS P4S333-VF ACPI BIOS Revision 1005", "03/05/2002" },
+ 
+-               { dell_optiplex_dxa,"dell_optiplex_dxa",/* Dell Optiplex DXa */ NULL, NULL, NULL, "Dell Computer Corporation", "A10", "06/23/00" },
+-               { dell_optiplex_dxa,"dell_optiplex_dxa",/* Dell Optiplex Gn  */ NULL, NULL, NULL, "Dell Computer Corporation", "A12", "06/23/00" },
+-               { dell_optiplex_dxa,"dell_optiplex_dxa",/* Dell Optiplex G1  */ NULL, NULL, NULL, "Dell Computer Corporation", "A10", "04/29/03" },
+-               { dell_optiplex_dxa,"dell_optiplex_dxa","Dell Computer Corporation", "Dimension 4300", NULL, "Dell Computer Corporation", "A05", "03/28/2002" },
+-               { dell_optiplex_dxa,"dell_optiplex_dxa","Dell Computer Corporation", "OptiPlex GX1 333L+", "", "Dell Computer Corporation", "A10", "08/01/01" },
++               { dell_optiplex_dxa,"dell_optiplex_dxa",NULL, NULL, /* Dell          "Optiplex DXa"              */  NULL, "Dell Computer Corporation", "A10", "06/23/00"   },
++               { dell_optiplex_dxa,"dell_optiplex_dxa",NULL, NULL, /* Dell          "Optiplex Gn"               */  NULL, "Dell Computer Corporation", "A12", "06/23/00"   },
++               { dell_optiplex_dxa,"dell_optiplex_dxa",NULL, NULL, /* Dell          "Optiplex G1"               */  NULL, "Dell Computer Corporation", "A10", "04/29/03"   },
++               { dell_optiplex_dxa,"dell_optiplex_dxa","Dell Computer Corporation", "Dimension 4300",               NULL, "Dell Computer Corporation", "A05", "03/28/2002" },
++               { dell_optiplex_dxa,"dell_optiplex_dxa","Dell Computer Corporation", "OptiPlex GX1 333L+",             "", "Dell Computer Corporation", "A10", "08/01/01"   },
++               { dell_optiplex_dxa,"dell_optiplex_dxa","Dell Computer Corporation", "Precision WorkStation 420 MT", NULL, "Dell Computer Corporation", "A13", "12/18/2001" },
++               { dell_optiplex_dxa,"dell_optiplex_dxa","Dell Computer Corporation", "OptiPlex GX240",               NULL, "Dell Computer Corporation", "A01", "08/27/2001" },
+ 
+                { asus_p4bgl,       "asus_p4bgl",       "ASUSTeK Computer INC.", "P4BGL-MX", "REV 1.xx", "Award Software, Inc.", "ASUS P4BGL-MX ACPI BIOS Revision 1006", "02/27/2003" },
+                { asus_p4bgl,       "asus_p4bgl",       "ASUSTeK Computer INC.", "P4GE-FSC", "REV 1.xx", "Award Software, Inc.", "ASUS P4GE-FSC ACPI BIOS Revision 1004", "07/14/2003" },
+ 
+                { asus_p4b266,      "asus_p4b266",      "ASUSTeK Computer INC.", "P4B266",   "REV 2.xx", "Award Software, Inc.", "ASUS P4B266 ACPI BIOS Revision 1010", "08/06/2002" },
++               { asus_p4b266,      "asus_p4b266",      "ASUSTeK Computer INC.", "P4B-E",    "REV 1.xx", "Award Software, Inc.", "ASUS P4B-E ACPI BIOS Revision 1007", "03/18/2003" },
+                { asus_p4b266_m,    "asus_p4b266_m",    "ASUSTeK Computer INC.", "P4B266-M", "REV 1.xx", "Award Software, Inc.", "ASUS P4B266-M ACPI BIOS Revision 1008 Beta 001", "04/03/2003" },
+                { asus_p4b266_e,    "asus_p4b266_e",    "ASUSTeK Computer INC.", "P4B266-E", "REV 1.xx", "Award Software, Inc.", "ASUS P4B266-E ACPI BIOS Revision 1003", "08/19/2002" },
+                
+@@ -2324,18 +3048,30 @@
+                { dfi_ak70,         "dfi_ak70",         /* DFI AK70 Rev. A+ */ "", "AMD-75X-W977", "", "Award Software International, Inc.", "6.00 PG", "05/25/2000" },
+                { dfi_ak70,         "dfi_ak70",         "Gigabyte Technology Co.,LTD.", "GA-7IX", "1.X", "Award Software International, Inc.", "6.00 PG", "04/25/00" },
+                { dfi_ak70,         "dfi_ak70",         "", "HOT_AI61 AMD-75X-W977", "6A6S2H29", "Award Software International, Inc.", "6.00 PG", "05/03/01" },
+-               
++               { dfi_ak70,         "dfi_ak70",         "MICRO-STAR INTERNATIONAL CO., LTD", "MS-6167 (AMD751)", "1.X", "Award Software International, Inc.", "6.0 PG", "08/30/00" },
++               { dfi_ak70,         "dfi_ak70",         "MICRO-STAR INTERNATIONAL CO., LTD", "MS-6191 (AMD751)", "1.X", "Award Software International, Inc.", "6.00 PG", "04/17/00" },
++               { dfi_ak70,         "dfi_ak70",         /* MSI K7d Master */ "MICRO-STAR INTERNATIONAL CO., LTD", "MS-6501", "", "Award Software International, Inc.", "6.00 PG", "10/09/2003" },
++
+                { asrock_g_pro,     "asrock_g_pro",     "ASRock", "G Pro / GV Pro", "1.00", "American Megatrends Inc.", "P1.40", "04/07/2003" },
+                { asrock_g_pro_new, "asrock_g_pro_new", "ASRock", "G Pro / GV Pro", "1.00", "American Megatrends Inc.", "P1.00", "10/09/2002" },
+-               
++
++               { asrock_k7vt2,     "asrock_k7vt2",     "ASRock",              "K7VT2", "2.00", "American Megatrends Inc.", "P1.00", "09/24/2002" },
++               { asrock_k7vt2,     "asrock_k7vt2",     /* ASRock K7VT2 */ "", "K7VT2", "2.00", "American Megatrends Inc.", "P1.20", "12/10/2002" },
++               { asrock_g_pro_new, "asrock_g_pro_new", /* ASRock K7VT2 */ "", "K7VT2", "2.00", "American Megatrends Inc.", "P1.30", "03/07/2003" },
++
++               { asrock_k7vt4,     "asrock_k7vt4",     /* ASRock K7VT4 */ "", "K7VT4-4X.", "3.0X", "American Megatrends Inc.", "P1.70", "10/02/2003" },
++               { asrock_k7vt4a,    "asrock_k7vt4a",    /* Asrock       */ "", "K7VT4A+",   "1.0x", "American Megatrends Inc.", "P1.20", "06/25/2004" },
++               { asrock_k7vt4a,    "asrock_k7vt4a",    /* Asrock       */ "", "K7VT4A+",   "1.0x", "American Megatrends Inc.", "P1.30", "07/19/2004" },
++
+                { asus_p4s533,      "asus_p4s533",      "ASUSTeK Computer INC.", "P4S533MX", "REV 1.xx", "Award Software, Inc.", "ASUS P4S533-MX ACPI BIOS Revision 1004", "01/24/2003" },
+                { asus_p4s533,      "asus_p4s533",      "ASUSTeK Computer INC.", "P4S533MX", "REV 1.xx", "Award Software, Inc.", "ASUS P4S533-MX ACPI BIOS Revision 1005", "04/18/2003" },
+                { asus_p4s533,      "asus_p4s533",      "ASUSTeK Computer INC.", "P4S533MX", "REV 1.xx", "Award Software, Inc.", "ASUS P4S533-MX ACPI BIOS Revision 1006", "06/11/2003" },
+                { asus_p4s533,      "asus_p4s533",      "ASUSTeK Computer INC.", "P4S533MX", "REV 1.xx", "Award Software, Inc.", NULL, NULL },
+                { asus_p4s533,      "asus_p4s533",      "ASUSTeK Computer INC.", "P4SP-MX",  "REV 1.xx", "Award Software, Inc.", "ASUS P4SP-MX ACPI BIOS Revision 1001",   "12/31/2003" },
+-
++               { asus_p4s533,      "asus_p4s533",      "ASUSTeK Computer INC.", "P4SP-MX",  "REV 1.xx", "Award Software, Inc.", "ASUS P4SP-MX ACPI BIOS Revision 1002",   "04/27/2004" },
+ 
+                { asus_p4s533_x,    "asus_p4s533_x",    "ASUSTeK Computer INC.", "P4S533-X", "REV 1.xx", "Award Software, Inc.", "ASUS P4S533-X ACPI BIOS Revision 1004", "02/24/2003" },
++               { asus_p4s533_x,    "asus_p4s533_x",    "ASUSTeK Computer INC.", "P4SC-EA", "REV 1.xx", "Award Software, Inc.", "ASUS P4SC-EA ACPI BIOS Revision 1013", "06/11/2003" },
+ 
+                { asrock_m266a,     "asrock_m266a",     /* ASRock M266a */ "", "M266", "2.00", "American Megatrends Inc.", "P1.20", "02/26/2003" },
+                { asrock_m266a,     "asrock_m266a",     /* ASRock M266a */ "", "M266", "2.00", "American Megatrends Inc.", "P1.60", "07/18/2003" },
+@@ -2349,7 +3085,9 @@
+                { gigabyte_5aa,     "gigabyte_5aa",     "GIGABYTE", "5AA", "", "...waiting for strings...", "", "" },
+ 
+                { asus_p4b533,      "asus_p4b533",      "ASUSTeK Computer INC.", "P4B533",   "REV 1.xx", "Award Software, Inc.", "ASUS P4B533 ACPI BIOS Revision 1011", "09/27/2002" },
++               { asus_p4b533,      "asus_p4b533",      "ASUSTeK Computer INC.", "P4B533",   "REV 1.xx", "Award Software, Inc.", "ASUS P4B533 ACPI BIOS Revision 1015", "04/29/2003" },
+                { asus_p4b533_e,    "asus_p4b533_e",    "ASUSTeK Computer INC.", "P4B533-E", "REV 1.xx", "Award Software, Inc.", "ASUS P4B533-E ACPI BIOS Revision 1012 Beta 004", "12/11/2002" },
++               { asus_p4b533_e,    "asus_p4b533_e",    "ASUSTeK Computer INC.", "P4GE-VM",  "REV 1.xx", "Award Software, Inc.", "ASUS P4GE-VM ACPI BIOS Revision 1007", "03/24/2003" },
+ 
+                { msi_ms_5169,      "msi_ms_5169",      "MSI INC.", "ALADDIN5", "VER:1.0", "American Megatrends Inc. AMI", NULL, NULL },
+ 
+@@ -2359,31 +3097,52 @@
+                { asus_p4p800,      "asus_p4p800",      "ASUSTeK Computer Inc.", "P4P800",    "Rev 1.xx", "American Megatrends Inc.", "080009",   "12/12/2003" },
+                { asus_p4c800,      "asus_p4c800",      "ASUSTeK Computer Inc.", "P4C800",    "Rev 1.xx", "American Megatrends Inc.", "1016.001", "02/23/2004" },
+                { asus_p4c800_e,    "asus_p4c800_e",    "ASUSTeK Computer Inc.", "P4C800-E",  "Rev 1.xx", "American Megatrends Inc.", "080009",   "11/21/2003" },
++               { asus_p4c800_e,    "asus_p4c800_e",    "ASUSTeK Computer Inc.", "P4C800-E",  "Rev 1.xx", "American Megatrends Inc.", "1016.001", "02/23/2004" },
++               { asus_p4c800_e,    "asus_p4c800_e",    "ASUSTeK Computer Inc.", "P4C800-E",  "Rev 1.xx", "American Megatrends Inc.", "1017.004", "07/22/2004" },
++               { asus_p4p800_se,   "asus_p4p800_se",   "ASUSTeK Computer Inc.", "P4P800SE",  "Rev 2.xx", "American Megatrends Inc.", "080009",   "03/15/2004" },
+                { asus_p4p800_vm,   "asus_p4p800_vm",   "ASUSTeK Computer INC.", "P4P800-VM", "Rev 1.xx", "American Megatrends Inc.", "1007.001", "07/01/2003" },
+                { asus_p4p800_vm_2, "asus_p4p800_vm_2", "ASUSTeK Computer INC.", "P4P800-VM", "Rev 1.xx", "American Megatrends Inc.", "1008.008", "10/31/2003" },
+                { asus_p4p800_vm_2, "asus_p4p800_vm_2", "ASUSTeK Computer INC.", "P4P800-VM", "Rev 1.xx", "American Megatrends Inc.", "1012.002", "03/22/2004" },
++               { asus_p4p800_vm_2, "asus_p4p800_vm_2", "ASUSTeK Computer INC.", "P4P800-VM", "Rev 1.xx", "American Megatrends Inc.", "1014.002", "10/26/2004" },
+ 
+                { aopen_mk73le_n,   "aopen_mk73le_n",   /* Aopen MK73LE-N */ "", "6", "", "Phoenix Technologies, LTD", "6.00 PG", "02/19/2002" },
+ 
+-               { ibm_pc_300pl,     "ibm_pc_300pl",     /* IBM PC 300PL */ "IBM", NULL, NULL, "IBM", "PMKT16AUS", "02/24/2000" },
++               /* 
++                *  Unfortunately IBM Netvista A40p 6579-NBG has no valid DMI entries
++                *  Thus, the command line option
++                *
++                *        --iwname ibm_pc_300pl
++                *
++                *  is your friend.
++                */
++               { ibm_pc_300pl,     "ibm_pc_300pl",     /* IBM PC 300PL               */ "IBM", NULL,       NULL, "IBM", "PMKT16AUS", "02/24/2000" },
++               { ibm_pc_300pl,     "ibm_pc_300pl",     /* IBM PC 300PL 6890          */ "IBM", "6890L70",  NULL, "IBM", "NVKT49RUS", "11/29/1999" },
++               { ibm_pc_300pl,     "ibm_pc_300pl",     /* IBM PC 300GL               */ "IBM", "65639CG",  NULL, "IBM", "PJKT41AUS", "07/11/2002" },
++               { ibm_pc_300pl,     "ibm_pc_300pl",     /* IBM PC 300GL               */ "IBM", "656343G",  NULL, "IBM", "PJKT41AUS", "07/11/2002" },
++               { ibm_pc_300pl,     "ibm_pc_300pl",     /* IBM Netvista A40p 6579-NBG */ "IBM", "6579-NBG", NULL, NULL, NULL, NULL },
+ 
+                { springdale,       "springdale",       "INTEL", "SpringDale-G", "A1", "American Megatrends Inc.", "080009", "10/20/2003" },
++               { springdale2,      "springdale2",      "INTEL", "SpringDale-G", "A1", "American Megatrends Inc.", "080010", "03/02/2004" },
+                { springdale,       "springdale",       /* Soltek SL-B8E-F */ "INTEL", "SpringDale-G", "A1", "American Megatrends Inc.", "080009", "12/18/2003" },
+ 
+                { gig_ga_8simlh,    "gig_ga_8simlh",    "Gigabyte Technology Co., Ltd.", "GA-8SIMLH", "1.x", "Award Software International, Inc.", "6.00 PG", "11/19/2003" },
++               { gig_ga_8sgxlfs,   "gig_ga_8sgxlfs",   "Gigabyte Technology Co., Ltd.", "GA-8SGXLFS", "",   "Award Software International, Inc.", "F6",      "12/12/2003" },
+ 
+                { sis_730,          "sis_730",          "", "SiS-730", "", "Award Software International, Inc.", "6.00 PG", "09/28/2001" },
+                { sis_730,          "sis_730",          "Gigabyte Technology Co., Ltd.", "GA-8SQ800", "1.x", "Award Software International, Inc.", "F5", "06/28/2003" },
+ 
+-               { asus_a7n8x_vm400, "asus_a7n8x_vm400", "ASUSTeK Computer INC.", "A7NVM400", "Rev 2.xx", "American Megatrends Inc.", "1.00", "11/25/2003" },
+-               { asus_a7n8x_vm400, "asus_a7n8x_vm400", "ASUSTeK Computer INC.", "A7NVM400", "Rev 2.xx", "American Megatrends Inc.", "2.00", "03/24/2004" },
+-               { asus_a7n8x_vm400, "asus_a7n8x_vm400", "ASUSTeK Computer INC.", "P4R8L", "1.xx", "American Megatrends Inc.", "1002.003", "03/10/2004" },
++               { asus_a7n8x_vm400, "asus_a7n8x_vm400", "ASUSTeK Computer INC.", "A7N8X-VM", "Rev 1.xx", "American Megatrends Inc.", "9.00",     "10/21/2003" },
++               { asus_a7n8x_vm400, "asus_a7n8x_vm400", "ASUSTeK Computer INC.", "A7NVM400", "Rev 2.xx", "American Megatrends Inc.", "1.00",     "11/25/2003" },
++               { asus_a7n8x_vm400, "asus_a7n8x_vm400", "ASUSTeK Computer INC.", "A7NVM400", "Rev 2.xx", "American Megatrends Inc.", "2.00",     "03/24/2004" },
++               { asus_a7n8x_vm400, "asus_a7n8x_vm400", "ASUSTeK Computer INC.", "P4R8L",        "1.xx", "American Megatrends Inc.", "1002.003", "03/10/2004" },
++               { asus_a7n8x_vm400, "asus_a7n8x_vm400", "ASUSTeK Computer INC.", "P4R8L",        "1.xx", "American Megatrends Inc.", "1002.006", "07/01/2004" },
++               { asus_a7n8x_vm400, "asus_a7n8x_vm400", "ASUSTeK Computer INC.", "P4R8L",        "1.xx", "American Megatrends Inc.", "1004.007", "10/26/2004" },
+ 
+-               { gig_ga_7vt600,    "gig_ga_7vt600",    /* Bios F4 */ "Gigabyte Technology Co., Ltd.", "GA-7VT600 1394", "15X", "Award Software International, Inc.", "F3", "09/24/2003" },
++               { gig_ga_7vt600,    "gig_ga_7vt600",    "Gigabyte Technology Co., Ltd.", "GA-7VT600 1394", "15X", "Award Software International, Inc.", "F3"/* Bios F4 */ , "09/24/2003" },
++               { gig_ga_7vt600,    "gig_ga_7vt600",    "Gigabyte Technology Co., Ltd.", "GA-7VA-A",       "1.x", "Award Software International, Inc.", "FB",               "09/12/2003" },
++               { gig_ga_7vt600,    "gig_ga_7vt600",    /* Elitegroup L7VTA  */ "", "KT400-8235", "", "Phoenix Technologies, LTD", "6.00 PG", "10/31/2002" },
+                { gig_ga_7vt600,    "gig_ga_7vt600",    /* Elitegroup L7VTA2 */ "", "KT400-8235", "", "Phoenix Technologies, LTD", "6.00 PG", "06/26/2003" },
+ 
+-               { shuttle_fx41,     "shuttle_fx41",     "Shuttle Inc", "Fx41", "", "Phoenix Technologies, LTD", "6.00 PG", "09/08/2003" },
+-
+                /* 
+                 *  Unfortunately Shuttle XPC SK43G has no valid DMI entries
+                 *  (at least bios rev. FX43S40R, 07/11/2003). Thus, the command line option
+@@ -2394,31 +3153,135 @@
+                 */
+                { shuttle_sk43g,    "shuttle_sk43g",    "Shuttle Inc", "SK43G", "", "", "", "" },
+                { shuttle_sk43g,    "shuttle_sk43g",    "ASUS", "A7V8X-MX SE", "1.03", "Phoenix Technologies, LTD", "ASUS A7V8X-MX SE ACPI BIOS Revision 1003", "03/12/2004" },
+-               { shuttle_sk43g,    "shuttle_sk43g",    "MICRO-STAR INTERNATIONAL CO., LTD", "MS-6734", "", "Phoenix Technologies, LTD", "6.00 PG", "01/16/2004" },
++               { shuttle_sk43g,    "shuttle_sk43g",    "ASUS", "A7V8X-MX SE", "1.03", "Phoenix Technologies, LTD", "ASUS A7V8X-MX SE ACPI BIOS Revision 1006", "09/20/2004" },
++               { shuttle_sk43g,    "shuttle_sk43g",    "ASUSTek Computer INC.", "A7V400-MX",    "1.03", "Phoenix Technologies, LTD", "ASUS A7V400-MX ACPI BIOS Revision 1001", "03/31/2004" },
++               { shuttle_sk43g,    "shuttle_sk43g",    "ASUSTek Computer INC.", "A7V400-MX",    "1.03", "Phoenix Technologies, LTD", "ASUS A7V400-MX ACPI BIOS Revision 1009", "12/21/2004" },
++               { shuttle_sk43g,    "shuttle_sk43g",    "ASUSTek Computer INC.", "A7V400-MX SE", "1.XX", "Phoenix Technologies, LTD", "ASUS A7V400-MX SE ACPI BIOS Revision 1002", "01/17/2005" },
++               { shuttle_sk43g,    "shuttle_sk43g",                     "MICRO-STAR INTERNATIONAL CO., LTD", "MS-6734", "", "Phoenix Technologies, LTD", "6.00 PG", "01/16/2004" },
++               { shuttle_sk43g,    "shuttle_sk43g",    /* MSI KM4M-V */ "MICRO-STAR INTERNATIONAL CO., LTD", "MS-7061", "", "Phoenix Technologies, LTD", "6.00 PG", "07/28/2004" },
++               { shuttle_sk43g,    "shuttle_sk43g",                     "MICRO-STAR INTERNATIONAL CO., LTD", "MS-7061", "", "Phoenix Technologies, LTD", "6.00 PG", "02/16/2005" },
++
++               { shuttle_sk43g,    "shuttle_sk43g",    "http://www.abit.com.tw/", "KV7(VIA KT600-8237)", "1.x", "Phoenix Technologies, LTD", "6.00 PG", "07/15/2004" },
++               { shuttle_sk43g,    "shuttle_sk43g",    "http://www.abit.com.tw/", "KV7(VIA KT600-8237)", "1.x", "Phoenix Technologies, LTD", "6.00 PG", "11/01/2004" },
++               { shuttle_sk43g,    "shuttle_sk43g",    "SHUTTLE INC", "FX43", "", "Phoenix Technologies, LTD", "6.00 PG", "12/30/2003" },
++
++               { asus_p4v8x_x,     "asus_p4v8x_x",     "ASUSTeK Computer INC.", "P4V8X-X", "Rev 1.xx", "American Megatrends Inc.", "1008.001", "08/12/2004" },
++               { asus_p4vp_mx,     "asus_p4vp_mx",     "ASUSTeK Computer INC.", "P4VP-MX", "Rev 1.xx", "American Megatrends Inc.", "1007.002", "05/04/2004" },
++
++               { asus_k8v,         "asus_k8v",         "ASUSTeK Computer Inc.", "K8V",     "Rev 1.xx", "American Megatrends Inc.", "1003.027", "11/27/2003" },
++
++               { asus_k8v_x,       "asus_k8v_x",       "ASUSTeK Computer Inc.", "K8V-X",   "Rev 2.00", "American Megatrends Inc.", "1004.002", "08/03/2004" },
+ 
+                { asus_k8vsedx,     "asus_k8vsedx",     "ASUSTeK Computer Inc.", "K8VSEDX", "Rev 1.xx", "American Megatrends Inc.", "1001.005", "02/09/2004" },
+                { asus_k8vsedx,     "asus_k8vsedx",     "ASUSTeK Computer Inc.", "K8VSEDX", "Rev 2.00", "American Megatrends Inc.", "1003.002", "05/18/2004" },
+                { asus_k8vsedx,     "asus_k8vsedx",     "ASUSTek Computer Inc.", "K8V",     "Rev 1.xx", "American Megatrends Inc.", "1005.011", "01/15/2004" },
+ 
+-               { asus_k8v,         "asus_k8v",         "ASUSTeK Computer Inc.", "K8V",     "Rev 1.xx", "American Megatrends Inc.", "1003.027", "11/27/2003" },
++               { asus_a8v_luxe,    "asus_a8v_luxe",    "ASUSTeK Computer Inc.", "A8V Deluxe", "Rev 1.xx", "American Megatrends Inc.", "1008.003", "10/27/2004" },
++               { asus_a8v_luxe,    "asus_a8v_luxe",    "ASUSTeK Computer Inc.", "A8V Deluxe", "Rev 1.xx", "American Megatrends Inc.", "1009.007", "12/22/2004" },
+ 
+                { asus_p4xp_x,      "asus_p4xp_x",      "ASUSTeK Computer INC.", "P4XP-X", "REV 1.xx", "Award Software, Inc.", "ASUS P4XP-X ACPI BIOS Revision 1003", "01/27/2003" },
+ 
+                { msi_ms_6580,      "msi_ms_6580",      "MICRO-STAR INC.", /* MSI 845GE Max */ "MS-6580", "20A", "American Megatrends Inc.", "V3.9  0", "09/09/2003" },
++               { msi_ms_6704,      "msi_ms_6704",      "MICRO-STAR INC.",                     "MS-6704", "100", "American Megatrends Inc.", "V3.1 02", "02/28/2003" },
+ 
++               { aopen_ax37,       "aopen_ax37",       "ABIT <http://www.abit.com.tw>", "VT8366A-8233 (KR7A[-RAID]|[-133[R]])", "v1.0 ~", "Award Software International, Inc.", "6.00 PG", "11/18/2002" },
+                { aopen_ax37,       "aopen_ax37",       /* AOpen AX37 Pro/Plus */ "", "07", "9189910203", "Award Software International, Inc.", "6.00 PG", "01/29/2001" },
++               { aopen_ax37,       "aopen_ax37",       /* AOpen AX37 Pro/Plus */ "", "07", "9189910203", "Award Software International, Inc.", "6.00 PG", "02/26/2003" },
++               { aopen_ax37,       "aopen_ax37",       "ASUS", "A7V266-MX", "1.03A", "Phoenix Technologies, LTD", "1001", "10/20/2003" },
++               { aopen_ax37,       "aopen_ax37",       "ASUS", "A7V8X-MX", "A7V8X-MX", "Phoenix Technologies, LTD", "1004", "07/31/2003" },
++               { aopen_ax37,       "aopen_ax37",       /* Biostar iDeq 200V (M7VBA) */ "", "KM400A-8237", "", "Phoenix Technologies, LTD", "6.00 PG", "07/06/2004" },
++               { aopen_ax37,       "aopen_ax37",       "DFI", "AD76", "", "Phoenix Technologies, LTD", "6.00 PG", "07/02/2002" },
+                { aopen_ax37,       "aopen_ax37",       "ECS Elitegroup", "L7VMM2", "", "Phoenix Technologies, LTD", "6.00 PG", "09/09/2003" },
+-               { aopen_ax37,       "aopen_ax37",       /* Elito-Epox 8K5A2+ */ "", "VT8367-8235", "", "Award Software International, Inc.", "6.00 PG", "04/07/2003" },
++               { aopen_ax37,       "aopen_ax37",       /* Elitegroup K7VTA3   */ "", "KT333-8235", "", "Phoenix Technologies, LTD", "6.00 PG", "11/11/2002" },
++               { aopen_ax37,       "aopen_ax37",       /* Elito-Epox 8K5A2+   */ "", "VT8367-8235", "", "Award Software International, Inc.", "6.00 PG", "04/07/2003" },
++               { aopen_ax37,       "aopen_ax37",       /* Epox 8K9A VIA KT400 */ "", "KT400-8235", "", "Phoenix Technologies, LTD", "6.00 PG", "12/16/2002" },
++               { aopen_ax37,       "aopen_ax37",       /* Epox 8kha+          */ "", "VT8366-8233",  "", "Award Software International, Inc.", "6.00 PG", "04/25/2003" },
++               { epox_8khap,       "epox_8khap",       /* Epox 8kha+          */ "", "VT8366A-8233", "", "Award Software International, Inc.", "6.00 PG", "04/25/2003" },
++               { aopen_ax37,       "aopen_ax37",       "Gigabyte Technology Co., Ltd.", "7VM400M-RZ",     "x.x", "Award Software International, Inc.", "F1", "01/14/2004" },
++               { aopen_ax37,       "aopen_ax37",       "Gigabyte Technology Co., Ltd.", "7VM400M-RZ",     "1.x", "Award Software International, Inc.", "F1", "08/04/2004" },
++               { epox_8khap,       "epox_8khap",       "Gigabyte Technology Co., Ltd.", "GA-7VAXP",       "1.x", "Award Software International, Inc.", "F4", "08/15/2002" },
++               { aopen_ax37,       "aopen_ax37",       "Gigabyte Technology Co., Ltd.", "GA-7VAXP Ultra", "1.x", "Award Software International, Inc.", "F4", "09/02/2003" }, 
++               { aopen_ax37,       "aopen_ax37",       "Gigabyte Technology Co., Ltd.", "GA-7VT600",      "1.x", "Award Software International, Inc.", "F8", "03/19/2004" },
++               { aopen_ax37,       "aopen_ax37",       "Gigabyte Technology Co., Ltd.", "K8M800-8237",    "x.x", "Award Software International, Inc.", "F2", "04/14/2005" },
++               { aopen_ax37,       "aopen_ax37",       "Gigabyte Technology Co., Ltd.", "K8T800-8237",    "1.x", "Award Software International, Inc.", "F2", "01/13/2004" },
++               { aopen_ax37,       "aopen_ax37",       /* MSI KM2M Combo */ "MICRO-STAR INTERNATIONAL CO., LTD", "MS-6738", "", "Phoenix Technologies, LTD", "6.00 PG", "09/22/2003" },
++               { aopen_ax37,       "aopen_ax37",       /* QDI KuDoz 7X/600-6AL */ "", "KT600-8235", "", "Phoenix Technologies, LTD", "6.00 PG", "12/19/2003" },
++
++               { shuttle_fx41,     "shuttle_fx41",     "Shuttle Inc", "Fx41", "", "Phoenix Technologies, LTD", "6.00 PG", "09/08/2003" },
++               { aopen_ax37,       "aopen_ax37",       "Shuttle Inc", "Fx41", "", "Phoenix Technologies, LTD", "6.00 PG", "12/08/2003" },
++               { shuttle_fx41,     "shuttle_fx41",     /* ECS Elitegroup L7VMM2 */ "", "KM266-8235", "", "Phoenix Technologies, LTD", "6.00 PG", "09/09/2003" },
+ 
++               { asrock_k7s41gx,   "asrock_k7s41gx",   /* Asrock */ "", "K7S41",   "1.0", "American Megatrends Inc.", "P1.20", "04/21/2004" },
+                { asrock_k7s41gx,   "asrock_k7s41gx",   /* Asrock */ "", "K7S41GX", "1.0", "American Megatrends Inc.", "P1.50", "04/09/2004" },
++               { asrock_k7s41gx,   "asrock_k7s41gx",   /* Asrock */ "", "K7S41GX", "1.0", "American Megatrends Inc.", "P1.70", "06/25/2004" },
++               { asrock_k7s41gx,   "asrock_k7s41gx",   /* Asrock */ "", "K7S41GX", "1.0", "American Megatrends Inc.", "P1.80", "07/19/2004" },
++               { asrock_k7s41gx,   "asrock_k7s41gx",   /* Asrock */ "", "K7S41GX", "1.0", "American Megatrends Inc.", "P1.90", "08/20/2004" },
++               { asrock_k7s41gx,   "asrock_k7s41gx",   /* Asrock */ "", "K7S41GX", "1.0", "American Megatrends Inc.", "P2.00", "10/28/2004" },
++               { asrock_k7s41gx,   "asrock_k7s41gx",   /* Asrock */ "", "K7S41GX", "1.0", "American Megatrends Inc.", NULL,  NULL },
+ 
+                { abit_kg7,         "abit_kg7",         "ABIT <<http://www.abit.com.tw>>", "761-686B(KG7)", "Rev:1.0", "Award Software International, Inc.", "6.00 PG", "03/06/2003" },
+ 
+                { msi_ms_6760,      "msi_ms_6760",      /* MSI MEGA PC 651 */ "MICRO-STAR INTERNATIONAL CO., LTD", "MS-6760", "", "Phoenix Technologies, LTD", "6.00 PG", "07/02/2003" },
++               { msi_ms_6760_2,    "msi_ms_6760_2",    /* MSI MEGA PC 651 */ "MICRO-STAR INTERNATIONAL CO., LTD", "MS-6760", "", "Phoenix Technologies, LTD", "6.00 PG", "09/04/2003" },
+ 
+-               { msi_ms_6728,      "msi_ms_6728",      /* MSI Neo2 FIS2R */ "MICRO-STAR INC.", "MS-6728", "100", "American Megatrends Inc.", "V2.1", "02/19/2004" },
++               { msi_ms_6728,      "msi_ms_6728",      /* MSI Neo2 FIS2R */ "MICRO-STAR INC.", "MS-6728", "100",  "American Megatrends Inc.", "V2.1", "02/19/2004" },
++               { msi_ms_6728_2,    "msi_ms_6728_2",                         "MICRO-STAR INC.", "MS-6728", "2.00", "American Megatrends Inc.", "V3.3", "12/10/2003" },
++
++               { msi_ms_6788,      "msi_ms_6788",      /* MSI 848P Neo-V */ "MICRO-STAR INC.", "MS-6788", "20A", "American Megatrends Inc.", "V5.0 on 07.00T", "03/03/04" },
++
++               { asrock_ge_pro,    "asrock_ge_pro",    /* Asrock */ "", "GE PRO(-M)", ".00",  "American Megatrends Inc.", "P2.40", "11/04/2003" },
++               { asrock_ge_pro,    "asrock_ge_pro",    /* Asrock */ "", "GE PRO-M2.", "3.0X", "American Megatrends Inc.", "P1.70", "11/04/2003" },
++               { asrock_ge_pro,    "asrock_ge_pro",    /* Asrock */ "", "GE PRO(-HT) 1.02", "10020000", "American Megatrends Inc.", "P2.40", "11/04/2003" },
++
++               { shuttle_fn85,     "shuttle_fn85",                              "Shuttle Inc", "FN85", "",    "Phoenix Technologies, LTD", "6.00 PG", "10/06/2003" },
++               { shuttle_fn85,     "shuttle_fn85",     /* Shuttle XPC SN95G5 */ "Shuttle Inc", "FN95", "V10", "Phoenix Technologies, LTD", "6.00 PG", "12/07/2004" },
++               { shuttle_fn85,     "shuttle_fn85",     /* MSI K8N Neo Platinum */ "", "MS-7030", "", "Phoenix Technologies, LTD", "6.00 PG", "05/18/2004" },
++               { shuttle_fn85,     "shuttle_fn85",     /* MSI K8N Neo4-F */ "MICRO-STAR INTERNATIONAL CO., LTD", "MS-7125", "1.0", "Phoenix Technologies, LTD", "6.00 PG", "03/11/2005" },
++               { shuttle_fn85,     "shuttle_fn85",     "Gigabyte Technology Co., Ltd.", "nForce", "", "Award Software International, Inc.", "F6", "05/04/2005" },
++
++               { asrock_k7v88,     "asrock_k7v88",     /* Asrock */ "", "K7V88", "1.0", "American Megatrends Inc.", "P1.10", "06/25/2004" },
++
++               { asrock_p4i65gv,   "asrock_p4i65gv",   /* Asrock */ "", "P4i65GV",     "1.0",  "American Megatrends Inc.", "P1.30", "03/26/2004" },
++               { asrock_p4i65gv,   "asrock_p4i65gv",   /* Asrock */ "", "P4i65GV",     "1.0",  "American Megatrends Inc.", "P1.80", "08/26/2004" },
++               { asrock_p4i45gx,   "asrock_p4i45gx",   /* Asrock */ "", "P4I45Gx_PE,", "1.00", "American Megatrends Inc.", "P3.00", "06/01/2004" },
++
++               { tyan_tiger_k8w,   "tyan_tiger_k8w",   "TYAN", "TYAN Tiger K8W Dual AMD Opteron, S2875", "To be filled by O.E.M.", "American Megatrends Inc.", "080010", "06/28/2004" },
++
++               { msi_ms_6159,      "msi_ms_6159",      "Micro-Star Inc.", "MS-6159", "0.00", "American Megatrends, Inc.", "0627", "07/15/95" },
++
++               { supermicro,       "supermicro",       "Supermicro Inc.", "Intel 440BX/440GX", "Rev. 1", "American Megatrends Inc.", "063100", "01/15/99" },
++
++               { ct_5rsa2,         "ct_5rsa2",         /* Chaintech CT-5RSA2 */ "", "ALADDIN5", "", "Award Software International, Inc.", "4.51 PG", "10/13/99" },
++
++               { msi_ms_6702,      "msi_ms_6702",      "MSI", /* K8T Neo */ "MS-6702", "1.0", "American Megatrends Inc.", "Version 07.00T", "04/02/01" },
++
++               { asus_p4pe2_x,     "asus_p4pe2_x",     "ASUSTeK Computer INC.", "P4PE2-X", "Rev 1.xx", "American Megatrends Inc.", "1004.003", "09/14/2004" },
++               { asus_p4pe2_x,     "asus_p4pe2_x",     "ASUSTeK Computer INC.", "P4PE2-X", "Rev 1.xx", "American Megatrends Inc.", "1005.004", "11/17/2004" },
++
++               { msi_ms_6195,      "msi_ms_6195",      "MSI", /* K7 PRO VER.1 */ "MS-6195", "", "American Megatrends Inc.", "A6195KMS V1.8", "12/28/00" },
++
++               { asrock_p4vt8,     "asrock_p4vt8",     "",       "P4VT8",  "1.0", "American Megatrends Inc.", "P1.30", "11/12/2003" },
++               { asrock_p4vt8p,    "asrock_p4vt8p",    "Asrock", "P4VT8+", "1.0", "American Megatrends Inc.", "P1.50", "09/07/2004" },
++               
++               { asus_a7v880,      "asus_a7v880",      "ASUSTeK Computer INC.", "A7V880", "Rev 1.xx", "American Megatrends Inc.", "1008.001", "09/24/2004" },
++
++               { asus_p5gd2_lx,    "asus_p5gd2_lx",    "ASUSTeK Computer INC.", "P5GD2-Deluxe", "Rev 2.xx", "American Megatrends Inc.", "1007.002", "03/21/2005" },
++
++               { ecs_m863,         "ecs_m863",         "ECS", "M863", "1.0", "American Megatrends Inc.", "080010", "08/04/2004" },
++
++               { ecs_k7ama,        "ecs_k7ama",        "ECS", "K7AMA", "1.0", "American Megatrends Inc.", "062710", "07/15/97" },
++
++               { aopen_ax63,       "aopen_ax63",       /*AOpen Ax63 */ "", "", "", "Award Software International, Inc.", "4.60 PGMA", "11/16/00" },
++
++               { atia3_m1535d,     "atia3_m1535d",     "", "ATIA3-M1535D", "", "Phoenix Technologies, LTD", "6.00 PG", "06/26/2003" },
++
++               { asus_p5ad2,       "asus_p5ad2",       "ASUSTeK Computer INC.", "P5AD2-Premium",   "Rev 1.xx", "American Megatrends Inc.", "1009.002", "10/26/2004" },
++               { asus_p5ad2_e,     "asus_p5ad2_e",     "ASUSTeK Computer INC.", "P5AD2-E-Premium", "Rev 1.xx", "American Megatrends Inc.", "1005.002", "03/23/2005" },
++
++               { asus_p5p800s,     "asus_p5p800s",     "ASUSTeK Computer Inc.", "P5P800S", "Rev 1.xx", "American Megatrends Inc.", "1002.006", "12/21/2004" },
++
++               { msi_ms_6567,      "msi_ms_6567",      "MSI", "MS-6567", "1.00", "American Megatrends Inc.", "07.00T", "02/01/02" },
+ 
+-               { asrock_ge_pro,    "asrock_ge_pro",    /* Asrock */ "", "GE PRO(-M)", ".00", "American Megatrends Inc.", "P2.40", "11/04/2003" },
+ 
+                { NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL }
+ };
+@@ -2427,7 +3290,7 @@
+      if (b) {
+           memset(b, 0, sizeof(struct biosinfo));
+           b->nr_stat = 1;
+-          b->addr_stat = 0xFF;
++          b->addr_stat = -1;
+           NOBCD(b);
+           return 1;
+      }
+@@ -2461,6 +3324,7 @@
+                continue;
+ 
+           /* This is our board... */
++          nvprintf(LOG_DEBUG, "Using infowriter \"%s\" (automatically detected)\n", boards[i].iw_name);
+           boards[i].infowriter(b);
+           return 1;
+      }
+@@ -2483,6 +3347,7 @@
+                continue;
+ 
+           /* This is our board... */
++          nvprintf(LOG_DEBUG, "Using infowriter \"%s\" (manually choosen)\n", boards[i].iw_name);
+           boards[i].infowriter(b);
+           return 1;
+      }

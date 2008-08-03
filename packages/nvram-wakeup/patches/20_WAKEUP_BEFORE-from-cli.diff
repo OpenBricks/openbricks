@@ -1,0 +1,123 @@
+diff -urNad nvram-wakeup-0.97/nvram-wakeup.8 /tmp/dpep.iPB1vr/nvram-wakeup-0.97/nvram-wakeup.8
+--- nvram-wakeup-0.97/nvram-wakeup.8	2004-07-09 12:05:56.000000000 +0200
++++ /tmp/dpep.iPB1vr/nvram-wakeup-0.97/nvram-wakeup.8	2005-10-07 22:40:05.210739072 +0200
+@@ -145,6 +145,13 @@
+ .B BOARD CONFIGURATION
+ below for general information on getting board configurations.
+ .TP
++.BI \-w\  minutes ,\ \-\-wakeupbefore= minutes
++Specify how many
++.I minutes
++before the programmed wakeuptime the computer should wake up.
++
++The default is to start 5 minutes before the programmed wakeup time.
++.TP
+ .B \-h, \-\-help
+ Print a help message and exit.
+ .TP
+diff -urNad nvram-wakeup-0.97/nvram-wakeup.c /tmp/dpep.iPB1vr/nvram-wakeup-0.97/nvram-wakeup.c
+--- nvram-wakeup-0.97/nvram-wakeup.c	2005-10-07 16:27:33.829388960 +0200
++++ /tmp/dpep.iPB1vr/nvram-wakeup-0.97/nvram-wakeup.c	2005-10-07 16:27:34.737250944 +0200
+@@ -59,6 +59,7 @@
+ unsigned char  oBytes[MAXNVRAMSIZE];
+ unsigned char  nBytes[MAXNVRAMSIZE];
+ int            nvramSize = 0; /* the real size of nvram (will become 114 in most cases) */
++long int       wakeupbefore = WAKEUP_BEFORE;
+ char *         _config_file = NULL;
+ char *         _iw_string = NULL;
+ int            _nowrite = OFF;
+@@ -465,15 +466,15 @@
+ /* Calculate all new values to be written back into nvram */
+      
+      if (( vdr_abs_time_t != 0 ) && 
+-         ( vdr_abs_time_t < time(NULL) + (NEED_TO_SHTDWN+WAKEUP_BEFORE)*60 )) {
++         ( vdr_abs_time_t < time(NULL) + (NEED_TO_SHTDWN+wakeupbefore)*60 )) {
+           /*
+            *  If the time to be set is not at least 
+-           *             (NEED_TO_SHTDWN + WAKEUP_BEFORE) minutes
++           *             (NEED_TO_SHTDWN + wakeupbefore) minutes
+            *  in the future,
+            *                       do nothing
+            */
+           nvprintf(LOG_ERR, "Do NOT write into nvram. Wake Up time must be\n");
+-          nvprintf(LOG_ERR, "at least %d minutes in the future.\n", (NEED_TO_SHTDWN + WAKEUP_BEFORE));
++          nvprintf(LOG_ERR, "at least %d minutes in the future.\n", (NEED_TO_SHTDWN + wakeupbefore));
+           exit(2);
+      }
+      if (vdr_abs_time_t == 0) {
+@@ -501,9 +502,9 @@
+      } else {
+           /*
+            *  we have to enable Wakeup, but
+-           *  we want to wake up WAKEUP_BEFORE minutes earlier.
++           *  we want to wake up wakeupbefore minutes earlier.
+            */
+-          vdr_abs_time_t -= WAKEUP_BEFORE*60;               
++          vdr_abs_time_t -= wakeupbefore*60;               
+           vdr_abs_tm = *get_the_time(&vdr_abs_time_t);
+ 
+           if (!calculate_read(*nStat, b.nr_stat, b.shift_stat))
+@@ -855,20 +856,21 @@
+  * Parse command line arguments
+  */
+ struct option opts[] = {
+-     {"settime",   1, 0, 's'},
+-     {"disable",   0, 0, 'd'},
+-     {"configfile",1, 0, 'C'},
+-     {"iwname",    1, 0, 'I'},
+-     {"directisa", 0, 0, 'A'},
+-     {"nowrite",   0, 0, 'N'},
+-     {"debug",     0, 0, 'D'},
+-     {"syslog",    0, 0, 'l'},
+-     {"version",   0, 0, 'v'},
+-     {"help",      0, 0, 'h'},
+-     {NULL,        0, 0,  0 },
++     {"settime",      1, 0, 's'},
++     {"disable",      0, 0, 'd'},
++     {"configfile",   1, 0, 'C'},
++     {"iwname",       1, 0, 'I'},
++     {"directisa",    0, 0, 'A'},
++     {"nowrite",      0, 0, 'N'},
++     {"debug",        0, 0, 'D'},
++     {"syslog",       0, 0, 'l'},
++     {"wakeupbefore", 1, 0, 'w'},
++     {"version",      0, 0, 'v'},
++     {"help",         0, 0, 'h'},
++     {NULL,           0, 0,  0 },
+ };
+ 
+-const char *optstring = "s:dC:I:ANDlvh";
++const char *optstring = "s:dC:I:ANDlw:vh";
+ 
+ const char *opts_help[] = {
+      "Set the given wakeup date/time (given as a time_t value).",          /* settime    */
+@@ -879,6 +881,7 @@
+      "Don't write any values (in /dev/nvram or /dev/rtc). For testing.",   /* nowrite    */
+      "Enable printing debug messages.",                                    /* debug      */
+      "Log all output via syslogd instead of stdout/stderr.",               /* syslog     */
++     "Start that many minutes before the wakeuptime (default is 5).",      /* wakeupbefore */
+      "Print version information.",                                         /* version    */
+      "Print this message (always to stderr, regardless of --syslog).",     /* help       */
+ };
+@@ -995,6 +998,21 @@
+                nvprintf(LOG_NOTICE, "NVRAM WakeUp - Copyright (C) 2001-2004, Sergei Haller.\n");
+                nvprintf(LOG_NOTICE, PACKAGE "-" VERSION "\n");
+                exit(0);
++          case 'w':
++               if ( strlen(optarg) > strspn(optarg, "0123456789") ) {
++                    /* if the argument is not a number */
++                    nvprintf(LOG_ERR, "\"%s\" is not a number\n", optarg);
++                    print_usage();
++               }
++               else if ( strtol(optarg, NULL, 10) < 0 ) {
++                    /* argument must be >= 0 */
++                    nvprintf(LOG_ERR, "wakeupbefore must be bigger or equal 0.\n");
++                    print_usage();
++               } 
++               else {
++                    wakeupbefore = strtol(optarg, NULL, 10);
++               }
++               break;
+           case 'h':
+           default:
+                print_usage();
