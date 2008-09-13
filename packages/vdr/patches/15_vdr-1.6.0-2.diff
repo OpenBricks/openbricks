@@ -1,0 +1,587 @@
+diff -ruN vdr-1.6.0-1/CONTRIBUTORS vdr-1.6.0-2/CONTRIBUTORS
+--- vdr-1.6.0-1/CONTRIBUTORS	2008-04-13 15:34:03.000000000 +0200
++++ vdr-1.6.0-2/CONTRIBUTORS	2008-09-06 16:46:56.000000000 +0200
+@@ -1053,6 +1053,7 @@
+  language
+  for fixing displaying the free disk space when entering the recordings menu where
+  the last replayed recording was in a subdirectory, and pressing Back
++ for replacing the Finnish language code "smi" with "suo"
+ 
+ Ralf Klueber <ralf.klueber@vodafone.com>
+  for reporting a bug in cutting a recording if there is only a single editing mark
+@@ -1579,6 +1580,7 @@
+  for making housekeeping wait for a while after a replay has ended
+  for fixing error handling in cCuttingThread::Action()
+  for suppressing the automatic shutdown if the remote control is currently disabled
++ for fixing a problem with calling isyslog() from within the SignalHandler()
+ 
+ Sven Kreiensen <svenk@kammer.uni-hannover.de>
+  for his help in keeping 'channels.conf.terr' up to date
+@@ -1895,6 +1897,7 @@
+  for fixing cTimer::operator=() in case a cTimer variable is assigned to itself
+  for making the list of tracks given in cStatus::SetAudioTrack() NULL terminated
+  for fixing handling kLeft in the calls to cStatus::MsgOsdTextItem()
++ for fixing a possible integer overflow in GetAbsTime()
+ 
+ Philip Prindeville <philipp_subx@redfish-solutions.com>
+  for updates to 'sources.conf'
+@@ -2116,6 +2119,7 @@
+  for making the non-breaking space symbol be rendered as a blank
+  for fixing a signed character used as index in cBase64Encoder::NextLine()
+  for fixing formatting the name section in the VDR man pages
++ for reporting unneeded include files <linux/dvb/dmx.h> und <time.h> in remux.h
+ 
+ Helge Lenz <h.lenz@gmx.de>
+  for reporting a bug in setting the 'Delta' parameter when calling the shutdown
+@@ -2352,3 +2356,10 @@
+ 
+ Nan Feng <nfgx@21cn.com>
+  for translating OSD texts to the Chinese language
++
++Edgar Toernig <froese@gmx.de>
++ for suggesting to not call FcFini() to avoid problems with older (broken) versions
++ of fontconfig
++
++Winfried Köhler <w_koehl@gmx.de>
++ for fixing wrong value for TableIdBAT in libsi/si.h
+diff -ruN vdr-1.6.0-1/HISTORY vdr-1.6.0-2/HISTORY
+--- vdr-1.6.0-1/HISTORY	2008-04-13 15:33:46.000000000 +0200
++++ vdr-1.6.0-2/HISTORY	2008-09-06 16:36:51.000000000 +0200
+@@ -5740,3 +5740,21 @@
+   Andreas Mair).
+ - Increased the time between checking the CAM status to 500ms to avoid problems
+   with some CAMs (reported by Arthur Konovalov).
++
++2008-09-06: Version 1.6.0-2
++
++- Updated the Italian OSD texts (thanks to Diego Pierotto).
++- The SVDRP signon message now indicates the character encoding in use, as in
++  "220 video SVDRP VideoDiskRecorder 1.7.1; Fri May  2 16:17:10 2008; ISO-8859-1".
++  This may be useful for instance for external tools that provide EPG data, so that
++  they can correctly encode the strings.
++- No longer calling FcFini() to avoid problems with older (broken) versions of
++  fontconfig (suggested by Edgar Toernig).
++- Updated the sources.conf file (thanks to Oleg Roitburd).
++- Fixed a possible integer overflow in GetAbsTime() (thanks to Alexander Rieger).
++- Fixed a problem with calling isyslog() from within the SignalHandler() (thanks
++  to Udo Richter).
++- Replaced the Finnish language code "smi" with "suo" (thanks to Rolf Ahrenberg).
++- Fixed wrong value for TableIdBAT in libsi/si.h (thanks to Winfried Köhler).
++- Removed unneeded include files <linux/dvb/dmx.h> und <time.h> from remux.h
++  (reported by Tobias Grimm).
+diff -ruN vdr-1.6.0-1/config.h vdr-1.6.0-2/config.h
+--- vdr-1.6.0-1/config.h	2008-04-13 13:09:42.000000000 +0200
++++ vdr-1.6.0-2/config.h	2008-09-07 11:33:03.000000000 +0200
+@@ -4,7 +4,7 @@
+  * See the main source file 'vdr.c' for copyright information and
+  * how to reach the author.
+  *
+- * $Id: config.h 1.310.1.1 2008/04/13 11:09:42 kls Exp $
++ * $Id: config.h 1.310.1.2 2008/09/07 09:33:03 kls Exp $
+  */
+ 
+ #ifndef __CONFIG_H
+@@ -22,7 +22,7 @@
+ 
+ // VDR's own version number:
+ 
+-#define VDRVERSION  "1.6.0-1"
++#define VDRVERSION  "1.6.0-2"
+ #define VDRVERSNUM   10600  // Version * 10000 + Major * 100 + Minor
+ 
+ // The plugin API's version number:
+diff -ruN vdr-1.6.0-1/font.c vdr-1.6.0-2/font.c
+--- vdr-1.6.0-1/font.c	2008-03-01 11:19:41.000000000 +0100
++++ vdr-1.6.0-2/font.c	2008-05-03 11:59:24.000000000 +0200
+@@ -4,7 +4,7 @@
+  * See the main source file 'vdr.c' for copyright information and
+  * how to reach the author.
+  *
+- * $Id: font.c 1.25 2008/03/01 10:19:41 kls Exp $
++ * $Id: font.c 1.25.1.1 2008/05/03 09:59:24 kls Exp $
+  */
+ 
+ #include "font.h"
+@@ -395,7 +395,7 @@
+      FcFontSetDestroy(fontset);
+      FcPatternDestroy(pat);
+      FcObjectSetDestroy(os);
+-     FcFini();
++     //FcFini(); // older versions of fontconfig are broken - and FcInit() can be called more than once
+      FontNames->Sort();
+      }
+   return FontNames->Size() > 0;
+@@ -431,7 +431,7 @@
+         esyslog("ERROR: no usable font found for '%s'", FontName);
+      FcPatternDestroy(pat);
+      free(fn);
+-     FcFini();
++     //FcFini(); // older versions of fontconfig are broken - and FcInit() can be called more than once
+      }
+   return FontFileName;
+ }
+diff -ruN vdr-1.6.0-1/i18n.c vdr-1.6.0-2/i18n.c
+--- vdr-1.6.0-1/i18n.c	2008-01-19 13:07:11.000000000 +0100
++++ vdr-1.6.0-2/i18n.c	2008-09-06 14:21:17.000000000 +0200
+@@ -4,7 +4,7 @@
+  * See the main source file 'vdr.c' for copyright information and
+  * how to reach the author.
+  *
+- * $Id: i18n.c 1.319 2008/01/19 12:07:11 kls Exp $
++ * $Id: i18n.c 1.319.1.1 2008/09/06 12:21:17 kls Exp $
+  *
+  *
+  */
+@@ -45,7 +45,7 @@
+   "por",
+   "fra,fre",
+   "nor",
+-  "fin,smi",
++  "fin,suo",
+   "pol",
+   "esl,spa",
+   "ell,gre",
+diff -ruN vdr-1.6.0-1/libsi/si.h vdr-1.6.0-2/libsi/si.h
+--- vdr-1.6.0-1/libsi/si.h	2007-04-22 15:32:09.000000000 +0200
++++ vdr-1.6.0-2/libsi/si.h	2008-09-06 14:40:49.000000000 +0200
+@@ -6,7 +6,7 @@
+  *   the Free Software Foundation; either version 2 of the License, or     *
+  *   (at your option) any later version.                                   *
+  *                                                                         *
+- *   $Id: si.h 1.17 2007/04/22 13:32:09 kls Exp $
++ *   $Id: si.h 1.17.1.1 2008/09/06 12:40:49 kls Exp $
+  *                                                                         *
+  ***************************************************************************/
+ 
+@@ -28,7 +28,7 @@
+                TableIdNIT_other  = 0x41, //network information section, other network
+                TableIdSDT = 0x42, //service description section
+                TableIdSDT_other  = 0x46,
+-               TableIdBAT = 0x46, //bouquet association section
++               TableIdBAT = 0x4A, //bouquet association section
+                TableIdEIT_presentFollowing = 0x4E, //event information section
+                TableIdEIT_presentFollowing_other = 0x4F,
+                //range from 0x50 to 0x5F
+diff -ruN vdr-1.6.0-1/po/it_IT.po vdr-1.6.0-2/po/it_IT.po
+--- vdr-1.6.0-1/po/it_IT.po	2008-03-09 11:33:04.000000000 +0100
++++ vdr-1.6.0-2/po/it_IT.po	2008-04-19 12:03:16.000000000 +0200
+@@ -12,9 +12,9 @@
+ "Project-Id-Version: VDR 1.6.0\n"
+ "Report-Msgid-Bugs-To: <vdr-bugs@cadsoft.de>\n"
+ "POT-Creation-Date: 2008-02-10 12:22+0100\n"
+-"PO-Revision-Date: 2008-03-08 21:06+0100\n"
++"PO-Revision-Date: 2008-04-17 01:07+0100\n"
+ "Last-Translator: Diego Pierotto <vdr-italian@tiscali.it>\n"
+-"Language-Team:  Italian\n"
++"Language-Team: Italian\n"
+ "MIME-Version: 1.0\n"
+ "Content-Type: text/plain; charset=ISO-8859-15\n"
+ "Content-Transfer-Encoding: 8bit\n"
+@@ -221,7 +221,7 @@
+ msgstr "Disco"
+ 
+ msgid "free"
+-msgstr "liberi"
++msgstr "disponibile"
+ 
+ msgid "Free To Air"
+ msgstr "in chiaro"
+@@ -230,7 +230,7 @@
+ msgstr "codificato"
+ 
+ msgid "auto"
+-msgstr "automatico"
++msgstr "automatica"
+ 
+ msgid "Edit channel"
+ msgstr "Modifica canale"
+@@ -293,7 +293,7 @@
+ msgstr "CoderateH"
+ 
+ msgid "none"
+-msgstr "nessuno"
++msgstr "nessuna"
+ 
+ msgid "CoderateL"
+ msgstr "CoderateL"
+@@ -404,20 +404,20 @@
+ msgstr "Prossimi programmi"
+ 
+ msgid "Button$Next"
+-msgstr "Prossimo"
++msgstr "Prossimi"
+ 
+ msgid "Button$Now"
+ msgstr "Adesso"
+ 
+ msgid "Button$Schedule"
+-msgstr "Programma"
++msgstr "Programmi"
+ 
+ msgid "Can't switch channel!"
+ msgstr "Impossibile cambiare canale!"
+ 
+ #, c-format
+ msgid "Schedule - %s"
+-msgstr "Programma - %s"
++msgstr "Programmi - %s"
+ 
+ #, c-format
+ msgid "This event - %s"
+@@ -500,7 +500,7 @@
+ msgstr "Altezza OSD"
+ 
+ msgid "Setup.OSD$Message time (s)"
+-msgstr "Tempo del messaggio (s)"
++msgstr "Durata del messaggio (s)"
+ 
+ msgid "Setup.OSD$Use small font"
+ msgstr "Utilizza caratteri piccoli"
+@@ -572,7 +572,7 @@
+ msgstr "Mostra vecchi dati EPG (min)"
+ 
+ msgid "Setup.EPG$Set system time"
+-msgstr "Imposta orario automatico"
++msgstr "Imposta orario di sistema"
+ 
+ msgid "Setup.EPG$Use time from transponder"
+ msgstr "Utilizza orario da transponder"
+@@ -628,7 +628,7 @@
+ msgstr "Dolby Digital"
+ 
+ msgid "Setup.DVB$Update channels"
+-msgstr "Aggiorna i canali"
++msgstr "Aggiornamento canali"
+ 
+ msgid "Setup.DVB$Audio languages"
+ msgstr "Lingue audio"
+@@ -739,7 +739,7 @@
+ msgstr "Nome reg. immediata"
+ 
+ msgid "Setup.Recording$Instant rec. time (min)"
+-msgstr "Tempo reg. immediata (min)"
++msgstr "Durata reg. immediata (min)"
+ 
+ msgid "Setup.Recording$Max. video file size (MB)"
+ msgstr "Dim. massima file video (MB)"
+@@ -899,7 +899,7 @@
+ msgstr "Plugin"
+ 
+ msgid "Up/Dn for new location - OK to move"
+-msgstr "Su/Giù per nuova posizione - OK per muovere"
++msgstr "Su/Giù per nuova posizione - OK per spostare"
+ 
+ msgid "Channel locked (recording)!"
+ msgstr "Canale bloccato (in registrazione)!"
+diff -ruN vdr-1.6.0-1/remux.h vdr-1.6.0-2/remux.h
+--- vdr-1.6.0-1/remux.h	2007-09-02 12:19:06.000000000 +0200
++++ vdr-1.6.0-2/remux.h	2008-09-06 16:34:42.000000000 +0200
+@@ -4,14 +4,12 @@
+  * See the main source file 'vdr.c' for copyright information and
+  * how to reach the author.
+  *
+- * $Id: remux.h 1.17 2007/09/02 10:19:06 kls Exp $
++ * $Id: remux.h 1.17.1.1 2008/09/06 14:34:42 kls Exp $
+  */
+ 
+ #ifndef __REMUX_H
+ #define __REMUX_H
+ 
+-#include <time.h> //XXX FIXME: DVB/linux/dvb/dmx.h should include <time.h> itself!!!
+-#include <linux/dvb/dmx.h>
+ #include "ringbuffer.h"
+ #include "tools.h"
+ 
+diff -ruN vdr-1.6.0-1/sources.conf vdr-1.6.0-2/sources.conf
+--- vdr-1.6.0-1/sources.conf	2007-02-17 17:15:13.000000000 +0100
++++ vdr-1.6.0-2/sources.conf	2008-08-16 12:06:30.000000000 +0200
+@@ -19,29 +19,34 @@
+ 
+ # Europe
+ 
+-S5E     Sirius 2/3
++S3E     Telecom 2C
++S4E     Eurobird 4
++S5E     Sirius 4
+ S7E     Eutelsat W3A
++S9E     Eurobird 9
+ S10E    Eutelsat W1
+-S13E    Hotbird 1-3/6/7A
++S13E    Hotbird 6/7A/8
+ S16E    Eutelsat W2
+-S19.2E  Astra 1B/C/E/F/G/H/2C
++S19.2E  Astra F/G/H/KR/L
+ S21.0E  Afristar 1
+ S21.6E  Eutelsat W6
+-S23.5E  Astra 1D 3A
+-S26E    Arabsat 2D/2C/3A
++S23.5E  Astra 1E/3A
++S25.5E  Eurobird 2
++S26E    Badr 3/4/6
+ S28.2E  Astra 2D/A/B
+-S28.5E  Eurobird 1 & Astra 2A/B/D
++S28.5E  Eurobird 1 & Astra 2A/B/C/D
+ S30.5E  Arabsat 2B
++S31.5E  Astra 1D/5A
+ S33E    Eurobird 3 & Intelsat 802
+ S36E    Eutelsat W4 & Sesat
+ S38E    Paksat 1
+ S39E    Hellas Sat 2
+ S40E    Express AM1
+-S42E    Turksat 1C/2A
++S42E    Turksat 2A/3A
+ S45E    Intelsat 12
+ S49E    Yamal 202
+ S53E    Express AM 22
+-S55E    Insat 3E & Intelsat 702
++S55E    Insat 3E 
+ S56E    Bonum 1
+ S57E    NSS 703
+ S60E    Intelsat 904
+@@ -54,10 +59,10 @@
+ 
+ # Asia
+ 
+-S74E    Insat 3C & Edusat
+-S75E    LMI 1
++S74E    Insat 3C/4CR & Edusat
++S75E    ABS 1
+ S76.5E  Telstar 10
+-S78.5E  Thaicom 2/3
++S78.5E  Thaicom 2/5
+ S80E    Express AM2
+ S83E    Insat 2E/3B/4A
+ S85.2E  Intelsat 709
+@@ -65,14 +70,17 @@
+ S88E    ST 1
+ S90E    Yamal 201
+ S91.5E  Measat 1
+-S93.5E  Insat 3A
++S92.2E  Chinasat 9
++S93.5E  Insat 3A/4B
+ S95E    NSS 6
+-S96.5E  Express AM 11
++S96.5E  Express AM 33
++S98.5E  Protostar 1
+ S100.5E Asiasat 2
+ S103E   Express A2
++S105E   Asiastar
+ S105.5E Asiasat 3S
+ S107.7E Cakrawarta 1
+-S108E   Telkom 1 & AAP 1
++S108E   Telkom 1 & NSS 11
+ S110E   N-Sat 110 & BSAT 1A/2A
+ S110.5E Sinosat 1
+ S113E   Palapa C2 & Koreasat 2
+@@ -81,38 +89,38 @@
+ S120E   Thaicom 1A
+ S122.2E Asiasat 4
+ S124E   JCSAT 4a
++S125E   Sinosat 3
+ S128E   JCSAT 3
+-S132E   N-Star A
++S132E   Vinasat 1 & JCSAT5a
+ S134E   Apstar 6
+-S136E   N-Star B
+ S138E   Telstar 18
+ S140E   Express AM 3
+ S144E   Superbird C
+ S146E   Agila 2
+ S148E   Measat 2
+ S150E   JCSAT R
+-S152E   Optus B3
++S152E   Optus D2
+ S154E   JCSAT 2A
+ S156E   Optus C1
+ S158E   Superbird A
+-S160E   Optus B1
++S160E   Optus D1
+ S162E   Superbird B2
+-S164E   Optus A3
++S164E   Optus B3
+ S166E   Intelsat 8
+ S169E   Intelsat 2
+-S172E   AMC 23
++S172E   GE 23
+ S180E   Intelsat 701
+ S177W   NSS 5
+ 
+ # Atlantic
+ 
+-S1W     Thor 2/3 & Intelsat 10-02
+-S4W     Amos 1/2
++S1W     Thor 3/5 & Intelsat 10-02
++S4W     Amos 1/2/3
+ S5W     Atlantic Bird 3
+-S7W     Nilesat 101 & 102
++S7W     Nilesat 101/102 & Atlantic Bird 4
+ S8W     Telecom 2D & Atlantic Bird 2
+ S11W    Express A3
+-S12.5W  Atlantic Bird 2
++S12.5W  Atlantic Bird 1
+ S14W    Express A4
+ S15W    Telstar 12
+ S18W    Intelsat 901
+@@ -123,9 +131,9 @@
+ S30W    Hispasat 1C/1D
+ S31.5W  Intelsat 801
+ S34.5W  Intelsat 903
+-S37.5W  Telstar 11 & AMC 12
++S37.5W  NSS 10
+ S40.5W  NSS 806
+-S43W    Intelsat 3R/6B
++S43W    Intelsat 3R/11
+ S45W    Intelsat 1R
+ S50W    Intelsat 705
+ S53W    Intelsat 707
+@@ -137,47 +145,45 @@
+ 
+ S61.5W  Echostar 3 & Rainbow 1
+ S63W    Estrelo de Sul 1
+-S65W    Brasilsat B2
+-S70W    Brasilsat B1
++S65W    Star One C1
++S70W    Star One C2
+ S72W    Nahuel 1 & AMC 6
+-S72.5W  DirecTV 1
+-S74W    SBS 6
+-S77W    Echostar 4
++S72.5W  DirecTV 1R & Echostar 6
++S74W    Horizons 2
++S77W    Echostar 4 & Galaxy 4R
+ S79W    AMC5
+-S79.5W  Nimiq 3
+ S82W    Nimiq 2
+ S83W    AMC 9
+-S84W    Brasilsat B3
+-S85W    AMC 2
++S84W    Brasilsat B3/4
++S85W    AMC 16
+ S85.1W  XM 3
+ S87W    AMC3
+ S89W    Galaxy 28
+-S91W    Galaxy 11 & Nimiq 1
+-S91.5W  DirecTV 2
+-S92W    Brasilsat B4
++S91W    Galaxy 11/17 & Nimiq 1
++S92W    Brasilsat B2
+ S93W    Galaxy 26
+ S95W    Galaxy 3C
+ S97W    Galaxy 25
+-S99W    Galaxy 4R
+-S99.2W  Spaceway 2
+-S101W   DirecTV 1R/4S/8 & AMC4
++S99W    Galaxy 16
++S99.2W  Spaceway 2 & DirecTV 11
++S101W   DirecTV 4S/8 & AMC 2/4
+ S103W   AMC1
+-S105W   AMC15
++S105W   AMC15/18
+ S107.3W Anik F1/F1R
+-S110W   DirecTV 5 & Echostar 6/8/10
++S110W   DirecTV 5 & Echostar 8/10
+ S111.1W Anik F2
+-S113W   Solidaridad 2
+-S119W   Echostar 7 & DirecTV 7S
++S113W   SatMex 6
++S116.8W SatMex 5
++S119W   Anik F3 & Echostar 7 & DirecTV 7S
+ S121W   Echostar 9 & Galaxy 23
+-S123W   Galaxy 10R
++S123W   Galaxy 18
+ S125W   Galaxy 14
+ S127W   Galaxy 13/Horizons 1
+ S129W   Echostar 5 & Galaxy 27
+ S131W   AMC 11
+-S133W   Galaxy15/1R
++S133W   Galaxy15
+ S135W   AMC 10
+ S137W   AMC 7
+-S138.5W Echostar 10
+ S139W   AMC 8
+ S148W   Echostar 1/2
+ 
+diff -ruN vdr-1.6.0-1/svdrp.c vdr-1.6.0-2/svdrp.c
+--- vdr-1.6.0-1/svdrp.c	2008-02-17 14:36:01.000000000 +0100
++++ vdr-1.6.0-2/svdrp.c	2008-05-02 16:29:16.000000000 +0200
+@@ -10,7 +10,7 @@
+  * and interact with the Video Disk Recorder - or write a full featured
+  * graphical interface that sits on top of an SVDRP connection.
+  *
+- * $Id: svdrp.c 1.109 2008/02/17 13:36:01 kls Exp $
++ * $Id: svdrp.c 1.109.1.1 2008/05/02 14:29:16 kls Exp $
+  */
+ 
+ #include "svdrp.h"
+@@ -1606,7 +1606,7 @@
+         char buffer[BUFSIZ];
+         gethostname(buffer, sizeof(buffer));
+         time_t now = time(NULL);
+-        Reply(220, "%s SVDRP VideoDiskRecorder %s; %s", buffer, VDRVERSION, *TimeToString(now));
++        Reply(220, "%s SVDRP VideoDiskRecorder %s; %s; %s", buffer, VDRVERSION, *TimeToString(now), cCharSetConv::SystemCharacterTable() ? cCharSetConv::SystemCharacterTable() : "UTF-8");
+         }
+      if (NewConnection)
+         lastActivity = time(NULL);
+diff -ruN vdr-1.6.0-1/thread.c vdr-1.6.0-2/thread.c
+--- vdr-1.6.0-1/thread.c	2008-02-15 15:17:42.000000000 +0100
++++ vdr-1.6.0-2/thread.c	2008-08-16 13:00:40.000000000 +0200
+@@ -4,7 +4,7 @@
+  * See the main source file 'vdr.c' for copyright information and
+  * how to reach the author.
+  *
+- * $Id: thread.c 1.64 2008/02/15 14:17:42 kls Exp $
++ * $Id: thread.c 1.64.1.1 2008/08/16 11:00:40 kls Exp $
+  */
+ 
+ #include "thread.h"
+@@ -24,11 +24,12 @@
+ {
+   struct timeval now;
+   if (gettimeofday(&now, NULL) == 0) {           // get current time
+-     now.tv_usec += MillisecondsFromNow * 1000;  // add the timeout
+-     while (now.tv_usec >= 1000000) {            // take care of an overflow
+-           now.tv_sec++;
+-           now.tv_usec -= 1000000;
+-           }
++     now.tv_sec  += MillisecondsFromNow / 1000;  // add full seconds
++     now.tv_usec += (MillisecondsFromNow % 1000) * 1000;  // add microseconds
++     if (now.tv_usec >= 1000000) {               // take care of an overflow
++        now.tv_sec++;
++        now.tv_usec -= 1000000;
++        }
+      Abstime->tv_sec = now.tv_sec;          // seconds
+      Abstime->tv_nsec = now.tv_usec * 1000; // nano seconds
+      return true;
+diff -ruN vdr-1.6.0-1/vdr.c vdr-1.6.0-2/vdr.c
+--- vdr-1.6.0-1/vdr.c	2008-03-14 14:22:39.000000000 +0100
++++ vdr-1.6.0-2/vdr.c	2008-09-06 13:07:52.000000000 +0200
+@@ -22,7 +22,7 @@
+  *
+  * The project's page is at http://www.cadsoft.de/vdr
+  *
+- * $Id: vdr.c 1.313 2008/03/14 13:22:39 kls Exp $
++ * $Id: vdr.c 1.313.1.1 2008/09/06 11:07:52 kls Exp $
+  */
+ 
+ #include <getopt.h>
+@@ -141,7 +141,6 @@
+ 
+ static void SignalHandler(int signum)
+ {
+-  isyslog("caught signal %d", signum);
+   switch (signum) {
+     case SIGPIPE:
+          break;
+@@ -1288,9 +1287,11 @@
+   ReportEpgBugFixStats();
+   if (WatchdogTimeout > 0)
+      dsyslog("max. latency time %d seconds", MaxLatencyTime);
+-  isyslog("exiting, exit code %d", ShutdownHandler.GetExitCode());
++  if (LastSignal)
++     isyslog("caught signal %d", LastSignal);
+   if (ShutdownHandler.EmergencyExitRequested())
+      esyslog("emergency exit!");
++  isyslog("exiting, exit code %d", ShutdownHandler.GetExitCode());
+   if (SysLogLevel > 0)
+      closelog();
+   if (HasStdin)
