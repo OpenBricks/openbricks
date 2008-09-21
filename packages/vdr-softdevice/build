@@ -1,0 +1,54 @@
+#!/bin/sh
+
+. config/options
+
+$SCRIPTS/build vdr
+$SCRIPTS/build ffmpeg
+$SCRIPTS/build alsa
+
+VDR_DIR=`basename $BUILD/vdr-1*`
+
+if [ "$TARGET_ARCH" = powerpc ]; then
+  TARGET_MAK="ADD_CXXFLAGS += -faltivec"
+  TARGET_DEF="#define USE_ALTIVEC
+  #define CPU_BIGENDIAN 1"
+else
+  TARGET_MAK=""
+  TARGET_DEF="#define USE_MMX 1
+  #define USE_MMX2 1"
+fi
+
+if [ "$XORG" = yes ]; then
+  XORG_MAK="XV_SUPPORT=1
+  SHMCLIENT_SUPPORT=1
+  XV_LIBS=-L$LIB_PREFIX/lib -lXext -lX11 -lm -lXv"
+  XORG_DEF="#define XV_SUPPORT 1"
+fi
+
+cd $BUILD/$1*
+cat > config.h <<EOF
+#define SUSPEND_BY_KEY 1
+#define LINUX_RTC 1
+#define ALSA_SUPPORT 1
+#define FB_SUPPORT  1
+#define USE_SWSCALE 1
+#undef PP_LIBAVCODEC
+#define HAVE_FFMPEG_LOCAL 1
+$TARGET_DEF
+$XORG_DEF
+EOF
+cat > config.mak <<EOF
+WITH_CONFIGURE=1
+PLUGINLIBDIR=/usr/lib/vdr
+FB_SUPPORT=1
+ALSA_SUPPORT=1
+SHM_SUPPORT=1
+FFMPEGLIBS=-L$LIB_PREFIX/lib -lswscale -lavcodec -lavformat -lz
+FFMPEGCFLAGS=-I../$VDR_DIR -I$LIB_PREFIX/include -I$LIB_PREFIX/include/libavcodec -I$LIB_PREFIX/include/libavformat -I$LIB_PREFIX/include/libswscale
+$TARGET_MAK
+$XORG_MAK
+EOF
+make all \
+  VDRDIR="../$VDR_DIR" \
+  LIBDIR="." \
+  LOCALEDIR="./locale" \
