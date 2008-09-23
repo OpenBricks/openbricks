@@ -1,7 +1,9 @@
 #!/bin/sh
 
 get_device () {
-  dev=`mount | grep "$1" | sed 's/\(.*\) on.*/\1/'`
+  local dev=`mount | grep "$1" | sed 's/\(.*\) on.*/\1/'`
+  # Debugging
+  echo "\"get_device $@\" returned: $dev" >> $LOGFILE
   echo $dev
 }
 
@@ -10,38 +12,55 @@ remount () {
 }
 
 copy_cfg_file () {
-  src="$1"
-  mount_point="$2/GEEXBOX"
-  dest="${mount_point}$3"
+  local src="$1"
+  local mount_point="$2/GEEXBOX"
+  local dest="${mount_point}$3"
+  echo "\"copy_cfg_file $@\" called" >> $LOGFILE
  
   if [ -f "$src" ]; then
-    # echo "Copying $src to $dest" # for debug purpose only
+    echo "Copying $src to $dest" 2>&1 >> $LOGFILE
+    # Actual command
     cp "$src" "$dest"
   fi
 }
 
-update_grub () {
-  mount_point="$1/boot/grub"
-  item="$2"
-  value="$3"
+update_boot () {
+  local mount_point_grub="$1/boot/grub"
+  local mount_point_sysl="$1"
+  local item="$2"
+  local value="$3"
+  local file
+
+  echo "\"update_boot $@\" called" >> $LOGFILE
 
   # don't try to set an item with a non-existing value
   test -z "$value" && return;
 
-  for file in "$mount_point/single.lst" "$mount_point/menu.lst"; do
-    # echo "Editing $file with $2=$3" # for debug purpose only
+  for file in "$mount_point_grub/single.lst" "$mount_point_grub/menu.lst" \
+              "$mount_point_sysl/syslinux.cfg"; do
+    # Don't try to change a non-existant file
+    [ ! -f "$file" ] && continue
+
+    echo "Editing \"$file\" with $2=$3" >> $LOGFILE
+    echo "Before edit:" >> $LOGFILE
+    cat "$file" >> $LOGFILE
+
+    # Actual command
     sed -i "s/$2=[^ ]*/$2=$3/g" "$file"
+
+    echo "After edit:" >> $LOGFILE
+    cat "$file" >> $LOGFILE
   done
 }
 
 save_configs () {
   # lang settings
-  update_grub "$partition" keymap "$CFG_KEYMAP"
-  update_grub "$partition" lang "$CFG_LANG"
+  update_boot "$partition" keymap "$CFG_KEYMAP"
+  update_boot "$partition" lang "$CFG_LANG"
 
   # video settings
-  update_grub "$partition" splash "$CFG_BOOTSPLASH"
-  update_grub "$partition" vga "$CFG_VESA_MODE"
+  update_boot "$partition" splash "$CFG_BOOTSPLASH"
+  update_boot "$partition" vga "$CFG_VESA_MODE"
   copy_cfg_file /etc/X11/X.cfg "$partition" /etc/X11
   copy_cfg_file /etc/X11/xorg.conf "$partition" /etc/X11
 
@@ -54,8 +73,8 @@ save_configs () {
   copy_cfg_file /etc/tvcard "$partition" /etc
 
   # remote settings
-  update_grub "$partition" remote "$CFG_REMOTE"
-  update_grub "$partition" receiver "$CFG_RECEIVER"
+  update_boot "$partition" remote "$CFG_REMOTE"
+  update_boot "$partition" receiver "$CFG_RECEIVER"
 }
 
 # include configurator common file
@@ -75,9 +94,11 @@ for i in /mnt/*; do
   test -d "$i/GEEXBOX" && partition="$i" && break;
 done
 
-test -z "$partition" && dialog --aspect 15 --backtitle "$MSG_CFG_TITLE" --title "$MSG_ERROR" --msgbox "$MSG_SAVE_NO_DISK" 0 0 && exit 1
+test -z "$partition" && dialog --aspect 15 --backtitle "$MSG_CFG_TITLE" \
+  --title "$MSG_ERROR" --msgbox "$MSG_SAVE_NO_DISK" 0 0 && exit 1
 
-dialog --aspect 15 --backtitle "$MSG_CFG_TITLE" --title "$MSG_MENU_SAVE" --yesno "$MSG_SAVE_DESC_BEGIN ($partition) $MSG_SAVE_DESC_END" 0 0 || exit 1
+dialog --aspect 15 --backtitle "$MSG_CFG_TITLE" --title "$MSG_MENU_SAVE" \
+  --yesno "$MSG_SAVE_DESC_BEGIN ($partition) $MSG_SAVE_DESC_END" 0 0 || exit 1
 
 device=`get_device "$partition"`
 
@@ -85,4 +106,5 @@ remount rw "$device" "$partition"
 save_configs
 remount ro "$device" "$partition"
 
-dialog --aspect 15 --backtitle "$MSG_CFG_TITLE" --title "$MSG_SUCCESS" --msgbox "$MSG_SAVE_OK" 0 0
+dialog --aspect 15 --backtitle "$MSG_CFG_TITLE" --title "$MSG_SUCCESS" \
+  --msgbox "$MSG_SAVE_OK" 0 0

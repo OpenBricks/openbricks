@@ -1,60 +1,93 @@
 #!/bin/sh
 
 set_value () {
+  echo "\"set_value $1 $2 $3\" called, $3 before change:" >> $LOGFILE
+  grep $1 $3 >> $LOGFILE
   sed -i "s%^$1=.*%$1=\"$2\"%" $3
+  echo "after change:" >> $LOGFILE
+  grep $1 $3 >> $LOGFILE
 }
 
 setup_network () {
 
-  title="$MSG_CFG_TITLE"
-  f="/etc/network"
+  local title="$MSG_CFG_TITLE"
+  local f="/etc/network"
+  local val phy_type wifi_mode wifi_enc wifi_essid wifi_key wpa_drv host_ip
+  local gw_ip dns_ip smb_user smb_pwd
 
   # Get type of physical interface
   val=`grep PHY_TYPE $f | cut -d'"' -f2`
-  phy_type=`dialog --no-cancel --aspect 15 --default-item $val --stdout --backtitle "$title" --title "$MSG_NET_PHY" --menu "\n${MSG_NET_PHY_DESC}\n" 0 0 0 auto "$MSG_NET_PHY_AUTO" ethernet "$MSG_NET_PHY_ETH" wifi "$MSG_NET_PHY_WIFI"` || exit 1
+  phy_type=`dialog --no-cancel --aspect 15 --default-item $val --stdout \
+    --backtitle "$title" --title "$MSG_NET_PHY" \
+    --menu "\n${MSG_NET_PHY_DESC}\n" 0 0 0 auto "$MSG_NET_PHY_AUTO" \
+    ethernet "$MSG_NET_PHY_ETH" wifi "$MSG_NET_PHY_WIFI"` || exit 1
 
   # Get wireless settings only if required
   if [ $phy_type = "auto" -o $phy_type = "wifi" ]; then
-    wifi_mode=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_WIFI" --menu "\n${MSG_NET_WIFI_DESC}\n" 0 0 0 managed "$MSG_NET_WIFI_AP" ad-hoc "$MSG_NET_WIFI_ADHOC"` || exit 1
+    wifi_mode=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" \
+      --title "$MSG_NET_WIFI" --menu "\n${MSG_NET_WIFI_DESC}\n" 0 0 0 \
+      managed "$MSG_NET_WIFI_AP" ad-hoc "$MSG_NET_WIFI_ADHOC"` || exit 1
 
-    wifi_enc=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_CRYPTO" --menu "\n${MSG_NET_CRYPTO_DESC}\n" 0 0 0 none "$MSG_NET_CRYPTO_NONE" WEP "$MSG_NET_CRYPTO_WEP" WPA "$MSG_NET_CRYPTO_WPA"` || exit 1
+    wifi_enc=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" \
+      --title "$MSG_NET_CRYPTO" --menu "\n${MSG_NET_CRYPTO_DESC}\n" 0 0 0 \
+      none "$MSG_NET_CRYPTO_NONE" WEP "$MSG_NET_CRYPTO_WEP" \
+      WPA "$MSG_NET_CRYPTO_WPA"` || exit 1
 
     val=`grep WIFI_ESSID $f | cut -d'"' -f2`
-    wifi_essid=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_SSID" --inputbox "\n${MSG_NET_SSID_DESC}\n" 0 0 "$val"` || exit 1
+    wifi_essid=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" \
+      --title "$MSG_NET_SSID" --inputbox "\n${MSG_NET_SSID_DESC}\n" 0 0 \
+      "$val"` || exit 1
 
     if [ $wifi_enc = WEP -o $wifi_enc = WPA ]; then
       val=`grep WIFI_KEY $f | cut -d'"' -f2`
-      wifi_key=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_KEY" --inputbox "\n${MSG_NET_KEY_DESC}\n" 0 0 "$val"` || exit 1
+      wifi_key=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" \
+        --title "$MSG_NET_KEY" --inputbox "\n${MSG_NET_KEY_DESC}\n" \
+        0 0 "$val"` || exit 1
     fi
 
     if [ $wifi_enc = WPA ]; then
-      wpa_drv=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_WPA_DRIVER" --menu "\n${MSG_NET_WPA_DRIVER_DESC}\n" 0 0 0 wext "$MSG_NET_WPA_DRIVER_WEXT" atmel "$MSG_NET_WPA_DRIVER_ATMEL"` || exit 1
+      wpa_drv=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" \
+        --title "$MSG_NET_WPA_DRIVER" --menu "\n${MSG_NET_WPA_DRIVER_DESC}\n" \
+        0 0 0 wext "$MSG_NET_WPA_DRIVER_WEXT" \
+        atmel "$MSG_NET_WPA_DRIVER_ATMEL"` || exit 1
     fi
   fi
 
   # get GeeXboX IP address
   val=`grep HOST $f | cut -d'"' -f2`
-  host_ip=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_IP" --inputbox "\n${MSG_NET_IP_DESC}\n" 0 0 "$val"` || exit 1
+  host_ip=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" \
+    --title "$MSG_NET_IP" --inputbox "\n${MSG_NET_IP_DESC}\n" 0 0 "$val"` \
+    || exit 1
 
   # do not get more settings if DHCP
   if [ ! -z $host_ip ]; then
     val=`grep SUBNET $f | cut -d'"' -f2`
-    subnet=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_SUBNET" --inputbox "\n${MSG_NET_SUBNET_DESC}\n" 0 0 "$val"` || exit 1
+    subnet=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" \
+      --title "$MSG_NET_SUBNET" --inputbox "\n${MSG_NET_SUBNET_DESC}\n" \
+      0 0 "$val"` || exit 1
 
     val=`grep GATEWAY $f | cut -d'"' -f2`
-    gw_ip=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_GATEWAY" --inputbox "\n${MSG_NET_GATEWAY_DESC}\n" 0 0 "$val"` || exit 1
+    gw_ip=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" \
+      --title "$MSG_NET_GATEWAY" --inputbox "\n${MSG_NET_GATEWAY_DESC}\n" \
+      0 0 "$val"` || exit 1
 
     val=`grep DNS_SERVER $f | cut -d'"' -f2`
-    dns_ip=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" --title "$MSG_NET_DNS" --inputbox "\n${MSG_NET_DNS_DESC}\n" 0 0 "$val"` || exit 1
+    dns_ip=`dialog --no-cancel --aspect 15 --stdout --backtitle "$title" \
+      --title "$MSG_NET_DNS" --inputbox "\n${MSG_NET_DNS_DESC}\n" 0 0 "$val"` \
+      || exit 1
   fi
 
   # get samba user name
   val=`grep SMB_USER $f | cut -d'"' -f2`
-  smb_user=`dialog --no-cancel --stdout --backtitle "$title" --title "$MSG_NET_SMB_USER" --inputbox "\n${MSG_NET_SMB_USER_DESC}\n" 0 0 "$val"` || exit 1
+  smb_user=`dialog --no-cancel --stdout --backtitle "$title" \
+    --title "$MSG_NET_SMB_USER" --inputbox "\n${MSG_NET_SMB_USER_DESC}\n" \
+    0 0 "$val"` || exit 1
 
   # get samba password
   val=`grep SMB_PWD $f | cut -d'"' -f2`
-  smb_pwd=`dialog --no-cancel --stdout --backtitle "$title" --title "$MSG_NET_SMB_PWD" --inputbox "\n${MSG_NET_SMB_PWD_DESC}\n" 0 0 "$val"` || exit 1
+  smb_pwd=`dialog --no-cancel --stdout --backtitle "$title" \
+    --title "$MSG_NET_SMB_PWD" --inputbox "\n${MSG_NET_SMB_PWD_DESC}\n" 0 0 \
+    "$val"` || exit 1
 
   set_value PHY_TYPE "$phy_type" $f
   set_value WIFI_MODE "$wifi_mode" $f
