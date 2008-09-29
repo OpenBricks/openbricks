@@ -432,20 +432,71 @@ config_fastboot () {
   echo "$LOC_UNCOMPRESS_INSTALL"
 }
 
+# Setup syslinux.cfg file in the /tmp dir
+# $1 is the UUID of device
+# $2 is GEEXBOX dir
+setup_syslinux () {
+  # Setup syslinux.cfg file
+  sed -e "s/boot=cdrom/boot=UUID=${1}/" -e "s%^#CFG#%%" \
+    "$2/boot/isolinux.cfg" > /tmp/syslinux.cfg
+
+  dbglg "*** Start Syslinux.cfg ***"
+  cat /tmp/syslinux.cfg >> $LOGFILE
+  dbglg "*** End Syslinux.cfg ***"
+}
+
 # Installs syslinux- takes parameters:
 # $1 is the UUID of device
 # $2 is the DEV
 # $3 is the DISK
 # $4 is GEEXBOX dir
 # $5 is the FSTYPE
+# $6 is the boot type, USB-FDD or USB-HDD
 install_syslinux () {
-  # Setup syslinux.cfg file
-  sed -e "s/boot=cdrom/boot=UUID=${1}/" -e "s%^#CFG#%%" \
-    "$4/boot/isolinux.cfg" > /tmp/syslinux.cfg
 
-  dbglg "*** Start Syslinux.cfg ***"
-  cat /tmp/syslinux.cfg >> $LOGFILE
-  dbglg "*** End Syslinux.cfg ***"
+  # Setup syslinux.cfg file
+  setup_syslinux "$1" "$4"
+
+  # Copy files across and setup file hierarchy
+  cp -R "$4" di/
+  cd di/geexbox/boot
+  mv vmlinuz initrd.gz vesamenu.c32 help.msg splash.png ../..
+  cd ../../..
+  mv di/geexbox/usr/share/ldlinux.sys di/
+  cp /tmp/syslinux.cfg di/
+  # Clean up unnecessary dir
+  rm -fr di/geexbox/boot
+  # Prepare for setting up the MBR
+  cp di/geexbox/usr/share/mbr.bin /tmp/
+
+  # Unmount prior to running syslinux
+  umount di
+
+  # Setup bootloader
+  syslinux -s $2
+
+  if [ "USB-HDD" = $6 ]; then
+    # Setup MBR
+    dd if=/tmp/mbr.bin of="$3" 2>&1 >> $LOGFILE
+  elif [ "USB-FDD" = $6 ]; then
+    # Blank the MBR
+    dd if=/dev/zero of="$3" bs=512 count=1 2>&1 >> $LOGFILE
+  fi
+
+  # Remount
+  mount -t $5 "$2" di 2>&1 >> $LOGFILE
+}
+
+# Installs makebootfat- takes parameters:
+# $1 is the UUID of device
+# $2 is the DEV
+# $3 is the DISK
+# $4 is GEEXBOX dir
+# $5 is the FSTYPE
+# $6 is the boot type, USB-FDD or USB-HDD USB-FDD-HDD
+install_makebootfat () {
+  # Setup syslinux.cfg file
+  setup_syslinux "$1" "$4"
 
   # Unmount prior to running makebootdisk
   umount di
@@ -454,7 +505,7 @@ install_syslinux () {
   # Use -x/-c to copy those files to the root dir of the FS instead
   # of the original boot directory
   makebootfat -o $3 -v -b "$4/usr/share/ldlinux.bss" \
-    -m "$4/usr/share/mbrfat.bin" --mbrfat -Y -Z \
+    -m "$4/usr/share/mbrfat.bin" --mbrfat -Y \
     -c /tmp/syslinux.cfg \
     -x "$4/boot" \ 
     -c "$4/boot/vmlinuz" \
@@ -738,8 +789,12 @@ fi
 # Install bootloader and copy files across
 if [ $BOOTLOADER = syslinux ]; then
 
-  # install_syslinux copies all files across
-  install_syslinux "$DEV_UUID" "$DEV" "$DISK" "$GEEXBOX" "$MKFS_TYPE"
+  if [ $BTYPE = "USB-FDD" -o $BTYPE = "USB-HDD" ]; then
+    # install_syslinux copies all files across
+    install_syslinux "$DEV_UUID" "$DEV" "$DISK" "$GEEXBOX" "$MKFS_TYPE" "$BTYPE"
+  else
+    install_makebootfat "$DEV_UUID" "$DEV" "$DISK" "$GEEXBOX" "$MKFS_TYPE"
+  fi
 
 elif [ $BOOTLOADER = grub ]; then
 
