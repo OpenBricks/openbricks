@@ -205,36 +205,37 @@ choose_disk () {
     fi
   done
   dbglg "choose_disk() returned \"$SELECTED_DISK\""
+
+  # Exit with error if no disk selected
+  [ -z "$SELECTED_DISK" ] && exit 1
+
   echo $SELECTED_DISK
 }
 
 # Prompt and get the desired partition name from the selected disk ($1),
 # and returns the device name of that partition
 choose_partition_dev () {
+  local LOC_DISK="$1"
   local DEV_SEL DEV_LIST SIZE VENDOR MODEL DEVNAME i
   dbglg "Input arg for DISK is $1"
   while [ ! -b "$DEV_SEL" ]; do
     DEV_LIST=""
-    for i in `sfdisk -lq /dev/$1 2>/dev/null | grep ${1%disc} | \
+    for i in `sfdisk -lq /dev/$LOC_DISK 2>/dev/null | grep ${LOC_DISK%disc} | \
               cut -f1 -d' ' | grep dev`; do
       case `sfdisk --print-id ${i%%[0-9]*} ${i#${i%%[0-9]*}}` in
         1|11|6|e|16|1e|b|c|1b|1c) #FAT12/16/32 are supported syslinux
-          if [ $BOOTLOADER = syslinux ]; then
-            SIZE=`sfdisk -s "$i" | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
-            VENDOR=`cat /sys/block/$1/device/vendor`
-            MODEL=`cat /sys/block/$1/device/model`
-            DEVNAME=`echo $VENDOR $MODEL ${SIZE}MB | sed 's/ /_/g'`
-            DEV_LIST="$DEV_LIST $i $DEVNAME"
-          fi
+          SIZE=`sfdisk -s "$i" | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
+          VENDOR=`cat /sys/block/$LOC_DISK/device/vendor`
+          MODEL=`cat /sys/block/$LOC_DISK/device/model`
+          DEVNAME=`echo $VENDOR $MODEL ${SIZE}MB | sed 's/ /_/g'`
+          DEV_LIST="$DEV_LIST $i $DEVNAME"
           ;;
         83) #Linux is supported only in grub.
-          if [ $BOOTLOADER = grub ]; then
-            SIZE=`sfdisk -s "$i" | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
-            VENDOR=`cat /sys/block/$1/device/vendor`
-            MODEL=`cat /sys/block/$1/device/model`
-            DEVNAME=`echo $VENDOR $MODEL ${SIZE}MB | sed 's/ /_/g'`
-            DEV_LIST="$DEV_LIST $i $DEVNAME"
-          fi
+          SIZE=`sfdisk -s "$i" | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
+          VENDOR=`cat /sys/block/$LOC_DISK/device/vendor`
+          MODEL=`cat /sys/block/$LOC_DISK/device/model`
+          DEVNAME=`echo $VENDOR $MODEL ${SIZE}MB | sed 's/ /_/g'`
+          DEV_LIST="$DEV_LIST $i $DEVNAME"
           ;;
       esac
     done
@@ -257,6 +258,19 @@ choose_partition_dev () {
     fi
   done
   dbglg "choose_dev() returned \"$DEV_SEL\""
+  # Exit with error if no partition selected
+
+  [ -z "$DEV_SEL" ] && exit 1
+
+  # Exit if chosen partition is not bootable
+  sfdisk -lq /dev/$LOC_DISK 2>/dev/null | grep $DEV_SEL | grep -q "\*"
+  ret=$?
+  if [ 0 -ne $ret ]; then
+    dbglg "Disk $LOC_DISK did not have a bootable partition set for $DEV_SEL !"
+    sfdisk -l /dev/$LOC_DISK 2>&1 >> $LOGFILE
+    exit 1
+  fi
+
   echo "$DEV_SEL"
 }
 
@@ -286,28 +300,40 @@ guess_partition_type () {
 # Decides if a format is needed (or desired) and manages the process
 # $1 is global MKFS_TYPE, and also updates MKFS_TYPE variable
 # $2 is DEV
-# $? is the list of SUPPORTED_TYPES
 format_if_needed () {
   local NEED_FORMAT=yes
   local FORMAT_DEFAULT="--defaultno"
   local LOC_MKFS_TYPE="$1"
   local LOC_DEV="$2"
-  local FORMAT_MSG FORMAT_DEFAULT FORMAT MKFS MKFS_OPT MKFS_TYPENAME FORMAT
-  shift 2
-  local LOC_SUPPORTED_TYPES="$@"
+  local FORMAT_MSG FORMAT MKFS MKFS_OPT MKFS_TYPENAME FORMAT
+  local SUPPORTED_TYPES PART_TYPE
 
-  dbglg "LOC_MKFS_TYPE \"$LOC_FS_TYPE\" LOC_DEV \"$LOC_DEV\""
-  dbglg "LOC_SUPPORTED_TYPES \"$LOC_SUPPORTED_TYPES\""
+  # Set valid FS types based on selected install partition
+  case `sfdisk --print-id ${LOC_DEV%%[0-9]*} ${LOC_DEV#${LOC_DEV%%[0-9]*}}` in
+    1|11|6|e|16|1e|14|b|c|1b|1c)
+      SUPPORTED_TYPES="vfat"
+      PART_TYPE="FAT"
+      ;;
+    83) # Linux
+      SUPPORTED_TYPES="ext3 ext2"
+      PART_TYPE="Linux"
+      ;;
+  esac
+
+  dbglg "SUPPORTED_TYPES $SUPPORTED_TYPES PART_TYPE $PART_TYPE"
+  dbglg "LOC_MKFS_TYPE \"$LOC_MKFS_TYPE\" LOC_DEV \"$LOC_DEV\""
+
   if [ -z "$LOC_MKFS_TYPE" ]; then
     FORMAT_MSG="$MSG_INSTALL_DEV_NO_FORMAT"
     FORMAT_DEFAULT=""
   else
-    for type in $LOC_SUPPORTED_TYPES; do
+    for type in $SUPPORTED_TYPES; do
       [ $type = $LOC_MKFS_TYPE ] && NEED_FORMAT=no
     done
 
     if [ "$NEED_FORMAT" = yes ]; then
       FORMAT_MSG="$MSG_INSTALL_DEV_FORMAT_BEGIN ($LOC_MKFS_TYPE) $MSG_INSTALL_DEV_FORMAT_END ($PART_TYPE)."
+      FORMAT_DEFAULT=""
     else
       FORMAT_MSG="$MSG_INSTALL_DEV_FORMATED"
     fi
@@ -433,91 +459,82 @@ config_fastboot () {
 }
 
 # Setup syslinux.cfg file in the /tmp dir
-# $1 is the UUID of device
-# $2 is GEEXBOX dir
+# $1 is GEEXBOX dir
 setup_syslinux () {
   # Setup syslinux.cfg file
-  sed -e "s/boot=cdrom/boot=UUID=${1}/" -e "s%^#CFG#%%" \
-    "$2/boot/isolinux.cfg" > /tmp/syslinux.cfg
+  sed -e "s/boot=cdrom/boot=hdd/g" -e "s%^#CFG#%%" \
+    "$1/boot/isolinux.cfg" > /tmp/syslinux.cfg
 
   dbglg "*** Start Syslinux.cfg ***"
   cat /tmp/syslinux.cfg >> $LOGFILE
   dbglg "*** End Syslinux.cfg ***"
 }
 
-# Installs syslinux- takes parameters:
-# $1 is the UUID of device
-# $2 is the DEV
-# $3 is the DISK
-# $4 is GEEXBOX dir
-# $5 is the FSTYPE
-# $6 is the boot type, USB-FDD or USB-HDD
-install_syslinux () {
+# Installs makebootfat- takes parameters:
+# $1 is the DISK
+# $2 is GEEXBOX dir
+install_makebootfat () {
+  local BTYPE
+  local LOC_DISK="$1"
+  local GXDIR="$2"
+  local SRCDIR="${GXDIR%GEEXBOX}"
+
+  dbglg "DISK is $LOC_DISK GEEXBOX dir is $GXDIR"
+
 
   # Setup syslinux.cfg file
-  setup_syslinux "$1" "$4"
+  setup_syslinux "$GXDIR"
 
-  # Copy files across and setup file hierarchy
-  cp -R "$4" di/
-  cd di/geexbox/boot
-  mv vmlinuz initrd.gz vesamenu.c32 help.msg splash.png ../..
-  cd ../../..
-  mv di/geexbox/usr/share/ldlinux.sys di/
-  cp /tmp/syslinux.cfg di/
-  # Clean up unnecessary dir
-  rm -fr di/geexbox/boot
-  # Prepare for setting up the MBR
-  cp di/geexbox/usr/share/mbr.bin /tmp/
+  BTYPE=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" \
+    --title "$MSG_USB_BOOT_TYPE" --menu "$MSG_USB_BOOT_TYPE_DESC"\
+    0 0 0 USB-FDD "USB-FDD" USB-HDD "USB-HDD" USB-ZIP "USB-ZIP (experimental)" \
+    USB-ALL "USB-ALL (experimental)"` \
+    || exit 1
 
-  # Unmount prior to running syslinux
-  umount di
-
-  # Setup bootloader
-  syslinux -s $2
-
-  if [ "USB-HDD" = $6 ]; then
-    # Setup MBR
-    dd if=/tmp/mbr.bin of="$3" 2>&1 >> $LOGFILE
-  elif [ "USB-FDD" = $6 ]; then
-    # Blank the MBR
-    dd if=/dev/zero of="$3" bs=512 count=1 2>&1 >> $LOGFILE
+  if [ $BTYPE = "USB-FDD" ]; then
+    MKBOOTFAT_OPTS="-b /tmp/ldlinux.bss"
+    # No partition table
+    DEV=$LOC_DISK
+  elif [ $BTYPE = "USB-HDD" ]; then
+    MKBOOTFAT_OPTS="-b /tmp/ldlinux.bss -m /tmp/mbr.bin"
+    # First partition
+    DEV=${LOC_DISK}1
+  elif [ $BTYPE = "USB-ZIP" ]; then
+    MKBOOTFAT_OPTS="-b /tmp/ldlinux.bss -m /tmp/mbr.bin -Z"
+    # Fourth partition
+    DEV=${LOC_DISK}4
+  else
+    # Try joint FDD/HDD approach
+    MKBOOTFAT_OPTS="-b /tmp/ldlinux.bss -m /tmp/mbrfat.bin --mbrfat"
+    # First partition
+    DEV=${LOC_DISK}1
   fi
 
-  # Remount
-  mount -t $5 "$2" di 2>&1 >> $LOGFILE
-}
+  # Due to shell cmd length limitations, cp files locally
+  cp -r "$GXDIR"/boot/* /tmp
+  cp "$GXDIR"/usr/share/ldlinux.* /tmp
+  cp "$GXDIR"/usr/share/mbr* /tmp
+  ln -sf "$SRCDIR" /tmp/src
 
-# Installs makebootfat- takes parameters:
-# $1 is the UUID of device
-# $2 is the DEV
-# $3 is the DISK
-# $4 is GEEXBOX dir
-# $5 is the FSTYPE
-# $6 is the boot type, USB-FDD or USB-HDD USB-FDD-HDD
-install_makebootfat () {
-  # Setup syslinux.cfg file
-  setup_syslinux "$1" "$4"
-
-  # Unmount prior to running makebootdisk
-  umount di
+  dbglg "BTYPE is $BTYPE MKBOOTFAT_OPTS is $MKBOOTFAT_OPTS SRCDIR is $SRCDIR"
 
   # Copy files to disk in correct places and install boot loader
   # Use -x/-c to copy those files to the root dir of the FS instead
   # of the original boot directory
-  makebootfat -o $3 -v -b "$4/usr/share/ldlinux.bss" \
-    -m "$4/usr/share/mbrfat.bin" --mbrfat -Y \
+  makebootfat -o $LOC_DISK -v -Y \
+    $MKBOOTFAT_OPTS \
     -c /tmp/syslinux.cfg \
-    -x "$4/boot" \ 
-    -c "$4/boot/vmlinuz" \
-    -c "$4/boot/initrd.gz" \
-    -c "$4/boot/vesamenu.c32" \
-    -c "$4/boot/help.msg" \
-    -c "$4/boot/splash.png" \
-    -c "$4/usr/share/ldlinux.sys" \
-    "${4%GEEXBOX}" 2>&1 >> $LOGFILE
+    -c /tmp/vmlinuz -c /tmp/initrd.gz -c /tmp/vesamenu.c32 \
+    -c /tmp/help.msg -c /tmp/splash.png -c /tmp/ldlinux.sys \
+    /tmp/src 2>&1 >> $LOGFILE
 
-  # Remount
-  mount -t $5 "$2" di 2>&1 >> $LOGFILE
+  if [ $BTYPE != "USB-FDD" ]; then
+    # Debugging- make sure that makebootfat created valid partitions
+    fdisk -l $LOC_DISK 2>&1 >> $LOGFILE
+  fi
+
+  # Remount, or exit on failure
+  mount -t vfat $DEV /di 2>&1 >> $LOGFILE || exit 1
 }
 
 # Installs and configures the GRUB bootloader
@@ -533,8 +550,7 @@ install_grub (){
   local SPLASHIMAGE="$GRUBPREFIX/grub-splash.xpm.gz"
   local LOC_DEV_UUID=$1
   local LOC_DEV=$2
-  local LOC_TYPE=$3
-  local LOC_USE_XORG=$4
+  local LOC_USE_XORG=$3
 
   rm -rf $GRUBDIR
   mkdir -p $GRUBDIR
@@ -553,17 +569,12 @@ install_grub (){
 
   cp $GRUBDIR/stage2 $GRUBDIR/stage2_single
 
-  if [ $LOC_TYPE = HDD ]; then
-    echo "quit" | grub --batch --no-floppy --device-map=$DEVICE_MAP \
+  echo "quit" | grub --batch --no-floppy --device-map=$DEVICE_MAP \
       >> $LOGFILE 2>&1
-    ROOTDEV=$(convert $LOC_DEV $DEVICE_MAP)
-  elif [ $LOC_TYPE = REMOVABLE ]; then
-    exit 1
-  fi
-
+  ROOTDEV=$(convert $LOC_DEV $DEVICE_MAP)
 
   dbglg "ROOTDEV \"$ROOTDEV\" DEV_UUID \"$LOC_DEV_UUID\" DEV \"$LOC_DEV\""
-  dbglg "TYPE \"$LOC_TYPE\" XORG \"$LOC_USE_XORG\""
+  dbglg "XORG \"$LOC_USE_XORG\""
 
   if [ -z "$ROOTDEV" ]; then
     dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_ERROR" \
@@ -596,32 +607,30 @@ EOF
   cat $GRUBDIR/single.lst >> $LOGFILE
   dbglg "*** End GRUB Single.lst ***"
 
-  if [ $LOC_TYPE = HDD ]; then
-    oslist=$(detect_os)
+  oslist=$(detect_os)
 
-    supported_os_list=""
-    saveifs=$IFS
-    IFS='
+  supported_os_list=""
+  saveifs=$IFS
+  IFS='
 '
-    for os in $oslist; do
-      title=$(echo "$os" | cut -d: -f2)
-      if [ -n "$supported_os_list" ]; then
-        supported_os_list="$supported_os_list, $title"
-      else
-        supported_os_list="$title"
-      fi
-    done
-    IFS=$saveifs
-
+  for os in $oslist; do
+    title=$(echo "$os" | cut -d: -f2)
     if [ -n "$supported_os_list" ]; then
-      dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_BOOTLOADER" \
-        --defaultno --yesno "\n'$LOC_DEV' $MSG_LOADER_MULTIBOOT_BEGIN $supported_os_list\n${MSG_LOADER_MULTIBOOT_END}\n" 0 0 1>&2 \
-        && MBR=yes
+      supported_os_list="$supported_os_list, $title"
     else
-      dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_BOOTLOADER" \
-        --yesno "\n'$LOC_DEV' ${MSG_LOADER_NONE}\n" 0 0 1>&2 \
-        && MBR=yes
+      supported_os_list="$title"
     fi
+  done
+  IFS=$saveifs
+
+  if [ -n "$supported_os_list" ]; then
+    dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_BOOTLOADER" \
+      --defaultno --yesno "\n'$LOC_DEV' $MSG_LOADER_MULTIBOOT_BEGIN $supported_os_list\n${MSG_LOADER_MULTIBOOT_END}\n" 0 0 1>&2 \
+      && MBR=yes
+  else
+    dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_BOOTLOADER" \
+      --yesno "\n'$LOC_DEV' ${MSG_LOADER_NONE}\n" 0 0 1>&2 \
+      && MBR=yes
   fi
 
   if [ "$MBR" = "yes" ]; then
@@ -700,81 +709,17 @@ setup_keymap
 
 DISK="`choose_disk`"
 
-# Exit with error if no disk selected
-[ -z "$DISK" ] && exit 1
-
-if [ "`cat /sys/block/$DISK/removable`" = 1 ]; then
-  TYPE=REMOVABLE
-  BOOTLOADER=syslinux
-  PART_MSG="$MSG_DISK_PART_FAT"
-else
-  TYPE=HDD
-  BOOTLOADER=grub
-  PART_MSG="$MSG_DISK_PART_EXT"
-fi
-
-dbglg "TYPE $TYPE BOOTLOADER $BOOTLOADER"
-
-CFDISK_MSG="$MSG_CFDISK_BEGIN $PART_MSG $MSG_CFDISK_END"
-
-# Guide user on how to setup with cfdisk tool in the next step
-dialog --stdout --backtitle "$BACKTITLE" --title "$MSG_INSTALL_DEV_CONFIG" \
-  --msgbox "$CFDISK_MSG" 0 0 \
-  || exit 1
-
-# Make sure disk partitions are not already mounted before running cfdisk
+# Make sure disk partitions are not already mounted
 umount /dev/${DISK}* 2>/dev/null
-cfdisk /dev/$DISK
 
-DEV="`choose_partition_dev $DISK`"
-
-# Exit with error if no partition selected
-[ -z "$DEV" ] && exit 1
-
-# Set valid FS types based on selected install partition
-case `sfdisk --print-id ${DEV%%[0-9]*} ${DEV#${DEV%%[0-9]*}}` in
-  1|11|6|e|16|1e|14|b|c|1b|1c)
-    SUPPORTED_TYPES="vfat"
-    PART_TYPE="FAT"
-    ;;
-  83) # Linux
-    SUPPORTED_TYPES="ext3 ext2"
-    PART_TYPE="Linux"
-    ;;
-esac
-
-dbglg "SUPPORTED_TYPES $SUPPORTED_TYPES PART_TYPE $PART_TYPE"
-
-# Create directory for the selected partition to be mounted
+# Create directory for the install partition to be mounted
 mkdir di
-
-MKFS_TYPE="`guess_partition_type $DEV`"
-
-format_if_needed "$MKFS_TYPE" "$DEV" "$SUPPORTED_TYPES"
-
-DEV_UUID=`get_uuid $DEV`
-
-# Attempt to mount the prepared partition using the given partition fs type
-dbglg "mount -t $MKFS_TYPE $DEV di"
-mount -t $MKFS_TYPE "$DEV" di
-ret=$?
-if [ $ret -ne 0 ]; then
-  # FS is not mountable! Return an error msg and exit
-  dbglg "mount returned $ret"
-  dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_ERROR" \
-    --msgbox "\n${MSG_INSTALL_MOUNT_FAILED} '$DEV' ($MKFS_TYPENAME).\n" 0 0
-  rmdir di
-  exit 1
-fi
 
 if [ -n "$NET" ]; then
   GEEXBOX="$NET"
 else
   GEEXBOX="$CDROM/GEEXBOX"
 fi
-
-# Cleanup if was left in a messy state previously- remove previous installs
-rm -rf di/GEEXBOX 2>&1 >> $LOGFILE
 
 # Configure X.Org
 if [ -f /etc/X11/X.cfg.sample -o -f /etc/X11/X.cfg ]; then
@@ -786,17 +731,50 @@ else
   USE_XORG=no
 fi
 
-# Install bootloader and copy files across
-if [ $BOOTLOADER = syslinux ]; then
+if [ "`cat /sys/block/$DISK/removable`" = 1 ]; then
 
-  if [ $BTYPE = "USB-FDD" -o $BTYPE = "USB-HDD" ]; then
-    # install_syslinux copies all files across
-    install_syslinux "$DEV_UUID" "$DEV" "$DISK" "$GEEXBOX" "$MKFS_TYPE" "$BTYPE"
-  else
-    install_makebootfat "$DEV_UUID" "$DEV" "$DISK" "$GEEXBOX" "$MKFS_TYPE"
+  # Since removable USB Flash: makebootfat/syslinux
+  install_makebootfat "/dev/$DISK" "$GEEXBOX"
+
+else
+
+  # Fixed disk: GRUB
+
+  # For now assume ext2/3, but may extend to FAT later
+  #PART_MSG="$MSG_DISK_PART_FAT"
+  PART_MSG="$MSG_DISK_PART_EXT"
+  CFDISK_MSG="$MSG_CFDISK_BEGIN $PART_MSG $MSG_CFDISK_END"
+
+  # Guide user on how to setup with cfdisk tool in the next step
+  dialog --stdout --backtitle "$BACKTITLE" --title "$MSG_INSTALL_DEV_CONFIG" \
+    --msgbox "$CFDISK_MSG" 0 0 \
+    || exit 1
+
+  cfdisk /dev/$DISK
+
+  DEV="`choose_partition_dev $DISK`"
+
+  MKFS_TYPE="`guess_partition_type $DEV`"
+
+  format_if_needed "$MKFS_TYPE" "$DEV"
+
+  DEV_UUID=`get_uuid $DEV`
+
+  # Attempt to mount the prepared partition using the given partition fs type
+  dbglg "mount -t $MKFS_TYPE $DEV di"
+  mount -t $MKFS_TYPE "$DEV" di
+  ret=$?
+  if [ $ret -ne 0 ]; then
+    # FS is not mountable! Return an error msg and exit
+    dbglg "mount returned $ret"
+    dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_ERROR" \
+      --msgbox "\n${MSG_INSTALL_MOUNT_FAILED} '$DEV' ($MKFS_TYPENAME).\n" 0 0
+    rmdir di
+    exit 1
   fi
 
-elif [ $BOOTLOADER = grub ]; then
+  # Cleanup if was left in a messy state previously- remove previous installs
+  rm -rf di/GEEXBOX 2>&1 >> $LOGFILE
 
   # Copy the main files to the install partition
   cp -a "$GEEXBOX" di/GEEXBOX >> $LOGFILE 2>&1 
@@ -807,11 +785,11 @@ elif [ $BOOTLOADER = grub ]; then
   # Fast booting methods only for Linux partitions currently (symlink issues)
   UNCOMPRESS_INSTALL="`config_fastboot`"
 
-  install_grub "$DEV_UUID" "$DEV" "$TYPE" "$USE_XORG"
-
-  rm -rf di/GEEXBOX/boot
-
+  install_grub "$DEV_UUID" "$DEV" "$USE_XORG"
 fi
+
+# Remove unneeded boot dir from mounted install drive
+rm -rf di/GEEXBOX/boot
 
 if [ "$USE_XORG" = yes ]; then
   [ "$UNCOMPRESS_INSTALL" = "yes" -a -f "$GEEXBOX/X.tar.lzma" ] \
