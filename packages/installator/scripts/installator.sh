@@ -199,15 +199,11 @@ choose_disk () {
       DISK_LIST="$DISK_LIST $MSG_DISK_REFRESH"
       SELECTED_DISK=`dialog --stdout --backtitle "$BACKTITLE" \
                        --title "$MSG_DISK_DEVICE" \
-                       --menu "\n${MSG_DISK_DEVICE_DESC}" 0 0 0 $DISK_LIST ` \
-                       || exit 1
+                       --menu "\n${MSG_DISK_DEVICE_DESC}" 0 0 0 $DISK_LIST`
+      [ -z "$SELECTED_DISK" ] && break
       [ $SELECTED_DISK != refresh ] && break
     fi
   done
-  dbglg "choose_disk() returned \"$SELECTED_DISK\""
-
-  # Exit with error if no disk selected
-  [ -z "$SELECTED_DISK" ] && exit 1
 
   echo $SELECTED_DISK
 }
@@ -247,9 +243,9 @@ choose_partition_dev () {
     else
       DEV_SEL=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" \
         --title "$MSG_INSTALL_DEV_CONFIG" --menu "$MSG_INSTALL_DEV_DESC" \
-        0 0 0 $DEV_LIST ` \
-        || exit 1
+        0 0 0 $DEV_LIST`
     fi
+    [ -z "$DEV_SEL" ] && exit 1
     if [ ! -b "$DEV_SEL" ]; then
       dbglg "DEV_SEL $DEV_SEL is not a block device!"
       dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_ERROR" \
@@ -257,10 +253,6 @@ choose_partition_dev () {
         || exit 1
     fi
   done
-  dbglg "choose_dev() returned \"$DEV_SEL\""
-  # Exit with error if no partition selected
-
-  [ -z "$DEV_SEL" ] && exit 1
 
   # Exit if chosen partition is not bootable
   sfdisk -lq /dev/$LOC_DISK 2>/dev/null | grep $DEV_SEL | grep -q "\*"
@@ -703,6 +695,7 @@ echo 0 > /proc/sys/kernel/printk
 setup_keymap
 
 DISK="`choose_disk`"
+[ -z "$DISK" ] && exit 1
 
 # Make sure disk partitions are not already mounted
 umount /dev/${DISK}* 2>/dev/null
@@ -748,6 +741,7 @@ else
   cfdisk /dev/$DISK
 
   DEV="`choose_partition_dev $DISK`"
+  [ -z "$DEV" ] && exit 1
 
   MKFS_TYPE="`guess_partition_type $DEV`"
 
