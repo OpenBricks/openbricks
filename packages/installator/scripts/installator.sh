@@ -528,11 +528,6 @@ install_makebootfat () {
     -c /tmp/help.msg -c /tmp/splash.png -c /tmp/ldlinux.sys \
     /tmp/src 2>&1 >> $LOGFILE
 
-  if [ $BTYPE != "USB-FDD" ]; then
-    # Debugging- make sure that makebootfat created valid partitions
-    fdisk -l $LOC_DISK 2>&1 >> $LOGFILE
-  fi
-
   # Remount, or exit on failure
   mount -t vfat $DEV /di 2>&1 >> $LOGFILE || exit 1
 }
