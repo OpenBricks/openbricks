@@ -473,6 +473,8 @@ install_makebootfat () {
 
   dbglg "DISK is $LOC_DISK GEEXBOX dir is $GXDIR"
 
+  dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_USB_DATA_LOST" \
+    --default-no --yesno "$MSG_USB_DATA_LOST_DESC" 0 0 || exit 1
 
   # Setup syslinux.cfg file
   setup_syslinux "$GXDIR"
@@ -485,21 +487,13 @@ install_makebootfat () {
 
   if [ $BTYPE = "USB-FDD" ]; then
     MKBOOTFAT_OPTS="-b /tmp/ldlinux.bss"
-    # No partition table
-    DEV=$LOC_DISK
   elif [ $BTYPE = "USB-HDD" ]; then
     MKBOOTFAT_OPTS="-b /tmp/ldlinux.bss -m /tmp/mbr.bin"
-    # First partition
-    DEV=${LOC_DISK}1
   elif [ $BTYPE = "USB-ZIP" ]; then
     MKBOOTFAT_OPTS="-b /tmp/ldlinux.bss -m /tmp/mbr.bin -Z"
-    # Fourth partition
-    DEV=${LOC_DISK}4
   else
     # Try joint FDD/HDD approach
     MKBOOTFAT_OPTS="-b /tmp/ldlinux.bss -m /tmp/mbrfat.bin --mbrfat"
-    # First partition
-    DEV=${LOC_DISK}1
   fi
 
   # Due to shell cmd length limitations, cp files locally
@@ -520,8 +514,9 @@ install_makebootfat () {
     -c /tmp/help.msg -c /tmp/splash.png -c /tmp/ldlinux.sys \
     /tmp/src 2>&1 >> $LOGFILE
 
-  # Remount, or exit on failure
-  mount -t vfat $DEV /di 2>&1 >> $LOGFILE || exit 1
+  # Prompt user to reinsert USB device, to allow automounting
+  dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_USB_REINSERT" \
+    --msgbox "$MSG_USB_REINSERT_DESC" 0 0
 }
 
 # Installs and configures the GRUB bootloader
