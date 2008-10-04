@@ -474,7 +474,7 @@ install_makebootfat () {
   dbglg "DISK is $LOC_DISK GEEXBOX dir is $GXDIR"
 
   dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_USB_DATA_LOST" \
-    --default-no --yesno "$MSG_USB_DATA_LOST_DESC" 0 0 || exit 1
+    --defaultno --yesno "$MSG_USB_DATA_LOST_DESC" 0 0 || exit 1
 
   # Setup syslinux.cfg file
   setup_syslinux "$GXDIR"
