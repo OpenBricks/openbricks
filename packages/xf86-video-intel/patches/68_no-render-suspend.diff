@@ -1,0 +1,57 @@
+From: Zhenyu Wang <zhenyu.z.wang@intel.com>
+Date: Thu, 11 Sep 2008 07:49:41 +0000 (+0800)
+Subject: Disable render standby
+X-Git-Tag: xf86-4_3_0_1
+X-Git-Url: http://gitweb.freedesktop.org/?p=xorg/driver/xf86-video-intel.git;a=commitdiff;h=86f82c429f5d7067c52d3b783988917869e13d1d
+
+Disable render standby
+
+Render standby is known to cause possible hang issue on some
+mobile chips, so always disable it.
+---
+
+--- a/src/i810_reg.h
++++ b/src/i810_reg.h
+@@ -2815,4 +2815,7 @@ typedef enum {
+ 
+ #define PEG_BAND_GAP_DATA	0x14d68
+ 
++#define MCHBAR_RENDER_STANDBY	0x111B8
++#define RENDER_STANDBY_ENABLE	(1 << 30)
++
+ #endif /* _I810_REG_H */
+--- a/src/i830_driver.c
++++ b/src/i830_driver.c
+@@ -2718,6 +2718,23 @@ i830_memory_init(ScrnInfoPtr pScrn)
+     return FALSE;
+ }
+ 
++static void
++i830_disable_render_standby(ScrnInfoPtr pScrn)
++{
++   I830Ptr pI830 = I830PTR(pScrn);
++   uint32_t render_standby;
++
++   /* Render Standby might cause hang issue, try always disable it.*/
++   if (IS_I965GM(pI830) || IS_GM45(pI830)) {
++       render_standby = INREG(MCHBAR_RENDER_STANDBY);
++       if (render_standby & RENDER_STANDBY_ENABLE) {
++	   xf86DrvMsg(pScrn->scrnIndex, X_INFO, "Disable render standby.\n");
++	   OUTREG(MCHBAR_RENDER_STANDBY,
++		   (render_standby & (~RENDER_STANDBY_ENABLE)));
++       }
++   }
++}
++
+ static Bool
+ I830ScreenInit(int scrnIndex, ScreenPtr pScreen, int argc, char **argv)
+ {
+@@ -3053,6 +3070,8 @@ I830ScreenInit(int scrnIndex, ScreenPtr 
+    if (!vgaHWMapMem(pScrn))
+       return FALSE;
+ 
++   i830_disable_render_standby(pScrn);
++
+    DPRINTF(PFX, "assert( if(!I830EnterVT(scrnIndex, 0)) )\n");
+ 
+    if (!pI830->useEXA) {
