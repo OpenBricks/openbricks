@@ -1,0 +1,45 @@
+#!/bin/sh
+
+. config/options
+
+$SCRIPTS/build toolchain
+$SCRIPTS/build libiconv
+
+export ac_cv_path_PKG_CONFIG="$PKG_CONFIG"
+export ac_cv_func_posix_getpwuid_r=yes
+export ac_cv_func_posix_getgrgid_r=yes
+export glib_cv_stack_grows=no
+export glib_cv_uscore=no
+
+HOST_BUILD="`ls -d $ROOT/$BUILD/$1*`/host-build"
+
+cd $BUILD/$1*
+mkdir -p host-build
+
+setup_toolchain host
+
+./configure --prefix=$HOST_BUILD
+make
+make install
+
+setup_toolchain target
+
+ICONV_DIR=`ls -d $ROOT/$BUILD/libiconv*`
+export CFLAGS="-I$ICONV_DIR/include $CFLAGS"
+export LDFLAGS="-L$ICONV_DIR/lib $LDFLAGS"
+export PATH="$HOST_BUILD/bin:$PATH"
+
+./configure --host=$TARGET_NAME \
+            --build=$HOST_NAME \
+            --prefix=$LIB_PREFIX \
+            --enable-shared \
+            --disable-static \
+            --with-libiconv=gnu \
+            --enable-largefiles \
+            --enable-debug=no \
+            --disable-man \
+            --disable-rebuilds \
+            --disable-gtk-doc \
+
+make
+make install
