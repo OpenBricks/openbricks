@@ -424,32 +424,6 @@ get_uuid () {
   umount /dev/$NAME > /dev/null 2>&1
 }
 
-# Configure if fast boot methods are to be used (only for Linux partitions)
-config_fastboot () {
-  local FASTBOOT="no" LOC_UNCOMPRESS_INSTALL="no"
-
-  dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_BOOT_SLEEPLESS" \
-    --defaultno --yesno "\n${MSG_BOOT_SLEEPLESS_DESC}\n" 0 0 1>&2 \
-    && FASTBOOT=yes \
-    || exit 1
-
-
-  if [ "$FASTBOOT" = "yes" ]; then
-    echo "" > "di/GEEXBOX/var/fastboot"
-    dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_BOOT_LARGE_HDD" \
-      --defaultno --yesno "\n${MSG_BOOT_LARGE_HDD_DESC}\n" 0 0 1>&2 \
-      && LOC_UNCOMPRESS_INSTALL=yes \
-      || exit 1
-  fi 
-
-  if [ "$LOC_UNCOMPRESS_INSTALL" = "yes" -a -f "$GEEXBOX/bin.tar.lzma" ]; then
-    rm di/GEEXBOX/bin.tar.lzma
-    tar xaf "$GEEXBOX/bin.tar.lzma" -C di/GEEXBOX >> $LOGFILE 2>&1
-  fi
-  dbglg "config_fastboot returned \"$LOC_UNCOMPRESS_INSTALL\""
-  echo "$LOC_UNCOMPRESS_INSTALL"
-}
-
 # Setup syslinux.cfg file in the /tmp dir
 # $1 is GEEXBOX dir
 setup_syslinux () {
@@ -766,19 +740,13 @@ else
   # Adjust the location of core boot files to suit non-CDROM install
   mv di/GEEXBOX/boot/vmlinuz di/GEEXBOX/boot/initrd.gz di/
 
-  # Fast booting methods only for Linux partitions currently (symlink issues)
-  UNCOMPRESS_INSTALL="`config_fastboot`"
-
   install_grub "$DEV_UUID" "$DEV" "$USE_XORG"
 fi
 
 # Remove unneeded boot dir from mounted install drive
 rm -rf di/GEEXBOX/boot
 
-if [ "$USE_XORG" = yes ]; then
-  [ "$UNCOMPRESS_INSTALL" = "yes" -a -f "$GEEXBOX/X.tar.lzma" ] \
-    && rm di/GEEXBOX/X.tar.lzma && tar xaf "$GEEXBOX/X.tar.lzma" -C di/GEEXBOX
-else
+if [ "$USE_XORG" != "yes" ]; then
   # Since X is disabled, remove the files from HDD install to speed up boot
   rm -f di/GEEXBOX/X.tar.lzma
 fi
