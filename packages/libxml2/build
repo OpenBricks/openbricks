@@ -4,16 +4,22 @@
 
 $SCRIPTS/build toolchain
 $SCRIPTS/build zlib
-$SCRIPTS/build Python
 
-HOST_PYTHON="`ls -d $ROOT/$BUILD/Python*/objdir/buildpython`/python"
-PYTHON_DIR=`ls -d $ROOT/$BUILD/Python*`
+if [ "$PYTHON" = yes ]; then
+  $SCRIPTS/build Python
 
-export CFLAGS="$CFLAGS -I$PYTHON_DIR/Include -I$PYTHON_DIR/objdir"
-export LDSHARED="$CC -shared"
-export SYSROOT_PREFIX
-export PYTHON_INCLUDES="$PYTHON_DIR/Include"
-export PYTHON_SITE_PACKAGES="`ls -d $LIB_PREFIX/lib/python*/site-packages`/libxml2"
+  HOST_PYTHON="`ls -d $ROOT/$BUILD/Python*/objdir/buildpython`/python"
+  PYTHON_DIR=`ls -d $ROOT/$BUILD/Python*`
+
+  export CFLAGS="$CFLAGS -I$PYTHON_DIR/Include -I$PYTHON_DIR/objdir"
+  export LDSHARED="$CC -shared"
+  export SYSROOT_PREFIX
+  export PYTHON_INCLUDES="$PYTHON_DIR/Include"
+  export PYTHON_SITE_PACKAGES="`ls -d $LIB_PREFIX/lib/python*/site-packages`/libxml2"
+  WITH_PYTHON="--with-python=$HOST_PYTHON"
+else
+  WITH_PYTHON="--without-python"
+fi
 
 cd $BUILD/$1*
 ./configure --host=$TARGET_NAME \
@@ -22,10 +28,12 @@ cd $BUILD/$1*
             --enable-shared \
             --disable-static \
             --enable-ipv6=no \
-            --with-python=$HOST_PYTHON \
+            $WITH_PYTHON \
             --with-zlib
 make
 make install
 
-rm -rf python/tests/*.py
-$HOST_PYTHON -Wi -t $PYTHON_DIR/Lib/compileall.py python
+if [ "$PYTHON" = yes ]; then
+  rm -rf python/tests/*.py
+  $HOST_PYTHON -Wi -t $PYTHON_DIR/Lib/compileall.py python
+fi
