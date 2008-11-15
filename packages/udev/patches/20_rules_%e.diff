@@ -1,11 +1,79 @@
 bring back the broken %e enumeration
 which was removed in udev-095
 
-diff -Nur udev-098.orig/udev_rules.c udev-098/udev_rules.c
---- udev-098.orig/udev_rules.c	Wed Aug 23 02:32:25 2006
-+++ udev-098/udev_rules.c	Sat Aug 26 10:40:54 2006
-@@ -263,6 +263,88 @@
- 	return rc;
+diff -Naur udev-124.orig/udev_db.c udev-124/udev_db.c
+--- udev-124.orig/udev_db.c	2008-11-15 14:57:42.000000000 +0100
++++ udev-124/udev_db.c	2008-11-15 14:57:57.000000000 +0100
+@@ -329,3 +329,64 @@
+ 	closedir(dir);
+ 	return 0;
+ }
++int udev_db_lookup_name(const char *name, char *devpath, size_t len)
++{
++       char dirname[PATH_MAX];
++       size_t start;
++       DIR *dir;
++       int found = 0;
++
++       strlcpy(dirname, udev_root, sizeof(dirname));
++       start = strlcat(dirname, "/"DB_NAME_INDEX_DIR"/", sizeof(dirname));
++       strlcat(dirname, name, sizeof(dirname));
++       path_encode(&dirname[start], sizeof(dirname) - start);
++
++       dir = opendir(dirname);
++       if (dir == NULL) {
++               info("no index directory '%s': %s", dirname, strerror(errno));
++               return -1;
++       }
++
++       info("found index directory '%s'", dirname);
++       while (!found) {
++               struct dirent *ent;
++               char device[PATH_SIZE];
++               struct udevice *udev;
++
++               ent = readdir(dir);
++               if (ent == NULL || ent->d_name[0] == '\0')
++                       break;
++               if (ent->d_name[0] == '.')
++                       continue;
++
++               strlcpy(device, ent->d_name, sizeof(device));
++               path_decode(device);
++               udev = udev_device_init(NULL);
++               if (udev == NULL)
++                       break;
++               if (udev_db_get_device(udev, device) == 0) {
++                       char filename[PATH_SIZE];
++                       struct stat statbuf;
++
++                       info("found db entry '%s'", device);
++                       strlcpy(filename, udev_root, sizeof(filename));
++                       strlcat(filename, "/", sizeof(filename));
++                       strlcat(filename, name, sizeof(filename));
++                       /* make sure device entry matches dev_t */
++                       if (stat(filename, &statbuf) == 0) {
++                               if (statbuf.st_rdev == udev->devt) {
++                                       info("node '%s' matches dev_t", udev->name);
++                                       strlcpy(devpath, device, len);
++                                       found = 1;
++                               }
++                       }
++               }
++               udev_device_cleanup(udev);
++       }
++
++       closedir(dir);
++       if (found)
++               return 0;
++       else
++               return -1;
++}
+diff -Naur udev-124.orig/udev_rules.c udev-124/udev_rules.c
+--- udev-124.orig/udev_rules.c	2008-11-15 14:57:42.000000000 +0100
++++ udev-124/udev_rules.c	2008-11-15 14:59:19.000000000 +0100
+@@ -527,6 +527,88 @@
+ 	return retval;
  }
  
 +static int match_name_and_get_number(const char *base, const char *devname)
@@ -91,9 +159,9 @@ diff -Nur udev-098.orig/udev_rules.c udev-098/udev_rules.c
 +}
 +
  #define WAIT_LOOP_PER_SECOND		50
- static int wait_for_sysfs(struct udevice *udev, const char *file, int timeout)
+ static int wait_for_file(struct udevice *udev, const char *file, int timeout)
  {
-@@ -304,6 +386,7 @@
+@@ -649,6 +731,7 @@
  	int len;
  	int i;
  	int count;
@@ -101,104 +169,33 @@ diff -Nur udev-098.orig/udev_rules.c udev-098/udev_rules.c
  	enum subst_type {
  		SUBST_UNKNOWN,
  		SUBST_DEVPATH,
-@@ -318,6 +401,7 @@
- 		SUBST_TEMP_NODE,
+@@ -667,6 +750,7 @@
  		SUBST_ROOT,
+ 		SUBST_SYS,
  		SUBST_ENV,
 +		SUBST_ENUM,
  	};
  	static const struct subst_map {
  		char *name;
-@@ -337,6 +421,7 @@
- 		{ .name = "tempnode",	.fmt = 'N',	.type = SUBST_TEMP_NODE },
+@@ -690,6 +774,7 @@
  		{ .name = "root",	.fmt = 'r',	.type = SUBST_ROOT },
+ 		{ .name = "sys",	.fmt = 'S',	.type = SUBST_SYS },
  		{ .name = "env",	.fmt = 'E',	.type = SUBST_ENV },
 +		{ .name = "enum",	.fmt = 'e',	.type = SUBST_ENUM },
  		{ NULL, '\0', 0 }
  	};
  	enum subst_type type;
-@@ -486,6 +571,13 @@
- 					info("%i untrusted character(s) replaced" , count);
- 				strlcat(string, temp2, maxsize);
- 				dbg("substitute sysfs value '%s'", temp2);
-+			}
-+			break;
-+		case SUBST_ENUM:
-+			next_free_number = find_free_number(string, udev->dev->devpath);
-+			if (next_free_number > 0) {
-+				sprintf(temp2, "%d", next_free_number);
-+				strlcat(string, temp2, maxsize);
+@@ -872,6 +957,13 @@
+ 				dbg("substitute sysfs value '%s'\n", temp2);
  			}
  			break;
++                case SUBST_ENUM:
++ 			next_free_number = find_free_number(string, udev->dev->devpath);
++ 			if (next_free_number > 0) {
++ 				sprintf(temp2, "%d", next_free_number);
++ 				strlcat(string, temp2, maxsize);
++  			}
++  			break;
  		case SUBST_PARENT:
-diff -Nur udev-098.orig/udev_db.c udev-098/udev_db.c
---- udev-098.orig/udev_db.c	Wed Aug 23 02:32:25 2006
-+++ udev-098/udev_db.c	Sat Aug 26 10:40:54 2006
-@@ -20,3 +20,64 @@
- 
- 	return 0;
- }
-+int udev_db_lookup_name(const char *name, char *devpath, size_t len)
-+{
-+       char dirname[PATH_MAX];
-+       size_t start;
-+       DIR *dir;
-+       int found = 0;
-+
-+       strlcpy(dirname, udev_root, sizeof(dirname));
-+       start = strlcat(dirname, "/"DB_NAME_INDEX_DIR"/", sizeof(dirname));
-+       strlcat(dirname, name, sizeof(dirname));
-+       path_encode(&dirname[start], sizeof(dirname) - start);
-+
-+       dir = opendir(dirname);
-+       if (dir == NULL) {
-+               info("no index directory '%s': %s", dirname, strerror(errno));
-+               return -1;
-+       }
-+
-+       info("found index directory '%s'", dirname);
-+       while (!found) {
-+               struct dirent *ent;
-+               char device[PATH_SIZE];
-+               struct udevice *udev;
-+
-+               ent = readdir(dir);
-+               if (ent == NULL || ent->d_name[0] == '\0')
-+                       break;
-+               if (ent->d_name[0] == '.')
-+                       continue;
-+
-+               strlcpy(device, ent->d_name, sizeof(device));
-+               path_decode(device);
-+               udev = udev_device_init(NULL);
-+               if (udev == NULL)
-+                       break;
-+               if (udev_db_get_device(udev, device) == 0) {
-+                       char filename[PATH_SIZE];
-+                       struct stat statbuf;
-+
-+                       info("found db entry '%s'", device);
-+                       strlcpy(filename, udev_root, sizeof(filename));
-+                       strlcat(filename, "/", sizeof(filename));
-+                       strlcat(filename, name, sizeof(filename));
-+                       /* make sure device entry matches dev_t */
-+                       if (stat(filename, &statbuf) == 0) {
-+                               if (statbuf.st_rdev == udev->devt) {
-+                                       info("node '%s' matches dev_t", udev->name);
-+                                       strlcpy(devpath, device, len);
-+                                       found = 1;
-+                               }
-+                       }
-+               }
-+               udev_device_cleanup(udev);
-+       }
-+
-+       closedir(dir);
-+       if (found)
-+               return 0;
-+       else
-+               return -1;
-+}
- 
- int udev_db_get_all_entries(struct list_head *name_list)
- {
+ 			{
+ 				struct sysfs_device *dev_parent;
