@@ -1,28 +1,36 @@
-diff -ruNp udev-103~/extras/firmware/Makefile udev-103/extras/firmware/Makefile
---- udev-103~/extras/firmware/Makefile	2006-10-20 13:43:35.000000000 +0100
-+++ udev-103/extras/firmware/Makefile	2006-11-02 12:56:50.000000000 +0000
-@@ -1,11 +1,12 @@
--# Makefile for udev extra invoked from the udev main Makefile
--#
--# Copyright (C) 2004-2006 Kay Sievers <kay.sievers@vrfy.org>
+diff -ruNp udev-117~/extras/firmware_helper/Makefile udev-117/extras/firmware_helper/Makefile
+--- udev-117~/extras/firmware_helper/Makefile	1970-01-01 01:00:00.000000000 +0100
++++ udev-117/extras/firmware_helper/Makefile	2007-12-14 14:21:31.000000000 +0000
+@@ -0,0 +1,68 @@
 +# Copyright © 2005 Canonical Ltd.
 +# Author: Scott James Remnant <scott@ubuntu.com>
- #
- # Released under the GNU General Public License, version 2.
--#
- 
--PROG = firmware.sh
++#
++# Released under the GNU General Public License, version 2.
++
 +PROG = firmware_helper
 +OBJ =
 +HEADERS =
 +GEN_HEADERS =
- MAN_PAGES =
- 
- prefix =
-@@ -26,6 +27,14 @@ all: $(PROG) $(MAN_PAGES)
- .PHONY: all
- .DEFAULT: all
- 
++MAN_PAGES =
++
++prefix =
++etcdir =	${prefix}/etc
++sbindir =	${prefix}/sbin
++usrbindir =	${prefix}/usr/bin
++usrsbindir =	${prefix}/usr/sbin
++libudevdir =	${prefix}/lib/udev
++mandir =	${prefix}/usr/share/man
++configdir =	${etcdir}/udev/
++
++INSTALL = install -c
++INSTALL_PROGRAM = ${INSTALL}
++INSTALL_DATA  = ${INSTALL} -m 644
++INSTALL_SCRIPT = ${INSTALL}
++
++all: $(PROG) $(MAN_PAGES)
++.PHONY: all
++.DEFAULT: all
++
 +%.o: %.c $(GEN_HEADERS)
 +	$(E) "  CC      " $@
 +	$(Q) $(CC) -c $(CFLAGS) $< -o $@
@@ -31,49 +39,40 @@ diff -ruNp udev-103~/extras/firmware/Makefile udev-103/extras/firmware/Makefile
 +	$(E) "  LD      " $@
 +	$(Q) $(LD) $(LDFLAGS) $@.o $(OBJS) -o $@ $(LIBUDEV) $(LIB_OBJS)
 +
- # man pages
- %.8: %.xml
- 	$(E) "  XMLTO   " $@
-@@ -34,6 +43,7 @@ all: $(PROG) $(MAN_PAGES)
- 
- clean:
- 	$(E) "  CLEAN   "
++# man pages
++%.8: %.xml
++	$(E) "  XMLTO   " $@
++	$(Q) xmlto man $?
++.PRECIOUS: %.8
++
++clean:
++	$(E) "  CLEAN   "
 +	$(Q) rm -f $(PROG) $(OBJS) $(GEN_HEADERS)
- .PHONY: clean
- 
- install-bin: all
-diff -ruNp udev-103~/extras/firmware/firmware.sh udev-103/extras/firmware/firmware.sh
---- udev-103~/extras/firmware/firmware.sh	2006-10-20 13:43:35.000000000 +0100
-+++ udev-103/extras/firmware/firmware.sh	1970-01-01 01:00:00.000000000 +0100
-@@ -1,25 +0,0 @@
--#!/bin/sh -e
--
--FIRMWARE_DIRS="/lib/firmware /usr/local/lib/firmware"
--
--err() {
--	echo "$@" >&2
--	logger -t "${0##*/}[$$]" "$@" 2>/dev/null || true
--}
--
--if [ ! -e /sys$DEVPATH/loading ]; then
--	err "udev firmware loader misses sysfs directory"
--	exit 1
--fi
--
--for DIR in $FIRMWARE_DIRS; do
--	[ -e "$DIR/$FIRMWARE" ] || continue
--	echo 1 > /sys$DEVPATH/loading
--	cat "$DIR/$FIRMWARE" > /sys$DEVPATH/data
--	echo 0 > /sys$DEVPATH/loading
--	exit 0
--done
--
--echo -1 > /sys$DEVPATH/loading
--err "Cannot find  firmware file '$FIRMWARE'"
--exit 1
-diff -ruNp udev-103~/extras/firmware/firmware_helper.c udev-103/extras/firmware/firmware_helper.c
---- udev-103~/extras/firmware/firmware_helper.c	1970-01-01 01:00:00.000000000 +0100
-+++ udev-103/extras/firmware/firmware_helper.c	2006-11-02 12:56:54.000000000 +0000
++.PHONY: clean
++
++install-bin: all
++	$(INSTALL_SCRIPT) -D $(PROG) $(DESTDIR)$(libudevdir)/$(PROG)
++.PHONY: install-bin
++
++uninstall-bin:
++	- rm $(DESTDIR)$(libudevdir)/$(PROG)
++.PHONY: uninstall-bin
++
++install-man:
++	@echo "Please create a man page for this tool."
++.PHONY: install-man
++
++uninstall-man:
++	@echo "Please create a man page for this tool."
++.PHONY: uninstall-man
++
++install-config:
++	@echo "no config file to install"
++.PHONY: install-config
++
+diff -ruNp udev-117~/extras/firmware_helper/firmware_helper.c udev-117/extras/firmware_helper/firmware_helper.c
+--- udev-117~/extras/firmware_helper/firmware_helper.c	1970-01-01 01:00:00.000000000 +0100
++++ udev-117/extras/firmware_helper/firmware_helper.c	2007-12-14 14:21:31.000000000 +0000
 @@ -0,0 +1,169 @@
 +/*
 + * A simple firmware helper program.
