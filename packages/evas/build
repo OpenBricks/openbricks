@@ -1,0 +1,45 @@
+#!/bin/sh
+
+. config/options
+
+$SCRIPTS/build toolchain
+$SCRIPTS/build eina
+$SCRIPTS/build eet
+$SCRIPTS/build libpng
+$SCRIPTS/build jpeg
+$SCRIPTS/build tiff
+$SCRIPTS/build libungif
+
+if [ "$XORG" = yes ]; then
+  $SCRIPTS/build xorg-libs
+  WITH_X="--with-x --enable-software-x11 --enable-software-16-x11"
+fi
+
+cd $BUILD/$1*
+./configure --host=$TARGET_NAME \
+            --build=$HOST_NAME \
+            --prefix=$LIB_PREFIX \
+            --disable-static \
+            --enable-shared \
+            --enable-pthread \
+            --enable-eet \
+            --disable-gl-x11 \
+            --disable-software-xcb \
+            --disable-xrender-xcb \
+            --enable-fb \
+            $WITH_X \
+
+make
+$STRIP src/lib/.libs/libevas.so*
+for i in png jpeg tiff eet; do
+  $STRIP src/modules/savers/$i/.libs/module.so
+done
+ENGINES="software_generic fb buffer"
+[ "$XORG" = yes ] && ENGINES="$ENGINES software_x11 software_16_x11 xrender_x11"
+for i in $ENGINES; do
+  $STRIP src/modules/engines/$i/.libs/module.so
+done
+for i in pmaps png xpm gif jpeg tiff eet; do
+  $STRIP src/modules/loaders/$i/.libs/module.so
+done
+make install
