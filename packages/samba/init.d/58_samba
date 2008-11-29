@@ -29,6 +29,18 @@ mount_smb()
     while [ ! -f /var/ifup ]; do
       sleep 1
     done
+
+    for STATIC_SMB in `sed -n "s/^STATIC_SMB=\"\(.*\)\"/\1/p" /etc/network`; do
+    (
+      USER=`echo $STATIC_SMB | sed "s/<%>.*//"`
+      PASS=`echo $STATIC_SMB | sed -e "s/.*<%>//" -e "s/<@>.*//"`
+      IP=`echo $STATIC_SMB | sed -e "s/.*<@>//" -e "s/<&>.*//"`
+      NAME=`echo $STATIC_SMB | sed -e "s/.*<&>//" -e "s/<#>.*//"`
+      MOUNTS="`echo $STATIC_SMB | sed "s/.*$NAME<#>//" | sed "s/<#>/ /g"`"
+      mount_smb "$USER" "$PASS" "$NAME" "$IP" $MOUNTS
+    )&
+    done
+
     OPT="-N"
     test -n "$SMB_USER" && OPT="-U$SMB_USER%$SMB_PWD"
     saveifs=$IFS
@@ -38,16 +50,6 @@ mount_smb()
         IFS=/
         mount_smb "$SMB_USER" "$SMB_PWD" $mounts
         IFS=$saveifs
-      )&
-      done
-      for STATIC_SMB in `sed -n "s/^STATIC_SMB=\"\(.*\)\"/\1/p" /etc/network`; do
-      (
-        USER=`echo $STATIC_SMB | sed "s/<%>.*//"`
-        PASS=`echo $STATIC_SMB | sed -e "s/.*<%>//" -e "s/<@>.*//"`
-        IP=`echo $STATIC_SMB | sed -e "s/.*<@>//" -e "s/<&>.*//"`
-        NAME=`echo $STATIC_SMB | sed -e "s/.*<&>//" -e "s/<#>.*//"`
-        MOUNTS="`echo $STATIC_SMB | sed "s/.*$NAME<#>//" | sed "s/<#>/ /g"`"
-        mount_smb "$USER" "$PASS" "$NAME" "$IP" $MOUNTS
       )&
       done
       [ -z "$NET_RESCAN_DELAY" -o $NET_RESCAN_DELAY -le 0 ] && break
