@@ -748,7 +748,7 @@ rm -rf di/GEEXBOX/boot
 
 if [ "$USE_XORG" != "yes" ]; then
   # Since X is disabled, remove the files from HDD install to speed up boot
-  rm -f di/GEEXBOX/X.tar.lzma
+  rm -f di/GEEXBOX/X.tar.lzma di/GEEXBOX/X.tar.gz di/GEEXBOX/X.tar
 fi
 
 # Cleanup
