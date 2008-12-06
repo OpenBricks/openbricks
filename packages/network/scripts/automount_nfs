@@ -1,0 +1,30 @@
+#!/bin/sh
+
+#
+# NFS AutoMounter
+#
+
+MOUNT_POINT=/mnt/nfs
+
+mount_nfs () {
+  MNT="$MOUNT_POINT/$2"
+  if [ ! -e "$MNT" ]; then
+    mkdir -p "$MNT"
+    mount -t nfs -o ro,udp,rsize=32768,soft,noatime,nolock "$1" "$MNT" >/dev/null 2>&1 || rmdir -p "$MNT"
+  fi
+}
+
+. /etc/network.scripts
+
+wait_for_network
+
+IFS='
+'
+
+for MOUNTS in `grep -v "^#" /etc/nfs | grep -v "^$"`; do
+  SRV="`echo $MOUNTS | sed 's/[ ]*\([^ ]*\)[ ]*.*/\1/'`"
+  DIR="`echo $MOUNTS | sed 's/[ ]*[^ ]*[ ]*\([^ ]*\)/\1/'`"
+  mount_nfs "$SRV" "$DIR"
+done
+
+exit 0
