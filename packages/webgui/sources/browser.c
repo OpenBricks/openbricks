@@ -233,7 +233,7 @@ static void printDir(const char *dir, const char *file) {
 void printCurrentDirContent(const char *dir, const char *name) {
 	int dirNamePrinted = 0;
 	struct dirent** pDirEnt;
-    int n = scandir(dir, &pDirEnt, 0, alphasort);
+	int n = scandir(dir, &pDirEnt, 0, alphasort);
 	int i;
         for(i = 0; i < n; i++) {
 		char *filename = pDirEnt[i]->d_name;
