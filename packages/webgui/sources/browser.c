@@ -103,7 +103,7 @@ static char *escape_string(const char *str, encode_type_t type, const char *prot
 const char *getCurrentDir(const char *dir) {
 	if(dir) {
 		setDir(dir);
-		
+
 		return dir;
 	} else {
 		return getDir();
@@ -117,7 +117,7 @@ void printCurrentDir(const char *dir, const char *search) {
 
 	strcpy(name, dir);
 	c = strtok(name, "/");
-	
+
 	printf("\t\t\t<div class=\"browserDirHead\">\n");
 	while(c) {
 		p = strcat(path, "/");
@@ -247,7 +247,7 @@ void printCurrentDirContent(const char *dir, const char *name) {
 			if(stat(fullpath, &attributs) == -1) {
 				fprintf(stderr, "[!] Fehler beim auslesen der Attribute von \"%s\"\n", fullpath);
 			}
-			
+
 			if(attributs.st_mode & S_IFDIR) {
 				/* directory found */
 				if(!name || strcasestr(filename, name)) {
@@ -300,7 +300,7 @@ void printPlayerControls(const char *play_file, const char *play_dir) {
 	printf("\t\t<div id=\"browserBar\">\n");
 	/* print seek */
 	printSeekBar();
-	
+
 	/* print search */
 	printf("\t\t\t<form id=\"searchBox\" action=\"?\" method=\"get\">\n");
 	printf("\t\t\t\t<fieldset>\n");
@@ -309,5 +309,4 @@ void printPlayerControls(const char *play_file, const char *play_dir) {
 	printf("\t\t\t\t</fieldset>\n");
 	printf("\t\t\t</form>\n");
 	printf("\t\t</div>\n");
-	
 }

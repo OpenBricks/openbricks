@@ -24,7 +24,7 @@ void printGeexboxControls() {
 	printf("\t\t\t<a id=\"geexboxControlsReboot\" href=\"?system=reboot\"><img src=\"/style/geexbox/icons/reboot.png\" title=\"%s\" alt=\"Reboot\" /></a>\n", REBOOT);
 	printf("\t\t\t<a id=\"geexboxControlsShutdown\" href=\"?system=poweroff\"><img src=\"/style/geexbox/icons/shutdown.png\" title=\"%s\" alt=\"Shutdown\" /></a>\n", POWEROFF);
 	printf("\t\t</div>\n");
-	
+
 	printf("<h3>/proc/asound/pcm</h3>");
 	printf("<p>");
 	while (feof(ptr) == 0) {
@@ -32,7 +32,7 @@ void printGeexboxControls() {
 		printf("%s<br />", data);
 	}
 	printf("</p>");
-	fclose(ptr);	
+	fclose(ptr);
 }
 
 void printPlayerState() {
@@ -44,9 +44,9 @@ void printPlayerState() {
 		return;
 
 	fgets(data, MAX, ptr);
-	
+
 	x = strchr(data, '=')+1;
 
 	printf("%s", x);
-	fclose(ptr);	
+	fclose(ptr);
 }
