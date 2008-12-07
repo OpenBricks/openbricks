@@ -60,6 +60,9 @@ void menu(const char *value) {
 
 /* System commands */
 void playDir(const char *file) {
+	if (!file)
+		return;
+
 	pid_t pid = fork();
 	if (!pid)
 		execlp("playdir", "playdir", file, NULL);
