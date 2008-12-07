@@ -1,5 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
+#include <unistd.h>
+#include <sys/wait.h>
 #include <string.h>
 #include "command.h"
 #define MPLAYER_FIFO "/var/mp_control"
@@ -58,12 +60,11 @@ void menu(const char *value) {
 
 /* System commands */
 void playDir(const char *file) {
-	if(file != NULL) {
-		char cmd[MAX] = "playdir '";
-		strcat(cmd, file);
-		strcat(cmd, "'");
-		execSystemCmd(cmd);
-	}
+	pid_t pid = fork();
+	if (!pid)
+		execlp("playdir", "playdir", file, NULL);
+	else if (pid > 0)
+		wait(NULL);
 }
 
 
