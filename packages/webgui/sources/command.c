@@ -88,7 +88,7 @@ void execSystemCmd(const char *cmd) {
 
 /* current dir functions */
 const char * getDir() {
-	char *path = getFileContent(MPLAYER_DIR);
+	const char *path = getFileContent(MPLAYER_DIR);
 	
 	if(strlen(path) == 0) {
 		return START_DIR;
