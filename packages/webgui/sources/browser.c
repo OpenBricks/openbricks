@@ -133,7 +133,10 @@ void printCurrentDir(const char *dir, const char *search) {
 	}
 
 	if(search != NULL) {
-		printf("\t\t\t\t / search for '%s'<br />\n", search);
+		char *search_e = escape_string(search, ENCODE_TYPE_HTML, NULL);
+		printf("\t\t\t\t / search for '%s'<br />\n", search_e ? search_e : "?");
+		if (search_e)
+			free(search_e);
 	} else {
 		printf("\t\t\t\t<a href=\"?play_dir=%s\">\n\t\t\t\t\t<img src=\"/style/geexbox/icons/play.png\" title=\"%s\" alt=\"Play Directory\" />\n\t\t\t\t</a>\n", p_e ? p_e : "", PLAY_DIR);
 	}
