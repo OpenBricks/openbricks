@@ -31,7 +31,7 @@ void cmdMplayer(const char *cmd) {
 }
 
 void mplayerMenu(const char *param) {
-	if(param) {		
+	if(param) {
 		menu(param);
 	}
 }
@@ -42,7 +42,7 @@ void playFile(const char *file) {
 		char cmd[MAX] = "load '";
 		strcat(cmd, file);
 		strcat(cmd, "'");
-		
+
 		execMplayerCmd(cmd);
 	}
 }
@@ -83,7 +83,7 @@ void execMplayerCmd(const char *cmd) {
 
 void execSystemCmd(const char *cmd) {
 	char systemcommand[MAX];
-	
+
 	snprintf(systemcommand, sizeof(systemcommand), "%s", cmd);
 	system(systemcommand);
 }
@@ -92,7 +92,7 @@ void execSystemCmd(const char *cmd) {
 /* current dir functions */
 const char * getDir() {
 	const char *path = getFileContent(MPLAYER_DIR);
-	
+
 	if(strlen(path) == 0) {
 		return START_DIR;
 	} else {
@@ -108,17 +108,16 @@ const char * getFileContent(const char *path) {
 	FILE* file = NULL;
 	char *dir;
 	char buff[MAX];
-	
-	
+
         if(!(file = fopen(path,"r"))) {
 		return "";
         } else {
 		fgets(buff, MAX, file);
 		fclose(file);
-		
+
 		dir = malloc(MAX * sizeof(buff));
 		strcpy(dir, buff);
-		
+
 		return dir;
 	}
 }
