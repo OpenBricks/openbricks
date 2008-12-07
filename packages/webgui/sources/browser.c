@@ -215,15 +215,8 @@ void printDir(const char *dir, const char *file) {
 
 	printf("\t\t\t\t<a href=\"?dir=%s/%s\">%s</a>\n", dir_e ? dir_e : "", file_e ? file_e : "", file2_e ? file2_e : "");
 
-	if (dir_e)
-		free(dir_e);
-	if (file_e)
-		free(file_e);
 	if (file2_e)
 		free(file2_e);
-
-	dir_e = escape_string(dir, ENCODE_TYPE_URL, NULL);
-	file_e = escape_string(file, ENCODE_TYPE_URL, NULL);
 
 	printf("\t\t\t\t<a href=\"?play_dir=%s/%s\"><img src=\"/style/geexbox/icons/play.png\" title=\"%s\" alt=\"%s\" /></a>\n", dir_e ? dir_e : "", file_e ? file_e : "", PLAY_DIR, PLAY_DIR);
 	printf("\t\t\t</div>\n");
