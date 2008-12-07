@@ -111,8 +111,8 @@ const char *getCurrentDir(const char *dir) {
 }
 
 void printCurrentDir(const char *dir, const char *search) {
-	char path[MAX] = "", *p = '\0';
-	char name[MAX] = "", *c = '\0';
+	char path[MAX] = "", *p = NULL;
+	char name[MAX] = "", *c = NULL;
 	char *p_e, *c_e;
 
 	strcpy(name, dir);
