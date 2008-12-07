@@ -101,7 +101,7 @@ static char *escape_string(const char *str, encode_type_t type, const char *prot
 }
 
 const char *getCurrentDir(const char *dir) {
-	if(dir != NULL) {
+	if(dir) {
 		setDir(dir);
 		
 		return dir;
@@ -132,7 +132,7 @@ void printCurrentDir(const char *dir, const char *search) {
 			free(c_e);
 	}
 
-	if(search != NULL) {
+	if(search) {
 		char *search_e = escape_string(search, ENCODE_TYPE_HTML, NULL);
 		printf("\t\t\t\t / search for '%s'<br />\n", search_e ? search_e : "?");
 		if (search_e)
@@ -250,18 +250,18 @@ void printCurrentDirContent(const char *dir, const char *name) {
 			
 			if(attributs.st_mode & S_IFDIR) {
 				/* directory found */
-				if(name == NULL || strcasestr(filename, name)) {
+				if(!name || strcasestr(filename, name)) {
 					printDir(dir, filename);
 				}
 				
 				/* recursive search */
-				if(name != NULL) {
+				if(name) {
 					printCurrentDirContent(fullpath, name);
 				}
 			} else {
 				/* regular file found */
-				if(name == NULL || strcasestr(filename, name)) {
-					if(name != NULL && dirNamePrinted == 0 && strcasestr(filename, name)) {
+				if(!name || strcasestr(filename, name)) {
+					if(name && dirNamePrinted == 0 && strcasestr(filename, name)) {
 						printCurrentDir(dir, NULL);
 						dirNamePrinted = 1;
 					}

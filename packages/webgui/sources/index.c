@@ -66,13 +66,13 @@ int main(int argc, char *argv[]) {
 }
 
 const char *getLevel1(const char *cgi_param) {
-	if(cgi_param != NULL) {
+	if(cgi_param) {
 		setMenuLevel1(cgi_param);
 		
 		return cgi_param;
 	} else {
 		const char *l1 = getMenuLevel1();
-		if(l1 != NULL) {
+		if(l1) {
 			return l1;
 		} else {
 			setMenuLevel1("player");
@@ -82,13 +82,13 @@ const char *getLevel1(const char *cgi_param) {
 }
 
 const char *getLevel2(const char *cgi_param) {
-	if(cgi_param != NULL) {
+	if(cgi_param) {
 		setMenuLevel2(cgi_param);
 		
 		return cgi_param;
 	} else {
 		const char *l2 = getMenuLevel2();
-		if(l2 != NULL) {
+		if(l2) {
 			return l2;
 		} else {
 			setMenuLevel2("browser");
