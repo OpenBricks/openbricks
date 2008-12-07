@@ -182,7 +182,7 @@ static void printFile(const char *dir, const char *file) {
 	if(strcasestr(file, ".pls") || strcasestr(file, ".m3u")) {
 		strcpy(cmd, "mplayer=loadlist '");
 	} else {
-		strcpy(cmd, "mplayer=load '");
+		strcpy(cmd, "mplayer=loadfile '");
 	} 
 
 	file_e = escape_string(file, ENCODE_TYPE_HTML, NULL);
