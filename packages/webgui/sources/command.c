@@ -19,26 +19,26 @@
 
 /* cmd */
 void cmdSystem(const char *cmd) {
-	if(cmd != NULL) {
+	if(cmd) {
 		execSystemCmd(cmd);
 	}
 }
 
 void cmdMplayer(const char *cmd) {
-	if(cmd != NULL) {
+	if(cmd) {
 		execMplayerCmd(cmd);
 	}
 }
 
 void mplayerMenu(const char *param) {
-	if(param != NULL) {		
+	if(param) {		
 		menu(param);
 	}
 }
 
 /* Mplayer commands */
 void playFile(const char *file) {
-	if(file != NULL) {
+	if(file) {
 		char cmd[MAX] = "load '";
 		strcat(cmd, file);
 		strcat(cmd, "'");
