@@ -113,7 +113,7 @@ const char *getCurrentDir(const char *dir) {
 void printCurrentDir(const char *dir, const char *search) {
 	char path[MAX] = "", *p = NULL;
 	char name[MAX] = "", *c = NULL;
-	char *p_e, *c_e;
+	char *p_e = NULL, *c_e;
 
 	strcpy(name, dir);
 	c = strtok(name, "/");
@@ -122,17 +122,15 @@ void printCurrentDir(const char *dir, const char *search) {
 	while(c) {
 		p = strcat(path, "/");
 		p = strcat(path, c);
+		if (p_e)
+			free(p_e);
 		p_e = escape_string(p, ENCODE_TYPE_URL, NULL);
 		c_e = escape_string(c, ENCODE_TYPE_HTML, NULL);
 		printf("\t\t\t\t / <a href=\"?dir=%s\">%s</a> \n", p_e ? p_e : "", c_e ? c_e : "");
 		c = strtok(NULL,"/");
-		if (p_e)
-			free(p_e);
 		if (c_e)
 			free(c_e);
 	}
-
-	p_e = escape_string(p, ENCODE_TYPE_URL, NULL);
 
 	if(search != NULL) {
 		printf("\t\t\t\t / search for '%s'<br />\n", search);
