@@ -12,12 +12,93 @@
 
 /* ToDo
 + error on add file to list, reload mplayer ?
-+ fix error when playing files whose name includes ' ( ) & #
 + sort directory content
 + can not get dir atributes if dir contains + char
 + view what is currently playing
 + view position in track ?
 */
+
+typedef enum {
+  ENCODE_TYPE_HTML,
+  ENCODE_TYPE_URL,
+} encode_type_t;
+
+/*
+ * This function encodes some characters for HTML code or URL in order to
+ * prevent error messages with web browsers and malformed XHTML tags.
+ *
+ * With URL type, the characters can be protected with '\'. If the same
+ * character appears many times in protect string, more '\' will be added,
+ * for example:
+ *  str = foo'bar  and protect = ''   : result = foo\\\%27bar
+ *  str = foo"bar' and protect = "''  : result = foo\%22bar\\\%27
+ */
+static char *escape_string(const char *str, encode_type_t type, const char *protect) {
+	char c;
+	int length = 0;
+	char *buf = NULL;
+	char it[32];
+
+	while ((c = *str++)) {
+		if (type == ENCODE_TYPE_HTML) {
+			switch (c) {
+			default:
+				snprintf(it, sizeof(it), "%c", c);
+				break;
+			case '&':
+				snprintf(it, sizeof(it), "&amp;");
+				break;
+			case '"':
+				snprintf(it, sizeof(it), "&quot;");
+				break;
+			case '\'':
+				snprintf(it, sizeof(it), "&#039;");
+				break;
+			case '<':
+				snprintf(it, sizeof(it), "&lt;");
+				break;
+			case '>':
+				snprintf(it, sizeof(it), "&gt;");
+				break;
+			}
+		} else {
+			char bs[16];
+			int i = 0;
+			if (protect) {
+				const char *p = strchr(protect, c);
+				while (p && i < (sizeof(bs) - 2)) {
+					bs[i++] = '\\';
+					if (i > 1) /* only one '\' with the first escape character */
+						bs[i++] = '\\';
+					p = strchr(p + 1, c);
+				}
+			}
+			bs[i] = '\0';
+
+			switch (c) {
+			default:
+				snprintf(it, sizeof(it), "%s%c", bs, c);
+				break;
+			case '&':
+			case '"':
+			case '\'':
+			case '<':
+			case '>':
+			case '+':
+			case '#':
+				snprintf(it, sizeof(it), "%s%%%2X", bs, c);
+				break;
+			}
+		}
+
+		buf = realloc(buf, length + strlen(it) + 1);
+		if (!buf)
+			return NULL;
+		length += snprintf(buf + length, strlen(it) + 1, "%s", it);
+	}
+
+	return buf;
+}
 
 const char *getCurrentDir(const char *dir) {
 	if(dir != NULL) {
@@ -32,6 +113,7 @@ const char *getCurrentDir(const char *dir) {
 void printCurrentDir(const char *dir, const char *search) {
 	char path[MAX] = "", *p = '\0';
 	char name[MAX] = "", *c = '\0';
+	char *p_e, *c_e;
 
 	strcpy(name, dir);
 	c = strtok(name, "/");
@@ -40,16 +122,27 @@ void printCurrentDir(const char *dir, const char *search) {
 	while(c) {
 		p = strcat(path, "/");
 		p = strcat(path, c);
-		printf("\t\t\t\t / <a href=\"?dir=%s\">%s</a> \n", p, c);
+		p_e = escape_string(p, ENCODE_TYPE_URL, NULL);
+		c_e = escape_string(c, ENCODE_TYPE_HTML, NULL);
+		printf("\t\t\t\t / <a href=\"?dir=%s\">%s</a> \n", p_e ? p_e : "", c_e ? c_e : "");
 		c = strtok(NULL,"/");
+		if (p_e)
+			free(p_e);
+		if (c_e)
+			free(c_e);
 	}
-	
+
+	p_e = escape_string(p, ENCODE_TYPE_URL, NULL);
+
 	if(search != NULL) {
 		printf("\t\t\t\t / search for '%s'<br />\n", search);
 	} else {
-		printf("\t\t\t\t<a href=\"?play_dir=%s\">\n\t\t\t\t\t<img src=\"/style/geexbox/icons/play.png\" title=\"%s\" alt=\"Play Directory\" />\n\t\t\t\t</a>\n", p, PLAY_DIR);
+		printf("\t\t\t\t<a href=\"?play_dir=%s\">\n\t\t\t\t\t<img src=\"/style/geexbox/icons/play.png\" title=\"%s\" alt=\"Play Directory\" />\n\t\t\t\t</a>\n", p_e ? p_e : "", PLAY_DIR);
 	}
 	printf("\t\t\t</div>\n");
+
+	if (p_e)
+		free(p_e);
 }
 
 const char *printFileIcon(const char *file) {
@@ -84,25 +177,63 @@ const char *printDirIcon(const char *file) {
 
 void printFile(const char *dir, const char *file) {
 	char cmd[MAX] = "";
+	char *dir_e, *file_e;
 	if(strcasestr(file, ".pls") || strcasestr(file, ".m3u")) {
 		strcpy(cmd, "mplayer=loadlist '");
 	} else {
 		strcpy(cmd, "mplayer=load '");
 	} 
-	
+
+	file_e = escape_string(file, ENCODE_TYPE_HTML, NULL);
+
 	printf("\t\t\t<div class=\"browserDirContent\">\n");
 	printf("\t\t\t\t<img src=\"/style/geexbox/icons/%s\" alt=\"Icon\" />\n", printFileIcon(file));
-	printf("\t\t\t\t%s\n", file);
-	printf("\t\t\t\t<a href=\"?%s%s/%s'\"><img src=\"/style/geexbox/icons/play.png\" title=\"%s\" alt=\"%s\" /></a>\n", cmd, dir, file, PLAY_FILE, PLAY_FILE);
+	printf("\t\t\t\t%s\n", file_e ? file_e : "");
+
+	if (file_e)
+		free(file_e);
+
+	dir_e = escape_string(dir, ENCODE_TYPE_URL, "'");
+	file_e = escape_string(file, ENCODE_TYPE_URL, "'");
+
+	printf("\t\t\t\t<a href=\"?%s%s/%s'\"><img src=\"/style/geexbox/icons/play.png\" title=\"%s\" alt=\"%s\" /></a>\n", cmd, dir_e ? dir_e : "", file_e ? file_e : "", PLAY_FILE, PLAY_FILE);
 	printf("\t\t\t</div>\n");
+
+	if (dir_e)
+		free(dir_e);
+	if (file_e)
+		free(file_e);
 }
 
 void printDir(const char *dir, const char *file) {
+	char *dir_e, *file_e, *file2_e;
+
 	printf("\t\t\t<div class=\"browserDirContent\">\n");
 	printf("\t\t\t\t<img src=\"/style/geexbox/icons/%s\" alt=\"Icon\"/>\n",printDirIcon(file));
-	printf("\t\t\t\t<a href=\"?dir=%s/%s\">%s</a>\n", dir, file, file);
-	printf("\t\t\t\t<a href=\"?play_dir=%s/%s\"><img src=\"/style/geexbox/icons/play.png\" title=\"%s\" alt=\"%s\" /></a>\n", dir, file, PLAY_DIR, PLAY_DIR);
+
+	dir_e = escape_string(dir, ENCODE_TYPE_URL, NULL);
+	file_e = escape_string(file, ENCODE_TYPE_URL, NULL);
+	file2_e = escape_string(file, ENCODE_TYPE_HTML, NULL);
+
+	printf("\t\t\t\t<a href=\"?dir=%s/%s\">%s</a>\n", dir_e ? dir_e : "", file_e ? file_e : "", file2_e ? file2_e : "");
+
+	if (dir_e)
+		free(dir_e);
+	if (file_e)
+		free(file_e);
+	if (file2_e)
+		free(file2_e);
+
+	dir_e = escape_string(dir, ENCODE_TYPE_URL, NULL);
+	file_e = escape_string(file, ENCODE_TYPE_URL, NULL);
+
+	printf("\t\t\t\t<a href=\"?play_dir=%s/%s\"><img src=\"/style/geexbox/icons/play.png\" title=\"%s\" alt=\"%s\" /></a>\n", dir_e ? dir_e : "", file_e ? file_e : "", PLAY_DIR, PLAY_DIR);
 	printf("\t\t\t</div>\n");
+
+	if (dir_e)
+		free(dir_e);
+	if (file_e)
+		free(file_e);
 }
 
 void printCurrentDirContent(const char *dir, const char *name) {
