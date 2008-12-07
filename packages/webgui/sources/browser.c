@@ -146,7 +146,7 @@ void printCurrentDir(const char *dir, const char *search) {
 		free(p_e);
 }
 
-const char *printFileIcon(const char *file) {
+static const char *printFileIcon(const char *file) {
 	if(strcasestr(file, ".mp3") || strcasestr(file, ".wav") || strcasestr(file, ".ogg") || strcasestr(file, ".flac")) {
 		return "sound.png";
 	} else if(strcasestr(file, ".avi") || strcasestr(file, ".mpg") || strcasestr(file, ".mpeg") || strcasestr(file, ".mpe") || strcasestr(file, ".mov") || strcasestr(file, ".wmv")) {
@@ -162,7 +162,7 @@ const char *printFileIcon(const char *file) {
 	}
 }
 
-const char *printDirIcon(const char *file) {
+static const char *printDirIcon(const char *file) {
 	if(strcasestr(file, "cdrom")) {
 		return "cdrom.png";
 	} else if(strcasestr(file, "shares")) {
@@ -176,7 +176,7 @@ const char *printDirIcon(const char *file) {
 	}
 }
 
-void printFile(const char *dir, const char *file) {
+static void printFile(const char *dir, const char *file) {
 	char cmd[MAX] = "";
 	char *dir_e, *file_e;
 	if(strcasestr(file, ".pls") || strcasestr(file, ".m3u")) {
@@ -206,7 +206,7 @@ void printFile(const char *dir, const char *file) {
 		free(file_e);
 }
 
-void printDir(const char *dir, const char *file) {
+static void printDir(const char *dir, const char *file) {
 	char *dir_e, *file_e, *file2_e;
 
 	printf("\t\t\t<div class=\"browserDirContent\">\n");
@@ -274,7 +274,7 @@ void printCurrentDirContent(const char *dir, const char *name) {
 	free(pDirEnt);
 }
 
-void printSeekBar(){
+static void printSeekBar(){
 	printf("\t\t\t<div id=\"seekBar\">\n");
 	printf("\t\t\t\t<a href=\"?mplayer=volume -10\"><img id=\"seekBarButtonVolumeDecrease\" src=\"/style/geexbox/seekBar/volumeDecreaseButton.png\" alt=\"miniWebmote\" /></a>\n");
 	printf("\t\t\t\t<a href=\"?mplayer=volume +10\"><img id=\"seekBarButtonVolumeIncrease\" src=\"/style/geexbox/seekBar/volumeIncreaseButton.png\" alt=\"miniWebmote\" /></a>\n");
