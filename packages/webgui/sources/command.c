@@ -70,10 +70,12 @@ void playDir(const char *file) {
 
 /* Exec functions */
 void execMplayerCmd(const char *cmd) {
-	char systemcommand[MAX];
-	
-	snprintf(systemcommand, sizeof(systemcommand), "echo \"%s\" > %s", cmd, MPLAYER_FIFO);
-	system(systemcommand);
+	FILE *fd = fopen(MPLAYER_FIFO, "w");
+	if (!fd)
+		return;
+
+	fprintf(fd, "%s\n", cmd);
+	fclose(fd);
 }
 
 void execSystemCmd(const char *cmd) {
