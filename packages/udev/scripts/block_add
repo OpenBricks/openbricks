@@ -22,6 +22,9 @@ if [ "`cat /sys$DEVPATH/removable`" = 1 \
   REMOVABLE=true
 fi
 
+flock -e $MNTLOCK
+grep -q "^$DEVNAME\>" /etc/mnts && flock -u && exit 0
+
 if [ "$REMOVABLE" != true -o "$MNT" = "$PART" ]; then
   case $DEV in
     cdrom*)
@@ -34,7 +37,6 @@ if [ "$REMOVABLE" != true -o "$MNT" = "$PART" ]; then
   esac
 fi
 
-flock -e $MNTLOCK
 MNT="/mnt/$MNT"
 if [ -d "$MNT" ]; then
   REMOUNT="remount,"
@@ -42,7 +44,6 @@ else
   REMOUNT=
   mkdir "$MNT"
 fi
-flock -u
 
 case $DEV in
   cdrom*)
@@ -64,6 +65,5 @@ case $DEV in
     ;;
 esac
 
-flock -e $MNTLOCK
 [ "$OK" = 1 ] && echo "$DEVNAME	$MNT" >> /etc/mnts || rmdir "$MNT"
 flock -u
