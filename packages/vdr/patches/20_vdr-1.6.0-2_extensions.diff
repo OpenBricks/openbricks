@@ -888,12 +888,12 @@ diff -ruNp vdr-1.6.0-2/config.c vdr-1.6.0-2-extensions/config.c
 +
 diff -ruNp vdr-1.6.0-2/config.h vdr-1.6.0-2-extensions/config.h
 --- vdr-1.6.0-2/config.h	2008-09-11 13:29:43.000000000 +0200
-+++ vdr-1.6.0-2-extensions/config.h	2008-09-11 13:36:57.000000000 +0200
++++ vdr-1.6.0-2-extensions/config.h	2008-09-13 18:06:48.000000000 +0200
 @@ -36,23 +36,74 @@
  // plugins to work with newer versions of the core VDR as long as no
  // VDR header files have changed.
  
-+#define VDREXTENSIONS 63
++#define VDREXTENSIONS 64
 +
 +#ifdef USE_JUMPPLAY
 +#define JUMPPLAYVERSNUM 9
@@ -2156,7 +2156,7 @@ diff -ruNp vdr-1.6.0-2/device.h vdr-1.6.0-2-extensions/device.h
  
 diff -ruNp vdr-1.6.0-2/dvbdevice.c vdr-1.6.0-2-extensions/dvbdevice.c
 --- vdr-1.6.0-2/dvbdevice.c	2008-02-09 17:11:44.000000000 +0100
-+++ vdr-1.6.0-2-extensions/dvbdevice.c	2008-09-11 13:36:57.000000000 +0200
++++ vdr-1.6.0-2-extensions/dvbdevice.c	2008-09-13 18:34:35.000000000 +0200
 @@ -71,6 +71,9 @@ static int DvbOpen(const char *Name, int
  class cDvbTuner : public cThread {
  private:
@@ -2216,7 +2216,17 @@ diff -ruNp vdr-1.6.0-2/dvbdevice.c vdr-1.6.0-2-extensions/dvbdevice.c
  bool cDvbTuner::GetFrontendStatus(fe_status_t &Status, int TimeoutMs)
  {
    if (TimeoutMs) {
-@@ -258,6 +283,20 @@ bool cDvbTuner::SetFrontend(void)
+@@ -210,6 +235,9 @@ bool cDvbTuner::SetFrontend(void)
+                         }
+                       }
+                   diseqcCommands = diseqc->Commands();
++#ifdef USE_DVBSETUP
++                  isyslog("Sent DISEQC command: %s", diseqcCommands);
++#endif /* DVBSETUP */
+                   }
+                frequency -= diseqc->Lof();
+                }
+@@ -258,6 +286,20 @@ bool cDvbTuner::SetFrontend(void)
           lockTimeout = DVBC_LOCK_TIMEOUT;
           }
           break;
@@ -2237,7 +2247,7 @@ diff -ruNp vdr-1.6.0-2/dvbdevice.c vdr-1.6.0-2-extensions/dvbdevice.c
      case FE_OFDM: { // DVB-T
  
           // Frequency and OFDM paramaters:
-@@ -297,6 +336,12 @@ void cDvbTuner::Action(void)
+@@ -297,6 +339,12 @@ void cDvbTuner::Action(void)
          if (GetFrontendStatus(NewStatus, 10))
             Status = NewStatus;
          cMutexLock MutexLock(&mutex);
@@ -2250,7 +2260,7 @@ diff -ruNp vdr-1.6.0-2/dvbdevice.c vdr-1.6.0-2-extensions/dvbdevice.c
          switch (tunerStatus) {
            case tsIdle:
                 break;
-@@ -419,6 +464,11 @@ cDvbDevice::cDvbDevice(int n)
+@@ -419,6 +467,11 @@ cDvbDevice::cDvbDevice(int n)
    if (fd_frontend >= 0) {
       dvb_frontend_info feinfo;
       if (ioctl(fd_frontend, FE_GET_INFO, &feinfo) >= 0) {
@@ -2262,7 +2272,7 @@ diff -ruNp vdr-1.6.0-2/dvbdevice.c vdr-1.6.0-2-extensions/dvbdevice.c
          frontendType = feinfo.type;
          dvbTuner = new cDvbTuner(fd_frontend, CardIndex(), frontendType);
          }
-@@ -638,6 +688,13 @@ eVideoSystem cDvbDevice::GetVideoSystem(
+@@ -638,6 +691,13 @@ eVideoSystem cDvbDevice::GetVideoSystem(
  
  bool cDvbDevice::SetAudioBypass(bool On)
  {
@@ -2276,7 +2286,7 @@ diff -ruNp vdr-1.6.0-2/dvbdevice.c vdr-1.6.0-2-extensions/dvbdevice.c
    if (setTransferModeForDolbyDigital != 1)
       return false;
    return ioctl(fd_audio, AUDIO_SET_BYPASS_MODE, On) == 0;
-@@ -743,23 +800,74 @@ void cDvbDevice::TurnOffLiveMode(bool Li
+@@ -743,23 +803,74 @@ void cDvbDevice::TurnOffLiveMode(bool Li
  bool cDvbDevice::ProvidesSource(int Source) const
  {
    int type = Source & cSource::st_Mask;
@@ -2351,7 +2361,7 @@ diff -ruNp vdr-1.6.0-2/dvbdevice.c vdr-1.6.0-2-extensions/dvbdevice.c
    if (ProvidesSource(Channel->Source())) {
       result = hasPriority;
       if (Priority >= 0 && Receiving(true)) {
-@@ -815,7 +923,11 @@ bool cDvbDevice::SetChannelDevice(const 
+@@ -815,7 +926,11 @@ bool cDvbDevice::SetChannelDevice(const 
                              || pidHandlesVideo // for recording the PIDs must be shifted from DMX_PES_AUDIO/VIDEO to DMX_PES_OTHER
                              );
  
@@ -2363,7 +2373,7 @@ diff -ruNp vdr-1.6.0-2/dvbdevice.c vdr-1.6.0-2-extensions/dvbdevice.c
                             && (LiveView && HasPid(vpid ? vpid : apid) && (!pidHandlesVideo || (!pidHandlesAudio && (dpid ? pidHandles[ptAudio].pid != dpid : true)))// the PID is already set as DMX_PES_OTHER
                                || !LiveView && (pidHandlesVideo || pidHandlesAudio) // a recording is going to shift the PIDs from DMX_PES_AUDIO/VIDEO to DMX_PES_OTHER
                                );
-@@ -871,6 +983,13 @@ bool cDvbDevice::HasLock(int TimeoutMs)
+@@ -871,6 +986,13 @@ bool cDvbDevice::HasLock(int TimeoutMs)
    return dvbTuner ? dvbTuner->Locked(TimeoutMs) : false;
  }
  
@@ -2789,7 +2799,7 @@ diff -ruNp vdr-1.6.0-2/dvbplayer.c vdr-1.6.0-2-extensions/dvbplayer.c
             // append sequence end code to get the image shown immediately with softdevices
 diff -ruNp vdr-1.6.0-2/eit.c vdr-1.6.0-2-extensions/eit.c
 --- vdr-1.6.0-2/eit.c	2008-09-11 13:29:39.000000000 +0200
-+++ vdr-1.6.0-2-extensions/eit.c	2008-09-11 13:36:57.000000000 +0200
++++ vdr-1.6.0-2-extensions/eit.c	2008-09-13 17:57:25.000000000 +0200
 @@ -17,13 +17,40 @@
  #include "libsi/section.h"
  #include "libsi/descriptor.h"
@@ -2996,12 +3006,11 @@ diff -ruNp vdr-1.6.0-2/eit.c vdr-1.6.0-2-extensions/eit.c
        }
    if (Empty && Tid == 0x4E && getSectionNumber() == 0)
       // ETR 211: an empty entry in section 0 of table 0x4E means there is currently no event running
-@@ -296,10 +457,28 @@ cTDT::cTDT(const u_char *Data)
+@@ -296,10 +457,26 @@ cTDT::cTDT(const u_char *Data)
    time_t sattim = getTime();
    time_t loctim = time(NULL);
  
 +#ifdef USE_SETTIME
-+  char *cmd;
 +  char timestr[20];
 +  struct tm *ptm;
 +  struct tm tm_r;
@@ -3015,10 +3024,9 @@ diff -ruNp vdr-1.6.0-2/eit.c vdr-1.6.0-2-extensions/eit.c
 +#ifdef USE_SETTIME
 +        if (SetTime) {
 +           strftime(timestr, 20, "%m%d%H%M%Y.%S", ptm);
-+           asprintf(&cmd, "%s %s %ld", SetTime, timestr, sattim);
-+           dsyslog("Executing: %s", cmd);
++           cString cmd = cString::sprintf("%s %s %ld", SetTime, timestr, sattim);
++           dsyslog("Executing: %s", *cmd);
 +           SystemExec(cmd);
-+           free(cmd);
 +           }
 +        else
 +#endif /* SETTIME */
@@ -6087,7 +6095,7 @@ diff -ruNp vdr-1.6.0-2/MANUAL vdr-1.6.0-2-extensions/MANUAL
    Min. event timeout = 30
 diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
 --- vdr-1.6.0-2/menu.c	2008-03-16 12:15:28.000000000 +0100
-+++ vdr-1.6.0-2-extensions/menu.c	2008-09-11 13:36:57.000000000 +0200
++++ vdr-1.6.0-2-extensions/menu.c	2008-09-13 17:43:35.000000000 +0200
 @@ -8,11 +8,17 @@
   */
  
@@ -6194,17 +6202,15 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
    };
  
  cMenuChannels::cMenuChannels(void)
-@@ -698,14 +738,51 @@ cMenuEditTimer::cMenuEditTimer(cTimer *T
+@@ -698,14 +738,47 @@ cMenuEditTimer::cMenuEditTimer(cTimer *T
          data.SetFlags(tfActive);
       channel = data.Channel()->Number();
       Add(new cMenuEditBitItem( tr("Active"),       &data.flags, tfActive));
 +#ifdef USE_PINPLUGIN
 +     if (cOsd::pinValid) Add(new cMenuEditChanItem(tr("Channel"), &channel));
 +     else {
-+        char* buf = 0;
-+        asprintf(&buf, "%s\t%s", tr("Channel"), Channels.GetByNumber(channel)->Name());
++        cString buf = cString::sprintf("%s\t%s", tr("Channel"), Channels.GetByNumber(channel)->Name());
 +        Add(new cOsdItem(buf));
-+        free(buf);
 +        }
 +#else
       Add(new cMenuEditChanItem(tr("Channel"),      &channel));
@@ -6218,10 +6224,8 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
 +#ifdef USE_PINPLUGIN
 +     if (cOsd::pinValid || !data.fskProtection) Add(new cMenuEditBoolItem(tr("Childlock"),&data.fskProtection));
 +     else {
-+        char* buf = 0;
-+        asprintf(&buf, "%s\t%s", tr("Childlock"), data.fskProtection ? tr("yes") : tr("no"));
++        cString buf = cString::sprintf("%s\t%s", tr("Childlock"), data.fskProtection ? tr("yes") : tr("no"));
 +        Add(new cOsdItem(buf));
-+        free(buf);
 +        }
 +#endif /* PINPLUGIN */
 +#ifdef USE_LIEMIKUUTIO
@@ -6246,7 +6250,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
       SetFirstDayItem();
       }
    Timers.IncBeingEdited();
-@@ -745,6 +822,12 @@ eOSState cMenuEditTimer::ProcessKey(eKey
+@@ -745,6 +818,12 @@ eOSState cMenuEditTimer::ProcessKey(eKey
                            Skins.Message(mtError, tr("*** Invalid Channel ***"));
                            break;
                            }
@@ -6259,7 +6263,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
                         if (!*data.file)
                            strcpy(data.file, data.Channel()->ShortName(true));
                         if (timer) {
-@@ -772,13 +855,37 @@ eOSState cMenuEditTimer::ProcessKey(eKey
+@@ -772,13 +851,37 @@ eOSState cMenuEditTimer::ProcessKey(eKey
    return state;
  }
  
@@ -6297,7 +6301,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
    virtual int Compare(const cListObject &ListObject) const;
    virtual void Set(void);
    cTimer *Timer(void) { return timer; }
-@@ -787,6 +894,9 @@ public:
+@@ -787,6 +890,9 @@ public:
  cMenuTimerItem::cMenuTimerItem(cTimer *Timer)
  {
    timer = Timer;
@@ -6307,7 +6311,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
    Set();
  }
  
-@@ -812,8 +922,56 @@ void cMenuTimerItem::Set(void)
+@@ -812,8 +918,56 @@ void cMenuTimerItem::Set(void)
       strftime(buffer, sizeof(buffer), "%Y%m%d", &tm_r);
       day = buffer;
       }
@@ -6364,7 +6368,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
                      timer->Channel()->Number(),
                      *name,
                      *name && **name ? " " : "",
-@@ -823,7 +981,63 @@ void cMenuTimerItem::Set(void)
+@@ -823,7 +977,63 @@ void cMenuTimerItem::Set(void)
                      timer->Stop() / 100,
                      timer->Stop() % 100,
                      timer->File()));
@@ -6428,7 +6432,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
  
  // --- cMenuTimers -----------------------------------------------------------
  
-@@ -837,14 +1051,31 @@ private:
+@@ -837,14 +1047,31 @@ private:
    eOSState Info(void);
    cTimer *CurrentTimer(void);
    void SetHelpKeys(void);
@@ -6460,7 +6464,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
  {
    helpKeys = -1;
    for (cTimer *timer = Timers.First(); timer; timer = Timers.Next(timer)) {
-@@ -855,6 +1086,9 @@ cMenuTimers::cMenuTimers(void)
+@@ -855,6 +1082,9 @@ cMenuTimers::cMenuTimers(void)
    SetCurrent(First());
    SetHelpKeys();
    Timers.IncBeingEdited();
@@ -6470,7 +6474,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
  }
  
  cMenuTimers::~cMenuTimers()
-@@ -893,7 +1127,11 @@ eOSState cMenuTimers::OnOff(void)
+@@ -893,7 +1123,11 @@ eOSState cMenuTimers::OnOff(void)
       timer->OnOff();
       timer->SetEventFromSchedule();
       RefreshCurrent();
@@ -6482,7 +6486,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
       if (timer->FirstDay())
          isyslog("timer %s first day set to %s", *timer->ToDescr(), *timer->PrintFirstDay());
       else
-@@ -952,6 +1190,117 @@ eOSState cMenuTimers::Info(void)
+@@ -952,6 +1186,117 @@ eOSState cMenuTimers::Info(void)
    return osContinue;
  }
  
@@ -6600,7 +6604,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
  eOSState cMenuTimers::ProcessKey(eKeys Key)
  {
    int TimerNumber = HasSubMenu() ? Count() : -1;
-@@ -960,18 +1309,40 @@ eOSState cMenuTimers::ProcessKey(eKeys K
+@@ -960,18 +1305,40 @@ eOSState cMenuTimers::ProcessKey(eKeys K
    if (state == osUnknown) {
       switch (Key) {
         case kOk:     return Edit();
@@ -6641,7 +6645,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
       Display();
       }
    if (Key != kNone)
-@@ -1001,6 +1372,9 @@ void cMenuEvent::Display(void)
+@@ -1001,6 +1368,9 @@ void cMenuEvent::Display(void)
  {
    cOsdMenu::Display();
    DisplayMenu()->SetEvent(event);
@@ -6651,7 +6655,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
    if (event->Description())
       cStatus::MsgOsdTextItem(event->Description());
  }
-@@ -1048,7 +1422,12 @@ public:
+@@ -1048,7 +1418,12 @@ public:
    const cChannel *channel;
    bool withDate;
    int timerMatch;
@@ -6664,7 +6668,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
    static void SetSortMode(eScheduleSortMode SortMode) { sortMode = SortMode; }
    static void IncSortMode(void) { sortMode = eScheduleSortMode((sortMode == ssmAllAll) ? ssmAllThis : sortMode + 1); }
    static eScheduleSortMode SortMode(void) { return sortMode; }
-@@ -1058,12 +1437,19 @@ public:
+@@ -1058,12 +1433,19 @@ public:
  
  cMenuScheduleItem::eScheduleSortMode cMenuScheduleItem::sortMode = ssmAllThis;
  
@@ -6684,7 +6688,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
    Update(true);
  }
  
-@@ -1078,7 +1464,29 @@ int cMenuScheduleItem::Compare(const cLi
+@@ -1078,7 +1460,29 @@ int cMenuScheduleItem::Compare(const cLi
    return r;
  }
  
@@ -6714,7 +6718,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
  
  bool cMenuScheduleItem::Update(bool Force)
  {
-@@ -1087,17 +1495,54 @@ bool cMenuScheduleItem::Update(bool Forc
+@@ -1087,17 +1491,54 @@ bool cMenuScheduleItem::Update(bool Forc
    Timers.GetMatch(event, &timerMatch);
    if (Force || timerMatch != OldTimerMatch) {
       cString buffer;
@@ -6769,7 +6773,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
       SetText(buffer);
       result = true;
       }
-@@ -1123,13 +1568,20 @@ public:
+@@ -1123,13 +1564,20 @@ public:
    static void SetCurrentChannel(int ChannelNr) { currentChannel = ChannelNr; }
    static const cEvent *ScheduleEvent(void);
    virtual eOSState ProcessKey(eKeys Key);
@@ -6790,7 +6794,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
  {
    now = Now;
    helpKeys = -1;
-@@ -1141,7 +1593,11 @@ cMenuWhatsOn::cMenuWhatsOn(const cSchedu
+@@ -1141,7 +1589,11 @@ cMenuWhatsOn::cMenuWhatsOn(const cSchedu
           if (Schedule) {
              const cEvent *Event = Now ? Schedule->GetPresentEvent() : Schedule->GetFollowingEvent();
              if (Event)
@@ -6802,7 +6806,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
              }
           }
        }
-@@ -1290,6 +1746,9 @@ public:
+@@ -1290,6 +1742,9 @@ public:
    cMenuSchedule(void);
    virtual ~cMenuSchedule();
    virtual eOSState ProcessKey(eKeys Key);
@@ -6812,7 +6816,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
    };
  
  cMenuSchedule::cMenuSchedule(void)
-@@ -1548,6 +2007,7 @@ eOSState cMenuSchedule::ProcessKey(eKeys
+@@ -1548,6 +2003,7 @@ eOSState cMenuSchedule::ProcessKey(eKeys
  
  // --- cMenuCommands ---------------------------------------------------------
  
@@ -6820,7 +6824,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
  class cMenuCommands : public cOsdMenu {
  private:
    cCommands *commands;
-@@ -1557,7 +2017,11 @@ public:
+@@ -1557,7 +2013,11 @@ public:
    cMenuCommands(const char *Title, cCommands *Commands, const char *Parameters = NULL);
    virtual ~cMenuCommands();
    virtual eOSState ProcessKey(eKeys Key);
@@ -6832,7 +6836,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
  
  cMenuCommands::cMenuCommands(const char *Title, cCommands *Commands, const char *Parameters)
  :cOsdMenu(Title)
-@@ -1579,6 +2043,12 @@ eOSState cMenuCommands::Execute(void)
+@@ -1579,6 +2039,12 @@ eOSState cMenuCommands::Execute(void)
    cCommand *command = commands->Get(Current());
    if (command) {
       bool confirmed = true;
@@ -6845,7 +6849,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
       if (command->Confirm())
          confirmed = Interface->Confirm(cString::sprintf("%s?", command->Title()));
       if (confirmed) {
-@@ -1629,6 +2099,9 @@ public:
+@@ -1629,6 +2095,9 @@ public:
    cMenuCam(cCamSlot *CamSlot);
    virtual ~cMenuCam();
    virtual eOSState ProcessKey(eKeys Key);
@@ -6855,7 +6859,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
    };
  
  cMenuCam::cMenuCam(cCamSlot *CamSlot)
-@@ -1808,6 +2281,9 @@ public:
+@@ -1808,6 +2277,9 @@ public:
    cMenuRecording(const cRecording *Recording, bool WithButtons = false);
    virtual void Display(void);
    virtual eOSState ProcessKey(eKeys Key);
@@ -6865,7 +6869,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
  };
  
  cMenuRecording::cMenuRecording(const cRecording *Recording, bool WithButtons)
-@@ -1823,6 +2299,9 @@ void cMenuRecording::Display(void)
+@@ -1823,6 +2295,9 @@ void cMenuRecording::Display(void)
  {
    cOsdMenu::Display();
    DisplayMenu()->SetRecording(recording);
@@ -6875,7 +6879,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
    if (recording->Info()->Description())
       cStatus::MsgOsdTextItem(recording->Info()->Description());
  }
-@@ -1883,7 +2362,11 @@ cMenuRecordingItem::cMenuRecordingItem(c
+@@ -1883,7 +2358,11 @@ cMenuRecordingItem::cMenuRecordingItem(c
    fileName = strdup(Recording->FileName());
    name = NULL;
    totalEntries = newEntries = 0;
@@ -6887,7 +6891,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
    if (*Text() == '\t')
       name = strdup(Text() + 2); // 'Text() + 2' to skip the two '\t'
  }
-@@ -1899,13 +2382,203 @@ void cMenuRecordingItem::IncrementCounte
+@@ -1899,13 +2378,203 @@ void cMenuRecordingItem::IncrementCounte
    totalEntries++;
    if (New)
       newEntries++;
@@ -7091,7 +7095,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
  {
    base = Base ? strdup(Base) : NULL;
    level = Setup.RecordingDirs ? Level : -1;
-@@ -1982,7 +2655,12 @@ void cMenuRecordings::Set(bool Refresh)
+@@ -1982,7 +2651,12 @@ void cMenuRecordings::Set(bool Refresh)
    for (cRecording *recording = Recordings.First(); recording; recording = Recordings.Next(recording)) {
        if (!base || (strstr(recording->Name(), base) == recording->Name() && recording->Name()[strlen(base)] == '~')) {
           cMenuRecordingItem *Item = new cMenuRecordingItem(recording, level);
@@ -7104,7 +7108,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
              Add(Item);
              LastItem = Item;
              free(LastItemText);
-@@ -2032,13 +2710,43 @@ eOSState cMenuRecordings::Play(void)
+@@ -2032,13 +2706,43 @@ eOSState cMenuRecordings::Play(void)
  {
    cMenuRecordingItem *ri = (cMenuRecordingItem *)Get(Current());
    if (ri) {
@@ -7148,7 +7152,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
             }
          }
       }
-@@ -2136,12 +2844,34 @@ eOSState cMenuRecordings::Commands(eKeys
+@@ -2136,12 +2840,34 @@ eOSState cMenuRecordings::Commands(eKeys
    return osContinue;
  }
  
@@ -7183,7 +7187,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
       switch (Key) {
         case kPlay:
         case kOk:     return Play();
-@@ -2150,7 +2880,26 @@ eOSState cMenuRecordings::ProcessKey(eKe
+@@ -2150,7 +2876,26 @@ eOSState cMenuRecordings::ProcessKey(eKe
         case kYellow: return Delete();
         case kInfo:
         case kBlue:   return Info();
@@ -7210,7 +7214,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
         case kNone:   if (Recordings.StateChanged(recordingsState))
                          Set(true);
                       break;
-@@ -2199,6 +2948,9 @@ void cMenuSetupBase::Store(void)
+@@ -2199,6 +2944,9 @@ void cMenuSetupBase::Store(void)
  class cMenuSetupOSD : public cMenuSetupBase {
  private:
    const char *useSmallFontTexts[3];
@@ -7220,7 +7224,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
    int osdLanguageIndex;
    int numSkins;
    int originalSkinIndex;
-@@ -2214,6 +2966,9 @@ public:
+@@ -2214,6 +2962,9 @@ public:
    cMenuSetupOSD(void);
    virtual ~cMenuSetupOSD();
    virtual eOSState ProcessKey(eKeys Key);
@@ -7230,7 +7234,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
    };
  
  cMenuSetupOSD::cMenuSetupOSD(void)
-@@ -2249,12 +3004,21 @@ void cMenuSetupOSD::Set(void)
+@@ -2249,12 +3000,21 @@ void cMenuSetupOSD::Set(void)
    useSmallFontTexts[0] = tr("never");
    useSmallFontTexts[1] = tr("skin dependent");
    useSmallFontTexts[2] = tr("always");
@@ -7252,7 +7256,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
    Add(new cMenuEditIntItem( tr("Setup.OSD$Left"),                   &data.OSDLeft, 0, MAXOSDWIDTH));
    Add(new cMenuEditIntItem( tr("Setup.OSD$Top"),                    &data.OSDTop, 0, MAXOSDHEIGHT));
    Add(new cMenuEditIntItem( tr("Setup.OSD$Width"),                  &data.OSDWidth, MINOSDWIDTH, MAXOSDWIDTH));
-@@ -2276,6 +3040,15 @@ void cMenuSetupOSD::Set(void)
+@@ -2276,6 +3036,15 @@ void cMenuSetupOSD::Set(void)
    Add(new cMenuEditBoolItem(tr("Setup.OSD$Scroll wraps"),           &data.MenuScrollWrap));
    Add(new cMenuEditBoolItem(tr("Setup.OSD$Menu key closes"),        &data.MenuKeyCloses));
    Add(new cMenuEditBoolItem(tr("Setup.OSD$Recording directories"),  &data.RecordingDirs));
@@ -7268,7 +7272,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
    SetCurrent(Get(current));
    Display();
  }
-@@ -2324,6 +3097,9 @@ eOSState cMenuSetupOSD::ProcessKey(eKeys
+@@ -2324,6 +3093,9 @@ eOSState cMenuSetupOSD::ProcessKey(eKeys
  
    int oldSkinIndex = skinIndex;
    int oldOsdLanguageIndex = osdLanguageIndex;
@@ -7278,7 +7282,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
    eOSState state = cMenuSetupBase::ProcessKey(Key);
  
    if (ModifiedApperance)
-@@ -2334,6 +3110,15 @@ eOSState cMenuSetupOSD::ProcessKey(eKeys
+@@ -2334,6 +3106,15 @@ eOSState cMenuSetupOSD::ProcessKey(eKeys
       int OriginalOSDLanguage = I18nCurrentLanguage();
       I18nSetLanguage(osdLanguageIndex);
  
@@ -7294,7 +7298,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
       cSkin *Skin = Skins.Get(skinIndex);
       if (Skin) {
          char *d = themes.NumThemes() ? strdup(themes.Descriptions()[themeIndex]) : NULL;
-@@ -2346,6 +3131,11 @@ eOSState cMenuSetupOSD::ProcessKey(eKeys
+@@ -2346,6 +3127,11 @@ eOSState cMenuSetupOSD::ProcessKey(eKeys
       Set();
       I18nSetLanguage(OriginalOSDLanguage);
       }
@@ -7306,7 +7310,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
    return state;
  }
  
-@@ -2353,12 +3143,18 @@ eOSState cMenuSetupOSD::ProcessKey(eKeys
+@@ -2353,12 +3139,18 @@ eOSState cMenuSetupOSD::ProcessKey(eKeys
  
  class cMenuSetupEPG : public cMenuSetupBase {
  private:
@@ -7325,7 +7329,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
    };
  
  cMenuSetupEPG::cMenuSetupEPG(void)
-@@ -2375,11 +3171,19 @@ void cMenuSetupEPG::Setup(void)
+@@ -2375,11 +3167,19 @@ void cMenuSetupEPG::Setup(void)
  {
    int current = Current();
  
@@ -7345,7 +7349,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
    Add(new cMenuEditBoolItem(tr("Setup.EPG$Set system time"),           &data.SetSystemTime));
    if (data.SetSystemTime)
       Add(new cMenuEditTranItem(tr("Setup.EPG$Use time from transponder"), &data.TimeTransponder, &data.TimeSource));
-@@ -2388,6 +3192,15 @@ void cMenuSetupEPG::Setup(void)
+@@ -2388,6 +3188,15 @@ void cMenuSetupEPG::Setup(void)
    for (int i = 0; i < numLanguages; i++)
        // TRANSLATORS: note the singular!
        Add(new cMenuEditStraItem(tr("Setup.EPG$Preferred language"),    &data.EPGLanguages[i], I18nLanguages()->Size(), &I18nLanguages()->At(0)));
@@ -7361,7 +7365,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
  
    SetCurrent(Get(current));
    Display();
-@@ -2444,6 +3257,10 @@ eOSState cMenuSetupEPG::ProcessKey(eKeys
+@@ -2444,6 +3253,10 @@ eOSState cMenuSetupEPG::ProcessKey(eKeys
  
  class cMenuSetupDVB : public cMenuSetupBase {
  private:
@@ -7372,7 +7376,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
    int originalNumAudioLanguages;
    int numAudioLanguages;
    int originalNumSubtitleLanguages;
-@@ -2454,6 +3271,9 @@ private:
+@@ -2454,6 +3267,9 @@ private:
  public:
    cMenuSetupDVB(void);
    virtual eOSState ProcessKey(eKeys Key);
@@ -7382,7 +7386,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
    };
  
  cMenuSetupDVB::cMenuSetupDVB(void)
-@@ -2482,6 +3302,21 @@ void cMenuSetupDVB::Setup(void)
+@@ -2482,6 +3298,21 @@ void cMenuSetupDVB::Setup(void)
  {
    int current = Current();
  
@@ -7404,7 +7408,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
    Clear();
  
    Add(new cMenuEditIntItem( tr("Setup.DVB$Primary DVB interface"), &data.PrimaryDVB, 1, cDevice::NumDevices()));
-@@ -2502,6 +3337,14 @@ void cMenuSetupDVB::Setup(void)
+@@ -2502,6 +3333,14 @@ void cMenuSetupDVB::Setup(void)
       Add(new cMenuEditIntItem( tr("Setup.DVB$Subtitle foreground transparency"), &data.SubtitleFgTransparency, 0, 9));
       Add(new cMenuEditIntItem( tr("Setup.DVB$Subtitle background transparency"), &data.SubtitleBgTransparency, 0, 10));
       }
@@ -7419,7 +7423,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
  
    SetCurrent(Get(current));
    Display();
-@@ -2583,6 +3426,9 @@ private:
+@@ -2583,6 +3422,9 @@ private:
  public:
    cMenuSetupLNB(void);
    virtual eOSState ProcessKey(eKeys Key);
@@ -7429,7 +7433,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
    };
  
  cMenuSetupLNB::cMenuSetupLNB(void)
-@@ -2597,6 +3443,23 @@ void cMenuSetupLNB::Setup(void)
+@@ -2597,6 +3439,23 @@ void cMenuSetupLNB::Setup(void)
  
    Clear();
  
@@ -7453,7 +7457,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
    Add(new cMenuEditBoolItem(tr("Setup.LNB$Use DiSEqC"),               &data.DiSEqC));
    if (!data.DiSEqC) {
       Add(new cMenuEditIntItem( tr("Setup.LNB$SLOF (MHz)"),               &data.LnbSLOF));
-@@ -2613,6 +3476,10 @@ eOSState cMenuSetupLNB::ProcessKey(eKeys
+@@ -2613,6 +3472,10 @@ eOSState cMenuSetupLNB::ProcessKey(eKeys
    int oldDiSEqC = data.DiSEqC;
    eOSState state = cMenuSetupBase::ProcessKey(Key);
  
@@ -7464,7 +7468,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
    if (Key != kNone && data.DiSEqC != oldDiSEqC)
       Setup();
    return state;
-@@ -2663,6 +3530,9 @@ private:
+@@ -2663,6 +3526,9 @@ private:
  public:
    cMenuSetupCAM(void);
    virtual eOSState ProcessKey(eKeys Key);
@@ -7474,7 +7478,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
    };
  
  cMenuSetupCAM::cMenuSetupCAM(void)
-@@ -2736,12 +3606,73 @@ eOSState cMenuSetupCAM::ProcessKey(eKeys
+@@ -2736,12 +3602,73 @@ eOSState cMenuSetupCAM::ProcessKey(eKeys
  // --- cMenuSetupRecord ------------------------------------------------------
  
  class cMenuSetupRecord : public cMenuSetupBase {
@@ -7548,7 +7552,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
    SetSection(tr("Recording"));
    Add(new cMenuEditIntItem( tr("Setup.Recording$Margin at start (min)"),     &data.MarginStart));
    Add(new cMenuEditIntItem( tr("Setup.Recording$Margin at stop (min)"),      &data.MarginStop));
-@@ -2750,14 +3681,58 @@ cMenuSetupRecord::cMenuSetupRecord(void)
+@@ -2750,14 +3677,58 @@ cMenuSetupRecord::cMenuSetupRecord(void)
    Add(new cMenuEditIntItem( tr("Setup.Recording$Default lifetime (d)"),      &data.DefaultLifetime, 0, MAXLIFETIME));
    Add(new cMenuEditIntItem( tr("Setup.Recording$Pause priority"),            &data.PausePriority, 0, MAXPRIORITY));
    Add(new cMenuEditIntItem( tr("Setup.Recording$Pause lifetime (d)"),        &data.PauseLifetime, 0, MAXLIFETIME));
@@ -7607,7 +7611,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
  }
  
  // --- cMenuSetupReplay ------------------------------------------------------
-@@ -2775,6 +3750,31 @@ cMenuSetupReplay::cMenuSetupReplay(void)
+@@ -2775,6 +3746,31 @@ cMenuSetupReplay::cMenuSetupReplay(void)
    Add(new cMenuEditBoolItem(tr("Setup.Replay$Multi speed mode"), &data.MultiSpeedMode));
    Add(new cMenuEditBoolItem(tr("Setup.Replay$Show replay mode"), &data.ShowReplayMode));
    Add(new cMenuEditIntItem(tr("Setup.Replay$Resume ID"), &data.ResumeID, 0, 99));
@@ -7639,7 +7643,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
  }
  
  void cMenuSetupReplay::Store(void)
-@@ -2787,13 +3787,48 @@ void cMenuSetupReplay::Store(void)
+@@ -2787,13 +3783,48 @@ void cMenuSetupReplay::Store(void)
  // --- cMenuSetupMisc --------------------------------------------------------
  
  class cMenuSetupMisc : public cMenuSetupBase {
@@ -7688,7 +7692,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
    Add(new cMenuEditIntItem( tr("Setup.Miscellaneous$Min. event timeout (min)"),   &data.MinEventTimeout));
    Add(new cMenuEditIntItem( tr("Setup.Miscellaneous$Min. user inactivity (min)"), &data.MinUserInactivity));
    Add(new cMenuEditIntItem( tr("Setup.Miscellaneous$SVDRP timeout (s)"),          &data.SVDRPTimeout));
-@@ -2801,9 +3836,77 @@ cMenuSetupMisc::cMenuSetupMisc(void)
+@@ -2801,9 +3832,77 @@ cMenuSetupMisc::cMenuSetupMisc(void)
    Add(new cMenuEditIntItem( tr("Setup.Miscellaneous$Channel entry timeout (ms)"), &data.ChannelEntryTimeout, 0));
    Add(new cMenuEditChanItem(tr("Setup.Miscellaneous$Initial channel"),            &data.InitialChannel, tr("Setup.Miscellaneous$as before")));
    Add(new cMenuEditIntItem( tr("Setup.Miscellaneous$Initial volume"),             &data.InitialVolume, -1, 255, tr("Setup.Miscellaneous$as before")));
@@ -7707,8 +7711,8 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
 +  Add(new cMenuEditIntItem( tr("Setup.Miscellaneous$Lirc repeat freq"),           &data.LircRepeatFreq, 0, 1000));
 +  Add(new cMenuEditIntItem( tr("Setup.Miscellaneous$Lirc repeat timeout"),        &data.LircRepeatTimeout, 0, 5000));
 +#endif /* LIRCSETTINGS */
- }
- 
++}
++
 +#ifdef USE_LIVEBUFFER
 +// --- cMenuSetupLiveBuffer --------------------------------------------------
 +
@@ -7760,13 +7764,13 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
 +  if (Key != kNone && (data.LiveBuffer != oldLiveBuffer || data.InRAM != oldInRAM || data.ExtendBuffer != oldExtendBuffer || data.KeepPaused != oldKeepPaused))
 +     Setup();
 +  return state;
-+}
-+
+ }
+ 
 +#endif /* LIVEBUFFER */
  // --- cMenuSetupPluginItem --------------------------------------------------
  
  class cMenuSetupPluginItem : public cOsdItem {
-@@ -2826,6 +3929,9 @@ class cMenuSetupPlugins : public cMenuSe
+@@ -2826,6 +3925,9 @@ class cMenuSetupPlugins : public cMenuSe
  public:
    cMenuSetupPlugins(void);
    virtual eOSState ProcessKey(eKeys Key);
@@ -7776,7 +7780,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
    };
  
  cMenuSetupPlugins::cMenuSetupPlugins(void)
-@@ -2875,6 +3981,9 @@ private:
+@@ -2875,6 +3977,9 @@ private:
  public:
    cMenuSetup(void);
    virtual eOSState ProcessKey(eKeys Key);
@@ -7786,7 +7790,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
    };
  
  cMenuSetup::cMenuSetup(void)
-@@ -2898,6 +4007,9 @@ void cMenuSetup::Set(void)
+@@ -2898,6 +4003,9 @@ void cMenuSetup::Set(void)
    Add(new cOsdItem(hk(tr("Recording")),     osUser6));
    Add(new cOsdItem(hk(tr("Replay")),        osUser7));
    Add(new cOsdItem(hk(tr("Miscellaneous")), osUser8));
@@ -7796,7 +7800,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
    if (cPluginManager::HasPlugins())
    Add(new cOsdItem(hk(tr("Plugins")),       osUser9));
    Add(new cOsdItem(hk(tr("Restart")),       osUser10));
-@@ -2928,6 +4040,9 @@ eOSState cMenuSetup::ProcessKey(eKeys Ke
+@@ -2928,6 +4036,9 @@ eOSState cMenuSetup::ProcessKey(eKeys Ke
      case osUser8: return AddSubMenu(new cMenuSetupMisc);
      case osUser9: return AddSubMenu(new cMenuSetupPlugins);
      case osUser10: return Restart();
@@ -7806,7 +7810,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
      default: ;
      }
    if (I18nCurrentLanguage() != osdLanguage) {
-@@ -2964,24 +4079,91 @@ cOsdObject *cMenuMain::pluginOsdObject =
+@@ -2964,24 +4075,91 @@ cOsdObject *cMenuMain::pluginOsdObject =
  cMenuMain::cMenuMain(eOSState State)
  :cOsdMenu("")
  {
@@ -7898,7 +7902,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
  }
  
  cOsdObject *cMenuMain::PluginOsdObject(void)
-@@ -2991,38 +4173,157 @@ cOsdObject *cMenuMain::PluginOsdObject(v
+@@ -2991,38 +4169,155 @@ cOsdObject *cMenuMain::PluginOsdObject(v
    return o;
  }
  
@@ -7956,15 +7960,13 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
 +            Add(new cMenuPluginItem(hk(item), node->GetPluginIndex()));
 +         }
 +      else if (type==cSubMenuNode::MENU) {
-+         char *item = NULL;
-+         asprintf(&item, "%s%s", node->GetName(), subMenu.GetMenuSuffix());
++         cString item = cString::sprintf("%s%s", node->GetName(), subMenu.GetMenuSuffix());
 +#ifdef USE_PINPLUGIN
 +         if (!cStatus::MsgMenuItemProtected(item, true))
 +            Add(new cOsdItem(hk(item), osUnknown, node));
 +#else
 +            Add(new cOsdItem(hk(item)));
 +#endif /* PINPLUGIN */
-+         free(item);
 +         }
 +      else if ((type==cSubMenuNode::COMMAND) || (type==cSubMenuNode::THREAD)) {
 +#ifdef USE_PINPLUGIN
@@ -8056,7 +8058,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
    Update(true);
  
    Display();
-@@ -3031,13 +4332,40 @@ void cMenuMain::Set(void)
+@@ -3031,13 +4326,40 @@ void cMenuMain::Set(void)
  bool cMenuMain::Update(bool Force)
  {
    bool result = false;
@@ -8098,7 +8100,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
  
    bool NewReplaying = cControl::Control() != NULL;
    if (Force || NewReplaying != replaying) {
-@@ -3045,6 +4373,9 @@ bool cMenuMain::Update(bool Force)
+@@ -3045,6 +4367,9 @@ bool cMenuMain::Update(bool Force)
       // Replay control:
       if (replaying && !stopReplayItem)
          // TRANSLATORS: note the leading blank!
@@ -8108,7 +8110,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
          Add(stopReplayItem = new cOsdItem(tr(" Stop replaying"), osStopReplay));
       else if (stopReplayItem && !replaying) {
          Del(stopReplayItem->Index());
-@@ -3059,6 +4390,9 @@ bool cMenuMain::Update(bool Force)
+@@ -3059,6 +4384,9 @@ bool cMenuMain::Update(bool Force)
    bool CutterActive = cCutter::Active();
    if (CutterActive && !cancelEditingItem) {
       // TRANSLATORS: note the leading blank!
@@ -8118,7 +8120,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
       Add(cancelEditingItem = new cOsdItem(tr(" Cancel editing"), osCancelEdit));
       result = true;
       }
-@@ -3079,6 +4413,9 @@ bool cMenuMain::Update(bool Force)
+@@ -3079,6 +4407,9 @@ bool cMenuMain::Update(bool Force)
       while ((s = cRecordControls::GetInstantId(s)) != NULL) {
             cOsdItem *item = new cOsdItem(osStopRecord);
             item->SetText(cString::sprintf("%s%s", tr(STOP_RECORDING), s));
@@ -8128,7 +8130,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
             Add(item);
             if (!stopRecordingItem)
                stopRecordingItem = item;
-@@ -3086,6 +4423,12 @@ bool cMenuMain::Update(bool Force)
+@@ -3086,6 +4417,12 @@ bool cMenuMain::Update(bool Force)
       result = true;
       }
  
@@ -8141,7 +8143,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
    return result;
  }
  
-@@ -3096,13 +4439,69 @@ eOSState cMenuMain::ProcessKey(eKeys Key
+@@ -3096,13 +4433,69 @@ eOSState cMenuMain::ProcessKey(eKeys Key
    eOSState state = cOsdMenu::ProcessKey(Key);
    HadSubMenu |= HasSubMenu();
  
@@ -8211,7 +8213,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
      case osStopRecord: if (Interface->Confirm(tr("Stop recording?"))) {
                            cOsdItem *item = Get(Current());
                            if (item) {
-@@ -3121,6 +4520,9 @@ eOSState cMenuMain::ProcessKey(eKeys Key
+@@ -3121,6 +4514,9 @@ eOSState cMenuMain::ProcessKey(eKeys Key
                           if (item) {
                              cPlugin *p = cPluginManager::GetPlugin(item->PluginIndex());
                              if (p) {
@@ -8221,7 +8223,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
                                 cOsdObject *menu = p->MainMenuAction();
                                 if (menu) {
                                    if (menu->IsMenu())
-@@ -3132,9 +4534,60 @@ eOSState cMenuMain::ProcessKey(eKeys Key
+@@ -3132,9 +4528,60 @@ eOSState cMenuMain::ProcessKey(eKeys Key
                                    }
                                 }
                              }
@@ -8282,12 +8284,13 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
      default: switch (Key) {
                 case kRecord:
                 case kRed:    if (!HadSubMenu)
-@@ -3151,9 +4604,71 @@ eOSState cMenuMain::ProcessKey(eKeys Key
+@@ -3151,9 +4598,67 @@ eOSState cMenuMain::ProcessKey(eKeys Key
                 case kBlue:   if (!HadSubMenu)
                                  state = replaying ? osStopReplay : cReplayControl::LastReplayed() ? osReplay : osContinue;
                               break;
 +#ifdef USE_SETUP
 +               case kOk:     if (state == osUnknown) {
++                                cString buffer;
 +#ifdef USE_PINPLUGIN
 +                                cSubMenuNode *node = Get(Current())->SubMenu();
 +#else
@@ -8304,12 +8307,10 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
 +#endif /* PINPLUGIN */
 +                                      }
 +                                   else if (node->GetType() == cSubMenuNode::COMMAND) {
-+                                      char *buffer = NULL;
 +                                      bool confirmed = true;
 +                                      if (node->CommandConfirm()) {
-+                                         asprintf(&buffer, "%s?", node->GetName());
++                                         buffer = cString::sprintf("%s?", node->GetName());
 +                                         confirmed = Interface->Confirm(buffer);
-+                                         free(buffer);
 +                                         }
 +                                      if (confirmed) {
 +                                         const char *Result = subMenu.ExecuteCommand(node->GetCommand());
@@ -8319,21 +8320,18 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
 +                                         }
 +                                      }
 +                                   else if (node->GetType() == cSubMenuNode::THREAD) {
-+                                      char *buffer = NULL;
 +                                      bool confirmed = true;
 +                                      if (node->CommandConfirm()) {
-+                                         asprintf(&buffer, "%s?", node->GetName());
++                                         buffer = cString::sprintf("%s?", node->GetName());
 +                                         confirmed = Interface->Confirm(buffer);
-+                                         free(buffer);
 +                                         }
 +                                      if (confirmed) {
-+                                         asprintf(&buffer, "%s", node->GetCommand());
++                                         buffer = cString::sprintf("%s", node->GetCommand());
 +                                         cExecCmdThread *execcmd = new cExecCmdThread(node->GetCommand());
 +                                         if (execcmd->Start())
-+                                            dsyslog("executing command '%s'", buffer);
++                                            dsyslog("executing command '%s'", *buffer);
 +                                         else
-+                                            esyslog("ERROR: can't execute command '%s'", buffer);
-+                                         free(buffer);
++                                            esyslog("ERROR: can't execute command '%s'", *buffer);
 +                                         return osEnd;
 +                                         }
 +                                      }
@@ -8354,7 +8352,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
    if (!HasSubMenu() && Update(HadSubMenu))
       Display();
    if (Key != kNone) {
-@@ -3297,7 +4812,14 @@ cChannel *cDisplayChannel::NextAvailable
+@@ -3297,7 +4802,14 @@ cChannel *cDisplayChannel::NextAvailable
    if (Direction) {
       while (Channel) {
             Channel = Direction > 0 ? Channels.Next(Channel) : Channels.Prev(Channel);
@@ -8369,7 +8367,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
                return Channel;
             }
       }
-@@ -3355,6 +4877,13 @@ eOSState cDisplayChannel::ProcessKey(eKe
+@@ -3355,6 +4867,13 @@ eOSState cDisplayChannel::ProcessKey(eKe
      case kLeft:
      case kRight|k_Repeat:
      case kRight:
@@ -8383,7 +8381,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
      case kNext|k_Repeat:
      case kNext:
      case kPrev|k_Repeat:
-@@ -3514,6 +5043,17 @@ void cDisplayVolume::Process(eKeys Key)
+@@ -3514,6 +5033,17 @@ void cDisplayVolume::Process(eKeys Key)
  eOSState cDisplayVolume::ProcessKey(eKeys Key)
  {
    switch (Key) {
@@ -8401,7 +8399,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
      case kVolUp|k_Repeat:
      case kVolUp:
      case kVolDn|k_Repeat:
-@@ -3763,6 +5303,10 @@ eOSState cDisplaySubtitleTracks::Process
+@@ -3763,6 +5293,10 @@ eOSState cDisplaySubtitleTracks::Process
  
  cRecordControl::cRecordControl(cDevice *Device, cTimer *Timer, bool Pause)
  {
@@ -8412,7 +8410,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
    // We're going to manipulate an event here, so we need to prevent
    // others from modifying any EPG data:
    cSchedulesLock SchedulesLock;
-@@ -3807,12 +5351,57 @@ cRecordControl::cRecordControl(cDevice *
+@@ -3807,12 +5341,57 @@ cRecordControl::cRecordControl(cDevice *
       return;
       }
  
@@ -8470,7 +8468,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
          Recording.WriteInfo();
          cStatus::MsgRecording(device, Recording.Name(), Recording.FileName(), true);
          if (!Timer && !cReplayControl::LastReplayed()) // an instant recording, maybe from cRecordControls::PauseLiveVideo()
-@@ -3869,11 +5458,25 @@ bool cRecordControl::GetEvent(void)
+@@ -3869,11 +5448,25 @@ bool cRecordControl::GetEvent(void)
  void cRecordControl::Stop(void)
  {
    if (timer) {
@@ -8496,7 +8494,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
       }
  }
  
-@@ -3920,15 +5523,35 @@ bool cRecordControls::Start(cTimer *Time
+@@ -3920,15 +5513,35 @@ bool cRecordControls::Start(cTimer *Time
       int Priority = Timer ? Timer->Priority() : Pause ? Setup.PausePriority : Setup.DefaultPriority;
       cDevice *device = cDevice::GetDevice(channel, Priority, false);
       if (device) {
@@ -8532,7 +8530,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
                    return RecordControls[i]->Process(time(NULL));
                    }
                 }
-@@ -4059,12 +5682,22 @@ bool cRecordControls::StateChanged(int &
+@@ -4059,12 +5672,22 @@ bool cRecordControls::StateChanged(int &
  
  // --- cReplayControl --------------------------------------------------------
  
@@ -8555,7 +8553,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
  {
    currentReplayControl = this;
    displayReplay = NULL;
-@@ -4072,10 +5705,28 @@ cReplayControl::cReplayControl(void)
+@@ -4072,10 +5695,28 @@ cReplayControl::cReplayControl(void)
    lastCurrent = lastTotal = -1;
    lastPlay = lastForward = false;
    lastSpeed = -2; // an invalid value
@@ -8584,7 +8582,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
    cStatus::MsgReplaying(this, Recording.Name(), Recording.FileName(), true);
    SetTrackDescriptions(false);
  }
-@@ -4083,12 +5734,67 @@ cReplayControl::cReplayControl(void)
+@@ -4083,12 +5724,67 @@ cReplayControl::cReplayControl(void)
  cReplayControl::~cReplayControl()
  {
    Hide();
@@ -8652,7 +8650,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
  void cReplayControl::SetRecording(const char *FileName, const char *Title)
  {
    free(fileName);
-@@ -4183,6 +5889,9 @@ bool cReplayControl::ShowProgress(bool I
+@@ -4183,6 +5879,9 @@ bool cReplayControl::ShowProgress(bool I
       if (Initial) {
          if (title)
             displayReplay->SetTitle(title);
@@ -8662,7 +8660,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
          lastCurrent = lastTotal = -1;
          }
       if (Total != lastTotal) {
-@@ -4304,8 +6013,15 @@ void cReplayControl::MarkToggle(void)
+@@ -4304,8 +6003,15 @@ void cReplayControl::MarkToggle(void)
          ShowTimed(2);
          bool Play, Forward;
          int Speed;
@@ -8678,7 +8676,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
          }
       marks.Save();
       }
-@@ -4318,8 +6034,22 @@ void cReplayControl::MarkJump(bool Forwa
+@@ -4318,8 +6024,22 @@ void cReplayControl::MarkJump(bool Forwa
       if (GetIndex(Current, Total)) {
          cMark *m = Forward ? marks.GetNext(Current) : marks.GetPrev(Current);
          if (m) {
@@ -8701,7 +8699,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
             }
          }
       }
-@@ -4348,11 +6078,43 @@ void cReplayControl::MarkMove(bool Forwa
+@@ -4348,11 +6068,43 @@ void cReplayControl::MarkMove(bool Forwa
       }
  }
  
@@ -8745,7 +8743,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
          if (!marks.Count())
             Skins.Message(mtError, tr("No editing marks defined!"));
          else if (!cCutter::Start(fileName))
-@@ -4374,7 +6136,11 @@ void cReplayControl::EditTest(void)
+@@ -4374,7 +6126,11 @@ void cReplayControl::EditTest(void)
       if (!m)
          m = marks.GetNext(Current);
       if (m) {
@@ -8757,7 +8755,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
             m = marks.Next(m);
          if (m) {
             Goto(m->position - SecondsToFrames(3));
-@@ -4396,6 +6162,9 @@ eOSState cReplayControl::ProcessKey(eKey
+@@ -4396,6 +6152,9 @@ eOSState cReplayControl::ProcessKey(eKey
  {
    if (!Active())
       return osEnd;
@@ -8767,7 +8765,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
    if (visible) {
       if (timeoutShow && time(NULL) > timeoutShow) {
          Hide();
-@@ -4413,7 +6182,32 @@ eOSState cReplayControl::ProcessKey(eKey
+@@ -4413,7 +6172,32 @@ eOSState cReplayControl::ProcessKey(eKey
       TimeSearchProcess(Key);
       return osContinue;
       }
@@ -8800,7 +8798,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
    switch (Key) {
      // Positioning:
      case kPlay:
-@@ -4431,25 +6225,82 @@ eOSState cReplayControl::ProcessKey(eKey
+@@ -4431,25 +6215,82 @@ eOSState cReplayControl::ProcessKey(eKey
      case kFastFwd:
      case kRight:   Forward(); break;
      case kRed:     TimeSearch(); break;
@@ -8883,7 +8881,7 @@ diff -ruNp vdr-1.6.0-2/menu.c vdr-1.6.0-2-extensions/menu.c
          case kMarkJumpForward|k_Repeat:
          case kMarkJumpForward: MarkJump(true); break;
          case kMarkMoveBack|k_Repeat:
-@@ -4469,7 +6320,16 @@ eOSState cReplayControl::ProcessKey(eKey
+@@ -4469,7 +6310,16 @@ eOSState cReplayControl::ProcessKey(eKey
                             else
                                Show();
                             break;
@@ -12972,30 +12970,39 @@ diff -ruNp vdr-1.6.0-2/po/hu_HU.po vdr-1.6.0-2-extensions/po/hu_HU.po
 +msgstr ""
 diff -ruNp vdr-1.6.0-2/po/it_IT.po vdr-1.6.0-2-extensions/po/it_IT.po
 --- vdr-1.6.0-2/po/it_IT.po	2008-09-11 13:29:43.000000000 +0200
-+++ vdr-1.6.0-2-extensions/po/it_IT.po	2008-09-11 13:36:57.000000000 +0200
-@@ -789,6 +789,21 @@ msgstr "Volume iniziale"
++++ vdr-1.6.0-2-extensions/po/it_IT.po	2008-09-13 17:44:15.000000000 +0200
+@@ -789,6 +789,30 @@ msgstr "Volume iniziale"
  msgid "Setup.Miscellaneous$Emergency exit"
  msgstr "Uscita di emergenza"
  
 +msgid "Setup.Miscellaneous$Volume ctrl with left/right"
-+msgstr "Controlla volume con sinistra/destra"
++msgstr "Controllo volume con Sinistra/Destra"
 +
 +msgid "Setup.Miscellaneous$Channelgroups with left/right"
-+msgstr "Gruppi canali con sinistra/destra"
++msgstr "Gruppi canali con Sinistra/Destra"
 +
 +msgid "Setup.Miscellaneous$only in channelinfo"
-+msgstr "solo in info canale"
++msgstr "solo nelle info canale"
 +
 +msgid "Setup.Miscellaneous$Search fwd/back with left/right"
-+msgstr "Cerca avanti/indietro con sinistra/destra"
++msgstr "Cerca avanti/indietro con Sinistra/Destra"
 +
 +msgid "Setup.Miscellaneous$only in progress display"
-+msgstr "solo visualizzazione avanzamento"
++msgstr "solo nel canale in esec."
++
++msgid "Setup.Miscellaneous$Lirc repeat delay"
++msgstr "Ritardo ripetizione LIRC"
++
++msgid "Setup.Miscellaneous$Lirc repeat freq"
++msgstr "Frequenza ripetizione LIRC"
++
++msgid "Setup.Miscellaneous$Lirc repeat timeout"
++msgstr "Scadenza ripetizione LIRC"
 +
  msgid "Plugins"
  msgstr "Plugins"
  
-@@ -1002,3 +1017,273 @@ msgstr "Premi un tasto per annullare il 
+@@ -1002,3 +1026,297 @@ msgstr "Premi un tasto per annullare il 
  #, c-format
  msgid "VDR will shut down in %s minutes"
  msgstr "VDR si spegnerà tra %s minuti"
@@ -13054,6 +13061,24 @@ diff -ruNp vdr-1.6.0-2/po/it_IT.po vdr-1.6.0-2-extensions/po/it_IT.po
 +msgid "Setup.OSD$WarEagle icons"
 +msgstr "Icone WarEagle"
 +
++msgid "Setup.OSD$Main menu title"
++msgstr "Titolo menu principale"
++
++msgid "Setup.OSD$- Text"
++msgstr "- Testo"
++
++msgid "default"
++msgstr "predefinito"
++
++msgid "VDR - text"
++msgstr "VDR - Testo"
++
++msgid "text"
++msgstr "Testo"
++
++msgid "VDR - version"
++msgstr "VDR - Versione"
++
 +msgid "Setup.OSD$Main menu command position"
 +msgstr "Posizione comandi menu princ."
 +
@@ -13068,6 +13093,9 @@ diff -ruNp vdr-1.6.0-2/po/it_IT.po vdr-1.6.0-2-extensions/po/it_IT.po
 +
 +msgid "Setup.EPG$Extern double Epg entry"
 +msgstr "Doppio valore EPG esterno"
++
++msgid "Setup.EPG$Mode of noEPG-Patch"
++msgstr "Modalità di noEPG-Patch"
 +
 +msgid "adjust"
 +msgstr "regola"
@@ -13112,7 +13140,7 @@ diff -ruNp vdr-1.6.0-2/po/it_IT.po vdr-1.6.0-2-extensions/po/it_IT.po
 +msgstr "Priorità video %d "
 +
 +msgid "Setup.Recording$Video %d min. free MB"
-+msgstr "Min. MB liberi video %d "
++msgstr "Min. MB disponibili video %d "
 +
 +msgid "Setup.Recording$Friendly filenames"
 +msgstr "Nomi file semplici"
@@ -13137,9 +13165,6 @@ diff -ruNp vdr-1.6.0-2/po/it_IT.po vdr-1.6.0-2-extensions/po/it_IT.po
 +
 +msgid "Setup.Recording$Show length"
 +msgstr "Mostra durata registrazione"
-+
-+msgid "Setup.OSD$Main menu title"
-+msgstr "Titolo menu principale"
 +
 +msgid "Setup.Recording$Show end of timer"
 +msgstr "Mostra fine del timer"
@@ -13269,6 +13294,12 @@ diff -ruNp vdr-1.6.0-2/po/it_IT.po vdr-1.6.0-2-extensions/po/it_IT.po
 +
 +msgid "Setup.LiveBuffer$Keep paused Buffer"
 +msgstr "Mantieni buffer di pausa"
++
++msgid "Setup.LiveBuffer$Buffer size on harddisk (MB)"
++msgstr "Dim. buffer nel disco fisso (MB)"
++
++msgid "Setup.LiveBuffer$Buffer size (MB)"
++msgstr "Dimensione buffer (MB)"
 diff -ruNp vdr-1.6.0-2/po/nl_NL.po vdr-1.6.0-2-extensions/po/nl_NL.po
 --- vdr-1.6.0-2/po/nl_NL.po	2008-03-23 11:31:29.000000000 +0100
 +++ vdr-1.6.0-2-extensions/po/nl_NL.po	2008-09-11 13:36:57.000000000 +0200
@@ -16413,7 +16444,7 @@ diff -ruNp vdr-1.6.0-2/recorder.h vdr-1.6.0-2-extensions/recorder.h
    virtual ~cRecorder();
 diff -ruNp vdr-1.6.0-2/recording.c vdr-1.6.0-2-extensions/recording.c
 --- vdr-1.6.0-2/recording.c	2008-02-24 11:28:53.000000000 +0100
-+++ vdr-1.6.0-2-extensions/recording.c	2008-09-11 13:36:57.000000000 +0200
++++ vdr-1.6.0-2-extensions/recording.c	2008-09-13 17:44:15.000000000 +0200
 @@ -8,6 +8,9 @@
   */
  
@@ -16640,7 +16671,7 @@ diff -ruNp vdr-1.6.0-2/recording.c vdr-1.6.0-2-extensions/recording.c
  }
  
  const char *cRecording::FileName(void) const
-@@ -705,9 +820,364 @@ const char *cRecording::FileName(void) c
+@@ -705,9 +820,359 @@ const char *cRecording::FileName(void) c
    return fileName;
  }
  
@@ -16648,11 +16679,9 @@ diff -ruNp vdr-1.6.0-2/recording.c vdr-1.6.0-2-extensions/recording.c
 +bool cRecording::CheckFileExistence(const char* FileNameToTest, const bool useVideoDir) const
 +{
 +  if (!useVideoDir || (useVideoDir && FileName())) {
-+     char filename[BUFSIZ];
-+
-+     sprintf(filename, "%s%s%s", useVideoDir ? FileName() : "",
-+                                 useVideoDir ? "/" : "",
-+                                 FileNameToTest);
++     cString filename = cString::sprintf("%s%s%s", useVideoDir ? FileName() : "",
++                                                   useVideoDir ? "/" : "",
++                                                   FileNameToTest);
 +     struct stat statBuf;
 +     if (lstat(filename, &statBuf) == -1) return false;
 +     return S_ISREG(statBuf.st_mode) || S_ISLNK(statBuf.st_mode);
@@ -16702,8 +16731,7 @@ diff -ruNp vdr-1.6.0-2/recording.c vdr-1.6.0-2-extensions/recording.c
 +bool cRecording::GetDvdChaptersFromDvd(int title) const
 +{
 +#ifdef USE_DVDCHAPJUMP
-+  char* buf = (char*)alloca(BUFSIZ);
-+  if (!buf) return false;
++  cString buf;
 +
 +  dvd_reader_t *dvd;
 +  ifo_handle_t *ifo_file;
@@ -16734,7 +16762,7 @@ diff -ruNp vdr-1.6.0-2/recording.c vdr-1.6.0-2-extensions/recording.c
 +  int local_title_id = tt_srpt->title[title-1].vts_ttn - 1;
 +
 +  /* access title set file */
-+  vts_file = ifoOpen(dvd,title_set_nr);
++  vts_file = ifoOpen(dvd, title_set_nr);
 +  if (!vts_file) {
 +     esyslog("DVD-ARCHIVE: Can't open info file for title set %d!",title_set_nr);
 +     DVDClose(dvd);
@@ -16752,19 +16780,19 @@ diff -ruNp vdr-1.6.0-2/recording.c vdr-1.6.0-2-extensions/recording.c
 +    int p;
 +
 +    assert(pg==1);
-+    for (p=1;p<total_chap;p++) {
++    for (p=1; p<total_chap; p++) {
 +        int next_pg;
 +        int this_pgc;
 +        this_pgc = vts_ptt_srpt->title[local_title_id].ptt[p].pgcn;
-+        assert(pgc_nr==this_pgc);
++        assert(pgc_nr == this_pgc);
 +        next_pg = vts_ptt_srpt->title[local_title_id].ptt[p].pgn;
-+        assert(pg+1==next_pg);
++        assert(pg+1 == next_pg);
 +        pg = next_pg;
 +        }
 +
 +    /* fetch program chain */
 +    cur_pgc = vts_file->vts_pgcit->pgci_srp[pgc_nr-1].pgc;
-+    assert(cur_pgc->nr_of_programs==total_chap);
++    assert(cur_pgc->nr_of_programs == total_chap);
 +  }
 +
 +  /* --- main cell loop --- */
@@ -16784,7 +16812,7 @@ diff -ruNp vdr-1.6.0-2/recording.c vdr-1.6.0-2-extensions/recording.c
 +    /* loop through all cells */
 +    chap = -1;
 +    int position = 0;
-+    for (c=0;c<total_cell;c++) {
++    for (c=0; c<total_cell; c++) {
 +        int cell_mode;
 +        const char *mode;
 +
@@ -16804,17 +16832,15 @@ diff -ruNp vdr-1.6.0-2/recording.c vdr-1.6.0-2-extensions/recording.c
 +        int frames = ((hour * 3600) + (minute * 60) + second) * frames_per_sec + frame;
 +
 +        /* this cell is the begin of a new chapter! */
-+        if (chap_cell[chap+1]==c+1) {
-+           char oldbuf[BUFSIZ];
-+           sprintf(oldbuf, "%s", buf);
-+           sprintf(buf, "%s%d%s", oldbuf, position,
-+                                  ((chap+2) < total_chap) ? "," : "");
-+                                  chap++;
++        if (chap_cell[chap+1] == c+1) {
++           cString oldbuf = cString::sprintf("%s", *buf);
++           buf = cString::sprintf("%s%d%s", *oldbuf, position, ((chap+2) < total_chap) ? "," : "");
++           chap++;
 +           }
 +
 +      /* cell_mode: 0=normal, 1=first of angle, 2=in angle, 3=last of angle */
 +      cell_mode = cell_pb->block_mode;
-+      if ((cell_mode==0)||(cell_mode==1)) {
++      if ((cell_mode==0) || (cell_mode==1)) {
 +         /* only account for normal or begin of angle cells */
 +         position += frames;
 +         mode = "counted";
@@ -16855,37 +16881,37 @@ diff -ruNp vdr-1.6.0-2/recording.c vdr-1.6.0-2-extensions/recording.c
 +
 +int cRecording::MountDvd(void) const
 +{
-+  char cmd[BUFSIZ];
++  cString cmd;
 +  if (Setup.DvdSpeedLimit > 0) {
-+     sprintf(cmd, "speedcontrol -x %d %s", Setup.DvdSpeedLimit, DVD_DEVICE);
++     cmd = cString::sprintf("speedcontrol -x %d %s", Setup.DvdSpeedLimit, DVD_DEVICE);
 +     SystemExec(cmd);
 +     }
 +
-+  char msg[BUFSIZ];
++  cString msg;
 +  if (atoi(dvdname) == 0)
-+     sprintf(msg, tr("Please mount %s"), dvdname);
++     msg = cString::sprintf(tr("Please mount %s"), dvdname);
 +  else {
 +     if (Setup.DvdDisplayZeros)
-+        sprintf(msg, tr("Please mount DVD %04d"), atoi(dvdname));
++        msg = cString::sprintf(tr("Please mount DVD %04d"), atoi(dvdname));
 +     else
-+        sprintf(msg, tr("Please mount DVD %d"), atoi(dvdname));
++        msg = cString::sprintf(tr("Please mount DVD %d"), atoi(dvdname));
 +     }
 +
 +  bool rep = true;
 +  while (rep) {
 +        if (Setup.DvdTrayMode==1 || Setup.DvdTrayMode==3)
-+           sprintf(cmd, "umount %s; eject %s", DVD_DEVICE, DVD_DEVICE);
++           cmd = cString::sprintf("umount %s; eject %s", DVD_DEVICE, DVD_DEVICE);
 +        else
-+           sprintf(cmd, "umount %s", DVD_DEVICE);
++           cmd = cString::sprintf("umount %s", DVD_DEVICE);
 +        SystemExec(cmd);
 +
 +        if (Interface->Confirm(msg, 300)) {
 +           Skins.Message(mtStatus, tr("Please wait. Checking DVD..."));
 +           Skins.Flush();
-+           sprintf(cmd, "eject -t %s; mkdir -p %s; mount -o ro -t %s %s %s",
-+                                                   DVD_DEVICE, DVD_MOUNT_PATH,
-+                                                   (dvdtrack ? "udf" : "iso9660"),
-+                                                   DVD_DEVICE, DVD_MOUNT_PATH);
++           cmd = cString::sprintf("eject -t %s; mkdir -p %s; mount -o ro -t %s %s %s",
++                                                             DVD_DEVICE, DVD_MOUNT_PATH,
++                                                             (dvdtrack ? "udf" : "iso9660"),
++                                                             DVD_DEVICE, DVD_MOUNT_PATH);
 +           SystemExec(cmd);
 +
 +           bool correctDvd = true;
@@ -16908,12 +16934,12 @@ diff -ruNp vdr-1.6.0-2/recording.c vdr-1.6.0-2-extensions/recording.c
 +                 char fn[BUFSIZ];
 +                 strcpy(fn, FileName());
 +                 char *p = strrchr(fn, '/');
-+                 sprintf(cmd, "find '%s' -name '%s'", DVD_MOUNT_PATH, p+1);
++                 cmd = cString::sprintf("find '%s' -name '%s'", DVD_MOUNT_PATH, p+1);
 +                 }
 +              else {
 +                 // Either archived DVD in DVD-Video format or DVD-Video which
 +                 // should be played with the DVD plugin
-+                 sprintf(cmd, "find '%s' -iname 'VIDEO_TS'", DVD_MOUNT_PATH);
++                 cmd = cString::sprintf("find '%s' -iname 'VIDEO_TS'", DVD_MOUNT_PATH);
 +                 }
 +
 +              cReadLine pipe;
@@ -16929,19 +16955,19 @@ diff -ruNp vdr-1.6.0-2/recording.c vdr-1.6.0-2-extensions/recording.c
 +                    else {
 +                       // It is a valid Archive-DVD or an archived Video-DVD
 +                       // and the links can now be established
-+                       char srcFn[BUFSIZ];
++                       cString srcFn;
 +                       int n = 1;
 +
 +                       do {
 +                            if (dvdtrack == NULL)
-+                               sprintf(srcFn, "%s/%03d.vdr", dirname, n);
++                               srcFn = cString::sprintf("%s/%03d.vdr", dirname, n);
 +                            else
-+                               sprintf(srcFn, "%s/VTS_%02d_%d.VOB", dirname, atoi(dvdtrack), n);
++                               srcFn = cString::sprintf("%s/VTS_%02d_%d.VOB", dirname, atoi(dvdtrack), n);
 +
 +                            if (!access(srcFn, R_OK)) {
-+                               sprintf(cmd, "ln -sf '%s' '%s/%03d.vdr'", srcFn, FileName(), n);
++                               cmd = cString::sprintf("ln -sf '%s' '%s/%03d.vdr'", *srcFn, FileName(), n);
 +                               SystemExec(cmd);
-+                               isyslog("DVD-ARCHIVE: Linking %s/%03d.vdr -> %s", FileName(), n, srcFn);
++                               isyslog("DVD-ARCHIVE: Linking %s/%03d.vdr -> %s", FileName(), n, *srcFn);
 +                               }
 +                            else
 +                               break;
@@ -16949,23 +16975,23 @@ diff -ruNp vdr-1.6.0-2/recording.c vdr-1.6.0-2-extensions/recording.c
 +
 +                       if (!CheckFileExistence("index.vdr")) {
 +                          if (dvdtrack == NULL)
-+                             sprintf(srcFn, "%s/index.vdr", dirname);
++                             srcFn = cString::sprintf("%s/index.vdr", dirname);
 +                          else
-+                             sprintf(srcFn, "%s/index_%02d.vdr", dirname, atoi(dvdtrack));
++                             srcFn = cString::sprintf("%s/index_%02d.vdr", dirname, atoi(dvdtrack));
 +
 +                          if (!CheckFileExistence(srcFn, false)) {
-+                             sprintf(msg, tr("No index-file found. Creating may take minutes. Create one?"));
++                             msg = cString::sprintf(tr("No index-file found. Creating may take minutes. Create one?"));
 +                             if (Interface->Confirm(msg, 300)) {
 +                                Skins.Message(mtStatus, tr("Please wait. Creating index-file..."));
-+                                sprintf (cmd, "speedcontrol -x 999 %s; cd %s && genindex &", DVD_DEVICE, FileName());
++                                cmd = cString::sprintf("speedcontrol -x 999 %s; cd %s && genindex &", DVD_DEVICE, FileName());
 +                                SystemExec(cmd);
 +                                return MOUNT_DVD_ABORT;
 +                                }
 +                             }
 +                          else {
-+                             sprintf(cmd, "ln -sf '%s' '%s/index.vdr'", srcFn, FileName());
++                             cmd = cString::sprintf("ln -sf '%s' '%s/index.vdr'", *srcFn, FileName());
 +                             SystemExec(cmd);
-+                             isyslog("DVD-ARCHIVE: Linking %s/index.vdr -> %s", FileName(), srcFn);
++                             isyslog("DVD-ARCHIVE: Linking %s/index.vdr -> %s", FileName(), *srcFn);
 +                             }
 +                          }
 +                       return MOUNT_DVD_REPLAY;
@@ -17005,7 +17031,7 @@ diff -ruNp vdr-1.6.0-2/recording.c vdr-1.6.0-2-extensions/recording.c
    free(titleBuffer);
    titleBuffer = NULL;
    if (Level < 0 || Level == HierarchyLevels()) {
-@@ -718,7 +1188,14 @@ const char *cRecording::Title(char Delim
+@@ -718,7 +1183,14 @@ const char *cRecording::Title(char Delim
          s++;
       else
          s = name;
@@ -17020,7 +17046,7 @@ diff -ruNp vdr-1.6.0-2/recording.c vdr-1.6.0-2-extensions/recording.c
                              t->tm_mday,
                              t->tm_mon + 1,
                              t->tm_year % 100,
-@@ -728,6 +1205,92 @@ const char *cRecording::Title(char Delim
+@@ -728,6 +1200,92 @@ const char *cRecording::Title(char Delim
                              New,
                              Delimiter,
                              s));
@@ -17063,17 +17089,17 @@ diff -ruNp vdr-1.6.0-2/recording.c vdr-1.6.0-2-extensions/recording.c
 +
 +           if (dvdname) {
 +              if (atoi(dvdname) != 0) {
-+                 char tmp[BUFSIZ];
++                 cString tmp;
 +                 if (Setup.DvdDisplayZeros)
-+                    sprintf(tmp,"%04d", atoi(dvdname));
++                    tmp = cString::sprintf("%04d", atoi(dvdname));
 +                 else {
 +                    int num = atoi(dvdname);
 +                    bool displaySpace = !(Setup.DvdDisplayMode == 1 && oldLength[0] != 0);
 +                    // ugly hack to have 2 spaces instead of one 0 for each place
-+                    sprintf(tmp,"%s%s%s%d", displaySpace && (num < 1000) ? "  " : "",
-+                                            displaySpace && (num < 100)  ? "  " : "",
-+                                            displaySpace && (num < 10)   ? "  " : "",
-+                                            num);
++                    tmp = cString::sprintf("%s%s%s%d", displaySpace && (num < 1000) ? "  " : "",
++                                                       displaySpace && (num < 100)  ? "  " : "",
++                                                       displaySpace && (num < 10)   ? "  " : "",
++                                                       num);
 +                    }
 +                 ((cRecording*)this)->dvdname = strdup(tmp);
 +                 }
@@ -17113,7 +17139,7 @@ diff -ruNp vdr-1.6.0-2/recording.c vdr-1.6.0-2-extensions/recording.c
       // let's not display a trailing '~':
       if (!NewIndicator)
          stripspace(titleBuffer);
-@@ -756,6 +1319,17 @@ const char *cRecording::Title(char Delim
+@@ -756,6 +1314,17 @@ const char *cRecording::Title(char Delim
    return titleBuffer;
  }
  
@@ -17131,7 +17157,7 @@ diff -ruNp vdr-1.6.0-2/recording.c vdr-1.6.0-2-extensions/recording.c
  const char *cRecording::PrefixFileName(char Prefix)
  {
    cString p = PrefixVideoFileName(FileName(), Prefix);
-@@ -864,6 +1438,50 @@ void cRecording::ResetResume(void) const
+@@ -864,6 +1433,50 @@ void cRecording::ResetResume(void) const
    resume = RESUME_NOT_INITIALIZED;
  }
  
@@ -17182,7 +17208,7 @@ diff -ruNp vdr-1.6.0-2/recording.c vdr-1.6.0-2-extensions/recording.c
  // --- cRecordings -----------------------------------------------------------
  
  cRecordings Recordings;
-@@ -876,6 +1494,9 @@ cRecordings::cRecordings(bool Deleted)
+@@ -876,6 +1489,9 @@ cRecordings::cRecordings(bool Deleted)
    deleted = Deleted;
    lastUpdate = 0;
    state = 0;
@@ -17192,7 +17218,7 @@ diff -ruNp vdr-1.6.0-2/recording.c vdr-1.6.0-2-extensions/recording.c
  }
  
  cRecordings::~cRecordings()
-@@ -1154,14 +1775,70 @@ cMark *cMarks::GetNext(int Position)
+@@ -1154,14 +1770,70 @@ cMark *cMarks::GetNext(int Position)
    return NULL;
  }
  
@@ -17263,7 +17289,7 @@ diff -ruNp vdr-1.6.0-2/recording.c vdr-1.6.0-2-extensions/recording.c
       isyslog("executing '%s'", *cmd);
       SystemExec(cmd);
       }
-@@ -1172,7 +1849,9 @@ void cRecordingUserCommand::InvokeComman
+@@ -1172,7 +1844,9 @@ void cRecordingUserCommand::InvokeComman
  //XXX+ somewhere else???
  // --- cIndexFile ------------------------------------------------------------
  
@@ -17273,7 +17299,7 @@ diff -ruNp vdr-1.6.0-2/recording.c vdr-1.6.0-2-extensions/recording.c
  
  // The number of frames to stay off the end in case of time shift:
  #define INDEXSAFETYLIMIT 150 // frames
-@@ -1431,6 +2110,48 @@ cFileName::cFileName(const char *FileNam
+@@ -1431,6 +2105,48 @@ cFileName::cFileName(const char *FileNam
  cFileName::~cFileName()
  {
    Close();
@@ -17305,14 +17331,14 @@ diff -ruNp vdr-1.6.0-2/recording.c vdr-1.6.0-2-extensions/recording.c
 +
 +  if (isOnDvd) {
 +     if (Setup.DvdTrayMode==2 || Setup.DvdTrayMode==3)
-+        sprintf(cmd, "umount %s; eject %s", DVD_DEVICE, DVD_DEVICE);
++        cmd = cString::sprintf("umount %s; eject %s", DVD_DEVICE, DVD_DEVICE);
 +     else
-+        sprintf(cmd, "umount %s", DVD_DEVICE);
++        cmd = cString::sprintf("umount %s", DVD_DEVICE);
 +
 +     SystemExec(cmd);
 +
 +     if (Setup.DvdSpeedLimit > 0) {
-+        sprintf(cmd, "speedcontrol -x 999 %s", DVD_DEVICE);
++        cmd = cString::sprintf("speedcontrol -x 999 %s", DVD_DEVICE);
 +        SystemExec(cmd);
 +        }
 +     }
@@ -17322,7 +17348,7 @@ diff -ruNp vdr-1.6.0-2/recording.c vdr-1.6.0-2-extensions/recording.c
    free(fileName);
  }
  
-@@ -1508,6 +2229,18 @@ cUnbufferedFile *cFileName::SetOffset(in
+@@ -1508,6 +2224,18 @@ cUnbufferedFile *cFileName::SetOffset(in
    return NULL;
  }
  
@@ -17341,7 +17367,7 @@ diff -ruNp vdr-1.6.0-2/recording.c vdr-1.6.0-2-extensions/recording.c
  cUnbufferedFile *cFileName::NextFile(void)
  {
    return SetOffset(fileNumber + 1);
-@@ -1555,3 +2288,113 @@ int ReadFrame(cUnbufferedFile *f, uchar 
+@@ -1555,3 +2283,113 @@ int ReadFrame(cUnbufferedFile *f, uchar 
       LOG_ERROR;
    return r;
  }
@@ -18152,7 +18178,7 @@ diff -ruNp vdr-1.6.0-2/status.h vdr-1.6.0-2-extensions/status.h
  #endif //__STATUS_H
 diff -ruNp vdr-1.6.0-2/submenu.c vdr-1.6.0-2-extensions/submenu.c
 --- vdr-1.6.0-2/submenu.c	1970-01-01 01:00:00.000000000 +0100
-+++ vdr-1.6.0-2-extensions/submenu.c	2008-09-11 13:36:57.000000000 +0200
++++ vdr-1.6.0-2-extensions/submenu.c	2008-09-13 17:44:15.000000000 +0200
 @@ -0,0 +1,952 @@
 +#ifdef USE_SETUP
 +/****************************************************************************
@@ -18601,7 +18627,7 @@ diff -ruNp vdr-1.6.0-2/submenu.c vdr-1.6.0-2-extensions/submenu.c
 +
 +  bool  ok = true;
 +  //Clear previously loaded Menu
-+  if (_fname!= NULL)
++  if (_fname != NULL)
 +     free(_fname);
 +  _menuTree.Clear();
 +  _fname = strdup(fname);
@@ -25228,7 +25254,7 @@ diff -ruNp vdr-1.6.0-2/vdrttxtsubshooks.h vdr-1.6.0-2-extensions/vdrttxtsubshook
 +#endif /* TTXTSUBS */
 diff -ruNp vdr-1.6.0-2/videodir.c vdr-1.6.0-2-extensions/videodir.c
 --- vdr-1.6.0-2/videodir.c	2008-02-16 14:00:03.000000000 +0100
-+++ vdr-1.6.0-2-extensions/videodir.c	2008-09-11 13:36:57.000000000 +0200
++++ vdr-1.6.0-2-extensions/videodir.c	2008-09-13 17:44:15.000000000 +0200
 @@ -19,7 +19,14 @@
  #include "recording.h"
  #include "tools.h"
@@ -25386,8 +25412,8 @@ diff -ruNp vdr-1.6.0-2/videodir.c vdr-1.6.0-2-extensions/videodir.c
 +#ifdef HARDLINK_TEST_ONLY
 +  // Do the hard link to *.vdr_ for testing only
 +  char *name = NULL;
-+  asprintf(&name, "%s_",ActualNewName);
-+  link(ActualOldName, name); 
++  asprintf(&name, "%s_", ActualNewName);
++  link(ActualOldName, name);
 +  free(name);
 +  return false;
 +#endif // HARDLINK_TEST_ONLY

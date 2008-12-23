@@ -18,24 +18,27 @@ echo "$SPACES Version : $GEEX_VERSION" >> $INFO_FILE
 MP_VERSION=`cat /etc/mp_version`
 echo "$SPACES MPlayer Rev : $MP_VERSION" >> $INFO_FILE
 
-# Arch - Kernel                                                                                                                  
-ARCH=`uname -m`                                                                                                                  
-KERNEL=`uname -r`                                                                                                                
-echo "$SPACES Arch - Kernel : $ARCH - $KERNEL" >> $INFO_FILE                                                                     
+# Arch - Kernel
+ARCH=`uname -m`
+KERNEL=`uname -r`
+echo "$SPACES Arch - Kernel : $ARCH - $KERNEL" >> $INFO_FILE
 
 # Screen size
 if [ -f /tmp/xrandr ]
 then
   echo "$SPACES Resolution@Frequency : `grep '*' /tmp/xrandr | sed -n 's/[ \t]\{1,\}//;s/[ \t]\{1,\}/@/;/[0-9]\{1,3\}\.[0-9]\{1,2\}\*/p' | sed -n 's/\*.*//p' | head -n 1`" >> $INFO_FILE
   echo "$SPACES X server version : `sed -n '/X Server/ s/.*\ \(.*\)$/\1/p' /var/log/Xorg.0.log`" >> $INFO_FILE
-  XORG_DRIVER=`sed -n 's,.*drivers//\(.*\)_drv.so,\1,p' /var/log/Xorg.0.log|head -n 1`                               
-  XORG_DRIVER_VERSION=`sed -n "/Module $XORG_DRIVER/{n;p}" /var/log/Xorg.0.log | sed 's/.*=\ \(.*\)/\1/'`  
-  echo "$SPACES Xorg driver : $XORG_DRIVER $XORG_DRIVER_VERSION" >> $INFO_FILE                             
+  XORG_DRIVER=`sed -n 's,.*drivers//\(.*\)_drv.so,\1,p' /var/log/Xorg.0.log|head -n 1`
+  XORG_DRIVER_VERSION=`sed -n "/Module $XORG_DRIVER/{n;p}" /var/log/Xorg.0.log | sed 's/.*=\ \(.*\)/\1/'`
+  echo "$SPACES Xorg driver : $XORG_DRIVER $XORG_DRIVER_VERSION" >> $INFO_FILE
 else
   SCREEN_W=`sed -n "s/screenw=\(.*\)/\1/p" $MP_CONF`
   SCREEN_H=`sed -n "s/screenh=\(.*\)/\1/p" $MP_CONF`
   echo "$SPACES Resolution : $SCREEN_W x $SCREEN_H" >> $INFO_FILE
 fi
+
+# Interface & MAC infos
+echo "$SPACES `ifconfig  | sed -n "s/\([^ ]*\).*dr \([^ ]*\)/Network interface : \1 ( \2 )/p"`" >> $INFO_FILE
 
 # IP - loopback device has no broadcast address
 # Netmask - assuming we have only one interface other than loopback
@@ -43,38 +46,36 @@ echo "$SPACES IP / Netmask : `ifconfig | sed -n \"s/[ \t]\{1,\}inet addr\://;s/B
 
 # Gateway
 IP_GATEWAY=`netstat -rn |sed -n "s/^0.0.0.0[ \t]\{1,\}\([0-9.]\{8,\}\).*/\1/p"`
-echo "$SPACES GATEWAY : $IP_GATEWAY" >> $INFO_FILE
+echo "$SPACES Gateway : $IP_GATEWAY" >> $INFO_FILE
 
 # DNS
 sed -n "s/nameserver /$SPACES DNS : /p" /etc/resolv.conf  >> $INFO_FILE
 
-# MAC - loopback device has no HWaddr
-ETH_DEV=`cat /tmp/ethernet`
-MAC_ADDR=`ifconfig $ETH_DEV | sed -n "s/.*HWaddr \(.*\)/\1/p"`
-echo "$SPACES MAC : $MAC_ADDR ($ETH_DEV)" >> $INFO_FILE
-
 # CPU : get model name
 sed -n "/model name/ s/.*:\ /$SPACES CPU : \1/p" /proc/cpuinfo|head -n 1  >> $INFO_FILE
 
-# CPU : get cpu frequency                                                                                                                                                             
-CPU_NUMBER=0                                                                                                                                                                          
-for i in `sed -n "s/cpu MHz.*:\ \([0-9]*\).*/\1/p" /proc/cpuinfo`                                                                                                                     
-do                                                                                                                                                                                    
-  echo "$SPACES CPU$CPU_NUMBER FREQUENCY : $i Mhz" >> $INFO_FILE                                                                                                                      
-  CPU_NUMBER=$(( $CPU_NUMBER+1 ))                                                                                                                                                     
-done                                                                                                                                                                                  
+# CPU : get cpu frequency
+CPU_NUMBER=0
+for i in `sed -n "s/cpu MHz.*:\ \([0-9]*\).*/\1/p" /proc/cpuinfo`
+do
+  echo "$SPACES CPU$CPU_NUMBER FREQUENCY : $i Mhz" >> $INFO_FILE
+  CPU_NUMBER=$(( $CPU_NUMBER+1 ))
+done
+
+# CPU : get cpu load
+echo "$SPACES CPU load : `sed -n 's/\([0-9]*\.[[0-9]*\ [[0-9]*\.[[0-9]*\ [[0-9]*\.[[0-9]*\).*/\1/p' /proc/loadavg`" >> $INFO_FILE
 
 # Memory : get total memory
 MEMINFO_TOTAL=`sed -n 's/MemTotal:[ \t]*\([0-9]*\).*/\1/p' /proc/meminfo`
-MEMINFO_FREE=`sed -n 's/Active:[ \t]*\([0-9]*\).*/\1/p' /proc/meminfo`                                                                                                                
-echo "$SPACES Memory (used/total) : $(($MEMINFO_FREE/1024)) / $(($MEMINFO_TOTAL/1024)) MB" >> $INFO_FILE                                                                              
+MEMINFO_FREE=`sed -n 's/Active:[ \t]*\([0-9]*\).*/\1/p' /proc/meminfo`
+echo "$SPACES Memory (used/total) : $(($MEMINFO_FREE/1024)) / $(($MEMINFO_TOTAL/1024)) MB" >> $INFO_FILE
 
 # Uptime
 UPTIME=`sed -n 's/\([0-9]*\).*/\1/p' /proc/uptime`
 UPTIME_DAY=$(( $UPTIME / 86400 ))
 UPTIME_HOUR=$(( ($UPTIME - ($UPTIME_DAY * 86400)) / 3600))
-UPTIME_MINUTE=$(( (($UPTIME - ($UPTIME_DAY * 86400) - ($UPTIME_HOUR * 3600)) / 60) ))                                                                
-UPTIME_SECOND=$(( $UPTIME - ($UPTIME_DAY * 86400) - ($UPTIME_HOUR * 3600) - ($UPTIME_MINUTE * 60) ))                                                
+UPTIME_MINUTE=$(( (($UPTIME - ($UPTIME_DAY * 86400) - ($UPTIME_HOUR * 3600)) / 60) ))
+UPTIME_SECOND=$(( $UPTIME - ($UPTIME_DAY * 86400) - ($UPTIME_HOUR * 3600) - ($UPTIME_MINUTE * 60) ))
 echo "$SPACES Uptime : $UPTIME_DAY d $UPTIME_HOUR h $UPTIME_MINUTE m $UPTIME_SECOND s" >> $INFO_FILE
 
 # Boot time
