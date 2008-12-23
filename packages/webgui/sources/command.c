@@ -1,5 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
+#include <unistd.h>
+#include <sys/wait.h>
 #include <string.h>
 #include "command.h"
 #define MPLAYER_FIFO "/var/mp_control"
@@ -17,30 +19,30 @@
 
 /* cmd */
 void cmdSystem(const char *cmd) {
-	if(cmd != NULL) {
+	if(cmd) {
 		execSystemCmd(cmd);
 	}
 }
 
 void cmdMplayer(const char *cmd) {
-	if(cmd != NULL) {
+	if(cmd) {
 		execMplayerCmd(cmd);
 	}
 }
 
 void mplayerMenu(const char *param) {
-	if(param != NULL) {		
+	if(param) {
 		menu(param);
 	}
 }
 
 /* Mplayer commands */
 void playFile(const char *file) {
-	if(file != NULL) {
+	if(file) {
 		char cmd[MAX] = "load '";
 		strcat(cmd, file);
 		strcat(cmd, "'");
-		
+
 		execMplayerCmd(cmd);
 	}
 }
@@ -58,26 +60,30 @@ void menu(const char *value) {
 
 /* System commands */
 void playDir(const char *file) {
-	if(file != NULL) {
-		char cmd[MAX] = "playdir '";
-		strcat(cmd, file);
-		strcat(cmd, "'");
-		execSystemCmd(cmd);
-	}
+	if (!file)
+		return;
+
+	pid_t pid = fork();
+	if (!pid)
+		execlp("playdir", "playdir", file, NULL);
+	else if (pid > 0)
+		wait(NULL);
 }
 
 
 /* Exec functions */
 void execMplayerCmd(const char *cmd) {
-	char systemcommand[MAX];
-	
-	snprintf(systemcommand, sizeof(systemcommand), "echo \"%s\" > %s", cmd, MPLAYER_FIFO);
-	system(systemcommand);
+	FILE *fd = fopen(MPLAYER_FIFO, "w");
+	if (!fd)
+		return;
+
+	fprintf(fd, "%s\n", cmd);
+	fclose(fd);
 }
 
 void execSystemCmd(const char *cmd) {
 	char systemcommand[MAX];
-	
+
 	snprintf(systemcommand, sizeof(systemcommand), "%s", cmd);
 	system(systemcommand);
 }
@@ -85,8 +91,8 @@ void execSystemCmd(const char *cmd) {
 
 /* current dir functions */
 const char * getDir() {
-	char *path = getFileContent(MPLAYER_DIR);
-	
+	const char *path = getFileContent(MPLAYER_DIR);
+
 	if(strlen(path) == 0) {
 		return START_DIR;
 	} else {
@@ -102,17 +108,16 @@ const char * getFileContent(const char *path) {
 	FILE* file = NULL;
 	char *dir;
 	char buff[MAX];
-	
-	
+
         if(!(file = fopen(path,"r"))) {
 		return "";
         } else {
 		fgets(buff, MAX, file);
 		fclose(file);
-		
+
 		dir = malloc(MAX * sizeof(buff));
 		strcpy(dir, buff);
-		
+
 		return dir;
 	}
 }

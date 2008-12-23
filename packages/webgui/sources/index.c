@@ -39,40 +39,40 @@ int isInternetExplorerUserAgent();
 int main(int argc, char *argv[]) {
 	/* Initialize the CGI and send out an HTTP header: */
 	int res = cgi_init();
-	
+
 	/* Was there an error initializing the CGI??? */
 	if(res != CGIERR_NONE) {
 		printf("Error # %d: %s<p>\n", res, cgi_strerror(res));
 		exit(0);
 	}
-	
+
 	/* get parameter */
 	const char *cgi_level_1 = getLevel1(cgi_getentrystr("l1"));
 	const char *cgi_level_2 = getLevel1(cgi_getentrystr("l2"));
-	
+
 	cmdMplayer(cgi_getentrystr("mplayer"));
 	cmdSystem(cgi_getentrystr("system"));
 	mplayerMenu(cgi_getentrystr("menu"));
-	
+
 	printPageHead();
 	printMenu1(cgi_level_1);
 	printMenu2(cgi_level_2);
 	printPageFoot();
-	
+
 	/* Close up the CGI: */
 	cgi_quit();
-	
+
 	return EXIT_SUCCESS;
 }
 
 const char *getLevel1(const char *cgi_param) {
-	if(cgi_param != NULL) {
+	if(cgi_param) {
 		setMenuLevel1(cgi_param);
-		
+
 		return cgi_param;
 	} else {
 		const char *l1 = getMenuLevel1();
-		if(l1 != NULL) {
+		if(l1) {
 			return l1;
 		} else {
 			setMenuLevel1("player");
@@ -82,13 +82,13 @@ const char *getLevel1(const char *cgi_param) {
 }
 
 const char *getLevel2(const char *cgi_param) {
-	if(cgi_param != NULL) {
+	if(cgi_param) {
 		setMenuLevel2(cgi_param);
-		
+
 		return cgi_param;
 	} else {
 		const char *l2 = getMenuLevel2();
-		if(l2 != NULL) {
+		if(l2) {
 			return l2;
 		} else {
 			setMenuLevel2("browser");
@@ -104,7 +104,7 @@ void printMenu1(const char *l1) {
 	} else {
 		printf("\t\t\t<a class=\"menuL1Element\" href=\"#nothing\">PLAYER</a>\n");
 	}
-	
+
 	if(strcmp(l1, "system")) {
 		printf("\t\t\t<a class=\"menuL1Element\" href=\"/cgi-bin/index.cgi?l1=system\">SYSTEM</a>\n");
 	} else {
@@ -124,7 +124,7 @@ void printMenu2player(const char *l2) {
 	} else {
 		printf("\t\t\t<a class=\"menuL2Element\" href=\"#nothing\">BROWSER</a>\n");
 	}
-	
+
 	if(strcmp(l2, "control")) {
 		printf("\t\t\t<a class=\"menuL2Element\" href=\"/cgi-bin/index.cgi?l2=control\">CONTROL</a>\n");
 	} else {
@@ -153,7 +153,7 @@ void printPageSystem() {
 }
 
 void printPagePlayer() {
-	const char *cgi_dir = getCurrentDir(cgi_getentrystr("dir"));		
+	const char *cgi_dir = getCurrentDir(cgi_getentrystr("dir"));
 	const char *cgi_play_file = cgi_getentrystr("play_file");
 	const char *cgi_play_dir = cgi_getentrystr("play_dir");
 	const char *cgi_search = cgi_getentrystr("search");
