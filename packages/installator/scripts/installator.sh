@@ -756,7 +756,7 @@ umount di
 rmdir di
 
 # Eject CD if it was the boot media
-[ -n "$CDROM" ] && eject -s &
+[ -n "$CDROM" ] && eject -s /dev/cdrom &
 
 # Prompt to view logging file if in debugging mode
 [ $DEBUG = "yes" ] && dialog --aspect 15 --backtitle "$BACKTITLE" 
