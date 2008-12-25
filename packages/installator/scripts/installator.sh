@@ -410,10 +410,10 @@ get_uuid () {
   udevadm settle --timeout=180
 
   DEV_REALNAME=`ls -l $1 | sed "s/.*-> \(.*\)/\1/"`
-  for LOC_DEV in `ls /dev/storage/by-uuid/*`; do
+  for LOC_DEV in `ls /dev/disk/by-uuid/*`; do
     NAME=`ls -l "$LOC_DEV" | sed "s/.*-> \(.*\)/\1/" | sed 's%../../%%'`
     if [ "$NAME" = "$DEV_REALNAME" ]; then
-      LOC_UUID="`echo $LOC_DEV | sed 's%/dev/storage/by-uuid/%%'`"
+      LOC_UUID="`echo $LOC_DEV | sed 's%/dev/disk/by-uuid/%%'`"
       dbglg "get_uuid() returned \"$LOC_UUID\""
       echo $LOC_UUID
       break
