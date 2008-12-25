@@ -397,6 +397,9 @@ main (int argc, char **argv)
   int num_devices;
   int i;
 
+  if (argc >= 2 && !strcmp (argv[1], "-d"))
+    daemon (0, 0);
+
   /* connect to D-BUS */
   dbus_error_init (&error);
   conn = dbus_bus_get (DBUS_BUS_SYSTEM, &error);
