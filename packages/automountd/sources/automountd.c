@@ -142,17 +142,26 @@ volume_append_name (volume_t *v, char *str)
 static void
 volume_add (volume_t *v, const char *udi)
 {
+  char cmd[1024];
+
   if (!v || !udi)
     return;
 
   g_hash_table_insert (devices, (gpointer) strdup (udi), (gpointer) v);
-  printf ("Mounting %s in '%s'\n", v->device, v->name);
+
+  memset (cmd, '\0', sizeof (cmd));
+  snprintf (cmd, sizeof (cmd), "/usr/bin/hmount '%s' '%s' '%s'",
+            v->type, v->device, v->name);
+
+  printf ("[automountd] Executing: %s\n", cmd);
+  system (cmd);
 }
 
 static void
 volume_remove (const char *udi)
 {
   volume_t *v;
+  char cmd[1024];
 
   if (!udi)
     return;
@@ -161,7 +170,12 @@ volume_remove (const char *udi)
   if (!v)
     return;
 
-  printf ("Un-Mounting %s from '%s'\n", v->device, v->name);
+  memset (cmd, '\0', sizeof (cmd));
+  snprintf (cmd, sizeof (cmd), "/usr/bin/humount '%s' '%s' '%s'",
+            v->type, v->device, v->name);
+
+  printf ("[automountd] Executing: %s\n", cmd);
+  system (cmd);
   g_hash_table_remove (devices, udi);
 }
 
