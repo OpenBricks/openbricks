@@ -419,9 +419,6 @@ get_uuid () {
       break
     fi
   done
-
-  # ensure UDEV hasn't remounted the install partition
-  umount /dev/$NAME > /dev/null 2>&1
 }
 
 # Setup syslinux.cfg file in the /tmp dir
