@@ -1,6 +1,5 @@
 CC ?= gcc
 CFLAGS ?= -Wall -g
-LDFLAGS = -liconv
 
 HAL_CFLAGS        = $(shell pkg-config --cflags hal-storage)
 HAL_LDFLAGS       = $(shell pkg-config --libs hal-storage)
