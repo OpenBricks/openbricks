@@ -62,6 +62,13 @@ boot_from_hdd () {
   done
 }
 
+get_device_from_uuid () {
+  if test -f "/dev/disk/by-uuid/${UUID}"; then
+    BOOT_DEV_NAME=`ls -l /dev/disk/by-uuid/${UUID} | sed 's#.*\.\.\/##'`
+    BOOT_DEV=/dev/$BOOT_DEV_NAME
+  fi
+}
+
 echo > /proc/sys/kernel/hotplug
 udevd --daemon
 udevadm trigger
@@ -79,12 +86,9 @@ for arg in $(cat /proc/cmdline); do
       case $BOOT in
         UUID=*)
           # Grab real device name from UUID symlink
-          if test -f "/dev/disk/by-uuid/${BOOT#UUID=}"; then
-            BOOT_DEV_NAME=`ls -l /dev/disk/by-uuid/${BOOT#UUID=} | \
-                            sed 's#.*\.\.\/##'`
-            BOOT_DEV=/dev/$BOOT_DEV_NAME
-          fi
+          UUID="${BOOT#UUID=}"
           BOOT=hdd
+          get_device_from_uuid
           ;;
         *)
           if [ "$BOOT" != cdrom -a "$BOOT" != nfs -a "$BOOT" != smb ]; then
