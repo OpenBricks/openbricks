@@ -1,11 +1,6 @@
 #!/bin/sh
 
-# Enable debug log based on linuxrc's DEBUG variable.
-if [ $DEBUG = "yes" ]; then
-  LOGFILE=/tmp/install.log
-else
-  LOGFILE=/dev/null
-fi
+LOGFILE=/tmp/install.log
 
 # Acts just like echo cmd, with automatic redirection
 dbglg () {
