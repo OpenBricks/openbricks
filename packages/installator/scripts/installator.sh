@@ -539,8 +539,7 @@ install_grub (){
 
   dbglg "GRUB setup is: grub --batch --no-floppy --device-map=$DEVICE_MAP"
   dbglg "root $ROOTDEV"
-  dbglg "install --stage2=$GRUBDIR/stage2_single $GRUBPREFIX/stage1 $ROOTDEV" \ 
-    "$GRUBPREFIX/stage2_single p $GRUBPREFIX/single.lst"
+  dbglg "install --stage2=$GRUBDIR/stage2_single $GRUBPREFIX/stage1 $ROOTDEV $GRUBPREFIX/stage2_single p $GRUBPREFIX/single.lst"
 
   grub --batch --no-floppy --device-map=$DEVICE_MAP <<EOF
 root $ROOTDEV
