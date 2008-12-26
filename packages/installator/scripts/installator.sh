@@ -686,6 +686,7 @@ if [ "`cat /sys/block/$DISK/removable`" = 1 ]; then
 
   # Since removable USB Flash: makebootfat/syslinux
   install_makebootfat "/dev/$DISK" "$GEEXBOX"
+  DEV="/dev/$DISK"
 
 else
 
