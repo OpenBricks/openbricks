@@ -489,7 +489,7 @@ install_makebootfat () {
   mkdir -p "$INSTALL_DISK"
   mount -t vfat "$INSTALL_DEV" "$INSTALL_DISK"
   get_uuid "$INSTALL_DEV"
-  sed -i -e "s/boot=hdd/boot=UUID=${DEV_UUID}/g" "$INSTALL_DISK/syslinux.cfg"
+  sed -i -e "s/boot=hdd/boot=UUID=${DEV_UUID} vfat/g" "$INSTALL_DISK/syslinux.cfg"
   umount "$INSTALL_DISK"
 }
 
