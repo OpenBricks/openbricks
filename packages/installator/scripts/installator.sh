@@ -409,7 +409,7 @@ get_uuid () {
   udevadm trigger
   udevadm settle --timeout=180
 
-  DEV_REALNAME=`ls -l $1 | sed "s/.*-> \(.*\)/\1/"`
+  DEV_REALNAME=`echo ${1##/dev/}`
   for LOC_DEV in `ls /dev/disk/by-uuid/*`; do
     NAME=`ls -l "$LOC_DEV" | sed "s/.*-> \(.*\)/\1/" | sed 's%../../%%'`
     if [ "$NAME" = "$DEV_REALNAME" ]; then
