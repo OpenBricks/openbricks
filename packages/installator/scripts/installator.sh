@@ -415,7 +415,7 @@ get_uuid () {
     if [ "$NAME" = "$DEV_REALNAME" ]; then
       LOC_UUID="`echo $LOC_DEV | sed 's%/dev/disk/by-uuid/%%'`"
       dbglg "get_uuid() returned \"$LOC_UUID\""
-      echo $LOC_UUID
+      DEV_UUID="$LOC_UUID"
       break
     fi
   done
@@ -712,7 +712,7 @@ else
 
   format_if_needed "$MKFS_TYPE" "$DEV"
 
-  DEV_UUID=`get_uuid $DEV`
+  get_uuid "$DEV"
 
   # Attempt to mount the prepared partition using the given partition fs type
   dbglg "mount -t $MKFS_TYPE $DEV di"
