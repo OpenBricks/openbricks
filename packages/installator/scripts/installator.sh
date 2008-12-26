@@ -652,6 +652,9 @@ EOF
 VERSION=`cat VERSION`
 BACKTITLE="GeeXboX $VERSION installator"
 
+# should not be present in install mode, but in case of ...
+killall -9 automountd >/dev/null 2>&1
+
 setup_lang
 
 # disable kernel messages to avoid screen corruption
