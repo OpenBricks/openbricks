@@ -420,7 +420,7 @@ get_uuid () {
 # $1 is GEEXBOX dir
 setup_syslinux () {
   # Setup syslinux.cfg file
-  sed -e "s/boot=cdrom/boot=hdd/g" -e "s%^#CFG#%%" \
+  sed -e "s/boot=cdrom/boot=UUID=${DEV_UUID}/g" -e "s%^#CFG#%%" \
     "$1/boot/isolinux.cfg" > /tmp/syslinux.cfg
 
   dbglg "*** Start Syslinux.cfg ***"
