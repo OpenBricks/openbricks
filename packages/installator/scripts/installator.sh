@@ -420,7 +420,7 @@ get_uuid () {
 # $1 is GEEXBOX dir
 setup_syslinux () {
   # Setup syslinux.cfg file
-  sed -e "s/boot=cdrom/boot=UUID=${DEV_UUID}/g" -e "s%^#CFG#%%" \
+  sed -e "s/boot=cdrom/boot=hdd/g" -e "s%^#CFG#%%" \
     "$1/boot/isolinux.cfg" > /tmp/syslinux.cfg
 
   dbglg "*** Start Syslinux.cfg ***"
@@ -483,6 +483,14 @@ install_makebootfat () {
   # Prompt user to reinsert USB device, to allow automounting
   dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_USB_REINSERT" \
     --msgbox "$MSG_USB_REINSERT_DESC" 0 0
+
+  INSTALL_DISK="/install"
+  INSTALL_DEV="${LOC_DISK}1"
+  mkdir -p "$INSTALL_DISK"
+  mount -t vfat "$INSTALL_DEV" "$INSTALL_DISK"
+  get_uuid "$INSTALL_DEV"
+  sed -i -e "s/boot=hdd/boot=UUID=${DEV_UUID}/g" "$INSTALL_DISK/syslinux.cfg"
+  umount "$INSTALL_DISK"
 }
 
 # Installs and configures the GRUB bootloader
