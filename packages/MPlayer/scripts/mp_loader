@@ -6,6 +6,7 @@
 cp_fifo=/var/cp_fifo
 mp_fifo=/var/mp_control
 
+filter_cdvdimg=/etc/cdvdimg_ext
 filter_file=/etc/file_ext
 filter_playlist=/etc/list_ext
 filter_image=/etc/img_ext
@@ -45,6 +46,15 @@ if test -e "$file"; then
         playdir "$file"
       elif [ "$key" = "l" ]; then
         playdir "$file"
+      elif `grep -iq "^$ext\$" $filter_cdvdimg` && test -e /var/mount_cdvdimg ; then
+        mkdir -p /mnt/cdvdimg
+        `cat /proc/mounts | grep -q fuseiso` && umount /mnt/cdvdimg
+        if `fuseiso -n "$file" /mnt/cdvdimg`; then
+          echo /mnt/cdvdimg/ > /tmp/mp_current_path
+          echo -e "set_menu open_file\nmenu show" > $mp_fifo
+        else
+          echo -e "menu hide\nloadfile \"$escfile\" $append" > $mp_fifo
+        fi
       else
         echo -e "menu hide\nloadfile \"$escfile\" $append" > $mp_fifo
       fi
