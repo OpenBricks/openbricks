@@ -485,12 +485,19 @@ install_makebootfat () {
     --msgbox "$MSG_USB_REINSERT_DESC" 0 0
 
   INSTALL_DISK="/install"
-  INSTALL_DEV="${LOC_DISK}1"
   mkdir -p "$INSTALL_DISK"
-  mount -t vfat "$INSTALL_DEV" "$INSTALL_DISK"
-  get_uuid "$INSTALL_DEV"
-  sed -i -e "s/boot=hdd/boot=UUID=${DEV_UUID} vfat/g" "$INSTALL_DISK/syslinux.cfg"
-  umount "$INSTALL_DISK"
+  for i in 1 2 3 4 5 6 7 8 9; do
+    INSTALL_DEV="${LOC_DISK}$i"
+    [ ! -b $INSTALL_DEV ] && continue
+    mount -t vfat "$INSTALL_DEV" "$INSTALL_DISK" || continue
+    if [ -e "$INSTALL_DISK/syslinux.cfg" ]; then
+      get_uuid "$INSTALL_DEV"
+      sed -i -e "s/boot=hdd/boot=UUID=${DEV_UUID} vfat/g" "$INSTALL_DISK/syslinux.cfg"
+      umount "$INSTALL_DISK"
+      break
+    fi
+    umount "$INSTALL_DISK"
+  done
 }
 
 # Installs and configures the GRUB bootloader
