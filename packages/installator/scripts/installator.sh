@@ -470,6 +470,8 @@ install_makebootfat () {
 
   dbglg "BTYPE is $BTYPE MKBOOTFAT_OPTS is $MKBOOTFAT_OPTS SRCDIR is $SRCDIR"
 
+  dialog --infobox "$MSG_INSTALLING_WAIT" 0 0
+
   # Copy files to disk in correct places and install boot loader
   # Use -x/-c to copy those files to the root dir of the FS instead
   # of the original boot directory
@@ -740,6 +742,8 @@ else
     rmdir di
     exit 1
   fi
+
+  dialog --infobox "$MSG_INSTALLING_WAIT" 0 0
 
   # Cleanup if was left in a messy state previously- remove previous installs
   rm -rf di/GEEXBOX 2>&1 >> $LOGFILE
