@@ -3,11 +3,83 @@
 /bin/busybox test ! -e /proc/cpuinfo && /bin/busybox mount -t proc none /proc
 /bin/busybox test ! -e /bin/cp && /bin/busybox --install -s
 
-echo "****"
-echo "**** ERROR: can't access GeeXboX second stage system !"
-echo "**** If booting from CD your CD drive is probably not recognized"
-echo "**** If booting from Network your NIC driver is probably not supported"
-echo "****"
+for arg in $(cat /proc/cmdline); do
+  case $arg in
+    boot=*)
+      BOOT="${arg#boot=}"
+      case $BOOT in
+        UUID=*)
+          # Grab real device name from UUID symlink
+          UUID="${BOOT#UUID=}"
+          BOOT=hdd
+          ;;
+        *)
+          if [ "$BOOT" != cdrom -a "$BOOT" != nfs -a "$BOOT" != smb ]; then
+            BOOT_DEV=$BOOT
+            BOOT=hdd
+          fi
+          ;;
+      esac
+      ;;
+    nfsroot=*)
+      NFS="${arg#nfsroot=}"
+      ;;
+    smbroot=*)
+      SMB="${arg#smbroot=}"
+      ;;
+    smbuser=*)
+      SMBUSER="${arg#smbuser=}"
+      ;;
+    smbpass=*)
+      SMBPASS="${arg#smbpass=}"
+  esac
+done
+
+echo "***********************************************************"
+echo "**** ERROR: can't access GeeXboX second stage system ! ****"
+echo "***********************************************************"
+echo ""
+
+case "$BOOT" in
+  cdrom)
+    echo "# Guess you're booting from CD-ROM ..."
+    echo "#  Possible error reasons:"
+    echo "#    - Your CD drive is not recognized."
+    echo "#    - This is not a valid GeeXboX CD-ROM."
+    echo "#  List of available devices:"
+    for id in /dev/disk/by-uuid/*; do
+       dev=`ls -l "/dev/disk/by-uuid/$id" | sed 's#.*\.\.\/##'`
+       echo "#    - /dev/$dev using $id"
+    done
+    ;;
+  hdd)
+    echo "# Guess you're booting from HDD ..."
+    echo "#  Possible error reasons:"
+    echo "#    - Your HDD is not recognized (unlikely)."
+    echo "#    - Boot argument was not set to use the right partition."
+    echo "#  Current Boot configuration:"
+    echo "#    - Boot Device (not mandatory) = $BOOT_DEV"
+    echo "#    - Boot UUID = $UUID"
+    ;;
+  nfs)
+    echo "# Guess you're booting from network using NFS ..."
+    echo "#  Possible error reasons:"
+    echo "#    - Your network driver is not available."
+    echo "#    - Your NFS server configuration is wrong."
+    echo "#  Current NFS configuration:"
+    echo "#    - nfsroot = $NFS"
+    ;;
+  smb)
+    echo "# Guess you're booting from network using Samba ..."
+    echo "#  Possible error reasons:"
+    echo "#    - Your network driver is not available."
+    echo "#    - Your Samba server configuration is wrong."
+    echo "#  Current Samba configuration:"
+    echo "#    - smbroot = $SMB"
+    echo "#    - smbuser = $SMBUSER"
+    echo "#    - smbpass = $SMBPASS"
+    ;;
+esac
 
 /bin/sh
 
