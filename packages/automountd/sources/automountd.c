@@ -179,6 +179,26 @@ volume_remove (const char *udi)
   g_hash_table_remove (devices, udi);
 }
 
+static int
+disk_get_number (int major, int minor)
+{
+  switch (major)
+  {
+  case 3: /* Primary IDE interface */
+    return (minor <= 63) ? 1 : 2;
+  case 8: /* SCSI disk devices */
+    return ((minor / 16) + 1);
+  case 11: /* SCSI CD-ROM devices */
+    return (minor + 1);
+  case 22: /* Secondary IDE interface */
+    return (minor <= 63) ? 3 : 4;
+  default:
+    break;
+  }
+
+  return 0;
+}
+
 static void
 add_partition (LibHalVolume *vol, const char *udi)
 {
@@ -188,8 +208,8 @@ add_partition (LibHalVolume *vol, const char *udi)
   LibHalDriveBus bus;
   LibHalVolumeUsage usage;
   const char *parent_udi;
-  char part[16];
-  int i;
+  char disk[4], part[16];
+  int i, nb;
 
   if (!vol || !udi)
     return;
@@ -226,6 +246,13 @@ add_partition (LibHalVolume *vol, const char *udi)
       volume_append_name (v, (char *) drv_bus_mapping[i].name);
       break;
     }
+
+  /* append disk's number to differenciate twice the same hardware */
+  nb = disk_get_number (libhal_volume_get_device_major (vol),
+                        libhal_volume_get_device_minor (vol));
+  memset (disk, '\0', sizeof (disk));
+  snprintf (disk, sizeof (disk), "#%d", nb);
+  volume_append_name (v, disk);
 
   /* get drive's type */
   for (i = 0; drv_type_mapping[i].name; i++)
@@ -265,7 +292,8 @@ add_disc (LibHalVolume *vol, const char *udi)
   LibHalDrive *drv;
   LibHalDriveBus bus;
   const char *parent_udi;
-  int i;
+  char cd[4];
+  int i, nb;
 
   if (!vol || !udi)
     return;
@@ -294,6 +322,13 @@ add_disc (LibHalVolume *vol, const char *udi)
       volume_append_name (v, (char *) drv_bus_mapping[i].name);
       break;
     }
+
+  /* append disk's number to differenciate twice the same hardware */
+  nb = disk_get_number (libhal_volume_get_device_major (vol),
+                        libhal_volume_get_device_minor (vol));
+  memset (cd, '\0', sizeof (cd));
+  snprintf (cd, sizeof (cd), "#%d", nb);
+  volume_append_name (v, cd);
 
   /* check for disc property: CDDA, VCD, SVCD, DVD, Data CD/DVD */
   for (i = 0; vol_disc_mapping[i].name; i++)
