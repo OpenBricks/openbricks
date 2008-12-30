@@ -482,6 +482,9 @@ install_makebootfat () {
     -c /tmp/help.msg -c /tmp/splash.png -c /tmp/ldlinux.sys \
     /tmp/src 2>&1 >> $LOGFILE
 
+  # Flush file system buffers
+  sync
+
   # Prompt user to reinsert USB device, to allow automounting
   dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_USB_REINSERT" \
     --msgbox "$MSG_USB_REINSERT_DESC" 0 0
