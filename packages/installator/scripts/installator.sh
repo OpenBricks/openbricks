@@ -491,7 +491,7 @@ install_makebootfat () {
 
   INSTALL_DISK="/install"
   mkdir -p "$INSTALL_DISK"
-  for i in 1 2 3 4 5 6 7 8 9; do
+  for i in "" 1 2 3 4 5 6 7 8 9; do
     INSTALL_DEV="${LOC_DISK}$i"
     [ ! -b $INSTALL_DEV ] && continue
     mount -t vfat "$INSTALL_DEV" "$INSTALL_DISK" || continue
