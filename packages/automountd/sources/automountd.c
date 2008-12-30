@@ -200,7 +200,7 @@ disk_get_number (int major, int minor)
 }
 
 static void
-add_partition (LibHalVolume *vol, const char *udi)
+add_hdd (LibHalVolume *vol, const char *udi)
 {
   volume_t *v;
   LibHalDrive *drv;
@@ -397,11 +397,10 @@ check_hal_volume (const char *udi)
   if (!vol)
     return;
 
-  /* check for physical HDD-like partition */
-  if (libhal_volume_is_partition (vol))
-    add_partition (vol, udi);
-  else if (libhal_volume_is_disc (vol))
+  if (libhal_volume_is_disc (vol))
     add_disc (vol, udi);
+  else
+    add_hdd (vol, udi);
 
   libhal_volume_free (vol);
 }
