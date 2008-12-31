@@ -380,6 +380,8 @@ format_if_needed () {
       fi
     else
       dbglg "$MKFS $MKFS_OPT \"$LOC_DEV\""
+      dialog --backtitle "$BACKTITLE" \
+        --infobox "$MSG_INSTALL_DEV_FORMATTING_WAIT_BEGIN '$LOC_DEV'$MSG_INSTALL_DEV_FORMATTING_WAIT_END" 0 0
       $MKFS $MKFS_OPT "$LOC_DEV" >> $LOGFILE 2>&1
     fi
 
