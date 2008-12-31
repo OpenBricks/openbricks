@@ -118,15 +118,15 @@ append_grub_conf () {
 setup_grub () {
   # conditional HDTV menu entry if X.org is found
   if [ "$4" = yes ]; then
-    append_grub_conf $1 "GeeXboX HDTV" hdtv "" ""
-    append_grub_conf $1 "GeeXboX HDTV (debug)" hdtv debugging ""
-    append_grub_conf $1 "GeeXboX HDTV (reconfigure)" hdtv "" configure
+    append_grub_conf $1 "GeeXboX HDTV $VERSION" hdtv "" ""
+    append_grub_conf $1 "GeeXboX HDTV $VERSION (debug)" hdtv debugging ""
+    append_grub_conf $1 "GeeXboX HDTV $VERSION (reconfigure)" hdtv "" configure
   fi
 
   # add console mode menu
-  append_grub_conf $1 "GeeXboX" "" "" ""
-  append_grub_conf $1 "GeeXboX (debug)" "" debugging ""
-  append_grub_conf $1 "GeeXboX (reconfigure)" "" "" configure
+  append_grub_conf $1 "GeeXboX $VERSION " "" "" ""
+  append_grub_conf $1 "GeeXboX $VERSION (debug)" "" debugging ""
+  append_grub_conf $1 "GeeXboX $VERSION (reconfigure)" "" "" configure
 
   # put default options
   update_grub_conf_bootargs $1 lang `cmdline_default lang en`
