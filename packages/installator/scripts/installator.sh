@@ -585,6 +585,17 @@ EOF
     dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_BOOTLOADER" \
       --msgbox "\n${MSG_LOADER_ERROR}\n" 0 0 1>&2
   fi
+
+  # Special care for removable devices
+  # if one intend to boot from removable disk, it'll be considered as
+  # primary disk for BIOS
+  TMP_DISK=`echo "$LOC_DEV" | sed -e 's%\([sh]d[a-z]\)[0-9]*$%\1%'`
+  TMP_DISKNAME="${TMP_DISK#/dev/}"
+  if [ "`cat /sys/block/$TMP_DISKNAME/removable`" = 1 ]; then
+     for file in menu.lst single.lst; do
+       [ -f "$GRUBDIR/$file" ] && sed -i 's%(hd[0-9],%(hd0,%g' "$GRUBDIR/$file"
+     done
+  fi
 }
 
 VERSION=`cat VERSION`
