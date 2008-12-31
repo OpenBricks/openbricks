@@ -688,7 +688,7 @@ rmdir di
 [ -n "$CDROM" ] && eject -s /dev/cdrom &
 
 # Prompt to view logging file
-dialog --aspect 15 --backtitle "$BACKTITLE" 
+dialog --aspect 15 --backtitle "$BACKTITLE" \
                              --title "$MSG_LOG" --defaultno \
                              --yesno "$MSG_LOG_DESC" 0 0 \
                              && dialog --textbox $LOGFILE 0 0
