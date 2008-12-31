@@ -503,31 +503,31 @@ EOF
   # Detect others OS and ask for MBR only in the case where GeeXboX
   # is not installed on a removable device.
   if [ "`cat /sys/block/$TMP_DISKNAME/removable`" = 0 ]; then
-  oslist=$(detect_os)
+    oslist=$(detect_os)
 
-  supported_os_list=""
-  saveifs=$IFS
-  IFS='
+    supported_os_list=""
+    saveifs=$IFS
+    IFS='
 '
-  for os in $oslist; do
-    title=$(echo "$os" | cut -d: -f2)
-    if [ -n "$supported_os_list" ]; then
-      supported_os_list="$supported_os_list, $title"
-    else
-      supported_os_list="$title"
-    fi
-  done
-  IFS=$saveifs
+    for os in $oslist; do
+      title=$(echo "$os" | cut -d: -f2)
+      if [ -n "$supported_os_list" ]; then
+        supported_os_list="$supported_os_list, $title"
+      else
+        supported_os_list="$title"
+      fi
+    done
+    IFS=$saveifs
 
-  if [ -n "$supported_os_list" ]; then
-    dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_BOOTLOADER" \
-      --defaultno --yesno "\n'$LOC_DEV' $MSG_LOADER_MULTIBOOT_BEGIN $supported_os_list\n${MSG_LOADER_MULTIBOOT_END}\n" 0 0 1>&2 \
-      && MBR=yes
-  else
-    dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_BOOTLOADER" \
-      --yesno "\n'$LOC_DEV' ${MSG_LOADER_NONE}\n" 0 0 1>&2 \
-      && MBR=yes
-  fi
+    if [ -n "$supported_os_list" ]; then
+      dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_BOOTLOADER" \
+        --defaultno --yesno "\n'$LOC_DEV' $MSG_LOADER_MULTIBOOT_BEGIN $supported_os_list\n${MSG_LOADER_MULTIBOOT_END}\n" 0 0 1>&2 \
+        && MBR=yes
+    else
+      dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_BOOTLOADER" \
+        --yesno "\n'$LOC_DEV' ${MSG_LOADER_NONE}\n" 0 0 1>&2 \
+        && MBR=yes
+    fi
   else
     oslist=
     MBR=yes
