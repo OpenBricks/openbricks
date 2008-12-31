@@ -680,7 +680,7 @@ if [ $ret -ne 0 ]; then
   exit 1
 fi
 
-dialog --infobox "$MSG_INSTALLING_WAIT" 0 0
+dialog --backtitle "$BACKTITLE" --infobox "$MSG_INSTALLING_WAIT" 0 0
 
 # Cleanup if was left in a messy state previously- remove previous installs
 rm -rf di/GEEXBOX 2>&1 >> $LOGFILE
