@@ -625,8 +625,6 @@ else
   USE_XORG=no
 fi
 
-  # Fixed disk: GRUB
-
   # For now assume ext2/3, but may extend to FAT later
   #PART_MSG="$MSG_DISK_PART_FAT"
   PART_MSG="$MSG_DISK_PART_EXT"
