@@ -115,7 +115,10 @@ append_grub_conf () {
 # Setup of GRUB config file using initial base config file ($1) and the
 # boot device UUID ($2) and boot device GRUB descriptor (ROOTDEV as $3)
 # with additional entries for Xorg if appropriate (USE_XORG as $4)
+# and an option according to the type of FS ($5).
 setup_grub () {
+  local OPT_FS_TYPE
+
   # conditional HDTV menu entry if X.org is found
   if [ "$4" = yes ]; then
     append_grub_conf $1 "GeeXboX HDTV $VERSION" hdtv "" ""
@@ -136,7 +139,8 @@ setup_grub () {
 
   # now setup installation specific options
   sed -i "s/_ROOTDEV_/$3/g" $1
-  sed -i "s/_DEVNAME_/UUID=${2}/g" $1
+  [ "$5" = vfat ] && OPT_FS_TYPE=" vfat"
+  sed -i "s/_DEVNAME_/UUID=${2}$OPT_FS_TYPE/g" $1
 }
 
 # Returns the value to use for a given variable ($1) as was found
@@ -433,6 +437,7 @@ setup_syslinux () {
 # Installs and configures the GRUB bootloader
 # $1 is DEV
 # $2 is USE_XORG
+# $3 is MKFS_TYPE
 install_grub (){
   local ROOTDEV
   local GRUBPREFIX=/boot/grub
@@ -441,6 +446,7 @@ install_grub (){
   local SPLASHIMAGE="$GRUBPREFIX/grub-splash.xpm.gz"
   local LOC_DEV=$1
   local LOC_USE_XORG=$2
+  local LOC_MKFS_TYPE=$3
 
   TMP_DISK=`echo "$LOC_DEV" | sed -e 's%\([sh]d[a-z]\)[0-9]*$%\1%'`
   TMP_DISKNAME="${TMP_DISK#/dev/}"
@@ -497,7 +503,7 @@ EOF
   # to retrieve the right UUID with vfat.
   get_uuid "$LOC_DEV"
 
-  setup_grub $GRUBDIR/single.lst $DEV_UUID $ROOTDEV $LOC_USE_XORG
+  setup_grub $GRUBDIR/single.lst $DEV_UUID $ROOTDEV $LOC_USE_XORG $LOC_MKFS_TYPE
 
   dbglg "*** Start GRUB Single.lst ***"
   cat $GRUBDIR/single.lst >> $LOGFILE
@@ -589,7 +595,7 @@ EOF
     done
     IFS=$saveifs
 
-    setup_grub $GRUBDIR/menu.lst $DEV_UUID $ROOTDEV $LOC_USE_XORG
+    setup_grub $GRUBDIR/menu.lst $DEV_UUID $ROOTDEV $LOC_USE_XORG $LOC_MKFS_TYPE
 
     dbglg "*** Start GRUB menu.lst ***"
     cat $GRUBDIR/menu.lst >> $LOGFILE
@@ -690,7 +696,7 @@ cp -a "$GEEXBOX" di/GEEXBOX >> $LOGFILE 2>&1
 # Adjust the location of core boot files to suit non-CDROM install
 mv di/GEEXBOX/boot/vmlinuz di/GEEXBOX/boot/initrd.gz di/
 
-install_grub "$DEV" "$USE_XORG"
+install_grub "$DEV" "$USE_XORG" "$MKFS_TYPE"
 
 # Remove unneeded boot dir from mounted install drive
 rm -rf di/GEEXBOX/boot
