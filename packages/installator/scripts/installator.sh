@@ -433,8 +433,7 @@ setup_syslinux () {
 # Installs and configures the GRUB bootloader
 # $1 is DEV_UUID
 # $2 is DEV
-# $3 is TYPE
-# $4 is USE_XORG
+# $3 is USE_XORG
 install_grub (){
   local ROOTDEV
   local GRUBPREFIX=/boot/grub
