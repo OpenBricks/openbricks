@@ -428,83 +428,6 @@ setup_syslinux () {
   dbglg "*** End Syslinux.cfg ***"
 }
 
-# Installs makebootfat- takes parameters:
-# $1 is the DISK
-# $2 is GEEXBOX dir
-install_makebootfat () {
-  local BTYPE
-  local LOC_DISK="$1"
-  local GXDIR="$2"
-  local SRCDIR="${GXDIR%GEEXBOX}"
-
-  dbglg "DISK is $LOC_DISK GEEXBOX dir is $GXDIR"
-
-  dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_USB_DATA_LOST" \
-    --defaultno --yesno "$MSG_USB_DATA_LOST_DESC" 0 0 || exit 1
-
-  # Setup syslinux.cfg file
-  setup_syslinux "$GXDIR"
-
-  BTYPE=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" \
-    --title "$MSG_USB_BOOT_TYPE" --menu "$MSG_USB_BOOT_TYPE_DESC"\
-    0 0 0 USB-FDD "USB-FDD" USB-HDD "USB-HDD" USB-ZIP "USB-ZIP (experimental)" \
-    USB-ALL "USB-ALL (experimental)"` \
-    || exit 1
-
-  if [ $BTYPE = "USB-FDD" ]; then
-    MKBOOTFAT_OPTS="-b /tmp/ldlinux.bss"
-  elif [ $BTYPE = "USB-HDD" ]; then
-    MKBOOTFAT_OPTS="-b /tmp/ldlinux.bss -m /tmp/mbr.bin"
-  elif [ $BTYPE = "USB-ZIP" ]; then
-    MKBOOTFAT_OPTS="-b /tmp/ldlinux.bss -m /tmp/mbr.bin -Z"
-  else
-    # Try joint FDD/HDD approach
-    MKBOOTFAT_OPTS="-b /tmp/ldlinux.bss -m /tmp/mbrfat.bin --mbrfat"
-  fi
-
-  # Due to shell cmd length limitations, cp files locally
-  cp -r "$GXDIR"/boot/* /tmp
-  cp "$GXDIR"/usr/share/ldlinux.* /tmp
-  cp "$GXDIR"/usr/share/mbr* /tmp
-  ln -sf "$SRCDIR" /tmp/src
-
-  dbglg "BTYPE is $BTYPE MKBOOTFAT_OPTS is $MKBOOTFAT_OPTS SRCDIR is $SRCDIR"
-
-  dialog --infobox "$MSG_INSTALLING_WAIT" 0 0
-
-  # Copy files to disk in correct places and install boot loader
-  # Use -x/-c to copy those files to the root dir of the FS instead
-  # of the original boot directory
-  makebootfat -o $LOC_DISK -v -Y \
-    $MKBOOTFAT_OPTS \
-    -c /tmp/syslinux.cfg \
-    -c /tmp/vmlinuz -c /tmp/initrd.gz -c /tmp/vesamenu.c32 \
-    -c /tmp/help.msg -c /tmp/splash.png -c /tmp/ldlinux.sys \
-    /tmp/src 2>&1 >> $LOGFILE
-
-  # Flush file system buffers
-  sync
-
-  # Prompt user to reinsert USB device, to allow automounting
-  dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_USB_REINSERT" \
-    --msgbox "$MSG_USB_REINSERT_DESC" 0 0
-
-  INSTALL_DISK="/install"
-  mkdir -p "$INSTALL_DISK"
-  for i in "" 1 2 3 4 5 6 7 8 9; do
-    INSTALL_DEV="${LOC_DISK}$i"
-    [ ! -b $INSTALL_DEV ] && continue
-    mount -t vfat "$INSTALL_DEV" "$INSTALL_DISK" || continue
-    if [ -e "$INSTALL_DISK/syslinux.cfg" ]; then
-      get_uuid "$INSTALL_DEV"
-      sed -i -e "s/boot=hdd/boot=UUID=${DEV_UUID} vfat/g" "$INSTALL_DISK/syslinux.cfg"
-      umount "$INSTALL_DISK"
-      break
-    fi
-    umount "$INSTALL_DISK"
-  done
-}
-
 # Installs and configures the GRUB bootloader
 # $1 is DEV_UUID
 # $2 is DEV
@@ -702,14 +625,6 @@ else
   USE_XORG=no
 fi
 
-if [ "`cat /sys/block/$DISK/removable`" = 1 ]; then
-
-  # Since removable USB Flash: makebootfat/syslinux
-  DEV="/dev/$DISK"
-  install_makebootfat "$DEV" "$GEEXBOX"
-
-else
-
   # Fixed disk: GRUB
 
   # For now assume ext2/3, but may extend to FAT later
@@ -758,7 +673,6 @@ else
   mv di/GEEXBOX/boot/vmlinuz di/GEEXBOX/boot/initrd.gz di/
 
   install_grub "$DEV_UUID" "$DEV" "$USE_XORG"
-fi
 
 # Remove unneeded boot dir from mounted install drive
 rm -rf di/GEEXBOX/boot
