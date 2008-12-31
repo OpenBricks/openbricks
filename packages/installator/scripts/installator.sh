@@ -625,52 +625,52 @@ else
   USE_XORG=no
 fi
 
-  # For now assume ext2/3, but may extend to FAT later
-  #PART_MSG="$MSG_DISK_PART_FAT"
-  PART_MSG="$MSG_DISK_PART_EXT"
-  CFDISK_MSG="$MSG_CFDISK_BEGIN $PART_MSG $MSG_CFDISK_END"
+# For now assume ext2/3, but may extend to FAT later
+#PART_MSG="$MSG_DISK_PART_FAT"
+PART_MSG="$MSG_DISK_PART_EXT"
+CFDISK_MSG="$MSG_CFDISK_BEGIN $PART_MSG $MSG_CFDISK_END"
 
-  # Guide user on how to setup with cfdisk tool in the next step
-  dialog --stdout --backtitle "$BACKTITLE" --title "$MSG_INSTALL_DEV_CONFIG" \
-    --msgbox "$CFDISK_MSG" 0 0 \
-    || exit 1
+# Guide user on how to setup with cfdisk tool in the next step
+dialog --stdout --backtitle "$BACKTITLE" --title "$MSG_INSTALL_DEV_CONFIG" \
+  --msgbox "$CFDISK_MSG" 0 0 \
+  || exit 1
 
-  cfdisk /dev/$DISK
+cfdisk /dev/$DISK
 
-  DEV="`choose_partition_dev $DISK`"
-  [ -z "$DEV" ] && exit 1
+DEV="`choose_partition_dev $DISK`"
+[ -z "$DEV" ] && exit 1
 
-  MKFS_TYPE="`guess_partition_type $DEV`"
+MKFS_TYPE="`guess_partition_type $DEV`"
 
-  format_if_needed "$MKFS_TYPE" "$DEV"
+format_if_needed "$MKFS_TYPE" "$DEV"
 
-  get_uuid "$DEV"
+get_uuid "$DEV"
 
-  # Attempt to mount the prepared partition using the given partition fs type
-  dbglg "mount -t $MKFS_TYPE $DEV di"
-  mount -t $MKFS_TYPE "$DEV" di
-  ret=$?
-  if [ $ret -ne 0 ]; then
-    # FS is not mountable! Return an error msg and exit
-    dbglg "mount returned $ret"
-    dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_ERROR" \
-      --msgbox "\n${MSG_INSTALL_MOUNT_FAILED} '$DEV' ($MKFS_TYPENAME).\n" 0 0
-    rmdir di
-    exit 1
-  fi
+# Attempt to mount the prepared partition using the given partition fs type
+dbglg "mount -t $MKFS_TYPE $DEV di"
+mount -t $MKFS_TYPE "$DEV" di
+ret=$?
+if [ $ret -ne 0 ]; then
+  # FS is not mountable! Return an error msg and exit
+  dbglg "mount returned $ret"
+  dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_ERROR" \
+    --msgbox "\n${MSG_INSTALL_MOUNT_FAILED} '$DEV' ($MKFS_TYPENAME).\n" 0 0
+  rmdir di
+  exit 1
+fi
 
-  dialog --infobox "$MSG_INSTALLING_WAIT" 0 0
+dialog --infobox "$MSG_INSTALLING_WAIT" 0 0
 
-  # Cleanup if was left in a messy state previously- remove previous installs
-  rm -rf di/GEEXBOX 2>&1 >> $LOGFILE
+# Cleanup if was left in a messy state previously- remove previous installs
+rm -rf di/GEEXBOX 2>&1 >> $LOGFILE
 
-  # Copy the main files to the install partition
-  cp -a "$GEEXBOX" di/GEEXBOX >> $LOGFILE 2>&1 
+# Copy the main files to the install partition
+cp -a "$GEEXBOX" di/GEEXBOX >> $LOGFILE 2>&1 
 
-  # Adjust the location of core boot files to suit non-CDROM install
-  mv di/GEEXBOX/boot/vmlinuz di/GEEXBOX/boot/initrd.gz di/
+# Adjust the location of core boot files to suit non-CDROM install
+mv di/GEEXBOX/boot/vmlinuz di/GEEXBOX/boot/initrd.gz di/
 
-  install_grub "$DEV_UUID" "$DEV" "$USE_XORG"
+install_grub "$DEV_UUID" "$DEV" "$USE_XORG"
 
 # Remove unneeded boot dir from mounted install drive
 rm -rf di/GEEXBOX/boot
