@@ -237,7 +237,7 @@ choose_partition_dev () {
     if [ -z "$DEV_LIST" ]; then
       dbglg "DEV_LIST var empty!"
       dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_ERROR" \
-        --msgbox "\n$MSG_INSTALL_DEV_NOPART_BEGIN $PART_MSG $MSG_INSTALL_DEV_NOPART_END\n" 0 0 1>&2
+        --msgbox "\n$MSG_INSTALL_DEV_NOPART_BEGIN $MSG_DISK_PART $MSG_INSTALL_DEV_NOPART_END\n" 0 0 1>&2
       exit 1
     else
       DEV_SEL=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" \
@@ -653,8 +653,7 @@ else
   USE_XORG=no
 fi
 
-PART_MSG="$MSG_DISK_PART_EXT"
-CFDISK_MSG="$MSG_CFDISK_BEGIN $PART_MSG $MSG_CFDISK_END"
+CFDISK_MSG="$MSG_CFDISK_BEGIN $MSG_DISK_PART $MSG_CFDISK_END"
 
 # Guide user on how to setup with cfdisk tool in the next step
 dialog --stdout --backtitle "$BACKTITLE" --title "$MSG_INSTALL_DEV_CONFIG" \
