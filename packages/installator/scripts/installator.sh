@@ -253,15 +253,6 @@ choose_partition_dev () {
     fi
   done
 
-  # Exit if chosen partition is not bootable
-  sfdisk -lq /dev/$LOC_DISK 2>/dev/null | grep $DEV_SEL | grep -q "\*"
-  ret=$?
-  if [ 0 -ne $ret ]; then
-    dbglg "Disk $LOC_DISK did not have a bootable partition set for $DEV_SEL !"
-    sfdisk -l /dev/$LOC_DISK 2>&1 >> $LOGFILE
-    exit 1
-  fi
-
   echo "$DEV_SEL"
 }
 
