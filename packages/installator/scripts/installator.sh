@@ -653,8 +653,6 @@ else
   USE_XORG=no
 fi
 
-# For now assume ext2/3, but may extend to FAT later
-#PART_MSG="$MSG_DISK_PART_FAT"
 PART_MSG="$MSG_DISK_PART_EXT"
 CFDISK_MSG="$MSG_CFDISK_BEGIN $PART_MSG $MSG_CFDISK_END"
 
