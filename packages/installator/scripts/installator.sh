@@ -139,8 +139,7 @@ setup_grub () {
 
   # now setup installation specific options
   sed -i "s/_ROOTDEV_/$3/g" $1
-  [ "$5" = vfat ] && OPT_FS_TYPE=" vfat"
-  sed -i "s/_DEVNAME_/UUID=${2}$OPT_FS_TYPE/g" $1
+  sed -i "s/_DEVNAME_/UUID=${2}/g" $1
 }
 
 # Returns the value to use for a given variable ($1) as was found
