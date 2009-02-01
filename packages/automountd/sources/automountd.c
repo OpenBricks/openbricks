@@ -41,6 +41,7 @@ typedef struct volume_s {
   char *device;
   char *name;
   char *type;
+  char *fstype;
 } volume_t;
 
 static const struct {
@@ -117,6 +118,8 @@ volume_free (volume_t *v)
     free (v->name);
   if (v->type)
     free (v->type);
+  if (v->fstype)
+    free (v->fstype);
   free (v);
 }
 
@@ -150,8 +153,8 @@ volume_add (volume_t *v, const char *udi)
   g_hash_table_insert (devices, (gpointer) strdup (udi), (gpointer) v);
 
   memset (cmd, '\0', sizeof (cmd));
-  snprintf (cmd, sizeof (cmd), "/usr/bin/hmount '%s' '%s' '%s'",
-            v->type, v->device, v->name);
+  snprintf (cmd, sizeof (cmd), "/usr/bin/hmount '%s' '%s' '%s' '%s'",
+            v->type, v->device, v->name, v->fstype);
 
   printf ("[automountd] Executing: %s\n", cmd);
   system (cmd);
@@ -171,8 +174,8 @@ volume_remove (const char *udi)
     return;
 
   memset (cmd, '\0', sizeof (cmd));
-  snprintf (cmd, sizeof (cmd), "/usr/bin/humount '%s' '%s' '%s'",
-            v->type, v->device, v->name);
+  snprintf (cmd, sizeof (cmd), "/usr/bin/humount '%s' '%s' '%s' '%s'",
+            v->type, v->device, v->name, v->fstype);
 
   printf ("[automountd] Executing: %s\n", cmd);
   system (cmd);
@@ -235,6 +238,7 @@ add_hdd (LibHalVolume *vol, const char *udi)
   v = volume_new ();
   v->device = strdup (libhal_volume_get_device_file (vol));
   v->type = strdup ("HDD"); /* always the case for partitions */
+  v->fstype = strdup (libhal_volume_get_fstype (vol));
 
   type = libhal_drive_get_type (drv);
   bus = libhal_drive_get_bus (drv);
