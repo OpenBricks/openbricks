@@ -369,7 +369,7 @@ appleir_init (void)
   retval = usb_register (&appleir_driver);
   if (retval)
     goto out;
-  info (DRIVER_VERSION ":" DRIVER_DESC);
+  printk (DRIVER_VERSION ":" DRIVER_DESC);
 out:
   return retval;
 }
