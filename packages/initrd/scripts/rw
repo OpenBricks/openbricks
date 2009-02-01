@@ -1,9 +1,20 @@
 #!/bin/sh
 
+remount()
+{
+  FSTYPE=`grep "^$DEV" /var/mnts | cut -f3`
+  if [ "$FSTYPE" = ntfs ]; then
+    umount "$3"
+    mount -o $1 -t ntfs "$2" "$3"
+  else
+    mount -o remount,$1 "$2" "$3"
+  fi
+}
+
 if [ "${1#/mnt/}" != "$1" ]; then
   DEV=
-  for TMPDEV in `cut -f1 /etc/mnts`; do
-    MNT=`grep "^$TMPDEV	" /etc/mnts | cut -f2-`
+  for TMPDEV in `cut -f1 /var/mnts`; do
+    MNT=`grep "^$TMPDEV" /var/mnts | cut -f2`
     if [ "${1#$MNT}" != "$1" ]; then
       DEV=$TMPDEV
       break
@@ -14,12 +25,12 @@ if [ "${1#/mnt/}" != "$1" ]; then
   if [ "$2" = ro ]; then
     COUNT=`sed -n "s%\([0-9]*\)\ $DEV%\1%p" /var/rw`
     [ "$COUNT" -lt "1" ] && exit 1
-    [ "$COUNT" -eq "1" ] && mount -o remount,ro "$DEV" "$MNT"
+    [ "$COUNT" -eq "1" ] && remount ro "$DEV" "$MNT"
     COUNT=$(($COUNT-1))
     sed -i "s%[0-9]*\ $DEV%$COUNT $DEV%" /var/rw
   else
     [ -f /var/rw ] && COUNT=`sed -n "s%\([0-9]*\)\ $DEV%\1%p" /var/rw`
-    [ -z "$COUNT" -o "$COUNT" -le "0" ] && mount -o remount,rw "$DEV" "$MNT"
+    [ -z "$COUNT" -o "$COUNT" -le "0" ] && remount rw "$DEV" "$MNT"
     if [ -z "$COUNT" ]; then
       echo "1 $DEV" >> /var/rw
     else
