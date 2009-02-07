@@ -43,7 +43,7 @@ void playFile(const char *file) {
 		strcat(cmd, file);
 		strcat(cmd, "'");
 
-		execMplayerCmd(cmd);
+		execMplayerCmdHide(cmd);
 	}
 }
 
@@ -79,6 +79,16 @@ void execMplayerCmd(const char *cmd) {
 
 	fprintf(fd, "%s\n", cmd);
 	fclose(fd);
+}
+
+void execMplayerCmdHide(const char *cmd) {
+       FILE *fd = fopen(MPLAYER_FIFO, "w");
+       if (!fd)
+               return;
+
+       fprintf(fd, "%s\n", "menu hide");
+       fprintf(fd, "%s\n", cmd);
+       fclose(fd);
 }
 
 void execSystemCmd(const char *cmd) {
