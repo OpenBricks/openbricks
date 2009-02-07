@@ -430,6 +430,7 @@ setup_syslinux () {
 # $3 is MKFS_TYPE
 install_grub (){
   local ROOTDEV
+  local MBRDEV
   local GRUBPREFIX=/boot/grub
   local GRUBDIR=di$GRUBPREFIX
   local DEVICE_MAP=$GRUBDIR/device.map
@@ -527,20 +528,23 @@ EOF
         --yesno "\n'$LOC_DEV' ${MSG_LOADER_NONE}\n" 0 0 1>&2 \
         && MBR=yes
     fi
+
+    MBRDEV="(hd0)"
   else
     oslist=
     MBR=yes
+    MBRDEV="`echo $ROOTDEV | sed 's/,[0-9]*//'`"
   fi
 
   if [ "$MBR" = "yes" ]; then
 
     dbglg "grub --batch --no-floppy --device-map=$DEVICE_MAP"
     dbglg "root $ROOTDEV"
-    dbglg "setup --stage2=$GRUBDIR/stage2 --prefix=$GRUBPREFIX (hd0)"
+    dbglg "setup --stage2=$GRUBDIR/stage2 --prefix=$GRUBPREFIX $MBRDEV"
 
     grub --batch --no-floppy --device-map=$DEVICE_MAP <<EOF
 root $ROOTDEV
-setup --stage2=$GRUBDIR/stage2 --prefix=$GRUBPREFIX (hd0)
+setup --stage2=$GRUBDIR/stage2 --prefix=$GRUBPREFIX $MBRDEV
 EOF
 
     cat > $GRUBDIR/menu.lst <<EOF
