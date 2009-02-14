@@ -267,7 +267,7 @@ configure () {
 # Try to guess current partition fs type of dev ($1).
 guess_partition_type () {
   local type FS_TYPE=""
-  for type in vfat ext3 ext2 auto; do
+  for type in vfat ext4 ext3 ext2 auto; do
     if mount -o ro -t $type "$1" di 2>/dev/null; then
       FS_TYPE=`grep "^$1 " /proc/mounts | cut -d " " -f 3`
       umount di
@@ -296,7 +296,7 @@ format_if_needed () {
       PART_TYPE="FAT"
       ;;
     83) # Linux
-      SUPPORTED_TYPES="ext3 ext2"
+      SUPPORTED_TYPES="ext4 ext3 ext2"
       PART_TYPE="Linux"
       ;;
   esac
@@ -343,7 +343,7 @@ format_if_needed () {
       83) # Linux
         LOC_MKFS_TYPE=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" \
           --title "$MSG_INSTALL_PART_TYPE" --menu "$MSG_INSTALL_PART_TYPE_DESC"\
-          0 0 0 ext2 "Linux ext2" ext3 "Linux ext3" ` \
+          0 0 0 ext2 "Linux ext2" ext3 "Linux ext3" ext4 "Linux ext4"` \
           || exit 1
 
         case $LOC_MKFS_TYPE in
@@ -357,6 +357,10 @@ format_if_needed () {
             MKFS_OPT="-L GEEXBOX -j"
             MKFS_TYPENAME="Linux ext3"
             ;;
+          ext4)
+            MKFS=mke2fs
+            MKFS_OPT="-L GEEXBOX -t ext4"
+            MKFS_TYPENAME="Linux ext4"
         esac
         ;;
     esac
