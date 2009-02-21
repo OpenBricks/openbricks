@@ -701,7 +701,7 @@ smart enough to automatically build all added packages using the uClibc gcc
 wrapper itself.
 
 Do not forget to ask for your package's compilation and installation by
-explicitely asking for it in the scripts/gentree build script.
+explicitely asking for it in the scripts/stage2 build script.
 
 Finally, the best way to make a package is to look how other packages are done.
 
