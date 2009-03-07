@@ -1,0 +1,215 @@
+diff --git a/xf86-video-intel-2.6.3/src/i810_reg.h b/xf86-video-intel-2.6.3/src/i810_reg.h
+index 51970c1..3114b42 100644
+--- a/src/i810_reg.h
++++ b/src/i810_reg.h
+@@ -2436,7 +2436,11 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ 
+ /* Wait for Events */
+ #define MI_WAIT_FOR_EVENT		(0x03<<23)
++#define MI_WAIT_FOR_PIPEB_SVBLANK	(1<<18)
++#define MI_WAIT_FOR_PIPEA_SVBLANK	(1<<17)
+ #define MI_WAIT_FOR_OVERLAY_FLIP	(1<<16)
++#define MI_WAIT_FOR_PIPEB_VBLANK	(1<<7)
++#define MI_WAIT_FOR_PIPEA_VBLANK	(1<<3)
+ 
+ /* Flush */
+ #define MI_FLUSH			(0x04<<23)
+diff --git a/xf86-video-intel-2.6.3/src/i830_video.c b/xf86-video-intel-2.6.3/src/i830_video.c
+index cdb1072..0199747 100644
+--- a/src/i830_video.c
++++ b/src/i830_video.c
+@@ -117,6 +117,7 @@ static int I830QueryImageAttributesTextured(ScrnInfoPtr, int, unsigned short *,
+ 
+ static Atom xvBrightness, xvContrast, xvSaturation, xvColorKey, xvPipe, xvDoubleBuffer;
+ static Atom xvGamma0, xvGamma1, xvGamma2, xvGamma3, xvGamma4, xvGamma5;
++static Atom xvSyncToVblank;
+ 
+ /* Limits for the overlay/textured video source sizes.  The documented hardware
+  * limits are 2048x2048 or better for overlay and both of our textured video
+@@ -247,10 +248,11 @@ static XF86AttributeRec Attributes[NUM_ATTRIBUTES] = {
+     {XvSettable | XvGettable, 0, 1, "XV_DOUBLE_BUFFER"}
+ };
+ 
+-#define NUM_TEXTURED_ATTRIBUTES 2
+-static XF86AttributeRec TexturedAttributes[NUM_ATTRIBUTES] = {
++#define NUM_TEXTURED_ATTRIBUTES 3
++static XF86AttributeRec TexturedAttributes[NUM_TEXTURED_ATTRIBUTES] = {
+     {XvSettable | XvGettable, -128, 127, "XV_BRIGHTNESS"},
+     {XvSettable | XvGettable, 0, 255, "XV_CONTRAST"},
++    {XvSettable | XvGettable, -1, 1, "XV_SYNC_TO_VBLANK"},
+ };
+ 
+ #define GAMMA_ATTRIBUTES 6
+@@ -1021,6 +1023,7 @@ I830SetupImageVideoTextured(ScreenPtr pScreen)
+ 	pPriv->doubleBuffer = 0;
+ 
+ 	pPriv->rotation = RR_Rotate_0;
++	pPriv->SyncToVblank = -1;
+ 
+ 	/* gotta uninit this someplace, XXX: shouldn't be necessary for textured */
+ 	REGION_NULL(pScreen, &pPriv->clip);
+@@ -1028,6 +1031,8 @@ I830SetupImageVideoTextured(ScreenPtr pScreen)
+ 	adapt->pPortPrivates[i].ptr = (pointer) (pPriv);
+     }
+ 
++    xvSyncToVblank = MAKE_ATOM("XV_SYNC_TO_VBLANK");
++
+     return adapt;
+ }
+ 
+@@ -1108,6 +1113,12 @@ I830SetPortAttributeTextured(ScrnInfoPtr pScrn,
+ 	    return BadValue;
+ 	pPriv->contrast = value;
+ 	return Success;
++    } else if (attribute == xvSyncToVblank) {
++        if ((value < -1) || (value > 1))
++            return BadValue;
++        
++        pPriv->SyncToVblank = value;
++        return Success;
+     } else {
+ 	return BadMatch;
+     }
+@@ -1243,7 +1254,9 @@ I830GetPortAttribute(ScrnInfoPtr pScrn,
+ 	*value = pPriv->colorKey;
+     } else if (attribute == xvDoubleBuffer) {
+ 	*value = pPriv->doubleBuffer;
+-    } else 
++    } else if (attribute == xvSyncToVblank) {
++        *value = pPriv->SyncToVblank;
++    } else
+ 	return BadMatch;
+ 
+     return Success;
+@@ -2139,6 +2152,7 @@ i830_display_video(ScrnInfoPtr pScrn, xf86CrtcPtr crtc,
+ 
+ static Bool
+ i830_clip_video_helper (ScrnInfoPtr pScrn,
++			I830PortPrivPtr pPriv,
+ 			xf86CrtcPtr *crtc_ret,
+ 			BoxPtr	    dst,
+ 			INT32	    *xa,
+@@ -2160,7 +2174,6 @@ i830_clip_video_helper (ScrnInfoPtr pScrn,
+     if (crtc_ret)
+     {
+ 	I830Ptr		pI830 = I830PTR(pScrn);
+-	I830PortPrivPtr pPriv = pI830->adaptor->pPortPrivates[0].ptr;
+ 	BoxRec		crtc_box;
+ 	xf86CrtcPtr	crtc = i830_covering_crtc (pScrn, dst,
+ 						   pPriv->desired_crtc,
+@@ -2303,7 +2316,8 @@ I830PutImage(ScrnInfoPtr pScrn,
+     dstBox.y2 = drw_y + drw_h;
+ 
+     if (!i830_clip_video_helper(pScrn, 
+-				pPriv->textured ? NULL : &crtc,
++				pPriv,
++				&crtc,
+ 				&dstBox, &x1, &x2, &y1, &y2, clipBoxes,
+ 				width, height))
+ 	return Success;
+@@ -2541,22 +2555,70 @@ I830PutImage(ScrnInfoPtr pScrn,
+ 	    REGION_COPY(pScrn->pScreen, &pPriv->clip, clipBoxes);
+ 	    i830_fill_colorkey (pScreen, pPriv->colorKey, clipBoxes);
+ 	}
+-    } else if (IS_I965G(pI830)) {
++    } else {
++        Bool sync = TRUE;
++        
++        if (crtc == NULL) {
++            sync = FALSE;
++        } else if (pPriv->SyncToVblank == 0) {
++            sync = FALSE;
++        } else if (pPriv->SyncToVblank == -1) {
++            BoxRec crtc_box;
++            BoxPtr pbox;
++            int nbox, crtc_area, coverage = 0;
++
++            i830_crtc_box(crtc, &crtc_box);
++            crtc_area = i830_box_area(&crtc_box);
++            pbox = REGION_RECTS(clipBoxes);
++            nbox = REGION_NUM_RECTS(clipBoxes);
++            
++            while (nbox--) {
++                coverage += i830_box_area(pbox);
++                pbox++;
++            }
++
++            if ((coverage << 2) < crtc_area)
++                sync = FALSE;
++        }
++
++        if (sync) {
++            I830CrtcPrivatePtr intel_crtc = crtc->driver_private;
++            int event;
++
++            if (IS_I965G(pI830)) {
++                if (intel_crtc->pipe == 0)
++                    event = MI_WAIT_FOR_PIPEA_SVBLANK;
++                else
++                    event = MI_WAIT_FOR_PIPEB_SVBLANK;
++            } else {
++                if (intel_crtc->pipe == 0)
++                    event = MI_WAIT_FOR_PIPEA_VBLANK;
++                else
++                    event = MI_WAIT_FOR_PIPEB_VBLANK;
++            }
++
++            BEGIN_BATCH(2);
++            OUT_BATCH(MI_WAIT_FOR_EVENT | event);
++            OUT_BATCH(MI_NOOP);
++            ADVANCE_BATCH();
++        }
+ 
++        if (IS_I965G(pI830)) {
+ #ifdef INTEL_XVMC
+-	if (id == FOURCC_XVMC && pPriv->rotation == RR_Rotate_0) {
+-	    pPriv->YBuf0offset = buf -  pI830->FbBase;
+-	    pPriv->UBuf0offset = pPriv->YBuf0offset + height*width; 
+-	    pPriv->VBuf0offset = pPriv->UBuf0offset + height*width/4; 
+-	}
++            if (id == FOURCC_XVMC && pPriv->rotation == RR_Rotate_0) {
++                pPriv->YBuf0offset = buf -  pI830->FbBase;
++                pPriv->UBuf0offset = pPriv->YBuf0offset + height*width; 
++                pPriv->VBuf0offset = pPriv->UBuf0offset + height*width/4; 
++            }
+ #endif
+-	I965DisplayVideoTextured(pScrn, pPriv, destId, clipBoxes, width, height,
+-				 dstPitch, x1, y1, x2, y2,
+-				 src_w, src_h, drw_w, drw_h, pPixmap);
+-    } else {
+-	I915DisplayVideoTextured(pScrn, pPriv, destId, clipBoxes, width, height,
+-				 dstPitch, dstPitch2, x1, y1, x2, y2,
+-				 src_w, src_h, drw_w, drw_h, pPixmap);
++            I965DisplayVideoTextured(pScrn, pPriv, destId, clipBoxes, width, height,
++                                     dstPitch, x1, y1, x2, y2,
++                                     src_w, src_h, drw_w, drw_h, pPixmap);
++        } else {
++            I915DisplayVideoTextured(pScrn, pPriv, destId, clipBoxes, width, height,
++                                     dstPitch, dstPitch2, x1, y1, x2, y2,
++                                     src_w, src_h, drw_w, drw_h, pPixmap);
++        }
+     }
+     if (pPriv->textured) {
+ 	DamageDamageRegion(pDraw, clipBoxes);
+@@ -2867,7 +2929,7 @@ I830DisplaySurface(XF86SurfacePtr surface,
+     dstBox.y1 = drw_y;
+     dstBox.y2 = drw_y + drw_h;
+ 
+-    if (!i830_clip_video_helper (pScrn, &crtc, &dstBox,
++    if (!i830_clip_video_helper (pScrn, pI830Priv, &crtc, &dstBox,
+ 				 &x1, &x2, &y1, &y2, clipBoxes,
+ 				 surface->width, surface->height))
+ 	return Success;
+diff --git a/xf86-video-intel-2.6.3/src/i830_video.h b/xf86-video-intel-2.6.3/src/i830_video.h
+index 254ee32..03e2ba9 100644
+--- a/src/i830_video.h
++++ b/src/i830_video.h
+@@ -65,6 +65,8 @@ typedef struct {
+    int scaleRatio;
+    Bool textured;
+    Rotation rotation; /* should remove I830->rotation later*/
++
++   int SyncToVblank; /* -1: auto, 0: off, 1: on */
+ } I830PortPrivRec, *I830PortPrivPtr;
+ 
+ #define GET_PORT_PRIVATE(pScrn) \
