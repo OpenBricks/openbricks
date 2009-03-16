@@ -696,11 +696,6 @@ install_grub "$DEV" "$USE_XORG" "$MKFS_TYPE"
 # Remove unneeded boot dir from mounted install drive
 rm -rf di/GEEXBOX/boot
 
-if [ "$USE_XORG" != "yes" ]; then
-  # Since X is disabled, remove the files from HDD install to speed up boot
-  rm -f di/GEEXBOX/X.tar.lzma di/GEEXBOX/X.tar.gz di/GEEXBOX/X.tar
-fi
-
 # Cleanup
 umount di
 rmdir di
