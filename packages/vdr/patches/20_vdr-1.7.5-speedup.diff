@@ -1,0 +1,1135 @@
+diff -Naur vdr-1.7.5/channels.c vdr-1.7.5a/channels.c
+--- vdr-1.7.5/channels.c	2009-04-14 13:45:27.000000000 +0200
++++ vdr-1.7.5a/channels.c	2009-04-14 13:46:01.000000000 +0200
+@@ -208,7 +208,7 @@
+   modification = CHANNELMOD_NONE;
+   schedule     = NULL;
+   linkChannels = NULL;
+-  refChannel   = NULL;
++  refChannels  = NULL;
+ }
+ 
+ cChannel::cChannel(const cChannel &Channel)
+@@ -222,28 +222,26 @@
+ #endif /* PLUGINPARAM */
+   schedule     = NULL;
+   linkChannels = NULL;
+-  refChannel   = NULL;
++  refChannels  = NULL;
+   *this = Channel;
+ }
+ 
+ cChannel::~cChannel()
+ {
+-  delete linkChannels;
+-  linkChannels = NULL; // more than one channel can link to this one, so we need the following loop
+-  for (cChannel *Channel = Channels.First(); Channel; Channel = Channels.Next(Channel)) {
+-      if (Channel->linkChannels) {
+-         for (cLinkChannel *lc = Channel->linkChannels->First(); lc; lc = Channel->linkChannels->Next(lc)) {
+-             if (lc->Channel() == this) {
+-                Channel->linkChannels->Del(lc);
+-                break;
+-                }
+-             }
+-         if (Channel->linkChannels->Count() == 0) {
+-            delete Channel->linkChannels;
+-            Channel->linkChannels = NULL;
+-            }
+-         }
+-      }
++  if (linkChannels) {
++     // in all channels which we link to remove the reference to us
++     for (cLinkChannel *lc = linkChannels->First(); lc; lc = linkChannels->Next(lc))
++         lc->Channel()->DelRefChannel(this);
++     delete linkChannels;
++     linkChannels = NULL;
++     }
++  if (refChannels) {
++     // in all channels which reference us remove their link to us
++     for (cLinkChannel *lc = refChannels->First(); lc; lc = refChannels->Next(lc))
++         lc->Channel()->DelLinkChannel(this);
++     delete refChannels;
++     refChannels = NULL;
++     }
+   free(name);
+   free(shortName);
+   free(provider);
+@@ -641,7 +639,7 @@
+   q += sprintf(q, "linking channel %d from", Number());
+   if (linkChannels) {
+      for (cLinkChannel *lc = linkChannels->First(); lc; lc = linkChannels->Next(lc)) {
+-         lc->Channel()->SetRefChannel(NULL);
++         lc->Channel()->DelRefChannel(this);
+          q += sprintf(q, " %d", lc->Channel()->Number());
+          }
+      delete linkChannels;
+@@ -652,7 +650,7 @@
+   linkChannels = LinkChannels;
+   if (linkChannels) {
+      for (cLinkChannel *lc = linkChannels->First(); lc; lc = linkChannels->Next(lc)) {
+-         lc->Channel()->SetRefChannel(this);
++         lc->Channel()->AddRefChannel(this);
+          q += sprintf(q, " %d", lc->Channel()->Number());
+          //dsyslog("link %4d -> %4d: %s", Number(), lc->Channel()->Number(), lc->Channel()->Name());
+          }
+@@ -662,9 +660,39 @@
+   dsyslog(buffer);
+ }
+ 
+-void cChannel::SetRefChannel(cChannel *RefChannel)
++void cChannel::AddRefChannel(cChannel *RefChannel)
++{
++  if (!refChannels)
++     refChannels = new cLinkChannels;
++  refChannels->Add(new cLinkChannel(RefChannel));
++}
++
++void cChannel::DelRefChannel(cChannel *RefChannel)
++{
++  for (cLinkChannel *lc = refChannels->First(); lc; lc = refChannels->Next(lc)) {
++      if (lc->Channel() == RefChannel) {
++         refChannels->Del(lc);
++         if (refChannels->Count() <= 0) {
++            delete refChannels;
++            refChannels = NULL;
++            }
++         return;
++         }
++      }
++}
++
++void cChannel::DelLinkChannel(cChannel *LinkChannel)
+ {
+-  refChannel = RefChannel;
++  for (cLinkChannel *lc = linkChannels->First(); lc; lc = linkChannels->Next(lc)) {
++      if (lc->Channel() == LinkChannel) {
++         linkChannels->Del(lc);
++         if (linkChannels->Count() <= 0) {
++            delete linkChannels;
++            linkChannels = NULL;
++            }
++         return;
++         }
++      }
+ }
+ 
+ static int PrintParameter(char *p, char Name, int Value)
+@@ -1036,14 +1064,72 @@
+   return false;
+ }
+ 
++void cChannels::ClearChannelHashes(void)
++{
++  channelsHashSid.Clear();
++  channelsHashNidTid.Clear();
++}
++
+ void cChannels::HashChannel(cChannel *Channel)
+ {
+   channelsHashSid.Add(Channel, Channel->Sid());
++  channelsHashNidTid.Add(Channel, HashKeyNidTid(Channel->Nid(), Channel->Tid()));
+ }
+ 
+ void cChannels::UnhashChannel(cChannel *Channel)
+ {
+   channelsHashSid.Del(Channel, Channel->Sid());
++  channelsHashNidTid.Del(Channel, HashKeyNidTid(Channel->Nid(), Channel->Tid()));
++}
++
++unsigned int cChannels::HashKeyNidTid(unsigned short Nid, unsigned short Tid)
++{
++  return Nid << 16 | Tid;
++}
++
++cIterator<cChannel> cChannels::GetChannelsBySourceNidTid(int Source, unsigned short Nid, unsigned short Tid)
++{
++  class cIteratorImplSourceNidTid : public cIteratorImpl {
++  private:
++    cList<cHashObject> *hashList;
++    cHashObject *current;
++    int source;
++    unsigned short nid;
++    unsigned short tid;
++    cChannel *FindMatchingChannel(bool reverse, bool reset = false) {
++      if (!hashList || (!current && !reset))
++         return NULL;
++      while (true) {
++            if (reset) {
++               reset = false;
++               current = reverse ? hashList->Last() : hashList->First();
++               }
++            else
++               current = reverse ? hashList->Prev(current) : hashList->Next(current);
++            if (!current)
++               break;
++            cChannel *Channel = (cChannel *)current->Object();
++            if (Channel->Source() == source && Channel->Nid() == nid && Channel->Tid() == tid)
++               return Channel;
++            }
++      return NULL;
++      }
++  public:
++    cIteratorImplSourceNidTid(cList<cHashObject> *HashList, int Source, unsigned short Nid, unsigned short Tid) {
++       hashList = HashList;
++       source = Source;
++       nid = Nid;
++       tid = Tid;
++       current = NULL;
++       }
++    virtual void *First(void) { return FindMatchingChannel(false, true); }
++    virtual void *Last(void)  { return FindMatchingChannel(true,  true); }
++    virtual void *Prev(void)  { return FindMatchingChannel(true);  }
++    virtual void *Next(void)  { return FindMatchingChannel(false); }
++    virtual void *Current(void) const  { return current ? (cChannel *)current->Object() : NULL; }
++    };
++
++  return cIterator<cChannel>(new cIteratorImplSourceNidTid(channelsHashNidTid.GetList(HashKeyNidTid(Nid, Tid)), Source, Nid, Tid));
+ }
+ 
+ int cChannels::GetNextGroup(int Idx)
+@@ -1080,7 +1166,7 @@
+ 
+ void cChannels::ReNumber(void)
+ {
+-  channelsHashSid.Clear();
++  ClearChannelHashes();
+   maxNumber = 0;
+   int Number = 1;
+   for (cChannel *channel = First(); channel; channel = Next(channel)) {
+diff -Naur vdr-1.7.5/channels.h vdr-1.7.5a/channels.h
+--- vdr-1.7.5/channels.h	2009-04-14 13:45:27.000000000 +0200
++++ vdr-1.7.5a/channels.h	2009-04-14 13:49:57.000000000 +0200
+@@ -155,10 +155,13 @@
+   int modification;
+   mutable const cSchedule *schedule;
+   cLinkChannels *linkChannels;
+-  cChannel *refChannel;
++  cLinkChannels *refChannels;
+   cString TransponderDataToString(void) const;
+   cString ParametersToString(void) const;
+   bool StringToParameters(const char *s);
++  void AddRefChannel(cChannel *RefChannel);
++  void DelRefChannel(cChannel *RefChannel);
++  void DelLinkChannel(cChannel *RefChannel);
+ public:
+   cChannel(void);
+   cChannel(const cChannel &Channel);
+@@ -213,7 +216,8 @@
+   int Hierarchy(void) const { return hierarchy; }
+   int RollOff(void) const { return rollOff; }
+   const cLinkChannels* LinkChannels(void) const { return linkChannels; }
+-  const cChannel *RefChannel(void) const { return refChannel; }
++  const cChannel *RefChannel(void) const { return refChannels ? refChannels->Last()->Channel() : 0; }
++  const cLinkChannels* RefChannels(void) const { return refChannels; }
+ #ifdef USE_PLUGINPARAM
+   bool IsPlug(void) const { return cSource::IsPlug(source); }
+ #endif /* PLUGINPARAM */
+@@ -240,7 +244,39 @@
+   void SetCaIds(const int *CaIds); // list must be zero-terminated
+   void SetCaDescriptors(int Level);
+   void SetLinkChannels(cLinkChannels *LinkChannels);
+-  void SetRefChannel(cChannel *RefChannel);
++  };
++
++class cIteratorImpl {
++private:
++  int refCount;
++  cIteratorImpl(const cIteratorImpl &);
++  const cIteratorImpl &operator =(const cIteratorImpl &);
++public:
++  cIteratorImpl(void) { refCount = 0; }
++  virtual ~cIteratorImpl() {}
++  virtual int AddRef(void) { return ++refCount; }
++  virtual int DelRef(void) { int RefCount = --refCount; if (RefCount <= 0) delete this; return RefCount; }
++  virtual void *First(void) = 0;
++  virtual void *Last(void)  = 0;
++  virtual void *Prev(void)  = 0;
++  virtual void *Next(void)  = 0;
++  virtual void *Current(void) const = 0;
++  };
++
++template <class T> class cIterator
++{
++private:
++  cIteratorImpl *impl;
++public:
++  cIterator(cIteratorImpl *Impl) { impl = Impl; impl->AddRef(); }
++  cIterator(const cIterator &rhs) { impl = rhs.impl; impl->AddRef(); }
++  ~cIterator() { impl->DelRef(); }
++  const cIterator &operator =(const cIterator &rhs) { rhs.impl->AddRef(); impl->DelRef(); impl = rhs.impl; return *this; }
++  T *First(void) const   { return (T *)impl->First(); }
++  T *Last(void) const    { return (T *)impl->Last(); }
++  T *Prev(void) const    { return (T *)impl->Prev(); }
++  T *Next(void) const    { return (T *)impl->Next(); }
++  T *Current(void) const { return (T *)impl->Current(); }
+   };
+ 
+ class cChannels : public cRwLock, public cConfig<cChannel> {
+@@ -249,7 +285,10 @@
+   int modified;
+   int beingEdited;
+   cHash<cChannel> channelsHashSid;
++  cHash<cChannel> channelsHashNidTid;
+   void DeleteDuplicateChannels(void);
++  void ClearChannelHashes(void);
++  static unsigned int HashKeyNidTid(unsigned short Nid, unsigned short Tid);
+ public:
+   cChannels(void);
+   bool Load(const char *FileName, bool AllowComments = false, bool MustExist = false);
+@@ -264,6 +303,7 @@
+   cChannel *GetByServiceID(int Source, int Transponder, unsigned short ServiceID);
+   cChannel *GetByChannelID(tChannelID ChannelID, bool TryWithoutRid = false, bool TryWithoutPolarization = false);
+   cChannel *GetByTransponderID(tChannelID ChannelID);
++  cIterator<cChannel> GetChannelsBySourceNidTid(int Source, unsigned short Nid, unsigned short Tid);
+   int BeingEdited(void) { return beingEdited; }
+   void IncBeingEdited(void) { beingEdited++; }
+   void DecBeingEdited(void) { beingEdited--; }
+diff -Naur vdr-1.7.5/epg.c vdr-1.7.5a/epg.c
+--- vdr-1.7.5/epg.c	2009-04-14 13:45:27.000000000 +0200
++++ vdr-1.7.5a/epg.c	2009-04-14 13:46:01.000000000 +0200
+@@ -1422,6 +1422,7 @@
+   if (!p) {
+      p = new cSchedule(ChannelID);
+      Add(p);
++     HashSchedule(p);
+      cChannel *channel = Channels.GetByChannelID(ChannelID);
+      if (channel)
+         channel->schedule = p;
+@@ -1432,10 +1433,14 @@
+ const cSchedule *cSchedules::GetSchedule(tChannelID ChannelID) const
+ {
+   ChannelID.ClrRid();
+-  for (cSchedule *p = First(); p; p = Next(p)) {
+-      if (p->ChannelID() == ChannelID)
+-         return p;
+-      }
++  cList<cHashObject> *list = schedulesHash.GetList(HashKey(ChannelID));
++  if (list) {
++     for (cHashObject *hobj = list->First(); hobj; hobj = list->Next(hobj)) {
++         cSchedule *p = (cSchedule *)hobj->Object();
++         if (p->ChannelID() == ChannelID)
++            return p;
++         }
++     }
+   return NULL;
+ }
+ 
+@@ -1451,7 +1456,23 @@
+   if (Channel->schedule == &DummySchedule && AddIfMissing) {
+      cSchedule *Schedule = new cSchedule(Channel->GetChannelID());
+      ((cSchedules *)this)->Add(Schedule);
++     ((cSchedules *)this)->HashSchedule(Schedule);
+      Channel->schedule = Schedule;
+      }
+   return Channel->schedule != &DummySchedule? Channel->schedule : NULL;
+ }
++
++void cSchedules::HashSchedule(cSchedule *Schedule)
++{
++  schedulesHash.Add(Schedule, HashKey(Schedule->ChannelID().ClrRid()));
++}
++
++void cSchedules::UnhashSchedule(cSchedule *Schedule)
++{
++  schedulesHash.Del(Schedule, HashKey(Schedule->ChannelID().ClrRid()));
++}
++
++unsigned int cSchedules::HashKey(tChannelID ChannelID)
++{
++  return (unsigned int)((ChannelID.Nid() << 16 | ChannelID.Source()) ^ (ChannelID.Tid() << 16 | ChannelID.Sid()) ^ ChannelID.Rid());
++}
+diff -Naur vdr-1.7.5/epg.h vdr-1.7.5a/epg.h
+--- vdr-1.7.5/epg.h	2009-04-14 13:45:27.000000000 +0200
++++ vdr-1.7.5a/epg.h	2009-04-14 13:46:01.000000000 +0200
+@@ -199,11 +199,15 @@
+   friend class cSchedulesLock;
+ private:
+   cRwLock rwlock;
++  cHash<cSchedule> schedulesHash;
+   static cSchedules schedules;
+   static const char *epgDataFileName;
+   static time_t lastCleanup;
+   static time_t lastDump;
+   static time_t modified;
++  void HashSchedule(cSchedule *Schedule);
++  void UnhashSchedule(cSchedule *Schedule);
++  static unsigned int HashKey(tChannelID ChannelID);
+ public:
+   static void SetEpgDataFileName(const char *FileName);
+   static const cSchedules *Schedules(cSchedulesLock &SchedulesLock);
+diff -Naur vdr-1.7.5/libsi/util.c vdr-1.7.5a/libsi/util.c
+--- vdr-1.7.5/libsi/util.c	2006-02-18 12:17:50.000000000 +0100
++++ vdr-1.7.5a/libsi/util.c	2009-04-14 13:46:01.000000000 +0200
+@@ -219,58 +219,73 @@
+ 
+ //taken and adapted from libdtv, (c) Rolf Hakenes
+ // CRC32 lookup table for polynomial 0x04c11db7
++// swapped bytes to avoid one shift operation in CRC loop (c) Reinhard Nissl
+ u_int32_t CRC32::crc_table[256] = {
+-   0x00000000, 0x04c11db7, 0x09823b6e, 0x0d4326d9, 0x130476dc, 0x17c56b6b,
+-   0x1a864db2, 0x1e475005, 0x2608edb8, 0x22c9f00f, 0x2f8ad6d6, 0x2b4bcb61,
+-   0x350c9b64, 0x31cd86d3, 0x3c8ea00a, 0x384fbdbd, 0x4c11db70, 0x48d0c6c7,
+-   0x4593e01e, 0x4152fda9, 0x5f15adac, 0x5bd4b01b, 0x569796c2, 0x52568b75,
+-   0x6a1936c8, 0x6ed82b7f, 0x639b0da6, 0x675a1011, 0x791d4014, 0x7ddc5da3,
+-   0x709f7b7a, 0x745e66cd, 0x9823b6e0, 0x9ce2ab57, 0x91a18d8e, 0x95609039,
+-   0x8b27c03c, 0x8fe6dd8b, 0x82a5fb52, 0x8664e6e5, 0xbe2b5b58, 0xbaea46ef,
+-   0xb7a96036, 0xb3687d81, 0xad2f2d84, 0xa9ee3033, 0xa4ad16ea, 0xa06c0b5d,
+-   0xd4326d90, 0xd0f37027, 0xddb056fe, 0xd9714b49, 0xc7361b4c, 0xc3f706fb,
+-   0xceb42022, 0xca753d95, 0xf23a8028, 0xf6fb9d9f, 0xfbb8bb46, 0xff79a6f1,
+-   0xe13ef6f4, 0xe5ffeb43, 0xe8bccd9a, 0xec7dd02d, 0x34867077, 0x30476dc0,
+-   0x3d044b19, 0x39c556ae, 0x278206ab, 0x23431b1c, 0x2e003dc5, 0x2ac12072,
+-   0x128e9dcf, 0x164f8078, 0x1b0ca6a1, 0x1fcdbb16, 0x018aeb13, 0x054bf6a4,
+-   0x0808d07d, 0x0cc9cdca, 0x7897ab07, 0x7c56b6b0, 0x71159069, 0x75d48dde,
+-   0x6b93dddb, 0x6f52c06c, 0x6211e6b5, 0x66d0fb02, 0x5e9f46bf, 0x5a5e5b08,
+-   0x571d7dd1, 0x53dc6066, 0x4d9b3063, 0x495a2dd4, 0x44190b0d, 0x40d816ba,
+-   0xaca5c697, 0xa864db20, 0xa527fdf9, 0xa1e6e04e, 0xbfa1b04b, 0xbb60adfc,
+-   0xb6238b25, 0xb2e29692, 0x8aad2b2f, 0x8e6c3698, 0x832f1041, 0x87ee0df6,
+-   0x99a95df3, 0x9d684044, 0x902b669d, 0x94ea7b2a, 0xe0b41de7, 0xe4750050,
+-   0xe9362689, 0xedf73b3e, 0xf3b06b3b, 0xf771768c, 0xfa325055, 0xfef34de2,
+-   0xc6bcf05f, 0xc27dede8, 0xcf3ecb31, 0xcbffd686, 0xd5b88683, 0xd1799b34,
+-   0xdc3abded, 0xd8fba05a, 0x690ce0ee, 0x6dcdfd59, 0x608edb80, 0x644fc637,
+-   0x7a089632, 0x7ec98b85, 0x738aad5c, 0x774bb0eb, 0x4f040d56, 0x4bc510e1,
+-   0x46863638, 0x42472b8f, 0x5c007b8a, 0x58c1663d, 0x558240e4, 0x51435d53,
+-   0x251d3b9e, 0x21dc2629, 0x2c9f00f0, 0x285e1d47, 0x36194d42, 0x32d850f5,
+-   0x3f9b762c, 0x3b5a6b9b, 0x0315d626, 0x07d4cb91, 0x0a97ed48, 0x0e56f0ff,
+-   0x1011a0fa, 0x14d0bd4d, 0x19939b94, 0x1d528623, 0xf12f560e, 0xf5ee4bb9,
+-   0xf8ad6d60, 0xfc6c70d7, 0xe22b20d2, 0xe6ea3d65, 0xeba91bbc, 0xef68060b,
+-   0xd727bbb6, 0xd3e6a601, 0xdea580d8, 0xda649d6f, 0xc423cd6a, 0xc0e2d0dd,
+-   0xcda1f604, 0xc960ebb3, 0xbd3e8d7e, 0xb9ff90c9, 0xb4bcb610, 0xb07daba7,
+-   0xae3afba2, 0xaafbe615, 0xa7b8c0cc, 0xa379dd7b, 0x9b3660c6, 0x9ff77d71,
+-   0x92b45ba8, 0x9675461f, 0x8832161a, 0x8cf30bad, 0x81b02d74, 0x857130c3,
+-   0x5d8a9099, 0x594b8d2e, 0x5408abf7, 0x50c9b640, 0x4e8ee645, 0x4a4ffbf2,
+-   0x470cdd2b, 0x43cdc09c, 0x7b827d21, 0x7f436096, 0x7200464f, 0x76c15bf8,
+-   0x68860bfd, 0x6c47164a, 0x61043093, 0x65c52d24, 0x119b4be9, 0x155a565e,
+-   0x18197087, 0x1cd86d30, 0x029f3d35, 0x065e2082, 0x0b1d065b, 0x0fdc1bec,
+-   0x3793a651, 0x3352bbe6, 0x3e119d3f, 0x3ad08088, 0x2497d08d, 0x2056cd3a,
+-   0x2d15ebe3, 0x29d4f654, 0xc5a92679, 0xc1683bce, 0xcc2b1d17, 0xc8ea00a0,
+-   0xd6ad50a5, 0xd26c4d12, 0xdf2f6bcb, 0xdbee767c, 0xe3a1cbc1, 0xe760d676,
+-   0xea23f0af, 0xeee2ed18, 0xf0a5bd1d, 0xf464a0aa, 0xf9278673, 0xfde69bc4,
+-   0x89b8fd09, 0x8d79e0be, 0x803ac667, 0x84fbdbd0, 0x9abc8bd5, 0x9e7d9662,
+-   0x933eb0bb, 0x97ffad0c, 0xafb010b1, 0xab710d06, 0xa6322bdf, 0xa2f33668,
+-   0xbcb4666d, 0xb8757bda, 0xb5365d03, 0xb1f740b4};
++   0x00000000, 0xb71dc104, 0x6e3b8209, 0xd926430d, 0xdc760413, 0x6b6bc517,
++   0xb24d861a, 0x0550471e, 0xb8ed0826, 0x0ff0c922, 0xd6d68a2f, 0x61cb4b2b,
++   0x649b0c35, 0xd386cd31, 0x0aa08e3c, 0xbdbd4f38, 0x70db114c, 0xc7c6d048,
++   0x1ee09345, 0xa9fd5241, 0xacad155f, 0x1bb0d45b, 0xc2969756, 0x758b5652,
++   0xc836196a, 0x7f2bd86e, 0xa60d9b63, 0x11105a67, 0x14401d79, 0xa35ddc7d,
++   0x7a7b9f70, 0xcd665e74, 0xe0b62398, 0x57abe29c, 0x8e8da191, 0x39906095,
++   0x3cc0278b, 0x8bdde68f, 0x52fba582, 0xe5e66486, 0x585b2bbe, 0xef46eaba,
++   0x3660a9b7, 0x817d68b3, 0x842d2fad, 0x3330eea9, 0xea16ada4, 0x5d0b6ca0,
++   0x906d32d4, 0x2770f3d0, 0xfe56b0dd, 0x494b71d9, 0x4c1b36c7, 0xfb06f7c3,
++   0x2220b4ce, 0x953d75ca, 0x28803af2, 0x9f9dfbf6, 0x46bbb8fb, 0xf1a679ff,
++   0xf4f63ee1, 0x43ebffe5, 0x9acdbce8, 0x2dd07dec, 0x77708634, 0xc06d4730,
++   0x194b043d, 0xae56c539, 0xab068227, 0x1c1b4323, 0xc53d002e, 0x7220c12a,
++   0xcf9d8e12, 0x78804f16, 0xa1a60c1b, 0x16bbcd1f, 0x13eb8a01, 0xa4f64b05,
++   0x7dd00808, 0xcacdc90c, 0x07ab9778, 0xb0b6567c, 0x69901571, 0xde8dd475,
++   0xdbdd936b, 0x6cc0526f, 0xb5e61162, 0x02fbd066, 0xbf469f5e, 0x085b5e5a,
++   0xd17d1d57, 0x6660dc53, 0x63309b4d, 0xd42d5a49, 0x0d0b1944, 0xba16d840,
++   0x97c6a5ac, 0x20db64a8, 0xf9fd27a5, 0x4ee0e6a1, 0x4bb0a1bf, 0xfcad60bb,
++   0x258b23b6, 0x9296e2b2, 0x2f2bad8a, 0x98366c8e, 0x41102f83, 0xf60dee87,
++   0xf35da999, 0x4440689d, 0x9d662b90, 0x2a7bea94, 0xe71db4e0, 0x500075e4,
++   0x892636e9, 0x3e3bf7ed, 0x3b6bb0f3, 0x8c7671f7, 0x555032fa, 0xe24df3fe,
++   0x5ff0bcc6, 0xe8ed7dc2, 0x31cb3ecf, 0x86d6ffcb, 0x8386b8d5, 0x349b79d1,
++   0xedbd3adc, 0x5aa0fbd8, 0xeee00c69, 0x59fdcd6d, 0x80db8e60, 0x37c64f64,
++   0x3296087a, 0x858bc97e, 0x5cad8a73, 0xebb04b77, 0x560d044f, 0xe110c54b,
++   0x38368646, 0x8f2b4742, 0x8a7b005c, 0x3d66c158, 0xe4408255, 0x535d4351,
++   0x9e3b1d25, 0x2926dc21, 0xf0009f2c, 0x471d5e28, 0x424d1936, 0xf550d832,
++   0x2c769b3f, 0x9b6b5a3b, 0x26d61503, 0x91cbd407, 0x48ed970a, 0xfff0560e,
++   0xfaa01110, 0x4dbdd014, 0x949b9319, 0x2386521d, 0x0e562ff1, 0xb94beef5,
++   0x606dadf8, 0xd7706cfc, 0xd2202be2, 0x653deae6, 0xbc1ba9eb, 0x0b0668ef,
++   0xb6bb27d7, 0x01a6e6d3, 0xd880a5de, 0x6f9d64da, 0x6acd23c4, 0xddd0e2c0,
++   0x04f6a1cd, 0xb3eb60c9, 0x7e8d3ebd, 0xc990ffb9, 0x10b6bcb4, 0xa7ab7db0,
++   0xa2fb3aae, 0x15e6fbaa, 0xccc0b8a7, 0x7bdd79a3, 0xc660369b, 0x717df79f,
++   0xa85bb492, 0x1f467596, 0x1a163288, 0xad0bf38c, 0x742db081, 0xc3307185,
++   0x99908a5d, 0x2e8d4b59, 0xf7ab0854, 0x40b6c950, 0x45e68e4e, 0xf2fb4f4a,
++   0x2bdd0c47, 0x9cc0cd43, 0x217d827b, 0x9660437f, 0x4f460072, 0xf85bc176,
++   0xfd0b8668, 0x4a16476c, 0x93300461, 0x242dc565, 0xe94b9b11, 0x5e565a15,
++   0x87701918, 0x306dd81c, 0x353d9f02, 0x82205e06, 0x5b061d0b, 0xec1bdc0f,
++   0x51a69337, 0xe6bb5233, 0x3f9d113e, 0x8880d03a, 0x8dd09724, 0x3acd5620,
++   0xe3eb152d, 0x54f6d429, 0x7926a9c5, 0xce3b68c1, 0x171d2bcc, 0xa000eac8,
++   0xa550add6, 0x124d6cd2, 0xcb6b2fdf, 0x7c76eedb, 0xc1cba1e3, 0x76d660e7,
++   0xaff023ea, 0x18ede2ee, 0x1dbda5f0, 0xaaa064f4, 0x738627f9, 0xc49be6fd,
++   0x09fdb889, 0xbee0798d, 0x67c63a80, 0xd0dbfb84, 0xd58bbc9a, 0x62967d9e,
++   0xbbb03e93, 0x0cadff97, 0xb110b0af, 0x060d71ab, 0xdf2b32a6, 0x6836f3a2,
++   0x6d66b4bc, 0xda7b75b8, 0x035d36b5, 0xb440f7b1};
++
++inline void swap_bytes(u_int32_t &crc)
++{
++  unsigned char a = crc >> 24;
++  unsigned char b = crc >> 16;
++  unsigned char c = crc >> 8;
++  unsigned char d = crc;
++
++  crc = ((d << 8 | c) << 8 | b) << 8 | a;
++}
+ 
+ u_int32_t CRC32::crc32 (const char *d, int len, u_int32_t crc)
+ {
+    register int i;
+    const unsigned char *u=(unsigned char*)d; // Saves '& 0xff'
+ 
++   swap_bytes(crc);
++
+    for (i=0; i<len; i++)
+-      crc = (crc << 8) ^ crc_table[((crc >> 24) ^ *u++)];
++      crc = (crc >> 8) ^ crc_table[(unsigned char)crc ^ *u++];
++
++   swap_bytes(crc);
+ 
+    return crc;
+ }
+diff -Naur vdr-1.7.5/lirc.c vdr-1.7.5a/lirc.c
+--- vdr-1.7.5/lirc.c	2009-04-14 13:45:27.000000000 +0200
++++ vdr-1.7.5a/lirc.c	2009-04-14 13:48:23.000000000 +0200
+@@ -16,10 +16,24 @@
+ #include "config.h"
+ #endif /* LIRCSETTINGS */
+ 
+-#define REPEATDELAY 350 // ms
+-#define REPEATFREQ 100 // ms
+-#define REPEATTIMEOUT 500 // ms
+-#define RECONNECTDELAY 3000 // ms
++#ifndef LIRC_PUSHFREQ
++#define LIRC_PUSHFREQ 3 // 1/s
++#endif
++#ifndef LIRC_REPEATDELAY
++#define LIRC_REPEATDELAY 350 // ms
++#endif
++#ifndef LIRC_REPEATFREQ
++#define LIRC_REPEATFREQ 10 // 1/s
++#endif
++#ifndef LIRC_REPEATTIMEOUT
++#define LIRC_REPEATTIMEOUT 500 // ms
++#endif
++#ifndef LIRC_RECONNECTDELAY
++#define LIRC_RECONNECTDELAY 3000 // ms
++#endif
++#ifndef LIRC_PRIORITYBOOST
++#define LIRC_PRIORITYBOOST 0
++#endif
+ 
+ cLircRemote::cLircRemote(const char *DeviceName)
+ :cRemote("LIRC")
+@@ -71,17 +85,33 @@
+   bool repeat = false;
+   int timeout = -1;
+ 
++  if (LIRC_PRIORITYBOOST)
++     SetPriority(GetPriority() - LIRC_PRIORITYBOOST);
+   while (Running() && f >= 0) {
+-
+         bool ready = cFile::FileReady(f, timeout);
+-        int ret = ready ? safe_read(f, buf, sizeof(buf)) : -1;
++        int ret = -1;
++        if (ready) {
++           // read one line of the line oriented lirc protocol
++           for (ret = 0; ret < (int)sizeof(buf); ret++) {
++               int ch = readchar(f);
++               if (ch < 0) {
++                  ret = -1;
++                  break;
++                  }
++               if (ch == '\n') {
++                  buf[ret++] = '\0';
++                  break;
++                  }
++               buf[ret] = ch;
++               }
++           }
+ 
+         if (ready && ret <= 0 ) {
+-           esyslog("ERROR: lircd connection broken, trying to reconnect every %.1f seconds", float(RECONNECTDELAY) / 1000);
++           esyslog("ERROR: lircd connection broken, trying to reconnect every %.1f seconds", float(LIRC_RECONNECTDELAY) / 1000);
+            close(f);
+            f = -1;
+            while (Running() && f < 0) {
+-                 cCondWait::SleepMs(RECONNECTDELAY);
++                 cCondWait::SleepMs(LIRC_RECONNECTDELAY);
+                  if (Connect()) {
+                     isyslog("reconnected to lircd");
+                     break;
+@@ -100,7 +130,7 @@
+ #ifdef USE_LIRCSETTINGS
+               if (strcmp(KeyName, LastKeyName) == 0 && FirstTime.Elapsed() < (unsigned int)Setup.LircRepeatDelay)
+ #else
+-              if (strcmp(KeyName, LastKeyName) == 0 && FirstTime.Elapsed() < REPEATDELAY)
++              if (strcmp(KeyName, LastKeyName) == 0 && FirstTime.Elapsed() < (1000 / LIRC_PUSHFREQ))
+ #endif /* LIRCSETTINGS */
+                  continue; // skip keys coming in too fast
+               if (repeat)
+@@ -114,20 +144,20 @@
+ #ifdef USE_LIRCSETTINGS
+               if (LastTime.Elapsed() < (unsigned int)Setup.LircRepeatFreq)
+ #else
+-              if (LastTime.Elapsed() < REPEATFREQ)
++              if (LastTime.Elapsed() < (1000 / LIRC_REPEATFREQ))
+ #endif /* LIRCSETTINGS */
+                  continue; // repeat function kicks in after a short delay (after last key instead of first key)
+ #ifdef USE_LIRCSETTINGS
+               if (FirstTime.Elapsed() < (unsigned int)Setup.LircRepeatDelay)
+ #else
+-              if (FirstTime.Elapsed() < REPEATDELAY)
++              if (FirstTime.Elapsed() < LIRC_REPEATDELAY)
+ #endif /* LIRCSETTINGS */
+                  continue; // skip keys coming in too fast (for count != 0 as well)
+               repeat = true;
+ #ifdef USE_LIRCSETTINGS
+               timeout = Setup.LircRepeatDelay;
+ #else
+-              timeout = REPEATDELAY;
++              timeout = LIRC_REPEATDELAY;
+ #endif /* LIRCSETTINGS */
+               }
+            LastTime.Set();
+@@ -137,7 +167,7 @@
+ #ifdef USE_LIRCSETTINGS
+            if (LastTime.Elapsed() >= (unsigned int)Setup.LircRepeatTimeout) {
+ #else
+-           if (LastTime.Elapsed() >= REPEATTIMEOUT) {
++           if (LastTime.Elapsed() >= LIRC_REPEATTIMEOUT) {
+ #endif /* LIRCSETTINGS */
+               Put(LastKeyName, false, true);
+               repeat = false;
+diff -Naur vdr-1.7.5/Makefile vdr-1.7.5a/Makefile
+--- vdr-1.7.5/Makefile	2009-04-14 13:45:27.000000000 +0200
++++ vdr-1.7.5a/Makefile	2009-04-14 13:46:01.000000000 +0200
+@@ -66,6 +66,25 @@
+ 
+ DEFINES += -DLIRC_DEVICE=\"$(LIRC_DEVICE)\" -DRCU_DEVICE=\"$(RCU_DEVICE)\"
+ 
++ifdef LIRC_PUSHFREQ
++DEFINES += -DLIRC_PUSHFREQ=$(LIRC_PUSHFREQ)
++endif
++ifdef LIRC_REPEATDELAY
++DEFINES += -DLIRCD_REPEATDELAY=$(LIRC_REPEATDELAY)
++endif
++ifdef LIRC_REPEATFREQ
++DEFINES += -DLIRC_REPEATFREQ=$(LIRC_REPEATFREQ)
++endif
++ifdef LIRC_REPEATTIMEOUT
++DEFINES += -DLIRC_REPEATTIMEOUT=$(LIRC_REPEATTIMEOUT)
++endif
++ifdef LIRC_RECONNECTDELAY
++DEFINES += -DLIRC_RECONNECTDELAY=$(LIRC_RECONNECTDELAY)
++endif
++ifdef LIRC_PRIORITYBOOST
++DEFINES += -DLIRC_PRIORITYBOOST=$(LIRC_PRIORITYBOOST)
++endif
++
+ DEFINES += -D_GNU_SOURCE
+ 
+ DEFINES += -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE
+diff -Naur vdr-1.7.5/nit.c vdr-1.7.5a/nit.c
+--- vdr-1.7.5/nit.c	2008-12-20 11:57:50.000000000 +0100
++++ vdr-1.7.5a/nit.c	2009-04-14 13:46:01.000000000 +0200
+@@ -147,21 +147,20 @@
+                     }
+                  if (Setup.UpdateChannels >= 5) {
+                     bool found = false;
+-                    for (cChannel *Channel = Channels.First(); Channel; Channel = Channels.Next(Channel)) {
+-                        if (!Channel->GroupSep() && Channel->Source() == Source && Channel->Nid() == ts.getOriginalNetworkId() && Channel->Tid() == ts.getTransportStreamId()) {
+-                           int transponder = Channel->Transponder();
+-                           found = true;
+-                           if (!ISTRANSPONDER(cChannel::Transponder(Frequency, Polarization), transponder)) {
+-                              for (int n = 0; n < NumFrequencies; n++) {
+-                                  if (ISTRANSPONDER(cChannel::Transponder(Frequencies[n], Polarization), transponder)) {
+-                                     Frequency = Frequencies[n];
+-                                     break;
+-                                     }
++                    cIterator<cChannel> ChannelIterator = Channels.GetChannelsBySourceNidTid(Source, ts.getOriginalNetworkId(), ts.getTransportStreamId());
++                    for (cChannel *Channel = ChannelIterator.First(); Channel; Channel = ChannelIterator.Next()) {
++                        int transponder = Channel->Transponder();
++                        found = true;
++                        if (!ISTRANSPONDER(cChannel::Transponder(Frequency, Polarization), transponder)) {
++                           for (int n = 0; n < NumFrequencies; n++) {
++                               if (ISTRANSPONDER(cChannel::Transponder(Frequencies[n], Polarization), transponder)) {
++                                  Frequency = Frequencies[n];
++                                  break;
+                                   }
+-                              }
+-                           if (ISTRANSPONDER(cChannel::Transponder(Frequency, Polarization), Transponder())) // only modify channels if we're actually receiving this transponder
+-                              Channel->SetSatTransponderData(Source, Frequency, Polarization, SymbolRate, CodeRate, Modulation, System, RollOff);
++                               }
+                            }
++                        if (ISTRANSPONDER(cChannel::Transponder(Frequency, Polarization), Transponder())) // only modify channels if we're actually receiving this transponder
++                           Channel->SetSatTransponderData(Source, Frequency, Polarization, SymbolRate, CodeRate, Modulation, System, RollOff);
+                         }
+                     if (!found) {
+                        for (int n = 0; n < NumFrequencies; n++) {
+@@ -198,21 +197,20 @@
+                     }
+                  if (Setup.UpdateChannels >= 5) {
+                     bool found = false;
+-                    for (cChannel *Channel = Channels.First(); Channel; Channel = Channels.Next(Channel)) {
+-                        if (!Channel->GroupSep() && Channel->Source() == Source && Channel->Nid() == ts.getOriginalNetworkId() && Channel->Tid() == ts.getTransportStreamId()) {
+-                           int transponder = Channel->Transponder();
+-                           found = true;
+-                           if (!ISTRANSPONDER(Frequency / 1000, transponder)) {
+-                              for (int n = 0; n < NumFrequencies; n++) {
+-                                  if (ISTRANSPONDER(Frequencies[n] / 1000, transponder)) {
+-                                     Frequency = Frequencies[n];
+-                                     break;
+-                                     }
++                    cIterator<cChannel> ChannelIterator = Channels.GetChannelsBySourceNidTid(Source, ts.getOriginalNetworkId(), ts.getTransportStreamId());
++                    for (cChannel *Channel = ChannelIterator.First(); Channel; Channel = ChannelIterator.Next()) {
++                        int transponder = Channel->Transponder();
++                        found = true;
++                        if (!ISTRANSPONDER(Frequency / 1000, transponder)) {
++                           for (int n = 0; n < NumFrequencies; n++) {
++                               if (ISTRANSPONDER(Frequencies[n] / 1000, transponder)) {
++                                  Frequency = Frequencies[n];
++                                  break;
+                                   }
+-                              }
+-                           if (ISTRANSPONDER(Frequency / 1000, Transponder())) // only modify channels if we're actually receiving this transponder
+-                              Channel->SetCableTransponderData(Source, Frequency, Modulation, SymbolRate, CodeRate);
++                               }
+                            }
++                        if (ISTRANSPONDER(Frequency / 1000, Transponder())) // only modify channels if we're actually receiving this transponder
++                           Channel->SetCableTransponderData(Source, Frequency, Modulation, SymbolRate, CodeRate);
+                         }
+                     if (!found) {
+                         for (int n = 0; n < NumFrequencies; n++) {
+@@ -256,21 +254,20 @@
+                     }
+                  if (Setup.UpdateChannels >= 5) {
+                     bool found = false;
+-                    for (cChannel *Channel = Channels.First(); Channel; Channel = Channels.Next(Channel)) {
+-                        if (!Channel->GroupSep() && Channel->Source() == Source && Channel->Nid() == ts.getOriginalNetworkId() && Channel->Tid() == ts.getTransportStreamId()) {
+-                           int transponder = Channel->Transponder();
+-                           found = true;
+-                           if (!ISTRANSPONDER(Frequency / 1000000, transponder)) {
+-                              for (int n = 0; n < NumFrequencies; n++) {
+-                                  if (ISTRANSPONDER(Frequencies[n] / 1000000, transponder)) {
+-                                     Frequency = Frequencies[n];
+-                                     break;
+-                                     }
++                    cIterator<cChannel> ChannelIterator = Channels.GetChannelsBySourceNidTid(Source, ts.getOriginalNetworkId(), ts.getTransportStreamId());
++                    for (cChannel *Channel = ChannelIterator.First(); Channel; Channel = ChannelIterator.Next()) {
++                        int transponder = Channel->Transponder();
++                        found = true;
++                        if (!ISTRANSPONDER(Frequency / 1000000, transponder)) {
++                           for (int n = 0; n < NumFrequencies; n++) {
++                               if (ISTRANSPONDER(Frequencies[n] / 1000000, transponder)) {
++                                  Frequency = Frequencies[n];
++                                  break;
+                                   }
+-                              }
+-                           if (ISTRANSPONDER(Frequency / 1000000, Transponder())) // only modify channels if we're actually receiving this transponder
+-                              Channel->SetTerrTransponderData(Source, Frequency, Bandwidth, Constellation, Hierarchy, CodeRateHP, CodeRateLP, GuardInterval, TransmissionMode);
++                               }
+                            }
++                        if (ISTRANSPONDER(Frequency / 1000000, Transponder())) // only modify channels if we're actually receiving this transponder
++                           Channel->SetTerrTransponderData(Source, Frequency, Bandwidth, Constellation, Hierarchy, CodeRateHP, CodeRateLP, GuardInterval, TransmissionMode);
+                         }
+                     if (!found) {
+                        for (int n = 0; n < NumFrequencies; n++) {
+@@ -281,7 +278,7 @@
+                            else
+                               delete Channel;
+                            }
+-                        }
++                       }
+                     }
+                  }
+                  break;
+diff -Naur vdr-1.7.5/osd.c vdr-1.7.5a/osd.c
+--- vdr-1.7.5/osd.c	2009-04-14 13:45:27.000000000 +0200
++++ vdr-1.7.5a/osd.c	2009-04-14 13:46:01.000000000 +0200
+@@ -221,6 +221,8 @@
+ 
+ bool cBitmap::Covers(int x1, int y1, int x2, int y2) const
+ {
++  if (x1 > x2 || y1 > y2) // sanity check
++     return false;
+   x1 -= x0;
+   y1 -= y0;
+   x2 -= x0;
+@@ -230,6 +232,8 @@
+ 
+ bool cBitmap::Intersects(int x1, int y1, int x2, int y2) const
+ {
++  if (x1 > x2 || y1 > y2) // sanity check
++     return false;
+   x1 -= x0;
+   y1 -= y0;
+   x2 -= x0;
+@@ -398,15 +402,20 @@
+ void cBitmap::SetIndex(int x, int y, tIndex Index)
+ {
+   if (bitmap) {
+-     if (0 <= x && x < width && 0 <= y && y < height) {
+-        if (bitmap[width * y + x] != Index) {
+-           bitmap[width * y + x] = Index;
+-           if (dirtyX1 > x)  dirtyX1 = x;
+-           if (dirtyY1 > y)  dirtyY1 = y;
+-           if (dirtyX2 < x)  dirtyX2 = x;
+-           if (dirtyY2 < y)  dirtyY2 = y;
+-           }
+-        }
++     if (0 <= x && x < width && 0 <= y && y < height)
++        SetIndexInternal(x, y, Index);
++     }
++}
++
++void cBitmap::SetIndexInternal(int x, int y, tIndex Index)
++{
++  // this function relies on existing bitmap and valid coordinates
++  if (bitmap[width * y + x] != Index) {
++     bitmap[width * y + x] = Index;
++     if (dirtyX1 > x)  dirtyX1 = x;
++     if (dirtyY1 > y)  dirtyY1 = y;
++     if (dirtyX2 < x)  dirtyX2 = x;
++     if (dirtyY2 < y)  dirtyY2 = y;
+      }
+ }
+ 
+@@ -414,37 +423,147 @@
+ {
+   x -= x0;
+   y -= y0;
+-  if (0 <= x && x < width && 0 <= y && y < height)
+-     SetIndex(x, y, Index(Color));
++  if (bitmap && 0 <= x && x < width && 0 <= y && y < height)
++     SetIndexInternal(x, y, Index(Color));
+ }
+ 
+ void cBitmap::DrawBitmap(int x, int y, const cBitmap &Bitmap, tColor ColorFg, tColor ColorBg, bool ReplacePalette, bool Overlay)
+ {
+   if (bitmap && Bitmap.bitmap && Intersects(x, y, x + Bitmap.Width() - 1, y + Bitmap.Height() - 1)) {
+-     if (Covers(x, y, x + Bitmap.Width() - 1, y + Bitmap.Height() - 1))
++     bool Covered = Covers(x, y, x + Bitmap.Width() - 1, y + Bitmap.Height() - 1);
++     if (Covered)
+         Reset();
+      x -= x0;
+      y -= y0;
+-     if (ReplacePalette && Covers(x + x0, y + y0, x + x0 + Bitmap.Width() - 1, y + y0 + Bitmap.Height() - 1)) {
++     // determine valid destination area [x1,x2]x[y1,y2] to avoid range checks inside the loops
++     int x1 = max(0, x), x2 = min(0 + width , x + Bitmap.width)  - 1;
++     int y1 = max(0, y), y2 = min(0 + height, y + Bitmap.height) - 1;
++
++#define FOR_Y_LOOP0                                                                                              \
++        tIndex *pRowSrc = &Bitmap.bitmap[Bitmap.width * (y1 - y) + (x1 - x)];                                    \
++        tIndex *pRowDst = &bitmap[width * y1 + x1];                                                              \
++        for (int &yy = y1, ye = min(y2, dirtyY1 - 1); yy <= ye; yy++, pRowDst += width, pRowSrc += Bitmap.width)
++
++#define FOR_Y_LOOP1                                                                                              \
++        tIndex *pRowSrc = &Bitmap.bitmap[Bitmap.width * (y2 - y) + (x1 - x)];                                    \
++        tIndex *pRowDst = &bitmap[width * y2 + x1];                                                              \
++        for (int &yy = y2, ye = max(y1, dirtyY2 + 1); yy >= ye; yy--, pRowDst -= width, pRowSrc -= Bitmap.width)
++
++#define DETECT_DIRTY_AREA_Y(Reverse, TransferCondition, TransferOperation) \
++     do {                                                                  \
++        FOR_Y_LOOP##Reverse {                                              \
++            tIndex *pSrc = pRowSrc;                                        \
++            tIndex *pDst = pRowDst;                                        \
++            bool GotDirty = false;                                         \
++            for (int xx = x1; xx <= x2; xx++) {                            \
++                if (TransferCondition) {                                   \
++                   if (*pDst != TransferOperation) {                       \
++                      GotDirty = true;                                     \
++                      if (dirtyX1 > xx)  dirtyX1 = xx;                     \
++                      if (dirtyX2 < xx)  dirtyX2 = xx;                     \
++                      }                                                    \
++                   }                                                       \
++                pSrc++;                                                    \
++                pDst++;                                                    \
++                }                                                          \
++            if (GotDirty) {                                                \
++               if (dirtyY1 > yy)  dirtyY1 = yy;                            \
++               if (dirtyY2 < yy)  dirtyY2 = yy;                            \
++               break;                                                      \
++               }                                                           \
++            }                                                              \
++        }                                                                  \
++     while (false)
++
++#define FOR_X_LOOP0                                                                         \
++        tIndex *pColSrc = &Bitmap.bitmap[Bitmap.width * (y1 - y) + (x1 - x)];               \
++        tIndex *pColDst = &bitmap[width * y1 + x1];                                         \
++        for (int &xx = x1, xe = min(x2, dirtyX1 - 1); xx <= xe; xx++, pColDst++, pColSrc++)
++
++#define FOR_X_LOOP1                                                                         \
++        tIndex *pColSrc = &Bitmap.bitmap[Bitmap.width * (y1 - y) + (x2 - x)];               \
++        tIndex *pColDst = &bitmap[width * y1 + x2];                                         \
++        for (int &xx = x2, xe = max(x1, dirtyX2 + 1); xx >= xe; xx--, pColDst--, pColSrc--)
++
++#define DETECT_DIRTY_AREA_X(Reverse, TransferCondition, TransferOperation) \
++     do {                                                                  \
++        FOR_X_LOOP##Reverse {                                              \
++            tIndex *pSrc = pColSrc;                                        \
++            tIndex *pDst = pColDst;                                        \
++            bool GotDirty = false;                                         \
++            for (int yy = y1; yy <= y2; yy++) {                            \
++                if (TransferCondition) {                                   \
++                   if (*pDst != TransferOperation) {                       \
++                      GotDirty = true;                                     \
++                      if (dirtyX1 > xx)  dirtyX1 = xx;                     \
++                      if (dirtyX2 < xx)  dirtyX2 = xx;                     \
++                      break;                                               \
++                      }                                                    \
++                   }                                                       \
++                pSrc += Bitmap.width;                                      \
++                pDst += width;                                             \
++                }                                                          \
++            if (GotDirty)                                                  \
++               break;                                                      \
++            }                                                              \
++        }                                                                  \
++     while (false)
++
++#define DRAW_BITMAP(TransferCondition, TransferOperation, CanUseMemCpy)           \
++     do {                                                                         \
++        DETECT_DIRTY_AREA_Y(0, TransferCondition, TransferOperation); /* above */ \
++        DETECT_DIRTY_AREA_Y(1, TransferCondition, TransferOperation); /* below */ \
++        if (y2 < y1) /* nothing dirty */                                          \
++           return;                                                                \
++        DETECT_DIRTY_AREA_X(0, TransferCondition, TransferOperation); /* left  */ \
++        DETECT_DIRTY_AREA_X(1, TransferCondition, TransferOperation); /* right */ \
++        /* process dirty area now */                                              \
++        tIndex *pRowSrc = &Bitmap.bitmap[Bitmap.width * (y1 - y) + (x1 - x)];     \
++        tIndex *pRowDst = &bitmap[width * y1 + x1];                               \
++        int n = sizeof(tIndex) * (x2 - x1 + 1);                                   \
++        for (int yy = y1; yy <= y2; yy++) {                                       \
++            tIndex *pSrc = pRowSrc;                                               \
++            tIndex *pDst = pRowDst;                                               \
++            if (CanUseMemCpy)                                                     \
++               memcpy(pDst, pSrc, n);                                             \
++            else {                                                                \
++               for (int xx = x1; xx <= x2; xx++) {                                \
++                   if (TransferCondition)                                         \
++                      *pDst = TransferOperation;                                  \
++                   pSrc++;                                                        \
++                   pDst++;                                                        \
++                   }                                                              \
++               }                                                                  \
++            pRowSrc += Bitmap.width;                                              \
++            pRowDst += width;                                                     \
++            }                                                                     \
++        }                                                                         \
++     while (false)
++
++     if (ReplacePalette && Covered) {
+         Replace(Bitmap);
+-        for (int ix = 0; ix < Bitmap.width; ix++) {
+-            for (int iy = 0; iy < Bitmap.height; iy++) {
+-                if (!Overlay || Bitmap.bitmap[Bitmap.width * iy + ix] != 0)
+-                   SetIndex(x + ix, y + iy, Bitmap.bitmap[Bitmap.width * iy + ix]);
+-                }
+-            }
++        if (Overlay)
++           DRAW_BITMAP(*pSrc != 0, *pSrc, false);
++        else
++           DRAW_BITMAP(true, *pSrc, true);
+         }
+      else {
+         tIndexes Indexes;
+         Take(Bitmap, &Indexes, ColorFg, ColorBg);
+-        for (int ix = 0; ix < Bitmap.width; ix++) {
+-            for (int iy = 0; iy < Bitmap.height; iy++) {
+-                if (!Overlay || Bitmap.bitmap[Bitmap.width * iy + ix] != 0)
+-                   SetIndex(x + ix, y + iy, Indexes[int(Bitmap.bitmap[Bitmap.width * iy + ix])]);
+-                }
+-            }
++        if (Overlay)
++           DRAW_BITMAP(*pSrc != 0, Indexes[(int)*pSrc], false);
++        else
++           DRAW_BITMAP(true, Indexes[(int)*pSrc], false);
+         }
+      }
++
++#undef DRAW_BITMAP
++#undef DETECT_DIRTY_AREA_Y
++#undef FOR_Y_LOOP0
++#undef FOR_Y_LOOP1
++#undef DETECT_DIRTY_AREA_X
++#undef FOR_X_LOOP0
++#undef FOR_X_LOOP1
+ }
+ 
+ void cBitmap::DrawText(int x, int y, const char *s, tColor ColorFg, tColor ColorBg, const cFont *Font, int Width, int Height, int Alignment)
+@@ -506,10 +625,91 @@
+      x2 = min(x2, width - 1);
+      y2 = min(y2, height - 1);
+      tIndex c = Index(Color);
+-     for (int y = y1; y <= y2; y++)
+-         for (int x = x1; x <= x2; x++)
+-             SetIndex(x, y, c);
++
++#define FOR_Y_LOOP0                                                                     \
++        tIndex *pRowDst = &bitmap[width * y1 + x1];                                     \
++        for (int &yy = y1, ye = min(y2, dirtyY1 - 1); yy <= ye; yy++, pRowDst += width)
++
++#define FOR_Y_LOOP1                                                                     \
++        tIndex *pRowDst = &bitmap[width * y2 + x1];                                     \
++        for (int &yy = y2, ye = max(y1, dirtyY2 + 1); yy >= ye; yy--, pRowDst -= width)
++
++#define DETECT_DIRTY_AREA_Y(Reverse)                \
++     do {                                           \
++        FOR_Y_LOOP##Reverse {                       \
++            tIndex *pDst = pRowDst;                 \
++            bool GotDirty = false;                  \
++            for (int xx = x1; xx <= x2; xx++) {     \
++                if (*pDst != c) {                   \
++                   GotDirty = true;                 \
++                   if (dirtyX1 > xx)  dirtyX1 = xx; \
++                   if (dirtyX2 < xx)  dirtyX2 = xx; \
++                   }                                \
++                pDst++;                             \
++                }                                   \
++            if (GotDirty) {                         \
++               if (dirtyY1 > yy)  dirtyY1 = yy;     \
++               if (dirtyY2 < yy)  dirtyY2 = yy;     \
++               break;                               \
++               }                                    \
++            }                                       \
++        }                                           \
++     while (false)
++
++#define FOR_X_LOOP0                                                              \
++        tIndex *pColDst = &bitmap[width * y1 + x1];                              \
++        for (int &xx = x1, xe = min(x2, dirtyX1 - 1); xx <= xe; xx++, pColDst++)
++
++#define FOR_X_LOOP1                                                              \
++        tIndex *pColDst = &bitmap[width * y1 + x2];                              \
++        for (int &xx = x2, xe = max(x1, dirtyX2 + 1); xx >= xe; xx--, pColDst--)
++
++#define DETECT_DIRTY_AREA_X(Reverse)                \
++     do {                                           \
++        FOR_X_LOOP##Reverse {                       \
++            tIndex *pDst = pColDst;                 \
++            bool GotDirty = false;                  \
++            for (int yy = y1; yy <= y2; yy++) {     \
++                if (*pDst != c) {                   \
++                   GotDirty = true;                 \
++                   if (dirtyX1 > xx)  dirtyX1 = xx; \
++                   if (dirtyX2 < xx)  dirtyX2 = xx; \
++                   break;                           \
++                   }                                \
++                pDst += width;                      \
++                }                                   \
++            if (GotDirty)                           \
++               break;                               \
++            }                                       \
++        }                                           \
++     while (false)
++
++     DETECT_DIRTY_AREA_Y(0); /* above */
++     DETECT_DIRTY_AREA_Y(1); /* below */
++     if (y2 < y1) /* nothing dirty */
++        return;
++     DETECT_DIRTY_AREA_X(0); /* left  */
++     DETECT_DIRTY_AREA_X(1); /* right */
++     // now fill only dirty area of rectangle
++     tIndex *pRowDst = &bitmap[width * y1 + x1];
++     tIndex *pDst = pRowDst;
++     for (int x = x1; x <= x2; x++)
++         *pDst++ = c;
++     // copy the single line above to all other lines
++     tIndex *pRowSrc = pRowDst;
++     int n = sizeof(tIndex) * (x2 - x1 + 1);
++     for (int y = y1 + 1; y <= y2; y++) {
++         pRowDst += width;
++         memcpy(pRowDst, pRowSrc, n);
++         }
+      }
++
++#undef DETECT_DIRTY_AREA_Y
++#undef FOR_Y_LOOP0
++#undef FOR_Y_LOOP1
++#undef DETECT_DIRTY_AREA_X
++#undef FOR_X_LOOP0
++#undef FOR_X_LOOP1
+ }
+ 
+ void cBitmap::DrawEllipse(int x1, int y1, int x2, int y2, tColor Color, int Quadrants)
+diff -Naur vdr-1.7.5/osd.h vdr-1.7.5a/osd.h
+--- vdr-1.7.5/osd.h	2009-04-14 13:45:27.000000000 +0200
++++ vdr-1.7.5a/osd.h	2009-04-14 13:46:01.000000000 +0200
+@@ -136,6 +136,7 @@
+   int x0, y0;
+   int width, height;
+   int dirtyX1, dirtyY1, dirtyX2, dirtyY2;
++  void SetIndexInternal(int x, int y, tIndex Index);
+ public:
+   cBitmap(int Width, int Height, int Bpp, int X0 = 0, int Y0 = 0);
+        ///< Creates a bitmap with the given Width, Height and color depth (Bpp).
+diff -Naur vdr-1.7.5/thread.c vdr-1.7.5a/thread.c
+--- vdr-1.7.5/thread.c	2008-09-06 11:39:43.000000000 +0200
++++ vdr-1.7.5a/thread.c	2009-04-14 13:46:01.000000000 +0200
+@@ -220,9 +220,20 @@
+   free(description);
+ }
+ 
++int cThread::GetPriority(void)
++{
++  errno = 0;
++  int Priority = getpriority(PRIO_PROCESS, 0);
++  if (Priority == -1 && errno != 0) {
++     LOG_ERROR;
++     Priority = 0;
++     }
++  return Priority;
++}
++
+ void cThread::SetPriority(int Priority)
+ {
+-  if (setpriority(PRIO_PROCESS, 0, Priority) < 0)
++  if (setpriority(PRIO_PROCESS, 0, max(-20, min(Priority, 19))) < 0)
+      LOG_ERROR;
+ }
+ 
+diff -Naur vdr-1.7.5/thread.h vdr-1.7.5a/thread.h
+--- vdr-1.7.5/thread.h	2007-02-24 17:13:28.000000000 +0100
++++ vdr-1.7.5a/thread.h	2009-04-14 13:46:01.000000000 +0200
+@@ -86,6 +86,7 @@
+   static tThreadId mainThreadId;
+   static void *StartThread(cThread *Thread);
+ protected:
++  int GetPriority(void);
+   void SetPriority(int Priority);
+   void Lock(void) { mutex.Lock(); }
+   void Unlock(void) { mutex.Unlock(); }
+diff -Naur vdr-1.7.5/tools.c vdr-1.7.5a/tools.c
+--- vdr-1.7.5/tools.c	2009-01-16 15:29:08.000000000 +0100
++++ vdr-1.7.5a/tools.c	2009-04-14 13:46:01.000000000 +0200
+@@ -82,6 +82,14 @@
+   return p < 0 ? p : written;
+ }
+ 
++int readchar(int filedes)
++{
++  char c;
++  if (safe_read(filedes, &c, sizeof(c)) != 1)
++     return -1;
++  return c;
++}
++
+ void writechar(int filedes, char c)
+ {
+   safe_write(filedes, &c, sizeof(c));
+@@ -140,11 +148,8 @@
+ {
+   if (s) {
+      char *p = s;
+-     while (*p) {
+-           if (*p == c1)
+-              *p = c2;
+-           p++;
+-           }
++     while ((p = strchr(p, c1)))
++           *p++ = c2;
+      }
+   return s;
+ }
+diff -Naur vdr-1.7.5/tools.h vdr-1.7.5a/tools.h
+--- vdr-1.7.5/tools.h	2008-05-22 12:26:57.000000000 +0200
++++ vdr-1.7.5a/tools.h	2009-04-14 13:46:01.000000000 +0200
+@@ -167,6 +167,7 @@
+ 
+ ssize_t safe_read(int filedes, void *buffer, size_t size);
+ ssize_t safe_write(int filedes, const void *buffer, size_t size);
++int readchar(int filedes);
+ void writechar(int filedes, char c);
+ int WriteAllOrNothing(int fd, const uchar *Data, int Length, int TimeoutMs = 0, int RetryMs = 0);
+     ///< Writes either all Data to the given file descriptor, or nothing at all.
