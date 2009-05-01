@@ -329,14 +329,14 @@ format_if_needed () {
   if [ "$FORMAT" = yes ]; then
     case `sfdisk --print-id ${LOC_DEV%%[0-9]*} ${LOC_DEV#${LOC_DEV%%[0-9]*}}` in
       1|11|6|e|16|1e|14) # FAT12 and FAT16
-        MKFS=mkdosfs
+        MKFS=mkfs.vfat
         MKFS_OPT="-n GEEXBOX"
         LOC_MKFS_TYPE=vfat
         MKFS_TYPENAME="FAT"
         ;;
       b|c|1b|1c) # FAT32
-        MKFS=mkdosfs
-        MKFS_OPT="-n GEEXBOX -F 32"
+        MKFS=mkfs.vfat
+        MKFS_OPT="-n GEEXBOX"
         LOC_MKFS_TYPE=vfat
         MKFS_TYPENAME="FAT"
         ;;
