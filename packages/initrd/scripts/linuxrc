@@ -71,8 +71,25 @@ boot_from_hdd () {
 
 get_device_from_uuid () {
   if test -e "/dev/disk/by-uuid/${UUID}"; then
-    BOOT_DEV_NAME=`ls -l /dev/disk/by-uuid/${UUID} | sed 's#.*\.\.\/##'`
-    BOOT_DEV=/dev/$BOOT_DEV_NAME
+    if [ "$1" = "data" ]; then
+      DATA_DEV_NAME=`ls -l /dev/disk/by-uuid/${UUID} | sed 's#.*\.\.\/##'`
+      DATA_DEV=/dev/$DATA_DEV_NAME
+    else
+      BOOT_DEV_NAME=`ls -l /dev/disk/by-uuid/${UUID} | sed 's#.*\.\.\/##'`
+      BOOT_DEV=/dev/$BOOT_DEV_NAME
+    fi
+  fi
+}
+
+mount_data_partition() {
+  if [ "$DATA_DEV_NAME" ]; then
+    progress 47000 "mounting r/w data partition"
+    mkdir -p /mnt/data
+    mount -o rw $DATA_DEV /mnt/data
+    mkdir -p /mnt/data/$DATA_LOCATION
+    ln -s /mnt/data/$DATA_LOCATION /var/data
+  else
+    mkdir /var/data
   fi
 }
 
@@ -108,6 +125,26 @@ for arg in $(cat /proc/cmdline); do
     bootdir=*)
       ROOT_LOCATION="${arg#bootdir=}"
       ;;
+    data=*)
+      DATA="${arg#data=}"
+      case $DATA in
+        UUID=*)
+          # Grab real device name from UUID symlink
+          UUID="${DATA#UUID=}"
+          DATA=hdd
+          get_device_from_uuid "data"
+          ;;
+        *)
+          if [ "$DATA" != cdrom -a "$DATA" != nfs -a "$DATA" != smb ]; then
+            DATA_DEV=$DATA
+            DATA=hdd
+          fi
+          ;;
+      esac
+      ;;
+    datadir=*)
+      DATA_LOCATION="${arg#datadir=}"
+      ;;
     nfsroot=*)
       NFS="${arg#nfsroot=}"
       ;;
@@ -138,6 +175,9 @@ done
 
 # determine if a bootdir was specified or force the default one
 [ -z "$ROOT_LOCATION" ] && ROOT_LOCATION="/GEEXBOX"
+
+# determine if a data dir was specified or force the default one
+[ -z "$DATA_LOCATION" ] && DATA_LOCATION="/geexbox-data"
 
 # determine if we use X.Org or not
 [ "$XORG" = yes ] && echo "" > /var/use_xorg
@@ -178,6 +218,7 @@ if test -n "$GEEXBOX" -a -r "$GEEXBOX"/bin.tar* ; then
   progress 45000 "copying system into ram"
   cp -a "$GEEXBOX/firmware" /
   progress 46000 "copying system into ram"
+  mount_data_partition
   INIT=/sbin/init
 else
   INIT=/sbin/nosystem
