@@ -1,6 +1,6 @@
-diff -ruNp vdr-1.7.5/channels.c vdr-1.7.5-extensions/channels.c
---- vdr-1.7.5/channels.c	2009-04-10 13:29:55.000000000 +0200
-+++ vdr-1.7.5-extensions/channels.c	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/channels.c vdr-1.7.7-extensions/channels.c
+--- vdr-1.7.7/channels.c	2009-04-25 15:57:32.000000000 +0200
++++ vdr-1.7.7-extensions/channels.c	2009-05-04 09:07:48.000000000 +0200
 @@ -13,6 +13,9 @@
  #include "device.h"
  #include "epg.h"
@@ -117,7 +117,25 @@ diff -ruNp vdr-1.7.5/channels.c vdr-1.7.5-extensions/channels.c
  #define STRDIFF 0x01
  #define VALDIFF 0x02
  
-@@ -632,7 +685,11 @@ cString cChannel::ParametersToString(voi
+@@ -533,6 +586,17 @@ void cChannel::SetPids(int Vpid, int Ppi
+      }
+ }
+ 
++#ifdef USE_TTXTSUBS
++void cChannel::SetTPidData(char TLangs[][MAXLANGCODE2], int TPages[])
++{
++  for (int i = 0; i < MAXTPAGES; i++) {
++      tpages[i] = TPages[i];
++      strn0cpy(tlangs[i], TLangs[i], MAXLANGCODE2);
++      }
++  tpages[MAXTPAGES] = 0;
++}
++#endif /* TTXTSUBS */
++
+ void cChannel::SetCaIds(const int *CaIds)
+ {
+   if (caids[0] && caids[0] <= CA_USER_MAX)
+@@ -632,7 +696,11 @@ cString cChannel::ParametersToString(voi
    if (isdigit(type))
       type = 'S';
  #define ST(s) if (strchr(s, type))
@@ -129,7 +147,7 @@ diff -ruNp vdr-1.7.5/channels.c vdr-1.7.5-extensions/channels.c
    char *q = buffer;
    *q = 0;
    ST(" S ")  q += sprintf(q, "%c", polarization);
-@@ -646,6 +703,9 @@ cString cChannel::ParametersToString(voi
+@@ -646,6 +714,9 @@ cString cChannel::ParametersToString(voi
    ST(" S ")  q += PrintParameter(q, 'S', MapToUser(system, SystemValues));
    ST("  T")  q += PrintParameter(q, 'T', MapToUser(transmission, TransmissionValues));
    ST("  T")  q += PrintParameter(q, 'Y', MapToUser(hierarchy, HierarchyValues));
@@ -139,7 +157,7 @@ diff -ruNp vdr-1.7.5/channels.c vdr-1.7.5-extensions/channels.c
    return buffer;
  }
  
-@@ -674,7 +734,11 @@ static const char *SkipDigits(const char
+@@ -674,7 +745,11 @@ static const char *SkipDigits(const char
  
  bool cChannel::StringToParameters(const char *s)
  {
@@ -151,7 +169,7 @@ diff -ruNp vdr-1.7.5/channels.c vdr-1.7.5-extensions/channels.c
          switch (toupper(*s)) {
            case 'A': s = SkipDigits(s); break; // for compatibility with the "multiproto" approach - may be removed in future versions
            case 'B': s = ParseParameter(s, bandwidth, BandwidthValues); break;
-@@ -792,7 +856,11 @@ bool cChannel::Parse(const char *s)
+@@ -792,7 +867,11 @@ bool cChannel::Parse(const char *s)
          dpids[0] = 0;
          ok = false;
          if (parambuf && sourcebuf && vpidbuf && apidbuf) {
@@ -163,7 +181,7 @@ diff -ruNp vdr-1.7.5/channels.c vdr-1.7.5-extensions/channels.c
  
             char *p;
             if ((p = strchr(vpidbuf, '=')) != NULL) {
-@@ -887,6 +955,9 @@ bool cChannel::Parse(const char *s)
+@@ -887,6 +966,9 @@ bool cChannel::Parse(const char *s)
             shortName = strcpyrealloc(shortName, p);
             }
          name = strcpyrealloc(name, namebuf);
@@ -173,7 +191,7 @@ diff -ruNp vdr-1.7.5/channels.c vdr-1.7.5-extensions/channels.c
  
          free(parambuf);
          free(sourcebuf);
-@@ -1132,6 +1203,9 @@ cChannel *cChannels::NewChannel(const cC
+@@ -1132,6 +1214,9 @@ cChannel *cChannels::NewChannel(const cC
       NewChannel->SetName(Name, ShortName, Provider);
       Add(NewChannel);
       ReNumber();
@@ -183,10 +201,20 @@ diff -ruNp vdr-1.7.5/channels.c vdr-1.7.5-extensions/channels.c
       return NewChannel;
       }
    return NULL;
-diff -ruNp vdr-1.7.5/channels.h vdr-1.7.5-extensions/channels.h
---- vdr-1.7.5/channels.h	2008-11-22 14:35:52.000000000 +0100
-+++ vdr-1.7.5-extensions/channels.h	2009-04-16 20:54:09.000000000 +0200
-@@ -116,6 +116,9 @@ private:
+diff -ruNp vdr-1.7.7/channels.h vdr-1.7.7-extensions/channels.h
+--- vdr-1.7.7/channels.h	2008-11-22 14:35:52.000000000 +0100
++++ vdr-1.7.7-extensions/channels.h	2009-05-04 09:07:48.000000000 +0200
+@@ -35,6 +35,9 @@
+ #define MAXDPIDS 16 // dolby (AC3 + DTS)
+ #define MAXSPIDS 32 // subtitles
+ #define MAXCAIDS  8 // conditional access
++#ifdef USE_TTXTSUBS
++#define MAXTPAGES 8 // teletext pages
++#endif /* TTXTSUBS */
+ 
+ #define MAXLANGCODE1 4 // a 3 letter language code, zero terminated
+ #define MAXLANGCODE2 8 // up to two 3 letter language codes, separated by '+' and zero terminated
+@@ -116,6 +119,9 @@ private:
    char *shortName;
    char *provider;
    char *portalName;
@@ -196,7 +224,18 @@ diff -ruNp vdr-1.7.5/channels.h vdr-1.7.5-extensions/channels.h
    int __BeginData__;
    int frequency; // MHz
    int source;
-@@ -171,6 +174,9 @@ public:
+@@ -130,6 +136,10 @@ private:
+   int spids[MAXSPIDS + 1]; // list is zero-terminated
+   char slangs[MAXSPIDS][MAXLANGCODE2];
+   int tpid;
++#ifdef USE_TTXTSUBS
++  char tlangs[MAXTPAGES][MAXLANGCODE2];
++  int tpages[MAXTPAGES + 1]; // list is zero-terminated
++#endif /* TTXTSUBS */
+   int caids[MAXCAIDS + 1]; // list is zero-terminated
+   int nid;
+   int tid;
+@@ -171,6 +181,9 @@ public:
    int Frequency(void) const { return frequency; } ///< Returns the actual frequency, as given in 'channels.conf'
    int Transponder(void) const;                    ///< Returns the transponder frequency in MHz, plus the polarization in case of sat
    static int Transponder(int Frequency, char Polarization); ///< builds the transponder from the given Frequency and Polarization
@@ -206,7 +245,18 @@ diff -ruNp vdr-1.7.5/channels.h vdr-1.7.5-extensions/channels.h
    int Source(void) const { return source; }
    int Srate(void) const { return srate; }
    int Vpid(void) const { return vpid; }
-@@ -208,6 +214,9 @@ public:
+@@ -186,6 +199,10 @@ public:
+   const char *Dlang(int i) const { return (0 <= i && i < MAXDPIDS) ? dlangs[i] : ""; }
+   const char *Slang(int i) const { return (0 <= i && i < MAXSPIDS) ? slangs[i] : ""; }
+   int Tpid(void) const { return tpid; }
++#ifdef USE_TTXTSUBS
++  const char *Tlang(int i) const { return (0 <= i && i < MAXTPAGES) ? tlangs[i] : ""; }
++  const int TPages(int i) const { return (0 <= i && i < MAXTPAGES) ? tpages[i] : 0; }
++#endif /* TTXTSUBS */
+   const int *Caids(void) const { return caids; }
+   int Ca(int Index = 0) const { return Index < MAXCAIDS ? caids[Index] : 0; }
+   int Nid(void) const { return nid; }
+@@ -208,6 +225,9 @@ public:
    int RollOff(void) const { return rollOff; }
    const cLinkChannels* LinkChannels(void) const { return linkChannels; }
    const cChannel *RefChannel(void) const { return refChannel; }
@@ -216,7 +266,7 @@ diff -ruNp vdr-1.7.5/channels.h vdr-1.7.5-extensions/channels.h
    bool IsCable(void) const { return cSource::IsCable(source); }
    bool IsSat(void) const { return cSource::IsSat(source); }
    bool IsTerr(void) const { return cSource::IsTerr(source); }
-@@ -215,12 +224,18 @@ public:
+@@ -215,13 +235,22 @@ public:
    bool HasTimer(void) const;
    int Modification(int Mask = CHANNELMOD_ALL);
    void CopyTransponderData(const cChannel *Channel);
@@ -233,11 +283,15 @@ diff -ruNp vdr-1.7.5/channels.h vdr-1.7.5-extensions/channels.h
 +  void SetPluginParam(const char *PluginParam);
 +#endif /* PLUGINPARAM */
    void SetPids(int Vpid, int Ppid, int Vtype, int *Apids, char ALangs[][MAXLANGCODE2], int *Dpids, char DLangs[][MAXLANGCODE2], int *Spids, char SLangs[][MAXLANGCODE2], int Tpid);
++#ifdef USE_TTXTSUBS
++  void SetTPidData(char TLangs[][MAXLANGCODE2], int TPages[]);
++#endif /* TTXTSUBS */
    void SetCaIds(const int *CaIds); // list must be zero-terminated
    void SetCaDescriptors(int Level);
-diff -ruNp vdr-1.7.5/config.c vdr-1.7.5-extensions/config.c
---- vdr-1.7.5/config.c	2009-01-24 16:05:32.000000000 +0100
-+++ vdr-1.7.5-extensions/config.c	2009-04-16 20:54:09.000000000 +0200
+   void SetLinkChannels(cLinkChannels *LinkChannels);
+diff -ruNp vdr-1.7.7/config.c vdr-1.7.7-extensions/config.c
+--- vdr-1.7.7/config.c	2009-05-03 15:58:08.000000000 +0200
++++ vdr-1.7.7-extensions/config.c	2009-05-04 09:07:48.000000000 +0200
 @@ -15,6 +15,9 @@
  #include "interface.h"
  #include "plugin.h"
@@ -357,8 +411,8 @@ diff -ruNp vdr-1.7.5/config.c vdr-1.7.5-extensions/config.c
 +#endif /* DVBSETUP */
    ChannelInfoPos = 0;
    ChannelInfoTime = 5;
-   OSDLeft = 54;
-@@ -276,24 +342,135 @@ cSetup::cSetup(void)
+   OSDLeftP = 0.08;
+@@ -283,24 +349,135 @@ cSetup::cSetup(void)
    FontSmlSize = 18;
    FontFixSize = 20;
    MaxVideoFileSize = MAXVIDEOFILESIZEDEFAULT;
@@ -494,7 +548,7 @@ diff -ruNp vdr-1.7.5/config.c vdr-1.7.5-extensions/config.c
    return *this;
  }
  
-@@ -384,11 +561,62 @@ bool cSetup::ParseLanguages(const char *
+@@ -396,11 +573,62 @@ bool cSetup::ParseLanguages(const char *
    return true;
  }
  
@@ -557,7 +611,7 @@ diff -ruNp vdr-1.7.5/config.c vdr-1.7.5-extensions/config.c
    else if (!strcasecmp(Name, "PrimaryDVB"))          PrimaryDVB         = atoi(Value);
    else if (!strcasecmp(Name, "ShowInfoOnChSwitch"))  ShowInfoOnChSwitch = atoi(Value);
    else if (!strcasecmp(Name, "TimeoutRequChInfo"))   TimeoutRequChInfo  = atoi(Value);
-@@ -433,6 +661,18 @@ bool cSetup::Parse(const char *Name, con
+@@ -445,6 +673,18 @@ bool cSetup::Parse(const char *Name, con
    else if (!strcasecmp(Name, "VideoFormat"))         VideoFormat        = atoi(Value);
    else if (!strcasecmp(Name, "UpdateChannels"))      UpdateChannels     = atoi(Value);
    else if (!strcasecmp(Name, "UseDolbyDigital"))     UseDolbyDigital    = atoi(Value);
@@ -575,8 +629,8 @@ diff -ruNp vdr-1.7.5/config.c vdr-1.7.5-extensions/config.c
 +#endif /* DVBSETUP */
    else if (!strcasecmp(Name, "ChannelInfoPos"))      ChannelInfoPos     = atoi(Value);
    else if (!strcasecmp(Name, "ChannelInfoTime"))     ChannelInfoTime    = atoi(Value);
-   else if (!strcasecmp(Name, "OSDLeft"))             OSDLeft            = atoi(Value);
-@@ -449,21 +689,144 @@ bool cSetup::Parse(const char *Name, con
+   else if (!strcasecmp(Name, "OSDLeftP"))            OSDLeftP           = atof(Value);
+@@ -468,21 +708,144 @@ bool cSetup::Parse(const char *Name, con
    else if (!strcasecmp(Name, "FontSmlSize"))         FontSmlSize        = atoi(Value);
    else if (!strcasecmp(Name, "FontFixSize"))         FontFixSize        = atoi(Value);
    else if (!strcasecmp(Name, "MaxVideoFileSize"))    MaxVideoFileSize   = atoi(Value);
@@ -721,7 +775,7 @@ diff -ruNp vdr-1.7.5/config.c vdr-1.7.5-extensions/config.c
    return true;
  }
  
-@@ -472,6 +835,12 @@ bool cSetup::Save(void)
+@@ -491,6 +854,12 @@ bool cSetup::Save(void)
    Store("OSDLanguage",        OSDLanguage);
    Store("OSDSkin",            OSDSkin);
    Store("OSDTheme",           OSDTheme);
@@ -734,7 +788,7 @@ diff -ruNp vdr-1.7.5/config.c vdr-1.7.5-extensions/config.c
    Store("PrimaryDVB",         PrimaryDVB);
    Store("ShowInfoOnChSwitch", ShowInfoOnChSwitch);
    Store("TimeoutRequChInfo",  TimeoutRequChInfo);
-@@ -516,6 +885,15 @@ bool cSetup::Save(void)
+@@ -535,6 +904,15 @@ bool cSetup::Save(void)
    Store("VideoFormat",        VideoFormat);
    Store("UpdateChannels",     UpdateChannels);
    Store("UseDolbyDigital",    UseDolbyDigital);
@@ -749,8 +803,8 @@ diff -ruNp vdr-1.7.5/config.c vdr-1.7.5-extensions/config.c
 +#endif /* DVBSETUP */
    Store("ChannelInfoPos",     ChannelInfoPos);
    Store("ChannelInfoTime",    ChannelInfoTime);
-   Store("OSDLeft",            OSDLeft);
-@@ -532,25 +910,156 @@ bool cSetup::Save(void)
+   Store("OSDLeftP",           OSDLeftP);
+@@ -558,25 +936,152 @@ bool cSetup::Save(void)
    Store("FontSmlSize",        FontSmlSize);
    Store("FontFixSize",        FontFixSize);
    Store("MaxVideoFileSize",   MaxVideoFileSize);
@@ -881,21 +935,18 @@ diff -ruNp vdr-1.7.5/config.c vdr-1.7.5-extensions/config.c
 +#ifdef USE_CMDRECCMDI18N
 +bool LoadCommandsI18n(cCommands & cmds, const char *FileName, bool AllowComments, bool MustExist)
 +{
-+
 +    bool bRet = true;
-+    bool bLoadDefault = (bool)strcmp(Setup.OSDLanguage,"en_US");
++    bool bLoadDefault = (bool)strcmp(Setup.OSDLanguage, "en_US");
 +    if (bLoadDefault) {
 +       // attempt to load a translated file
-+       char *FullPath = NULL;
-+       asprintf(&FullPath, "%s.%s", FileName, Setup.OSDLanguage);
++       cString FullPath = cString::sprintf("%s.%s", FileName, Setup.OSDLanguage);
 +       if (!cmds.Load((FullPath), AllowComments, true)) {
 +          // require to exist, just to be able to log
 +          // fallback
 +          bLoadDefault = false;
-+          esyslog("Failed to load translated '%s' for language (%s)", FullPath, Setup.OSDLanguage);
++          esyslog("Failed to load translated '%s' for language (%s)", *FullPath, Setup.OSDLanguage);
 +          esyslog("Falling back to default '%s' (if any)", FileName);
 +          }
-+       free(FullPath);
 +       }
 +    if (!bLoadDefault) {
 +       // let's do it the normal way
@@ -904,24 +955,23 @@ diff -ruNp vdr-1.7.5/config.c vdr-1.7.5-extensions/config.c
 +    // return status only for the default commands file
 +    return bRet;
 +}
-+
 +#endif /* CMDRECCMDI18N */
 +
-diff -ruNp vdr-1.7.5/config.h vdr-1.7.5-extensions/config.h
---- vdr-1.7.5/config.h	2009-01-30 17:05:34.000000000 +0100
-+++ vdr-1.7.5-extensions/config.h	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/config.h vdr-1.7.7-extensions/config.h
+--- vdr-1.7.7/config.h	2009-05-03 15:15:35.000000000 +0200
++++ vdr-1.7.7-extensions/config.h	2009-05-04 09:07:48.000000000 +0200
 @@ -36,23 +36,74 @@
  // plugins to work with newer versions of the core VDR as long as no
  // VDR header files have changed.
  
-+#define VDREXTENSIONS 71
++#define VDREXTENSIONS 72
 +
 +#ifdef USE_JUMPPLAY
 +#define JUMPPLAYVERSNUM 100
 +#endif /* JUMPPLAY */
 +
 +#ifdef USE_LIEMIEXT
-+#define LIEMIKUUTIO  125
++#define LIEMIKUUTIO  127
 +#define MAXMAINMENUTITLE 4
 +#define MaxTitleName 64
 +#endif /* LIEMIEXT */
@@ -949,10 +999,10 @@ diff -ruNp vdr-1.7.5/config.h vdr-1.7.5-extensions/config.h
 +#define DVLVIDPREFER_MAX 12
 +#endif /* DVLVIDPREFER */
 +
- #define MINOSDWIDTH  480
- #define MAXOSDWIDTH  672
- #define MINOSDHEIGHT 324
- #define MAXOSDHEIGHT 567
+ #define MINOSDWIDTH   480
+ #define MAXOSDWIDTH  1920
+ #define MINOSDHEIGHT  324
+ #define MAXOSDHEIGHT 1080
  
 +#ifdef USE_SOURCECAPS
 +#define MAXDEVICES         16 // the maximum number of devices in the system
@@ -1058,7 +1108,7 @@ diff -ruNp vdr-1.7.5/config.h vdr-1.7.5-extensions/config.h
    cSetupLine *Get(const char *Name, const char *Plugin = NULL);
    void Store(const char *Name, const char *Value, const char *Plugin = NULL, bool AllowMultiple = false);
    void Store(const char *Name, int Value, const char *Plugin = NULL);
-@@ -201,6 +281,12 @@ public:
+@@ -202,6 +282,12 @@ public:
    char OSDLanguage[I18N_MAX_LOCALE_LEN];
    char OSDSkin[MaxSkinName];
    char OSDTheme[MaxThemeName];
@@ -1071,7 +1121,7 @@ diff -ruNp vdr-1.7.5/config.h vdr-1.7.5-extensions/config.h
    int PrimaryDVB;
    int ShowInfoOnChSwitch;
    int TimeoutRequChInfo;
-@@ -241,6 +327,14 @@ public:
+@@ -242,6 +328,14 @@ public:
    int VideoFormat;
    int UpdateChannels;
    int UseDolbyDigital;
@@ -1085,8 +1135,8 @@ diff -ruNp vdr-1.7.5/config.h vdr-1.7.5-extensions/config.h
 +#endif /* DVBSETUP */
    int ChannelInfoPos;
    int ChannelInfoTime;
-   int OSDLeft, OSDTop, OSDWidth, OSDHeight;
-@@ -254,20 +348,111 @@ public:
+   double OSDLeftP, OSDTopP, OSDWidthP, OSDHeightP;
+@@ -259,20 +353,111 @@ public:
    int FontSmlSize;
    int FontFixSize;
    int MaxVideoFileSize;
@@ -1198,7 +1248,7 @@ diff -ruNp vdr-1.7.5/config.h vdr-1.7.5-extensions/config.h
    cSetup& operator= (const cSetup &s);
    bool Load(const char *FileName);
    bool Save(void);
-@@ -275,4 +460,8 @@ public:
+@@ -280,4 +465,8 @@ public:
  
  extern cSetup Setup;
  
@@ -1207,9 +1257,9 @@ diff -ruNp vdr-1.7.5/config.h vdr-1.7.5-extensions/config.h
 +#endif /* CMDRECCMDI18N */
 +
  #endif //__CONFIG_H
-diff -ruNp vdr-1.7.5/cutter.c vdr-1.7.5-extensions/cutter.c
---- vdr-1.7.5/cutter.c	2009-01-24 16:19:26.000000000 +0100
-+++ vdr-1.7.5-extensions/cutter.c	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/cutter.c vdr-1.7.7-extensions/cutter.c
+--- vdr-1.7.7/cutter.c	2009-04-19 12:56:33.000000000 +0200
++++ vdr-1.7.7-extensions/cutter.c	2009-05-04 09:07:48.000000000 +0200
 @@ -15,6 +15,19 @@
  
  // --- cCuttingThread --------------------------------------------------------
@@ -1230,7 +1280,7 @@ diff -ruNp vdr-1.7.5/cutter.c vdr-1.7.5-extensions/cutter.c
  class cCuttingThread : public cThread {
  private:
    const char *error;
-@@ -66,6 +79,22 @@ cCuttingThread::~cCuttingThread()
+@@ -67,6 +80,22 @@ cCuttingThread::~cCuttingThread()
  
  void cCuttingThread::Action(void)
  {
@@ -1253,7 +1303,7 @@ diff -ruNp vdr-1.7.5/cutter.c vdr-1.7.5-extensions/cutter.c
    cMark *Mark = fromMarks.First();
    if (Mark) {
       fromFile = fromFileName->Open();
-@@ -77,6 +106,9 @@ void cCuttingThread::Action(void)
+@@ -78,6 +107,9 @@ void cCuttingThread::Action(void)
       Mark = fromMarks.Next(Mark);
       off_t FileSize = 0;
       int CurrentFileNumber = 0;
@@ -1263,7 +1313,7 @@ diff -ruNp vdr-1.7.5/cutter.c vdr-1.7.5-extensions/cutter.c
       int LastIFrame = 0;
       toMarks.Add(0);
       toMarks.Save();
-@@ -95,12 +127,101 @@ void cCuttingThread::Action(void)
+@@ -96,12 +128,101 @@ void cCuttingThread::Action(void)
  
             // Read one frame:
  
@@ -1365,7 +1415,7 @@ diff -ruNp vdr-1.7.5/cutter.c vdr-1.7.5-extensions/cutter.c
                if (fromFile) {
                   int len = ReadFrame(fromFile, buffer,  Length, sizeof(buffer));
                   if (len < 0) {
-@@ -117,6 +238,7 @@ void cCuttingThread::Action(void)
+@@ -118,6 +239,7 @@ void cCuttingThread::Action(void)
                   break;
                   }
                }
@@ -1373,7 +1423,7 @@ diff -ruNp vdr-1.7.5/cutter.c vdr-1.7.5-extensions/cutter.c
             else {
                // Error, unless we're past the last cut-in and there's no cut-out
                if (Mark || LastMark)
-@@ -124,12 +246,17 @@ void cCuttingThread::Action(void)
+@@ -125,12 +247,17 @@ void cCuttingThread::Action(void)
                break;
                }
  
@@ -1391,7 +1441,7 @@ diff -ruNp vdr-1.7.5/cutter.c vdr-1.7.5-extensions/cutter.c
                   toFile = toFileName->NextFile();
                   if (!toFile) {
                      error = "toFile 1";
-@@ -139,12 +266,20 @@ void cCuttingThread::Action(void)
+@@ -140,7 +267,11 @@ void cCuttingThread::Action(void)
                   }
                LastIFrame = 0;
  
@@ -1400,7 +1450,10 @@ diff -ruNp vdr-1.7.5/cutter.c vdr-1.7.5-extensions/cutter.c
 +#else
 +              if (!SkipThisSourceFile && cutIn) {
 +#endif /* HARDLINKCUTTER */
-                  cRemux::SetBrokenLink(buffer, Length);
+                  if (isPesRecording)
+                     cRemux::SetBrokenLink(buffer, Length);
+                  else
+@@ -148,7 +279,11 @@ void cCuttingThread::Action(void)
                   cutIn = false;
                   }
                }
@@ -1412,7 +1465,7 @@ diff -ruNp vdr-1.7.5/cutter.c vdr-1.7.5-extensions/cutter.c
                error = "safe_write";
                break;
                }
-@@ -179,8 +314,44 @@ void cCuttingThread::Action(void)
+@@ -183,8 +318,44 @@ void cCuttingThread::Action(void)
                      }
                   }
                else
@@ -1457,7 +1510,7 @@ diff -ruNp vdr-1.7.5/cutter.c vdr-1.7.5-extensions/cutter.c
             }
       Recordings.TouchUpdate();
       }
-@@ -190,18 +361,74 @@ void cCuttingThread::Action(void)
+@@ -194,18 +365,74 @@ void cCuttingThread::Action(void)
  
  // --- cCutter ---------------------------------------------------------------
  
@@ -1532,7 +1585,7 @@ diff -ruNp vdr-1.7.5/cutter.c vdr-1.7.5-extensions/cutter.c
       if (evn && RemoveVideoFile(evn) && MakeDirs(evn, true)) {
          // XXX this can be removed once RenameVideoFile() follows symlinks (see videodir.c)
          // remove a possible deleted recording with the same name to avoid symlink mixups:
-@@ -227,6 +454,9 @@ bool cCutter::Start(const char *FileName
+@@ -231,6 +458,9 @@ bool cCutter::Start(const char *FileName
  
  void cCutter::Stop(void)
  {
@@ -1542,7 +1595,7 @@ diff -ruNp vdr-1.7.5/cutter.c vdr-1.7.5-extensions/cutter.c
    bool Interrupted = cuttingThread && cuttingThread->Active();
    const char *Error = cuttingThread ? cuttingThread->Error() : NULL;
    delete cuttingThread;
-@@ -238,11 +468,20 @@ void cCutter::Stop(void)
+@@ -242,11 +472,20 @@ void cCutter::Stop(void)
          esyslog("ERROR: '%s' during editing process", Error);
       RemoveVideoFile(editedVersionName); //XXX what if this file is currently being replayed?
       Recordings.DelByName(editedVersionName);
@@ -1563,7 +1616,7 @@ diff -ruNp vdr-1.7.5/cutter.c vdr-1.7.5-extensions/cutter.c
    if (cuttingThread) {
       if (cuttingThread->Active())
          return true;
-@@ -253,12 +492,40 @@ bool cCutter::Active(void)
+@@ -257,12 +496,40 @@ bool cCutter::Active(void)
       free(editedVersionName);
       editedVersionName = NULL;
       ended = true;
@@ -1604,7 +1657,7 @@ diff -ruNp vdr-1.7.5/cutter.c vdr-1.7.5-extensions/cutter.c
    bool result = error;
    error = false;
    return result;
-@@ -266,6 +533,9 @@ bool cCutter::Error(void)
+@@ -270,6 +537,9 @@ bool cCutter::Error(void)
  
  bool cCutter::Ended(void)
  {
@@ -1614,9 +1667,9 @@ diff -ruNp vdr-1.7.5/cutter.c vdr-1.7.5-extensions/cutter.c
    bool result = ended;
    ended = false;
    return result;
-diff -ruNp vdr-1.7.5/cutter.h vdr-1.7.5-extensions/cutter.h
---- vdr-1.7.5/cutter.h	2002-06-22 12:03:15.000000000 +0200
-+++ vdr-1.7.5-extensions/cutter.h	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/cutter.h vdr-1.7.7-extensions/cutter.h
+--- vdr-1.7.7/cutter.h	2002-06-22 12:03:15.000000000 +0200
++++ vdr-1.7.7-extensions/cutter.h	2009-05-04 09:07:48.000000000 +0200
 @@ -11,6 +11,9 @@
  #define __CUTTER_H
  
@@ -1637,13 +1690,17 @@ diff -ruNp vdr-1.7.5/cutter.h vdr-1.7.5-extensions/cutter.h
  public:
    static bool Start(const char *FileName);
    static void Stop(void);
-diff -ruNp vdr-1.7.5/device.c vdr-1.7.5-extensions/device.c
---- vdr-1.7.5/device.c	2009-04-05 14:15:41.000000000 +0200
-+++ vdr-1.7.5-extensions/device.c	2009-04-16 20:54:09.000000000 +0200
-@@ -19,6 +19,14 @@
+diff -ruNp vdr-1.7.7/device.c vdr-1.7.7-extensions/device.c
+--- vdr-1.7.7/device.c	2009-05-02 14:17:39.000000000 +0200
++++ vdr-1.7.7-extensions/device.c	2009-05-04 09:07:48.000000000 +0200
+@@ -18,6 +18,17 @@
+ #include "receiver.h"
  #include "status.h"
  #include "transfer.h"
- 
++#ifdef USE_TTXTSUBS
++#include "vdrttxtsubshooks.h"
++#endif /* TTXTSUBS */
++
 +#ifdef USE_LNBSHARE
 +#include "diseqc.h"
 +#endif /* LNBSHARE */
@@ -1651,11 +1708,10 @@ diff -ruNp vdr-1.7.5/device.c vdr-1.7.5-extensions/device.c
 +#ifdef USE_CHANNELSCAN
 +bool scanning_on_receiving_device = false;
 +#endif /* CHANNELSCAN */
-+
- // --- cLiveSubtitle ---------------------------------------------------------
  
- class cLiveSubtitle : public cReceiver {
-@@ -68,6 +76,12 @@ cDevice::cDevice(void)
+ const char *VideoAspectString[] = { "4:3",
+                                     "16:9",
+@@ -73,6 +84,12 @@ cDevice::cDevice(void)
  
    SetVideoFormat(Setup.VideoFormat);
  
@@ -1668,7 +1724,7 @@ diff -ruNp vdr-1.7.5/device.c vdr-1.7.5-extensions/device.c
    mute = false;
    volume = Setup.CurrentVolume;
  
-@@ -93,8 +107,15 @@ cDevice::cDevice(void)
+@@ -98,8 +115,15 @@ cDevice::cDevice(void)
    for (int i = 0; i < MAXRECEIVERS; i++)
        receiver[i] = NULL;
  
@@ -1684,7 +1740,7 @@ diff -ruNp vdr-1.7.5/device.c vdr-1.7.5-extensions/device.c
    else
       esyslog("ERROR: too many devices!");
  }
-@@ -129,6 +150,16 @@ void cDevice::SetUseDevice(int n)
+@@ -134,6 +158,16 @@ void cDevice::SetUseDevice(int n)
       useDevice |= (1 << n);
  }
  
@@ -1701,7 +1757,7 @@ diff -ruNp vdr-1.7.5/device.c vdr-1.7.5-extensions/device.c
  int cDevice::NextCardIndex(int n)
  {
    if (n > 0) {
-@@ -189,6 +220,98 @@ cDevice *cDevice::ActualDevice(void)
+@@ -194,6 +228,98 @@ cDevice *cDevice::ActualDevice(void)
    return d;
  }
  
@@ -1800,7 +1856,7 @@ diff -ruNp vdr-1.7.5/device.c vdr-1.7.5-extensions/device.c
  cDevice *cDevice::GetDevice(int Index)
  {
    return (0 <= Index && Index < numDevices) ? device[Index] : NULL;
-@@ -238,6 +361,10 @@ cDevice *cDevice::GetDevice(const cChann
+@@ -243,6 +369,10 @@ cDevice *cDevice::GetDevice(const cChann
    cCamSlot *s = NULL;
  
    uint32_t Impact = 0xFFFFFFFF; // we're looking for a device with the least impact
@@ -1811,7 +1867,7 @@ diff -ruNp vdr-1.7.5/device.c vdr-1.7.5-extensions/device.c
    for (int j = 0; j < NumCamSlots || !NumUsableSlots; j++) {
        if (NumUsableSlots && SlotPriority[j] > MAXPRIORITY)
           continue; // there is no CAM available in this slot
-@@ -271,7 +398,31 @@ cDevice *cDevice::GetDevice(const cChann
+@@ -276,7 +406,31 @@ cDevice *cDevice::GetDevice(const cChann
               imp <<= 1; imp |= NumUsableSlots ? 0 : device[i]->HasCi();                                              // avoid cards with Common Interface for FTA channels
               imp <<= 1; imp |= device[i]->HasDecoder();                                                              // avoid full featured cards
               imp <<= 1; imp |= NumUsableSlots ? !ChannelCamRelations.CamDecrypt(Channel->GetChannelID(), j + 1) : 0; // prefer CAMs that are known to decrypt this channel
@@ -1843,7 +1899,7 @@ diff -ruNp vdr-1.7.5/device.c vdr-1.7.5-extensions/device.c
                  // This device has less impact than any previous one, so we take it.
                  Impact = imp;
                  d = device[i];
-@@ -312,6 +463,18 @@ void cDevice::SetCamSlot(cCamSlot *CamSl
+@@ -317,6 +471,18 @@ void cDevice::SetCamSlot(cCamSlot *CamSl
    camSlot = CamSlot;
  }
  
@@ -1862,7 +1918,7 @@ diff -ruNp vdr-1.7.5/device.c vdr-1.7.5-extensions/device.c
  void cDevice::Shutdown(void)
  {
    primaryDevice = NULL;
-@@ -556,7 +719,11 @@ bool cDevice::ProvidesTransponder(const 
+@@ -568,7 +734,11 @@ bool cDevice::ProvidesTransponder(const 
  bool cDevice::ProvidesTransponderExclusively(const cChannel *Channel) const
  {
    for (int i = 0; i < numDevices; i++) {
@@ -1874,7 +1930,7 @@ diff -ruNp vdr-1.7.5/device.c vdr-1.7.5-extensions/device.c
           return false;
        }
    return true;
-@@ -584,6 +751,24 @@ bool cDevice::MaySwitchTransponder(void)
+@@ -596,6 +766,24 @@ bool cDevice::MaySwitchTransponder(void)
  
  bool cDevice::SwitchChannel(const cChannel *Channel, bool LiveView)
  {
@@ -1899,7 +1955,7 @@ diff -ruNp vdr-1.7.5/device.c vdr-1.7.5-extensions/device.c
    if (LiveView) {
       isyslog("switching to channel %d", Channel->Number());
       cControl::Shutdown(); // prevents old channel from being shown too long if GetDevice() takes longer
-@@ -613,7 +798,14 @@ bool cDevice::SwitchChannel(int Directio
+@@ -625,7 +813,14 @@ bool cDevice::SwitchChannel(int Directio
       cChannel *channel;
       while ((channel = Channels.GetByNumber(n, Direction)) != NULL) {
             // try only channels which are currently available
@@ -1914,7 +1970,7 @@ diff -ruNp vdr-1.7.5/device.c vdr-1.7.5-extensions/device.c
                break;
             n = channel->Number() + Direction;
             }
-@@ -634,6 +826,13 @@ bool cDevice::SwitchChannel(int Directio
+@@ -646,6 +841,13 @@ bool cDevice::SwitchChannel(int Directio
  
  eSetChannelResult cDevice::SetChannel(const cChannel *Channel, bool LiveView)
  {
@@ -1928,7 +1984,7 @@ diff -ruNp vdr-1.7.5/device.c vdr-1.7.5-extensions/device.c
    if (LiveView) {
       StopReplay();
       DELETENULL(liveSubtitle);
-@@ -646,11 +845,37 @@ eSetChannelResult cDevice::SetChannel(co
+@@ -658,11 +860,37 @@ eSetChannelResult cDevice::SetChannel(co
  
    eSetChannelResult Result = scrOk;
  
@@ -1966,7 +2022,7 @@ diff -ruNp vdr-1.7.5/device.c vdr-1.7.5-extensions/device.c
          cStatus::MsgChannelSwitch(this, 0); // only report status if we are actually going to switch the channel
          if (Device->SetChannel(Channel, false) == scrOk) // calling SetChannel() directly, not SwitchChannel()!
             cControl::Launch(new cTransferControl(Device, Channel->GetChannelID(), Channel->Vpid(), Channel->Apids(), Channel->Dpids(), Channel->Spids()));
-@@ -668,6 +893,10 @@ eSetChannelResult cDevice::SetChannel(co
+@@ -680,6 +908,10 @@ eSetChannelResult cDevice::SetChannel(co
          sectionHandler->SetStatus(false);
          sectionHandler->SetChannel(NULL);
          }
@@ -1977,7 +2033,7 @@ diff -ruNp vdr-1.7.5/device.c vdr-1.7.5-extensions/device.c
       // Tell the camSlot about the channel switch and add all PIDs of this
       // channel to it, for possible later decryption:
       if (camSlot)
-@@ -960,7 +1189,12 @@ void cDevice::EnsureSubtitleTrack(void)
+@@ -972,7 +1204,12 @@ void cDevice::EnsureSubtitleTrack(void)
       int LanguagePreference = INT_MAX; // higher than the maximum possible value
       for (int i = ttSubtitleFirst; i <= ttSubtitleLast; i++) {
           const tTrackId *TrackId = GetTrack(eTrackType(i));
@@ -1990,7 +2046,23 @@ diff -ruNp vdr-1.7.5/device.c vdr-1.7.5-extensions/device.c
              PreferredTrack = eTrackType(i);
           }
       // Make sure we're set to an available subtitle track:
-@@ -1192,7 +1426,11 @@ pre_1_3_19_PrivateStreamDetected:
+@@ -1179,6 +1416,15 @@ int cDevice::PlayPesPacket(const uchar *
+                   }
+                break;
+           case 0xBD: { // private stream 1
++#ifdef USE_TTXTSUBS
++               // EBU Teletext data, ETSI EN 300 472
++               // if PES data header length = 24 and data_identifier = 0x10..0x1F (EBU Data)
++               if (Data[8] == 0x24 && Data[45] >= 0x10 && Data[45] < 0x20) {
++                  cVDRTtxtsubsHookListener::Hook()->PlayerTeletextData((uint8_t*)Data, Length);
++                  break;
++                  }
++#endif /* TTXTSUBS */
++
+                int PayloadOffset = Data[8] + 9;
+ 
+                // Compatibility mode for old subtitles plugin:
+@@ -1206,7 +1452,11 @@ pre_1_3_19_PrivateStreamDetected:
                           w = PlaySubtitle(Start, d);
                        break;
                   case 0x80: // AC3 & DTS
@@ -2002,9 +2074,39 @@ diff -ruNp vdr-1.7.5/device.c vdr-1.7.5-extensions/device.c
                           SetAvailableTrack(ttDolby, SubStreamIndex, SubStreamId);
                           if ((!VideoOnly || HasIBPTrickSpeed()) && SubStreamId == availableTracks[currentAudioTrack].id) {
                              w = PlayAudio(Start, d, SubStreamId);
-diff -ruNp vdr-1.7.5/device.h vdr-1.7.5-extensions/device.h
---- vdr-1.7.5/device.h	2009-04-05 14:12:44.000000000 +0200
-+++ vdr-1.7.5-extensions/device.h	2009-04-16 20:54:09.000000000 +0200
+@@ -1334,6 +1584,9 @@ int cDevice::PlayTs(const uchar *Data, i
+      tsToPesVideo.Reset();
+      tsToPesAudio.Reset();
+      tsToPesSubtitle.Reset();
++#ifdef USE_TTXTSUBS
++     tsToPesTeletext.Reset();
++#endif /* TTXTSUBS */
+      }
+   else if (Length < TS_SIZE) {
+      esyslog("ERROR: skipped %d bytes of TS fragment", Length);
+@@ -1379,6 +1632,19 @@ int cDevice::PlayTs(const uchar *Data, i
+                     if (!VideoOnly || HasIBPTrickSpeed())
+                        PlayTsSubtitle(Data, TS_SIZE);
+                     }
++#ifdef USE_TTXTSUBS
++                 else if (Pid == patPmtParser.Tpid()) {
++                    if (!VideoOnly || HasIBPTrickSpeed()) {
++                       int l;
++                       tsToPesTeletext.PutTs(Data, Length);
++                       if (const uchar *p = tsToPesTeletext.GetPes(l)) {
++                          if ((l > 45) && (p[0] == 0x00) && (p[1] == 0x00) && (p[2] == 0x01) && (p[3] == 0xbd) && (p[8] == 0x24) && (p[45] >= 0x10) && (p[45] < 0x20))
++                             cVDRTtxtsubsHookListener::Hook()->PlayerTeletextData((uchar *)p, l, false);
++                          tsToPesTeletext.Reset();
++                          }
++                       }
++                    }
++#endif /* TTXTSUBS */
+                  }
+               }
+            Played += TS_SIZE;
+diff -ruNp vdr-1.7.7/device.h vdr-1.7.7-extensions/device.h
+--- vdr-1.7.7/device.h	2009-05-02 14:16:20.000000000 +0200
++++ vdr-1.7.7-extensions/device.h	2009-05-04 09:07:48.000000000 +0200
 @@ -24,13 +24,22 @@
  #include "spu.h"
  #include "thread.h"
@@ -2028,7 +2130,7 @@ diff -ruNp vdr-1.7.5/device.h vdr-1.7.5-extensions/device.h
  enum eSetChannelResult { scrOk, scrNotAvailable, scrNoTransfer, scrFailed };
  
  enum ePlayMode { pmNone,           // audio/video from decoder
-@@ -142,6 +151,35 @@ public:
+@@ -149,6 +158,35 @@ public:
           ///< this device/CAM combination will be skipped in the next call to
           ///< GetDevice().
           ///< See also ProvidesChannel().
@@ -2064,7 +2166,7 @@ diff -ruNp vdr-1.7.5/device.h vdr-1.7.5-extensions/device.h
    static void SetAvoidDevice(cDevice *Device) { avoidDevice = Device; }
           ///< Sets the given Device to be temporarily avoided in the next call to
           ///< GetDevice(const cChannel, int, bool).
-@@ -152,6 +190,9 @@ private:
+@@ -159,6 +197,9 @@ private:
    static int nextCardIndex;
    int cardIndex;
  protected:
@@ -2074,7 +2176,7 @@ diff -ruNp vdr-1.7.5/device.h vdr-1.7.5-extensions/device.h
    cDevice(void);
    virtual ~cDevice();
    virtual bool Ready(void);
-@@ -239,17 +280,30 @@ public:
+@@ -246,17 +287,30 @@ public:
    bool SwitchChannel(const cChannel *Channel, bool LiveView);
           ///< Switches the device to the given Channel, initiating transfer mode
           ///< if necessary.
@@ -2105,7 +2207,7 @@ diff -ruNp vdr-1.7.5/device.h vdr-1.7.5-extensions/device.h
    static int CurrentChannel(void) { return primaryDevice ? currentChannel : 0; }
           ///< Returns the number of the current channel on the primary device.
    static void SetCurrentChannel(const cChannel *Channel) { currentChannel = Channel ? Channel->Number() : 0; }
-@@ -267,6 +321,9 @@ public:
+@@ -274,6 +328,9 @@ public:
    virtual bool HasProgramme(void);
           ///< Returns true if the device is currently showing any programme to
           ///< the user, either through replaying or live.
@@ -2115,9 +2217,19 @@ diff -ruNp vdr-1.7.5/device.h vdr-1.7.5-extensions/device.h
  
  // PID handle facilities
  
-diff -ruNp vdr-1.7.5/dvbdevice.c vdr-1.7.5-extensions/dvbdevice.c
---- vdr-1.7.5/dvbdevice.c	2009-04-10 11:54:24.000000000 +0200
-+++ vdr-1.7.5-extensions/dvbdevice.c	2009-04-16 20:54:09.000000000 +0200
+@@ -487,6 +544,9 @@ private:
+   cTsToPes tsToPesVideo;
+   cTsToPes tsToPesAudio;
+   cTsToPes tsToPesSubtitle;
++#ifdef USE_TTXTSUBS
++  cTsToPes tsToPesTeletext;
++#endif /* TTXTSUBS */
+   bool isPlayingVideo;
+ protected:
+   virtual bool CanReplay(void) const;
+diff -ruNp vdr-1.7.7/dvbdevice.c vdr-1.7.7-extensions/dvbdevice.c
+--- vdr-1.7.7/dvbdevice.c	2009-05-03 15:49:41.000000000 +0200
++++ vdr-1.7.7-extensions/dvbdevice.c	2009-05-04 09:07:48.000000000 +0200
 @@ -71,6 +71,9 @@ static int DvbOpen(const char *Name, int
  class cDvbTuner : public cThread {
  private:
@@ -2231,7 +2343,7 @@ diff -ruNp vdr-1.7.5/dvbdevice.c vdr-1.7.5-extensions/dvbdevice.c
          switch (frontendInfo.type) {
            case FE_QPSK: frontendType = (frontendInfo.caps & FE_CAN_2G_MODULATION) ? SYS_DVBS2 : SYS_DVBS; break;
            case FE_OFDM: frontendType = SYS_DVBT; break;
-@@ -748,6 +799,13 @@ eVideoSystem cDvbDevice::GetVideoSystem(
+@@ -765,6 +816,13 @@ void cDvbDevice::GetVideoSize(int &Width
  
  bool cDvbDevice::SetAudioBypass(bool On)
  {
@@ -2245,7 +2357,7 @@ diff -ruNp vdr-1.7.5/dvbdevice.c vdr-1.7.5-extensions/dvbdevice.c
    if (setTransferModeForDolbyDigital != 1)
       return false;
    return ioctl(fd_audio, AUDIO_SET_BYPASS_MODE, On) == 0;
-@@ -853,14 +911,43 @@ void cDvbDevice::TurnOffLiveMode(bool Li
+@@ -870,14 +928,43 @@ void cDvbDevice::TurnOffLiveMode(bool Li
  bool cDvbDevice::ProvidesSource(int Source) const
  {
    int type = Source & cSource::st_Mask;
@@ -2289,7 +2401,7 @@ diff -ruNp vdr-1.7.5/dvbdevice.c vdr-1.7.5-extensions/dvbdevice.c
    if (!ProvidesSource(Channel->Source()))
       return false; // doesn't provide source
    if (!cSource::IsSat(Channel->Source()))
-@@ -872,10 +959,31 @@ bool cDvbDevice::ProvidesTransponder(con
+@@ -889,10 +976,31 @@ bool cDvbDevice::ProvidesTransponder(con
  
  bool cDvbDevice::ProvidesChannel(const cChannel *Channel, int Priority, bool *NeedsDetachReceivers) const
  {
@@ -2321,7 +2433,7 @@ diff -ruNp vdr-1.7.5/dvbdevice.c vdr-1.7.5-extensions/dvbdevice.c
    if (ProvidesTransponder(Channel)) {
       result = hasPriority;
       if (Priority >= 0 && Receiving(true)) {
-@@ -992,6 +1100,13 @@ bool cDvbDevice::HasLock(int TimeoutMs)
+@@ -1009,6 +1117,13 @@ bool cDvbDevice::HasLock(int TimeoutMs)
    return dvbTuner ? dvbTuner->Locked(TimeoutMs) : false;
  }
  
@@ -2335,9 +2447,9 @@ diff -ruNp vdr-1.7.5/dvbdevice.c vdr-1.7.5-extensions/dvbdevice.c
  int cDvbDevice::GetAudioChannelDevice(void)
  {
    if (HasDecoder()) {
-diff -ruNp vdr-1.7.5/dvbdevice.h vdr-1.7.5-extensions/dvbdevice.h
---- vdr-1.7.5/dvbdevice.h	2008-12-06 14:31:12.000000000 +0100
-+++ vdr-1.7.5-extensions/dvbdevice.h	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/dvbdevice.h vdr-1.7.7-extensions/dvbdevice.h
+--- vdr-1.7.7/dvbdevice.h	2009-05-02 12:44:40.000000000 +0200
++++ vdr-1.7.7-extensions/dvbdevice.h	2009-05-04 09:07:48.000000000 +0200
 @@ -74,6 +74,9 @@ protected:
    virtual bool SetChannelDevice(const cChannel *Channel, bool LiveView);
  public:
@@ -2348,9 +2460,9 @@ diff -ruNp vdr-1.7.5/dvbdevice.h vdr-1.7.5-extensions/dvbdevice.h
  
  // PID handle facilities
  
-diff -ruNp vdr-1.7.5/dvbosd.c vdr-1.7.5-extensions/dvbosd.c
---- vdr-1.7.5/dvbosd.c	2007-09-16 10:55:54.000000000 +0200
-+++ vdr-1.7.5-extensions/dvbosd.c	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/dvbosd.c vdr-1.7.7-extensions/dvbosd.c
+--- vdr-1.7.7/dvbosd.c	2007-09-16 10:55:54.000000000 +0200
++++ vdr-1.7.7-extensions/dvbosd.c	2009-05-04 09:07:48.000000000 +0200
 @@ -20,12 +20,26 @@
  #define MAXNUMWINDOWS 7 // OSD windows are counted 1...7
  #define MAXOSDMEMORY  92000 // number of bytes available to the OSD (for unmodified DVB cards)
@@ -2501,9 +2613,9 @@ diff -ruNp vdr-1.7.5/dvbosd.c vdr-1.7.5-extensions/dvbosd.c
       shown = true;
       }
  }
-diff -ruNp vdr-1.7.5/dvbplayer.c vdr-1.7.5-extensions/dvbplayer.c
---- vdr-1.7.5/dvbplayer.c	2009-04-05 15:04:33.000000000 +0200
-+++ vdr-1.7.5-extensions/dvbplayer.c	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/dvbplayer.c vdr-1.7.7-extensions/dvbplayer.c
+--- vdr-1.7.7/dvbplayer.c	2009-04-19 17:19:10.000000000 +0200
++++ vdr-1.7.7-extensions/dvbplayer.c	2009-05-04 09:07:48.000000000 +0200
 @@ -204,6 +204,9 @@ private:
    cNonBlockingFileReader *nonBlockingFileReader;
    cRingBufferFrame *ringBuffer;
@@ -2568,96 +2680,99 @@ diff -ruNp vdr-1.7.5/dvbplayer.c vdr-1.7.5-extensions/dvbplayer.c
    nonBlockingFileReader = new cNonBlockingFileReader;
    int Length = 0;
    bool Sleep = false;
-@@ -413,7 +443,11 @@ void cDvbPlayer::Action(void)
+@@ -411,7 +441,11 @@ void cDvbPlayer::Action(void)
  
-            // Read the next frame from the file:
+           // Read the next frame from the file:
  
 +#ifdef USE_JUMPPLAY
-+           if (playMode != pmStill && playMode != pmPause && !LastMarkPause) {
++          if (playMode != pmStill && playMode != pmPause && !LastMarkPause) {
 +#else
-            if (playMode != pmStill && playMode != pmPause) {
+           if (playMode != pmStill && playMode != pmPause) {
 +#endif /* JUMPPLAY */
-               if (!readFrame && (replayFile || readIndex >= 0)) {
-                  if (!nonBlockingFileReader->Reading()) {
-                     if (!SwitchToPlayFrame && (playMode == pmFast || (playMode == pmSlow && playDir == pdBackward))) {
-@@ -454,6 +488,42 @@ void cDvbPlayer::Action(void)
-                           readIndex++;
-                        else
-                           eof = true;
+              if (!readFrame && (replayFile || readIndex >= 0)) {
+                 if (!nonBlockingFileReader->Reading()) {
+                    if (!SwitchToPlayFrame && (playMode == pmFast || (playMode == pmSlow && playDir == pdBackward))) {
+@@ -452,6 +486,42 @@ void cDvbPlayer::Action(void)
+                          readIndex++;
+                       else
+                          eof = true;
 +#ifdef USE_JUMPPLAY
-+                       if (Setup.PlayJump || Setup.PauseLastMark) {
-+                          // check for end mark - jump to next mark or pause
-+                          readIndex++;
-+                          marks.Reload();
-+                          cMark *m = marks.Get(readIndex);
-+                          if (m && (m->Index() & 0x01) != 0) {
-+                             m = marks.Next(m);
-+                             int Index;
-+                             if (m)
-+                                Index = m->position;
-+                             else if (Setup.PauseLastMark) {
-+                                // pause at last mark
-+                                isyslog("PauseLastMark: pause at position %d (%s)", readIndex, *IndexToHMSF(readIndex, true, framesPerSecond));
-+                                LastMarkPause = true;
-+                                Index = -1;
-+                                }
-+                             else if (total == index->Last())
-+                                // at last mark jump to end of recording
-+                                Index = index->Last() - 1;
-+                             else
-+                                // jump but stay off end of live-recordings
-+                                Index = index->GetNextIFrame(index->Last() - int(round(MAXSTUCKATEOF * framesPerSecond)), true);
-+                             // don't jump in edited recordings
-+                             if (Setup.PlayJump && Index > readIndex && Index > index->GetNextIFrame(readIndex, true)) {
-+                                isyslog("PlayJump: %d frames to %d (%s)", Index - readIndex, Index, *IndexToHMSF(Index, true, framesPerSecond));
-+                                readIndex = Index;
-+                                cutIn = true;
-+                                }
-+                             }
-+                          readIndex--;
-+                          }
-+                       // for detecting growing length of live-recordings
-+                       if (index->Get(readIndex + 1, &FileNumber, &FileOffset, &readIndependent) && readIndependent)
-+                          total = index->Last();
++                      if (Setup.PlayJump || Setup.PauseLastMark) {
++                         // check for end mark - jump to next mark or pause
++                         readIndex++;
++                         marks.Reload();
++                         cMark *m = marks.Get(readIndex);
++                         if (m && (m->Index() & 0x01) != 0) {
++                            m = marks.Next(m);
++                            int Index;
++                            if (m)
++                               Index = m->position;
++                            else if (Setup.PauseLastMark) {
++                               // pause at last mark
++                               isyslog("PauseLastMark: pause at position %d (%s)", readIndex, *IndexToHMSF(readIndex, true, framesPerSecond));
++                               LastMarkPause = true;
++                               Index = -1;
++                               }
++                            else if (total == index->Last())
++                               // at last mark jump to end of recording
++                               Index = index->Last() - 1;
++                            else
++                               // jump but stay off end of live-recordings
++                               Index = index->GetNextIFrame(index->Last() - int(round(MAXSTUCKATEOF * framesPerSecond)), true);
++                            // don't jump in edited recordings
++                            if (Setup.PlayJump && Index > readIndex && Index > index->GetNextIFrame(readIndex, true)) {
++                               isyslog("PlayJump: %d frames to %d (%s)", Index - readIndex, Index, *IndexToHMSF(Index, true, framesPerSecond));
++                               readIndex = Index;
++                               cutIn = true;
++                               }
++                            }
++                         readIndex--;
++                         }
++                      // for detecting growing length of live-recordings
++                      if (index->Get(readIndex + 1, &FileNumber, &FileOffset, &readIndependent) && readIndependent)
++                         total = index->Last();
 +#endif /* JUMPPLAY */
-                        }
-                     else // allows replay even if the index file is missing
-                        Length = MAXFRAMESIZE / TS_SIZE * TS_SIZE;// FIXME: use a linear ringbuffer in this case, and fix cDevice::PlayPes()
-@@ -491,6 +561,12 @@ void cDvbPlayer::Action(void)
-               // Store the frame in the buffer:
+                       }
+                    else // allows replay even if the index file is missing
+                       Length = MAXFRAMESIZE;
+@@ -489,6 +559,15 @@ void cDvbPlayer::Action(void)
+              // Store the frame in the buffer:
  
-               if (readFrame) {
+              if (readFrame) {
 +#ifdef USE_JUMPPLAY
-+                 if (cutIn) {
-+                    cRemux::SetBrokenLink(readFrame->Data(), readFrame->Count());
-+                    cutIn = false;
-+                    }
++                if (cutIn) {
++                   if (isPesRecording)
++                      cRemux::SetBrokenLink(readFrame->Data(), readFrame->Count());
++                   else
++                      TsSetTeiOnBrokenPackets(readFrame->Data(), readFrame->Count());
++                   cutIn = false;
++                   }
 +#endif /* JUMPPLAY */
-                  if (ringBuffer->Put(readFrame))
-                     readFrame = NULL;
-                  }
-@@ -546,8 +622,18 @@ void cDvbPlayer::Action(void)
-                  p = NULL;
-                  }
-               }
+                 if (ringBuffer->Put(readFrame))
+                    readFrame = NULL;
+                 else
+@@ -548,8 +627,18 @@ void cDvbPlayer::Action(void)
+                 p = NULL;
+                 }
+              }
 +#ifdef USE_JUMPPLAY
-+           else {
-+              if (LastMarkPause) {
-+                 LastMarkPause = false;
-+                 playMode = pmPause;
-+                 }
-+              Sleep = true;
-+              }
++          else {
++             if (LastMarkPause) {
++                LastMarkPause = false;
++                playMode = pmPause;
++                }
++             Sleep = true;
++             }
 +#else
-            else
-               Sleep = true;
+           else
+              Sleep = true;
 +#endif /* JUMPPLAY */
  
-            // Handle hitting begin/end of recording:
+           // Handle hitting begin/end of recording:
  
-diff -ruNp vdr-1.7.5/eit.c vdr-1.7.5-extensions/eit.c
---- vdr-1.7.5/eit.c	2009-04-11 12:03:24.000000000 +0200
-+++ vdr-1.7.5-extensions/eit.c	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/eit.c vdr-1.7.7-extensions/eit.c
+--- vdr-1.7.7/eit.c	2009-04-11 12:03:24.000000000 +0200
++++ vdr-1.7.7-extensions/eit.c	2009-05-04 09:07:48.000000000 +0200
 @@ -17,13 +17,40 @@
  #include "libsi/section.h"
  #include "libsi/descriptor.h"
@@ -2938,9 +3053,9 @@ diff -ruNp vdr-1.7.5/eit.c vdr-1.7.5-extensions/eit.c
          if (stime(&sattim) == 0)
             isyslog("system time changed from %s (%ld) to %s (%ld)", *TimeToString(loctim), loctim, *TimeToString(sattim), sattim);
          else
-diff -ruNp vdr-1.7.5/eitscan.c vdr-1.7.5-extensions/eitscan.c
---- vdr-1.7.5/eitscan.c	2006-01-07 15:10:17.000000000 +0100
-+++ vdr-1.7.5-extensions/eitscan.c	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/eitscan.c vdr-1.7.7-extensions/eitscan.c
+--- vdr-1.7.7/eitscan.c	2006-01-07 15:10:17.000000000 +0100
++++ vdr-1.7.7-extensions/eitscan.c	2009-05-04 09:07:48.000000000 +0200
 @@ -151,9 +151,17 @@ void cEITScanner::Process(void)
                              if (Device->ProvidesTransponder(Channel)) {
                                 if (!Device->Receiving()) {
@@ -2959,9 +3074,9 @@ diff -ruNp vdr-1.7.5/eitscan.c vdr-1.7.5-extensions/eitscan.c
                                             cDevice::PrimaryDevice()->StopReplay(); // stop transfer mode
                                             currentChannel = Device->CurrentChannel();
                                             Skins.Message(mtInfo, tr("Starting EPG scan"));
-diff -ruNp vdr-1.7.5/epg.c vdr-1.7.5-extensions/epg.c
---- vdr-1.7.5/epg.c	2008-05-01 16:53:55.000000000 +0200
-+++ vdr-1.7.5-extensions/epg.c	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/epg.c vdr-1.7.7-extensions/epg.c
+--- vdr-1.7.7/epg.c	2008-05-01 16:53:55.000000000 +0200
++++ vdr-1.7.7-extensions/epg.c	2009-05-04 09:07:48.000000000 +0200
 @@ -114,6 +114,11 @@ cEvent::cEvent(tEventID EventID)
    components = NULL;
    startTime = 0;
@@ -3364,9 +3479,9 @@ diff -ruNp vdr-1.7.5/epg.c vdr-1.7.5-extensions/epg.c
  void cSchedule::SetRunningStatus(cEvent *Event, int RunningStatus, cChannel *Channel)
  {
    hasRunning = false;
-diff -ruNp vdr-1.7.5/epg.h vdr-1.7.5-extensions/epg.h
---- vdr-1.7.5/epg.h	2006-10-07 15:47:19.000000000 +0200
-+++ vdr-1.7.5-extensions/epg.h	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/epg.h vdr-1.7.7-extensions/epg.h
+--- vdr-1.7.7/epg.h	2006-10-07 15:47:19.000000000 +0200
++++ vdr-1.7.7-extensions/epg.h	2009-05-04 09:07:48.000000000 +0200
 @@ -50,6 +50,22 @@ class cSchedule;
  
  typedef u_int32_t tEventID;
@@ -3444,10 +3559,10 @@ diff -ruNp vdr-1.7.5/epg.h vdr-1.7.5-extensions/epg.h
    cEvent *AddEvent(cEvent *Event);
    void DelEvent(cEvent *Event);
    void HashEvent(cEvent *Event);
-diff -ruNp vdr-1.7.5/HISTORY-liemikuutio vdr-1.7.5-extensions/HISTORY-liemikuutio
---- vdr-1.7.5/HISTORY-liemikuutio	1970-01-01 01:00:00.000000000 +0100
-+++ vdr-1.7.5-extensions/HISTORY-liemikuutio	2009-04-16 20:54:09.000000000 +0200
-@@ -0,0 +1,124 @@
+diff -ruNp vdr-1.7.7/HISTORY-liemikuutio vdr-1.7.7-extensions/HISTORY-liemikuutio
+--- vdr-1.7.7/HISTORY-liemikuutio	1970-01-01 01:00:00.000000000 +0100
++++ vdr-1.7.7-extensions/HISTORY-liemikuutio	2009-05-04 09:07:48.000000000 +0200
+@@ -0,0 +1,132 @@
 +-----------------------------------
 +Liemikuutio for Video Disc Recorder
 +
@@ -3572,9 +3687,17 @@ diff -ruNp vdr-1.7.5/HISTORY-liemikuutio vdr-1.7.5-extensions/HISTORY-liemikuuti
 +2009-04-05: Version 1.25
 +
 +- Fixed the length detection of recordings (Thanks to Thomas Günther).
-diff -ruNp vdr-1.7.5/iconpatch.c vdr-1.7.5-extensions/iconpatch.c
---- vdr-1.7.5/iconpatch.c	1970-01-01 01:00:00.000000000 +0100
-+++ vdr-1.7.5-extensions/iconpatch.c	2009-04-16 20:54:09.000000000 +0200
++
++2009-04-17: Version 1.26
++
++- Fixed the length detection of audio recordings (Thanks to Thomas Günther).
++
++2009-04-26: Version 1.27
++
++- Fixed the length detection of empty recordings (Thanks to Thomas Günther).
+diff -ruNp vdr-1.7.7/iconpatch.c vdr-1.7.7-extensions/iconpatch.c
+--- vdr-1.7.7/iconpatch.c	1970-01-01 01:00:00.000000000 +0100
++++ vdr-1.7.7-extensions/iconpatch.c	2009-05-04 09:07:48.000000000 +0200
 @@ -0,0 +1,31 @@
 +#ifdef USE_WAREAGLEICON
 +
@@ -3607,9 +3730,9 @@ diff -ruNp vdr-1.7.5/iconpatch.c vdr-1.7.5-extensions/iconpatch.c
 +}
 +
 +#endif /* WAREAGLEICON */
-diff -ruNp vdr-1.7.5/iconpatch.h vdr-1.7.5-extensions/iconpatch.h
---- vdr-1.7.5/iconpatch.h	1970-01-01 01:00:00.000000000 +0100
-+++ vdr-1.7.5-extensions/iconpatch.h	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/iconpatch.h vdr-1.7.7-extensions/iconpatch.h
+--- vdr-1.7.7/iconpatch.h	1970-01-01 01:00:00.000000000 +0100
++++ vdr-1.7.7-extensions/iconpatch.h	2009-05-04 09:07:48.000000000 +0200
 @@ -0,0 +1,73 @@
 +#ifdef USE_WAREAGLEICON
 +/*
@@ -3684,9 +3807,9 @@ diff -ruNp vdr-1.7.5/iconpatch.h vdr-1.7.5-extensions/iconpatch.h
 +bool IsLangUtf8(void);
 +
 +#endif /* WAREAGLEICON */
-diff -ruNp vdr-1.7.5/keys.h vdr-1.7.5-extensions/keys.h
---- vdr-1.7.5/keys.h	2007-08-26 14:34:50.000000000 +0200
-+++ vdr-1.7.5-extensions/keys.h	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/keys.h vdr-1.7.7-extensions/keys.h
+--- vdr-1.7.7/keys.h	2007-08-26 14:34:50.000000000 +0200
++++ vdr-1.7.7-extensions/keys.h	2009-05-04 09:07:48.000000000 +0200
 @@ -71,6 +71,10 @@ enum eKeys { // "Up" and "Down" must be 
  #define kEditCut         k2
  #define kEditTest        k8
@@ -3698,9 +3821,9 @@ diff -ruNp vdr-1.7.5/keys.h vdr-1.7.5-extensions/keys.h
  #define RAWKEY(k)        (eKeys((k) & ~k_Flags))
  #define ISRAWKEY(k)      ((k) != kNone && ((k) & k_Flags) == 0)
  #define NORMALKEY(k)     (eKeys((k) & ~k_Repeat))
-diff -ruNp vdr-1.7.5/lirc.c vdr-1.7.5-extensions/lirc.c
---- vdr-1.7.5/lirc.c	2006-05-28 10:48:13.000000000 +0200
-+++ vdr-1.7.5-extensions/lirc.c	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/lirc.c vdr-1.7.7-extensions/lirc.c
+--- vdr-1.7.7/lirc.c	2006-05-28 10:48:13.000000000 +0200
++++ vdr-1.7.7-extensions/lirc.c	2009-05-04 09:07:48.000000000 +0200
 @@ -12,6 +12,9 @@
  #include "lirc.h"
  #include <netinet/in.h>
@@ -3758,9 +3881,9 @@ diff -ruNp vdr-1.7.5/lirc.c vdr-1.7.5-extensions/lirc.c
                Put(LastKeyName, false, true);
                repeat = false;
                *LastKeyName = 0;
-diff -ruNp vdr-1.7.5/mainmenuitemsprovider.h vdr-1.7.5-extensions/mainmenuitemsprovider.h
---- vdr-1.7.5/mainmenuitemsprovider.h	1970-01-01 01:00:00.000000000 +0100
-+++ vdr-1.7.5-extensions/mainmenuitemsprovider.h	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/mainmenuitemsprovider.h vdr-1.7.7-extensions/mainmenuitemsprovider.h
+--- vdr-1.7.7/mainmenuitemsprovider.h	1970-01-01 01:00:00.000000000 +0100
++++ vdr-1.7.7-extensions/mainmenuitemsprovider.h	2009-05-04 09:07:48.000000000 +0200
 @@ -0,0 +1,62 @@
 +#ifdef USE_MENUORG
 +/*
@@ -3824,10 +3947,10 @@ diff -ruNp vdr-1.7.5/mainmenuitemsprovider.h vdr-1.7.5-extensions/mainmenuitemsp
 +
 +#endif //__MAINMENUITEMSPROVIDER_H
 +#endif /* MENUORG */
-diff -ruNp vdr-1.7.5/Make.config.template vdr-1.7.5-extensions/Make.config.template
---- vdr-1.7.5/Make.config.template	2009-01-18 11:46:13.000000000 +0100
-+++ vdr-1.7.5-extensions/Make.config.template	2009-04-16 20:54:09.000000000 +0200
-@@ -42,8 +42,242 @@ RCU_DEVICE  = /dev/ttyS1
+diff -ruNp vdr-1.7.7/Make.config.template vdr-1.7.7-extensions/Make.config.template
+--- vdr-1.7.7/Make.config.template	2009-01-18 11:46:13.000000000 +0100
++++ vdr-1.7.7-extensions/Make.config.template	2009-05-04 09:07:48.000000000 +0200
+@@ -42,8 +42,247 @@ RCU_DEVICE  = /dev/ttyS1
  ## Define if you want vdr to not run as root
  #VDR_USER = vdr
  
@@ -3880,6 +4003,7 @@ diff -ruNp vdr-1.7.5/Make.config.template vdr-1.7.5-extensions/Make.config.templ
 +STREAMDEVEXT = 1
 +#TIMERCMD = 1
 +#TIMERINFO = 1
++#TTXTSUBS = 1
 +#VALIDINPUT = 1
 +#VOLCTRL = 1
 +WAREAGLEICON = 1
@@ -4055,6 +4179,10 @@ diff -ruNp vdr-1.7.5/Make.config.template vdr-1.7.5-extensions/Make.config.templ
 +DEFINES += -DUSE_TIMERINFO
 +endif
 +
++ifdef TTXTSUBS
++DEFINES += -DUSE_TTXTSUBS
++endif
++
 +ifdef VALIDINPUT
 +DEFINES += -DUSE_VALIDINPUT
 +endif
@@ -4070,10 +4198,10 @@ diff -ruNp vdr-1.7.5/Make.config.template vdr-1.7.5-extensions/Make.config.templ
 +ifdef YAEPG
 +DEFINES += -DUSE_YAEPG
 +endif
-diff -ruNp vdr-1.7.5/Makefile vdr-1.7.5-extensions/Makefile
---- vdr-1.7.5/Makefile	2008-12-24 16:21:09.000000000 +0100
-+++ vdr-1.7.5-extensions/Makefile	2009-04-16 20:54:09.000000000 +0200
-@@ -43,6 +43,14 @@ OBJS = audio.o channels.o ci.o config.o 
+diff -ruNp vdr-1.7.7/Makefile vdr-1.7.7-extensions/Makefile
+--- vdr-1.7.7/Makefile	2008-12-24 16:21:09.000000000 +0100
++++ vdr-1.7.7-extensions/Makefile	2009-05-04 09:07:48.000000000 +0200
+@@ -43,6 +43,18 @@ OBJS = audio.o channels.o ci.o config.o 
         skinclassic.o skins.o skinsttng.o sources.o spu.o status.o svdrp.o themes.o thread.o\
         timers.o tools.o transfer.o vdr.o videodir.o
  
@@ -4085,10 +4213,14 @@ diff -ruNp vdr-1.7.5/Makefile vdr-1.7.5-extensions/Makefile
 +OBJS += tinystr.o tinyxml.o tinyxmlerror.o tinyxmlparser.o submenu.o
 +endif
 +
++ifdef TTXTSUBS
++OBJS += vdrttxtsubshooks.o
++endif
++
  ifndef NO_KBD
  DEFINES += -DREMOTE_KBD
  endif
-@@ -72,6 +80,14 @@ DEFINES += -DLOCDIR=\"$(LOCDIR)\"
+@@ -72,6 +84,14 @@ DEFINES += -DLOCDIR=\"$(LOCDIR)\"
  VDRVERSION = $(shell sed -ne '/define VDRVERSION/s/^.*"\(.*\)".*$$/\1/p' config.h)
  APIVERSION = $(shell sed -ne '/define APIVERSION/s/^.*"\(.*\)".*$$/\1/p' config.h)
  
@@ -4103,7 +4235,7 @@ diff -ruNp vdr-1.7.5/Makefile vdr-1.7.5-extensions/Makefile
  all: vdr i18n
  
  # Implicit rules:
-@@ -137,6 +153,26 @@ include-dir:
+@@ -137,6 +157,26 @@ include-dir:
  
  # Plugins:
  
@@ -4130,7 +4262,7 @@ diff -ruNp vdr-1.7.5/Makefile vdr-1.7.5-extensions/Makefile
  plugins: include-dir
  	@failed="";\
  	noapiv="";\
-@@ -151,6 +187,7 @@ plugins: include-dir
+@@ -151,6 +191,7 @@ plugins: include-dir
  	    done;\
  	if [ -n "$$noapiv" ] ; then echo; echo "*** plugins without APIVERSION:$$noapiv"; echo; fi;\
  	if [ -n "$$failed" ] ; then echo; echo "*** failed plugins:$$failed"; echo; exit 1; fi
@@ -4138,10 +4270,10 @@ diff -ruNp vdr-1.7.5/Makefile vdr-1.7.5-extensions/Makefile
  
  clean-plugins:
  	@for i in `ls $(PLUGINDIR)/src | grep -v '[^a-z0-9]'`; do $(MAKE) -C "$(PLUGINDIR)/src/$$i" clean; done
-diff -ruNp vdr-1.7.5/MANUAL vdr-1.7.5-extensions/MANUAL
---- vdr-1.7.5/MANUAL	2008-02-24 11:09:17.000000000 +0100
-+++ vdr-1.7.5-extensions/MANUAL	2009-04-16 20:54:09.000000000 +0200
-@@ -813,6 +813,30 @@ Version 1.6
+diff -ruNp vdr-1.7.7/MANUAL vdr-1.7.7-extensions/MANUAL
+--- vdr-1.7.7/MANUAL	2009-05-03 16:04:22.000000000 +0200
++++ vdr-1.7.7-extensions/MANUAL	2009-05-04 09:07:48.000000000 +0200
+@@ -815,6 +815,30 @@ Version 1.6
                           0 resulting in a file named 'resume.vdr', and any other
                           value resulting in 'resume.n.vdr'.
  
@@ -4172,9 +4304,9 @@ diff -ruNp vdr-1.7.5/MANUAL vdr-1.7.5-extensions/MANUAL
    Miscellaneous:
  
    Min. event timeout = 30
-diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
---- vdr-1.7.5/menu.c	2009-01-24 16:05:43.000000000 +0100
-+++ vdr-1.7.5-extensions/menu.c	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/menu.c vdr-1.7.7-extensions/menu.c
+--- vdr-1.7.7/menu.c	2009-05-03 15:30:13.000000000 +0200
++++ vdr-1.7.7-extensions/menu.c	2009-05-04 09:07:48.000000000 +0200
 @@ -8,12 +8,18 @@
   */
  
@@ -5160,13 +5292,13 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
 +
 +  int recLen = cIndexFile::Length(recording->FileName(), recording->IsPesRecording());
 +  if (recLen >= 0)
-+     Add(new cOsdItem(cString::sprintf("%s:\t%s", tr("Length"), *IndexToHMSF(recLen)), osUnknown, false));
++     Add(new cOsdItem(cString::sprintf("%s:\t%s", tr("Length"), *IndexToHMSF(recLen, false, recording->FramesPerSecond())), osUnknown, false));
 +  else
 +     recLen = 0;
-+  recLen /= (int)recording->FramesPerSecond();
 +
 +  int dirSize = DirSizeMB(recording->FileName());
-+  cString bitRate = recLen ? cString::sprintf(" (%.2f MBit/s)", 8.0 * dirSize / recLen) : cString("");
++  double seconds = recLen / recording->FramesPerSecond();
++  cString bitRate = seconds ? cString::sprintf(" (%.2f MBit/s)", 8.0 * dirSize / seconds) : cString("");
 +  Add(new cOsdItem(cString::sprintf("%s:\t%s", tr("Format"), recording->IsPesRecording() ? tr("PES") : tr("TS")), osUnknown, false));
 +  Add(new cOsdItem((dirSize > 9999) ? cString::sprintf("%s:\t%.2f GB%s", tr("Size"), dirSize / 1024.0, *bitRate) : cString::sprintf("%s:\t%d MB%s", tr("Size"), dirSize, *bitRate), osUnknown, false));
 +
@@ -5180,8 +5312,8 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
 +  isResume = (ResumeFile.Read() != -1);
 +  resumeItem = new cOsdItem(tr("Delete resume information?"), osUser2, isResume);
 +  Add(resumeItem);
-+}
-+
+ }
+ 
 +eOSState cMenuRenameRecording::ProcessKey(eKeys Key)
 +{
 +  eOSState state = cOsdMenu::ProcessKey(Key);
@@ -5233,9 +5365,9 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
 +     return osContinue;
 +     }
 +  return state;
- }
++}
 +#endif /* LIEMIEXT */
- 
++
  // --- cMenuRecordings -------------------------------------------------------
  
  cMenuRecordings::cMenuRecordings(const char *Base, int Level, bool OpenSubMenus)
@@ -5405,9 +5537,9 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
 +#ifdef USE_WAREAGLEICON
 +  Add(new cMenuEditBoolItem(tr("Setup.OSD$WarEagle icons"),         &data.WarEagleIcons));
 +#endif /* WAREAGLEICON */
-   Add(new cMenuEditIntItem( tr("Setup.OSD$Left"),                   &data.OSDLeft, 0, MAXOSDWIDTH));
-   Add(new cMenuEditIntItem( tr("Setup.OSD$Top"),                    &data.OSDTop, 0, MAXOSDHEIGHT));
-   Add(new cMenuEditIntItem( tr("Setup.OSD$Width"),                  &data.OSDWidth, MINOSDWIDTH, MAXOSDWIDTH));
+   Add(new cMenuEditPrcItem( tr("Setup.OSD$Left (%)"),               &data.OSDLeftP, 0.0, 0.5));
+   Add(new cMenuEditPrcItem( tr("Setup.OSD$Top (%)"),                &data.OSDTopP, 0.0, 0.5));
+   Add(new cMenuEditPrcItem( tr("Setup.OSD$Width (%)"),              &data.OSDWidthP, 0.5, 1.0));
 @@ -2218,6 +3012,24 @@ void cMenuSetupOSD::Set(void)
    Add(new cMenuEditBoolItem(tr("Setup.OSD$Scroll wraps"),           &data.MenuScrollWrap));
    Add(new cMenuEditBoolItem(tr("Setup.OSD$Menu key closes"),        &data.MenuKeyCloses));
@@ -5433,7 +5565,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
    SetCurrent(Get(current));
    Display();
  }
-@@ -2266,6 +3078,12 @@ eOSState cMenuSetupOSD::ProcessKey(eKeys
+@@ -2258,6 +3070,12 @@ eOSState cMenuSetupOSD::ProcessKey(eKeys
  
    int oldSkinIndex = skinIndex;
    int oldOsdLanguageIndex = osdLanguageIndex;
@@ -5445,8 +5577,8 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
 +#endif /* SOFTOSD */
    eOSState state = cMenuSetupBase::ProcessKey(Key);
  
-   if (ModifiedApperance)
-@@ -2288,6 +3106,25 @@ eOSState cMenuSetupOSD::ProcessKey(eKeys
+   if (ModifiedAppearance) {
+@@ -2282,6 +3100,25 @@ eOSState cMenuSetupOSD::ProcessKey(eKeys
       Set();
       I18nSetLanguage(OriginalOSDLanguage);
       }
@@ -5472,7 +5604,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
    return state;
  }
  
-@@ -2295,12 +3132,18 @@ eOSState cMenuSetupOSD::ProcessKey(eKeys
+@@ -2289,12 +3126,18 @@ eOSState cMenuSetupOSD::ProcessKey(eKeys
  
  class cMenuSetupEPG : public cMenuSetupBase {
  private:
@@ -5491,7 +5623,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
    };
  
  cMenuSetupEPG::cMenuSetupEPG(void)
-@@ -2317,11 +3160,19 @@ void cMenuSetupEPG::Setup(void)
+@@ -2311,11 +3154,19 @@ void cMenuSetupEPG::Setup(void)
  {
    int current = Current();
  
@@ -5511,7 +5643,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
    Add(new cMenuEditBoolItem(tr("Setup.EPG$Set system time"),           &data.SetSystemTime));
    if (data.SetSystemTime)
       Add(new cMenuEditTranItem(tr("Setup.EPG$Use time from transponder"), &data.TimeTransponder, &data.TimeSource));
-@@ -2330,6 +3181,15 @@ void cMenuSetupEPG::Setup(void)
+@@ -2324,6 +3175,15 @@ void cMenuSetupEPG::Setup(void)
    for (int i = 0; i < numLanguages; i++)
        // TRANSLATORS: note the singular!
        Add(new cMenuEditStraItem(tr("Setup.EPG$Preferred language"),    &data.EPGLanguages[i], I18nLanguages()->Size(), &I18nLanguages()->At(0)));
@@ -5527,7 +5659,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
  
    SetCurrent(Get(current));
    Display();
-@@ -2386,6 +3246,10 @@ eOSState cMenuSetupEPG::ProcessKey(eKeys
+@@ -2380,6 +3240,10 @@ eOSState cMenuSetupEPG::ProcessKey(eKeys
  
  class cMenuSetupDVB : public cMenuSetupBase {
  private:
@@ -5538,7 +5670,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
    int originalNumAudioLanguages;
    int numAudioLanguages;
    int originalNumSubtitleLanguages;
-@@ -2396,6 +3260,9 @@ private:
+@@ -2390,6 +3254,9 @@ private:
  public:
    cMenuSetupDVB(void);
    virtual eOSState ProcessKey(eKeys Key);
@@ -5548,7 +5680,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
    };
  
  cMenuSetupDVB::cMenuSetupDVB(void)
-@@ -2424,6 +3291,21 @@ void cMenuSetupDVB::Setup(void)
+@@ -2418,6 +3285,21 @@ void cMenuSetupDVB::Setup(void)
  {
    int current = Current();
  
@@ -5570,7 +5702,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
    Clear();
  
    Add(new cMenuEditIntItem( tr("Setup.DVB$Primary DVB interface"), &data.PrimaryDVB, 1, cDevice::NumDevices()));
-@@ -2444,6 +3326,11 @@ void cMenuSetupDVB::Setup(void)
+@@ -2438,6 +3320,11 @@ void cMenuSetupDVB::Setup(void)
       Add(new cMenuEditIntItem( tr("Setup.DVB$Subtitle foreground transparency"), &data.SubtitleFgTransparency, 0, 9));
       Add(new cMenuEditIntItem( tr("Setup.DVB$Subtitle background transparency"), &data.SubtitleBgTransparency, 0, 10));
       }
@@ -5582,7 +5714,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
  
    SetCurrent(Get(current));
    Display();
-@@ -2525,6 +3412,9 @@ private:
+@@ -2519,6 +3406,9 @@ private:
  public:
    cMenuSetupLNB(void);
    virtual eOSState ProcessKey(eKeys Key);
@@ -5592,7 +5724,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
    };
  
  cMenuSetupLNB::cMenuSetupLNB(void)
-@@ -2539,6 +3429,23 @@ void cMenuSetupLNB::Setup(void)
+@@ -2533,6 +3423,23 @@ void cMenuSetupLNB::Setup(void)
  
    Clear();
  
@@ -5616,7 +5748,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
    Add(new cMenuEditBoolItem(tr("Setup.LNB$Use DiSEqC"),               &data.DiSEqC));
    if (!data.DiSEqC) {
       Add(new cMenuEditIntItem( tr("Setup.LNB$SLOF (MHz)"),               &data.LnbSLOF));
-@@ -2555,6 +3462,10 @@ eOSState cMenuSetupLNB::ProcessKey(eKeys
+@@ -2549,6 +3456,10 @@ eOSState cMenuSetupLNB::ProcessKey(eKeys
    int oldDiSEqC = data.DiSEqC;
    eOSState state = cMenuSetupBase::ProcessKey(Key);
  
@@ -5627,7 +5759,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
    if (Key != kNone && data.DiSEqC != oldDiSEqC)
       Setup();
    return state;
-@@ -2605,6 +3516,9 @@ private:
+@@ -2599,6 +3510,9 @@ private:
  public:
    cMenuSetupCAM(void);
    virtual eOSState ProcessKey(eKeys Key);
@@ -5637,7 +5769,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
    };
  
  cMenuSetupCAM::cMenuSetupCAM(void)
-@@ -2678,12 +3592,73 @@ eOSState cMenuSetupCAM::ProcessKey(eKeys
+@@ -2672,12 +3586,73 @@ eOSState cMenuSetupCAM::ProcessKey(eKeys
  // --- cMenuSetupRecord ------------------------------------------------------
  
  class cMenuSetupRecord : public cMenuSetupBase {
@@ -5711,7 +5843,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
    SetSection(tr("Recording"));
    Add(new cMenuEditIntItem( tr("Setup.Recording$Margin at start (min)"),     &data.MarginStart));
    Add(new cMenuEditIntItem( tr("Setup.Recording$Margin at stop (min)"),      &data.MarginStop));
-@@ -2692,14 +3667,61 @@ cMenuSetupRecord::cMenuSetupRecord(void)
+@@ -2686,14 +3661,61 @@ cMenuSetupRecord::cMenuSetupRecord(void)
    Add(new cMenuEditIntItem( tr("Setup.Recording$Default lifetime (d)"),      &data.DefaultLifetime, 0, MAXLIFETIME));
    Add(new cMenuEditIntItem( tr("Setup.Recording$Pause priority"),            &data.PausePriority, 0, MAXPRIORITY));
    Add(new cMenuEditIntItem( tr("Setup.Recording$Pause lifetime (d)"),        &data.PauseLifetime, 0, MAXLIFETIME));
@@ -5773,7 +5905,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
  }
  
  // --- cMenuSetupReplay ------------------------------------------------------
-@@ -2717,6 +3739,31 @@ cMenuSetupReplay::cMenuSetupReplay(void)
+@@ -2711,6 +3733,31 @@ cMenuSetupReplay::cMenuSetupReplay(void)
    Add(new cMenuEditBoolItem(tr("Setup.Replay$Multi speed mode"), &data.MultiSpeedMode));
    Add(new cMenuEditBoolItem(tr("Setup.Replay$Show replay mode"), &data.ShowReplayMode));
    Add(new cMenuEditIntItem(tr("Setup.Replay$Resume ID"), &data.ResumeID, 0, 99));
@@ -5805,7 +5937,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
  }
  
  void cMenuSetupReplay::Store(void)
-@@ -2729,13 +3776,48 @@ void cMenuSetupReplay::Store(void)
+@@ -2723,13 +3770,48 @@ void cMenuSetupReplay::Store(void)
  // --- cMenuSetupMisc --------------------------------------------------------
  
  class cMenuSetupMisc : public cMenuSetupBase {
@@ -5854,7 +5986,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
    Add(new cMenuEditIntItem( tr("Setup.Miscellaneous$Min. event timeout (min)"),   &data.MinEventTimeout));
    Add(new cMenuEditIntItem( tr("Setup.Miscellaneous$Min. user inactivity (min)"), &data.MinUserInactivity));
    Add(new cMenuEditIntItem( tr("Setup.Miscellaneous$SVDRP timeout (s)"),          &data.SVDRPTimeout));
-@@ -2743,7 +3825,21 @@ cMenuSetupMisc::cMenuSetupMisc(void)
+@@ -2737,7 +3819,21 @@ cMenuSetupMisc::cMenuSetupMisc(void)
    Add(new cMenuEditIntItem( tr("Setup.Miscellaneous$Channel entry timeout (ms)"), &data.ChannelEntryTimeout, 0));
    Add(new cMenuEditChanItem(tr("Setup.Miscellaneous$Initial channel"),            &data.InitialChannel, tr("Setup.Miscellaneous$as before")));
    Add(new cMenuEditIntItem( tr("Setup.Miscellaneous$Initial volume"),             &data.InitialVolume, -1, 255, tr("Setup.Miscellaneous$as before")));
@@ -5876,7 +6008,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
  }
  
  // --- cMenuSetupPluginItem --------------------------------------------------
-@@ -2768,6 +3864,9 @@ class cMenuSetupPlugins : public cMenuSe
+@@ -2762,6 +3858,9 @@ class cMenuSetupPlugins : public cMenuSe
  public:
    cMenuSetupPlugins(void);
    virtual eOSState ProcessKey(eKeys Key);
@@ -5886,7 +6018,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
    };
  
  cMenuSetupPlugins::cMenuSetupPlugins(void)
-@@ -2817,6 +3916,9 @@ private:
+@@ -2811,6 +3910,9 @@ private:
  public:
    cMenuSetup(void);
    virtual eOSState ProcessKey(eKeys Key);
@@ -5896,20 +6028,19 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
    };
  
  cMenuSetup::cMenuSetup(void)
-@@ -2906,24 +4008,91 @@ cOsdObject *cMenuMain::pluginOsdObject =
+@@ -2900,24 +4002,90 @@ cOsdObject *cMenuMain::pluginOsdObject =
  cMenuMain::cMenuMain(eOSState State)
  :cOsdMenu("")
  {
 +#ifdef USE_SETUP
 +  // Load Menu Configuration
-+  char *menuXML = NULL;
-+  asprintf(&menuXML, "%s/setup/vdr-menu.%s.xml", cPlugin::ConfigDirectory(), Setup.OSDLanguage);
++  cString menuXML = cString::sprintf("%s/setup/vdr-menu.%s.xml", cPlugin::ConfigDirectory(), Setup.OSDLanguage);
 +  if (access(menuXML, 04) == -1)
-+     asprintf(&menuXML, "%s/setup/vdr-menu.xml", cPlugin::ConfigDirectory());
++     menuXML = cString::sprintf("%s/setup/vdr-menu.xml", cPlugin::ConfigDirectory());
 +  subMenu.LoadXml(menuXML);
-+  free(menuXML);
-+  nrDynamicMenuEntries=0;
++  nrDynamicMenuEntries = 0;
 +#endif /* SETUP */
++
    replaying = false;
    stopReplayItem = NULL;
    cancelEditingItem = NULL;
@@ -5988,7 +6119,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
  }
  
  cOsdObject *cMenuMain::PluginOsdObject(void)
-@@ -2933,38 +4102,155 @@ cOsdObject *cMenuMain::PluginOsdObject(v
+@@ -2927,38 +4095,159 @@ cOsdObject *cMenuMain::PluginOsdObject(v
    return o;
  }
  
@@ -6046,7 +6177,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
 +            Add(new cMenuPluginItem(hk(item), node->GetPluginIndex()));
 +         }
 +      else if (type==cSubMenuNode::MENU) {
-+         cString item = cString::sprintf("%s%s", node->GetName(), subMenu.GetMenuSuffix());
++         cString item = cString::sprintf("%s%s", node->GetName(), *subMenu.GetMenuSuffix());
 +#ifdef USE_PINPLUGIN
 +         if (!cStatus::MsgMenuItemProtected(item, true))
 +            Add(new cOsdItem(hk(item), osUnknown, node));
@@ -6077,10 +6208,14 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
 +            Add(new cOsdItem(hk(tr("Timers")), osTimers));
 +         else if (strcmp(item, "Recordings") == 0)
 +            Add(new cOsdItem(hk(tr("Recordings")), osRecordings));
-+         else if (strcmp(item, "Setup") == 0)
-+            Add(new cOsdItem(hk(tr("Setup")), osSetup));
-+         else if (strcmp(item, "Commands") == 0 && Commands.Count()>0)
-+            Add(new cOsdItem(hk(tr("Commands")), osCommands));
++         else if (strcmp(item, "Setup") == 0) {
++            cString itemSetup = cString::sprintf("%s%s", tr("Setup"), *subMenu.GetMenuSuffix());
++            Add(new cOsdItem(hk(itemSetup), osSetup));
++            }
++         else if (strcmp(item, "Commands") == 0 && Commands.Count() > 0) {
++            cString itemCommands = cString::sprintf("%s%s", tr("Commands"), *subMenu.GetMenuSuffix());
++            Add(new cOsdItem(hk(itemCommands), osCommands));
++            }
 +         }
 +     }
 +  if (current >=0 && current<Count()) {
@@ -6144,7 +6279,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
    Update(true);
  
    Display();
-@@ -2973,13 +4259,40 @@ void cMenuMain::Set(void)
+@@ -2967,13 +4256,40 @@ void cMenuMain::Set(void)
  bool cMenuMain::Update(bool Force)
  {
    bool result = false;
@@ -6186,7 +6321,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
  
    bool NewReplaying = cControl::Control() != NULL;
    if (Force || NewReplaying != replaying) {
-@@ -2987,6 +4300,9 @@ bool cMenuMain::Update(bool Force)
+@@ -2981,6 +4297,9 @@ bool cMenuMain::Update(bool Force)
       // Replay control:
       if (replaying && !stopReplayItem)
          // TRANSLATORS: note the leading blank!
@@ -6196,7 +6331,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
          Add(stopReplayItem = new cOsdItem(tr(" Stop replaying"), osStopReplay));
       else if (stopReplayItem && !replaying) {
          Del(stopReplayItem->Index());
-@@ -3001,6 +4317,9 @@ bool cMenuMain::Update(bool Force)
+@@ -2995,6 +4314,9 @@ bool cMenuMain::Update(bool Force)
    bool CutterActive = cCutter::Active();
    if (CutterActive && !cancelEditingItem) {
       // TRANSLATORS: note the leading blank!
@@ -6206,7 +6341,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
       Add(cancelEditingItem = new cOsdItem(tr(" Cancel editing"), osCancelEdit));
       result = true;
       }
-@@ -3021,6 +4340,9 @@ bool cMenuMain::Update(bool Force)
+@@ -3015,6 +4337,9 @@ bool cMenuMain::Update(bool Force)
       while ((s = cRecordControls::GetInstantId(s)) != NULL) {
             cOsdItem *item = new cOsdItem(osStopRecord);
             item->SetText(cString::sprintf("%s%s", tr(STOP_RECORDING), s));
@@ -6216,7 +6351,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
             Add(item);
             if (!stopRecordingItem)
                stopRecordingItem = item;
-@@ -3028,6 +4350,12 @@ bool cMenuMain::Update(bool Force)
+@@ -3022,6 +4347,12 @@ bool cMenuMain::Update(bool Force)
       result = true;
       }
  
@@ -6229,7 +6364,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
    return result;
  }
  
-@@ -3038,13 +4366,69 @@ eOSState cMenuMain::ProcessKey(eKeys Key
+@@ -3032,13 +4363,69 @@ eOSState cMenuMain::ProcessKey(eKeys Key
    eOSState state = cOsdMenu::ProcessKey(Key);
    HadSubMenu |= HasSubMenu();
  
@@ -6299,7 +6434,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
      case osStopRecord: if (Interface->Confirm(tr("Stop recording?"))) {
                            cOsdItem *item = Get(Current());
                            if (item) {
-@@ -3063,6 +4447,9 @@ eOSState cMenuMain::ProcessKey(eKeys Key
+@@ -3057,6 +4444,9 @@ eOSState cMenuMain::ProcessKey(eKeys Key
                           if (item) {
                              cPlugin *p = cPluginManager::GetPlugin(item->PluginIndex());
                              if (p) {
@@ -6309,7 +6444,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
                                 cOsdObject *menu = p->MainMenuAction();
                                 if (menu) {
                                    if (menu->IsMenu())
-@@ -3074,9 +4461,60 @@ eOSState cMenuMain::ProcessKey(eKeys Key
+@@ -3068,9 +4458,60 @@ eOSState cMenuMain::ProcessKey(eKeys Key
                                    }
                                 }
                              }
@@ -6370,7 +6505,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
      default: switch (Key) {
                 case kRecord:
                 case kRed:    if (!HadSubMenu)
-@@ -3093,9 +4531,67 @@ eOSState cMenuMain::ProcessKey(eKeys Key
+@@ -3087,9 +4528,67 @@ eOSState cMenuMain::ProcessKey(eKeys Key
                 case kBlue:   if (!HadSubMenu)
                                  state = replaying ? osStopReplay : cReplayControl::LastReplayed() ? osReplay : osContinue;
                               break;
@@ -6438,7 +6573,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
    if (!HasSubMenu() && Update(HadSubMenu))
       Display();
    if (Key != kNone) {
-@@ -3241,7 +4737,14 @@ cChannel *cDisplayChannel::NextAvailable
+@@ -3235,7 +4734,14 @@ cChannel *cDisplayChannel::NextAvailable
    if (Direction) {
       while (Channel) {
             Channel = Direction > 0 ? Channels.Next(Channel) : Channels.Prev(Channel);
@@ -6453,7 +6588,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
                return Channel;
             }
       }
-@@ -3299,6 +4802,13 @@ eOSState cDisplayChannel::ProcessKey(eKe
+@@ -3293,6 +4799,13 @@ eOSState cDisplayChannel::ProcessKey(eKe
      case kLeft:
      case kRight|k_Repeat:
      case kRight:
@@ -6467,7 +6602,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
      case kNext|k_Repeat:
      case kNext:
      case kPrev|k_Repeat:
-@@ -3458,6 +4968,17 @@ void cDisplayVolume::Process(eKeys Key)
+@@ -3452,6 +4965,17 @@ void cDisplayVolume::Process(eKeys Key)
  eOSState cDisplayVolume::ProcessKey(eKeys Key)
  {
    switch (Key) {
@@ -6485,7 +6620,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
      case kVolUp|k_Repeat:
      case kVolUp:
      case kVolDn|k_Repeat:
-@@ -3707,6 +5228,10 @@ eOSState cDisplaySubtitleTracks::Process
+@@ -3701,6 +5225,10 @@ eOSState cDisplaySubtitleTracks::Process
  
  cRecordControl::cRecordControl(cDevice *Device, cTimer *Timer, bool Pause)
  {
@@ -6496,7 +6631,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
    // We're going to manipulate an event here, so we need to prevent
    // others from modifying any EPG data:
    cSchedulesLock SchedulesLock;
-@@ -3751,6 +5276,16 @@ cRecordControl::cRecordControl(cDevice *
+@@ -3745,11 +5273,26 @@ cRecordControl::cRecordControl(cDevice *
       return;
       }
  
@@ -6513,7 +6648,17 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
    cRecordingUserCommand::InvokeCommand(RUC_BEFORERECORDING, fileName);
    isyslog("record %s", fileName);
    if (MakeDirs(fileName, true)) {
-@@ -3813,11 +5348,25 @@ bool cRecordControl::GetEvent(void)
+      const cChannel *ch = timer->Channel();
++#ifdef USE_TTXTSUBS
++     int TPid[2] = { ch->Tpid(), 0 };
++     recorder = new cRecorder(fileName, ch->GetChannelID(), timer->Priority(), ch->Vpid(), ch->Apids(), ch->Dpids(), ch->Spids(), TPid);
++#else
+      recorder = new cRecorder(fileName, ch->GetChannelID(), timer->Priority(), ch->Vpid(), ch->Apids(), ch->Dpids(), ch->Spids());
++#endif /* TTXTSUBS */
+      if (device->AttachReceiver(recorder)) {
+         Recording.WriteInfo();
+         cStatus::MsgRecording(device, Recording.Name(), Recording.FileName(), true);
+@@ -3807,11 +5350,25 @@ bool cRecordControl::GetEvent(void)
  void cRecordControl::Stop(void)
  {
    if (timer) {
@@ -6539,7 +6684,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
       }
  }
  
-@@ -3864,6 +5413,19 @@ bool cRecordControls::Start(cTimer *Time
+@@ -3858,6 +5415,19 @@ bool cRecordControls::Start(cTimer *Time
       int Priority = Timer ? Timer->Priority() : Pause ? Setup.PausePriority : Setup.DefaultPriority;
       cDevice *device = cDevice::GetDevice(channel, Priority, false);
       if (device) {
@@ -6559,7 +6704,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
          dsyslog("switching device %d to channel %d", device->DeviceNumber() + 1, channel->Number());
          if (!device->SwitchChannel(channel, false)) {
             ShutdownHandler.RequestEmergencyExit();
-@@ -3873,6 +5435,9 @@ bool cRecordControls::Start(cTimer *Time
+@@ -3867,6 +5437,9 @@ bool cRecordControls::Start(cTimer *Time
             for (int i = 0; i < MAXRECORDCONTROLS; i++) {
                 if (!RecordControls[i]) {
                    RecordControls[i] = new cRecordControl(device, Timer, Pause);
@@ -6569,7 +6714,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
                    return RecordControls[i]->Process(time(NULL));
                    }
                 }
-@@ -4003,12 +5568,22 @@ bool cRecordControls::StateChanged(int &
+@@ -3997,12 +5570,22 @@ bool cRecordControls::StateChanged(int &
  
  // --- cReplayControl --------------------------------------------------------
  
@@ -6592,7 +6737,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
  {
    currentReplayControl = this;
    displayReplay = NULL;
-@@ -4016,23 +5591,96 @@ cReplayControl::cReplayControl(void)
+@@ -4010,23 +5593,96 @@ cReplayControl::cReplayControl(void)
    lastCurrent = lastTotal = -1;
    lastPlay = lastForward = false;
    lastSpeed = -2; // an invalid value
@@ -6689,7 +6834,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
  void cReplayControl::SetRecording(const char *FileName, const char *Title)
  {
    free(fileName);
-@@ -4127,6 +5775,9 @@ bool cReplayControl::ShowProgress(bool I
+@@ -4121,6 +5777,9 @@ bool cReplayControl::ShowProgress(bool I
       if (Initial) {
          if (title)
             displayReplay->SetTitle(title);
@@ -6699,7 +6844,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
          lastCurrent = lastTotal = -1;
          }
       if (Total != lastTotal) {
-@@ -4248,8 +5899,15 @@ void cReplayControl::MarkToggle(void)
+@@ -4242,8 +5901,15 @@ void cReplayControl::MarkToggle(void)
          ShowTimed(2);
          bool Play, Forward;
          int Speed;
@@ -6715,7 +6860,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
          }
       marks.Save();
       }
-@@ -4262,8 +5920,22 @@ void cReplayControl::MarkJump(bool Forwa
+@@ -4256,8 +5922,22 @@ void cReplayControl::MarkJump(bool Forwa
       if (GetIndex(Current, Total)) {
          cMark *m = Forward ? marks.GetNext(Current) : marks.GetPrev(Current);
          if (m) {
@@ -6738,7 +6883,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
             }
          }
       }
-@@ -4292,11 +5964,43 @@ void cReplayControl::MarkMove(bool Forwa
+@@ -4286,11 +5966,43 @@ void cReplayControl::MarkMove(bool Forwa
       }
  }
  
@@ -6782,7 +6927,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
          if (!marks.Count())
             Skins.Message(mtError, tr("No editing marks defined!"));
          else if (!cCutter::Start(fileName))
-@@ -4318,7 +6022,11 @@ void cReplayControl::EditTest(void)
+@@ -4312,7 +6024,11 @@ void cReplayControl::EditTest(void)
       if (!m)
          m = marks.GetNext(Current);
       if (m) {
@@ -6794,7 +6939,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
             m = marks.Next(m);
          if (m) {
             Goto(m->position - SecondsToFrames(3, FramesPerSecond()));
-@@ -4340,6 +6048,9 @@ eOSState cReplayControl::ProcessKey(eKey
+@@ -4334,6 +6050,9 @@ eOSState cReplayControl::ProcessKey(eKey
  {
    if (!Active())
       return osEnd;
@@ -6804,7 +6949,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
    if (visible) {
       if (timeoutShow && time(NULL) > timeoutShow) {
          Hide();
-@@ -4357,7 +6068,32 @@ eOSState cReplayControl::ProcessKey(eKey
+@@ -4351,7 +6070,32 @@ eOSState cReplayControl::ProcessKey(eKey
       TimeSearchProcess(Key);
       return osContinue;
       }
@@ -6837,7 +6982,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
    switch (Key) {
      // Positioning:
      case kPlay:
-@@ -4375,25 +6111,82 @@ eOSState cReplayControl::ProcessKey(eKey
+@@ -4369,25 +6113,82 @@ eOSState cReplayControl::ProcessKey(eKey
      case kFastFwd:
      case kRight:   Forward(); break;
      case kRed:     TimeSearch(); break;
@@ -6920,7 +7065,7 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
          case kMarkJumpForward|k_Repeat:
          case kMarkJumpForward: MarkJump(true); break;
          case kMarkMoveBack|k_Repeat:
-@@ -4413,7 +6206,16 @@ eOSState cReplayControl::ProcessKey(eKey
+@@ -4407,7 +6208,16 @@ eOSState cReplayControl::ProcessKey(eKey
                             else
                                Show();
                             break;
@@ -6937,9 +7082,9 @@ diff -ruNp vdr-1.7.5/menu.c vdr-1.7.5-extensions/menu.c
              default:       return osUnknown;
              }
            }
-diff -ruNp vdr-1.7.5/menu.h vdr-1.7.5-extensions/menu.h
---- vdr-1.7.5/menu.h	2008-02-10 17:01:53.000000000 +0100
-+++ vdr-1.7.5-extensions/menu.h	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/menu.h vdr-1.7.7-extensions/menu.h
+--- vdr-1.7.7/menu.h	2008-02-10 17:01:53.000000000 +0100
++++ vdr-1.7.7-extensions/menu.h	2009-05-04 09:07:48.000000000 +0200
 @@ -18,6 +18,9 @@
  #include "menuitems.h"
  #include "recorder.h"
@@ -7077,10 +7222,10 @@ diff -ruNp vdr-1.7.5/menu.h vdr-1.7.5-extensions/menu.h
    virtual cOsdObject *GetInfo(void);
    virtual eOSState ProcessKey(eKeys Key);
    virtual void Show(void);
-diff -ruNp vdr-1.7.5/menuitems.c vdr-1.7.5-extensions/menuitems.c
---- vdr-1.7.5/menuitems.c	2009-04-05 12:15:12.000000000 +0200
-+++ vdr-1.7.5-extensions/menuitems.c	2009-04-16 20:54:09.000000000 +0200
-@@ -32,9 +32,20 @@ cMenuEditItem::~cMenuEditItem()
+diff -ruNp vdr-1.7.7/menuitems.c vdr-1.7.7-extensions/menuitems.c
+--- vdr-1.7.7/menuitems.c	2009-05-03 15:37:55.000000000 +0200
++++ vdr-1.7.7-extensions/menuitems.c	2009-05-04 09:07:48.000000000 +0200
+@@ -33,9 +33,20 @@ cMenuEditItem::~cMenuEditItem()
    free(name);
  }
  
@@ -7101,7 +7246,7 @@ diff -ruNp vdr-1.7.5/menuitems.c vdr-1.7.5-extensions/menuitems.c
    SetText(buffer);
    cStatus::MsgOsdCurrentItem(buffer);
  }
-@@ -126,7 +137,11 @@ void cMenuEditBoolItem::Set(void)
+@@ -127,7 +138,11 @@ void cMenuEditBoolItem::Set(void)
  {
    char buf[16];
    snprintf(buf, sizeof(buf), "%s", *value ? trueString : falseString);
@@ -7113,7 +7258,7 @@ diff -ruNp vdr-1.7.5/menuitems.c vdr-1.7.5-extensions/menuitems.c
  }
  
  // --- cMenuEditBitItem ------------------------------------------------------
-@@ -619,6 +634,170 @@ eOSState cMenuEditStrItem::ProcessKey(eK
+@@ -685,6 +700,170 @@ eOSState cMenuEditStrItem::ProcessKey(eK
    return osContinue;
  }
  
@@ -7284,7 +7429,7 @@ diff -ruNp vdr-1.7.5/menuitems.c vdr-1.7.5-extensions/menuitems.c
  // --- cMenuEditStraItem -----------------------------------------------------
  
  cMenuEditStraItem::cMenuEditStraItem(const char *Name, int *Value, int NumStrings, const char * const *Strings)
-@@ -630,7 +809,11 @@ cMenuEditStraItem::cMenuEditStraItem(con
+@@ -696,7 +875,11 @@ cMenuEditStraItem::cMenuEditStraItem(con
  
  void cMenuEditStraItem::Set(void)
  {
@@ -7296,9 +7441,9 @@ diff -ruNp vdr-1.7.5/menuitems.c vdr-1.7.5-extensions/menuitems.c
  }
  
  // --- cMenuEditChanItem -----------------------------------------------------
-diff -ruNp vdr-1.7.5/menuitems.h vdr-1.7.5-extensions/menuitems.h
---- vdr-1.7.5/menuitems.h	2008-04-12 14:03:59.000000000 +0200
-+++ vdr-1.7.5-extensions/menuitems.h	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/menuitems.h vdr-1.7.7-extensions/menuitems.h
+--- vdr-1.7.7/menuitems.h	2009-05-03 14:50:34.000000000 +0200
++++ vdr-1.7.7-extensions/menuitems.h	2009-05-04 09:07:48.000000000 +0200
 @@ -21,7 +21,11 @@ private:
  public:
    cMenuEditItem(const char *Name);
@@ -7311,7 +7456,7 @@ diff -ruNp vdr-1.7.5/menuitems.h vdr-1.7.5-extensions/menuitems.h
    };
  
  class cMenuEditIntItem : public cMenuEditItem {
-@@ -78,26 +82,46 @@ public:
+@@ -90,26 +94,46 @@ public:
  
  class cMenuEditStrItem : public cMenuEditItem {
  private:
@@ -7358,7 +7503,7 @@ diff -ruNp vdr-1.7.5/menuitems.h vdr-1.7.5-extensions/menuitems.h
    void EnterEditMode(void);
    void LeaveEditMode(bool SaveValue = false);
    bool InEditMode(void) { return valueUtf8 != NULL; }
-@@ -107,6 +131,21 @@ public:
+@@ -119,6 +143,21 @@ public:
    virtual eOSState ProcessKey(eKeys Key);
    };
  
@@ -7380,7 +7525,7 @@ diff -ruNp vdr-1.7.5/menuitems.h vdr-1.7.5-extensions/menuitems.h
  class cMenuEditStraItem : public cMenuEditIntItem {
  private:
    const char * const *strings;
-@@ -185,6 +224,9 @@ public:
+@@ -197,6 +236,9 @@ public:
    cMenuSetupPage(void);
    virtual eOSState ProcessKey(eKeys Key);
    void SetPlugin(cPlugin *Plugin);
@@ -7390,9 +7535,9 @@ diff -ruNp vdr-1.7.5/menuitems.h vdr-1.7.5-extensions/menuitems.h
    };
  
  #endif //__MENUITEMS_H
-diff -ruNp vdr-1.7.5/menuorgpatch.h vdr-1.7.5-extensions/menuorgpatch.h
---- vdr-1.7.5/menuorgpatch.h	1970-01-01 01:00:00.000000000 +0100
-+++ vdr-1.7.5-extensions/menuorgpatch.h	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/menuorgpatch.h vdr-1.7.7-extensions/menuorgpatch.h
+--- vdr-1.7.7/menuorgpatch.h	1970-01-01 01:00:00.000000000 +0100
++++ vdr-1.7.7-extensions/menuorgpatch.h	2009-05-04 09:07:48.000000000 +0200
 @@ -0,0 +1,102 @@
 +#ifdef USE_MENUORG
 +/*
@@ -7496,9 +7641,9 @@ diff -ruNp vdr-1.7.5/menuorgpatch.h vdr-1.7.5-extensions/menuorgpatch.h
 +
 +#endif //__MENUORGPATCH_H
 +#endif /* MENUORG */
-diff -ruNp vdr-1.7.5/osdbase.c vdr-1.7.5-extensions/osdbase.c
---- vdr-1.7.5/osdbase.c	2008-02-17 12:33:04.000000000 +0100
-+++ vdr-1.7.5-extensions/osdbase.c	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/osdbase.c vdr-1.7.7-extensions/osdbase.c
+--- vdr-1.7.7/osdbase.c	2008-02-17 12:33:04.000000000 +0100
++++ vdr-1.7.7-extensions/osdbase.c	2009-05-04 09:07:48.000000000 +0200
 @@ -22,6 +22,9 @@ cOsdItem::cOsdItem(eOSState State)
    state = State;
    selectable = true;
@@ -7708,9 +7853,9 @@ diff -ruNp vdr-1.7.5/osdbase.c vdr-1.7.5-extensions/osdbase.c
      case kUp|k_Repeat:
      case kUp:   CursorUp();   break;
      case kDown|k_Repeat:
-diff -ruNp vdr-1.7.5/osdbase.h vdr-1.7.5-extensions/osdbase.h
---- vdr-1.7.5/osdbase.h	2007-11-03 15:50:52.000000000 +0100
-+++ vdr-1.7.5-extensions/osdbase.h	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/osdbase.h vdr-1.7.7-extensions/osdbase.h
+--- vdr-1.7.7/osdbase.h	2007-11-03 15:50:52.000000000 +0100
++++ vdr-1.7.7-extensions/osdbase.h	2009-05-04 09:07:48.000000000 +0200
 @@ -15,6 +15,10 @@
  #include "skins.h"
  #include "tools.h"
@@ -7770,10 +7915,10 @@ diff -ruNp vdr-1.7.5/osdbase.h vdr-1.7.5-extensions/osdbase.h
    };
  
  #endif //__OSDBASE_H
-diff -ruNp vdr-1.7.5/osd.c vdr-1.7.5-extensions/osd.c
---- vdr-1.7.5/osd.c	2009-04-05 12:17:25.000000000 +0200
-+++ vdr-1.7.5-extensions/osd.c	2009-04-16 20:54:09.000000000 +0200
-@@ -724,6 +724,9 @@ int cOsd::osdTop = 0;
+diff -ruNp vdr-1.7.7/osd.c vdr-1.7.7-extensions/osd.c
+--- vdr-1.7.7/osd.c	2009-05-03 15:52:47.000000000 +0200
++++ vdr-1.7.7-extensions/osd.c	2009-05-04 09:07:48.000000000 +0200
+@@ -725,6 +725,9 @@ int cOsd::osdTop = 0;
  int cOsd::osdWidth = 0;
  int cOsd::osdHeight = 0;
  cVector<cOsd *> cOsd::Osds;
@@ -7783,7 +7928,7 @@ diff -ruNp vdr-1.7.5/osd.c vdr-1.7.5-extensions/osd.c
  
  cOsd::cOsd(int Left, int Top, uint Level)
  {
-@@ -734,6 +737,9 @@ cOsd::cOsd(int Left, int Top, uint Level
+@@ -735,6 +738,9 @@ cOsd::cOsd(int Left, int Top, uint Level
    width = height = 0;
    level = Level;
    active = false;
@@ -7793,9 +7938,9 @@ diff -ruNp vdr-1.7.5/osd.c vdr-1.7.5-extensions/osd.c
    for (int i = 0; i < Osds.Size(); i++) {
        if (Osds[i]->level > level) {
           Osds.Insert(this, i);
-diff -ruNp vdr-1.7.5/osd.h vdr-1.7.5-extensions/osd.h
---- vdr-1.7.5/osd.h	2009-04-05 12:16:05.000000000 +0200
-+++ vdr-1.7.5-extensions/osd.h	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/osd.h vdr-1.7.7-extensions/osd.h
+--- vdr-1.7.7/osd.h	2009-05-03 15:52:10.000000000 +0200
++++ vdr-1.7.7-extensions/osd.h	2009-05-04 09:07:48.000000000 +0200
 @@ -401,6 +401,12 @@ public:
         ///< 7: vertical,   falling, upper
    virtual void Flush(void);
@@ -7809,9 +7954,78 @@ diff -ruNp vdr-1.7.5/osd.h vdr-1.7.5-extensions/osd.h
    };
  
  class cOsdProvider {
-diff -ruNp vdr-1.7.5/plugin.c vdr-1.7.5-extensions/plugin.c
---- vdr-1.7.5/plugin.c	2009-04-05 12:16:48.000000000 +0200
-+++ vdr-1.7.5-extensions/plugin.c	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/pat.c vdr-1.7.7-extensions/pat.c
+--- vdr-1.7.7/pat.c	2008-07-06 16:01:32.000000000 +0200
++++ vdr-1.7.7-extensions/pat.c	2009-05-04 09:07:48.000000000 +0200
+@@ -13,6 +13,9 @@
+ #include "libsi/section.h"
+ #include "libsi/descriptor.h"
+ #include "thread.h"
++#ifdef USE_TTXTSUBS
++#include "vdrttxtsubshooks.h"
++#endif /* TTXTSUBS */
+ 
+ #define PMT_SCAN_TIMEOUT  10 // seconds
+ 
+@@ -337,6 +340,11 @@ void cPatFilter::Process(u_short Pid, u_
+         char DLangs[MAXDPIDS][MAXLANGCODE2] = { "" };
+         char SLangs[MAXSPIDS][MAXLANGCODE2] = { "" };
+         int Tpid = 0;
++#ifdef USE_TTXTSUBS
++        char TLangs[MAXTPAGES][MAXLANGCODE2] = { "" };
++        int TPages[MAXTPAGES + 1] = { 0 };
++        int NumTPages = 0;
++#endif /* TTXTSUBS */
+         int NumApids = 0;
+         int NumDpids = 0;
+         int NumSpids = 0;
+@@ -414,8 +422,24 @@ void cPatFilter::Process(u_short Pid, u_
+                                     NumSpids++;
+                                     }
+                                  break;
++#ifdef USE_TTXTSUBS
++                            case SI::TeletextDescriptorTag: {
++                                 Tpid = stream.getPid();
++                                 SI::TeletextDescriptor *sd = (SI::TeletextDescriptor *)d;
++                                 SI::TeletextDescriptor::Teletext ttxt;
++                                 for (SI::Loop::Iterator it; sd->teletextLoop.getNext(ttxt, it); ) {
++                                     if ((NumTPages < MAXTPAGES) && ttxt.languageCode[0] && ((ttxt.getTeletextType() == 0x02) || (ttxt.getTeletextType() == 0x05))) {
++                                        char *s = TLangs[NumTPages];
++                                        strn0cpy(s, I18nNormalizeLanguageCode(ttxt.languageCode), MAXLANGCODE1);
++                                        TPages[NumTPages] = (ttxt.getTeletextPageNumber() & 0xff) | ((ttxt.getTeletextMagazineNumber() & 0xff) << 8) | ((ttxt.getTeletextType() & 0xff) << 16);
++                                        NumTPages++;
++                                        }
++                                     }
++                                 }
++#else
+                             case SI::TeletextDescriptorTag:
+                                  Tpid = stream.getPid();
++#endif /* TTXTSUBS */
+                                  break;
+                             case SI::ISO639LanguageDescriptorTag: {
+                                  SI::ISO639LanguageDescriptor *ld = (SI::ISO639LanguageDescriptor *)d;
+@@ -444,6 +468,18 @@ void cPatFilter::Process(u_short Pid, u_
+             }
+         if (Setup.UpdateChannels >= 2) {
+            Channel->SetPids(Vpid, Ppid, Vtype, Apids, ALangs, Dpids, DLangs, Spids, SLangs, Tpid);
++#ifdef USE_TTXTSUBS
++           if (NumTPages < MAXTPAGES) {
++              int manualPageNumber = cVDRTtxtsubsHookListener::Hook()->ManualPageNumber(Channel);
++              if (manualPageNumber) {
++                 char *s = TLangs[NumTPages];
++                 strn0cpy(s, "man", MAXLANGCODE1);
++                 TPages[NumTPages] = manualPageNumber;
++                 NumTPages++;
++                 }
++              }
++           Channel->SetTPidData(TLangs, TPages);
++#endif /* TTXTSUBS */
+            Channel->SetCaIds(CaDescriptors->CaIds());
+            }
+         Channel->SetCaDescriptors(CaDescriptorHandler.AddCaDescriptors(CaDescriptors));
+diff -ruNp vdr-1.7.7/plugin.c vdr-1.7.7-extensions/plugin.c
+--- vdr-1.7.7/plugin.c	2009-04-05 12:16:48.000000000 +0200
++++ vdr-1.7.7-extensions/plugin.c	2009-05-04 09:07:48.000000000 +0200
 @@ -317,6 +317,14 @@ void cPluginManager::AddPlugin(const cha
    char *p = strchr(s, ' ');
    if (p)
@@ -7839,9 +8053,9 @@ diff -ruNp vdr-1.7.5/plugin.c vdr-1.7.5-extensions/plugin.c
        }
    return true;
  }
-diff -ruNp vdr-1.7.5/po/de_DE.po vdr-1.7.5-extensions/po/de_DE.po
---- vdr-1.7.5/po/de_DE.po	2009-04-12 11:08:05.000000000 +0200
-+++ vdr-1.7.5-extensions/po/de_DE.po	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/po/de_DE.po vdr-1.7.7-extensions/po/de_DE.po
+--- vdr-1.7.7/po/de_DE.po	2009-05-03 16:15:20.000000000 +0200
++++ vdr-1.7.7-extensions/po/de_DE.po	2009-05-04 09:07:48.000000000 +0200
 @@ -794,6 +794,30 @@ msgstr "Lautstärke beim Einschalten"
  msgid "Setup.Miscellaneous$Emergency exit"
  msgstr "Notausstieg"
@@ -8180,9 +8394,9 @@ diff -ruNp vdr-1.7.5/po/de_DE.po vdr-1.7.5-extensions/po/de_DE.po
 +
 +msgid "Wrong DVD!"
 +msgstr "Falsche DVD!"
-diff -ruNp vdr-1.7.5/po/et_EE.po vdr-1.7.5-extensions/po/et_EE.po
---- vdr-1.7.5/po/et_EE.po	2009-04-12 11:08:05.000000000 +0200
-+++ vdr-1.7.5-extensions/po/et_EE.po	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/po/et_EE.po vdr-1.7.7-extensions/po/et_EE.po
+--- vdr-1.7.7/po/et_EE.po	2009-05-03 16:15:20.000000000 +0200
++++ vdr-1.7.7-extensions/po/et_EE.po	2009-05-04 09:07:48.000000000 +0200
 @@ -1007,3 +1007,33 @@ msgstr "Restardi katkestamiseks vajuta s
  #, c-format
  msgid "VDR will shut down in %s minutes"
@@ -8217,9 +8431,9 @@ diff -ruNp vdr-1.7.5/po/et_EE.po vdr-1.7.5-extensions/po/et_EE.po
 +
 +msgid "Rename$Next"
 +msgstr "Järgmine"
-diff -ruNp vdr-1.7.5/po/fi_FI.po vdr-1.7.5-extensions/po/fi_FI.po
---- vdr-1.7.5/po/fi_FI.po	2009-04-12 11:08:05.000000000 +0200
-+++ vdr-1.7.5-extensions/po/fi_FI.po	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/po/fi_FI.po vdr-1.7.7-extensions/po/fi_FI.po
+--- vdr-1.7.7/po/fi_FI.po	2009-05-03 16:15:20.000000000 +0200
++++ vdr-1.7.7-extensions/po/fi_FI.po	2009-05-04 09:07:48.000000000 +0200
 @@ -42,6 +42,253 @@ msgstr "Siirtotilan aloitus epäonnistui!
  msgid "Starting EPG scan"
  msgstr "Ohjelmaoppaan päivitys aloitettu"
@@ -8727,9 +8941,9 @@ diff -ruNp vdr-1.7.5/po/fi_FI.po vdr-1.7.5-extensions/po/fi_FI.po
 +
 +msgid "Parameters"
 +msgstr "Parametrit"
-diff -ruNp vdr-1.7.5/po/fr_FR.po vdr-1.7.5-extensions/po/fr_FR.po
---- vdr-1.7.5/po/fr_FR.po	2009-04-12 11:08:05.000000000 +0200
-+++ vdr-1.7.5-extensions/po/fr_FR.po	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/po/fr_FR.po vdr-1.7.7-extensions/po/fr_FR.po
+--- vdr-1.7.7/po/fr_FR.po	2009-05-03 16:15:20.000000000 +0200
++++ vdr-1.7.7-extensions/po/fr_FR.po	2009-05-04 09:07:48.000000000 +0200
 @@ -8,6 +8,7 @@
  # Pierre Briec <pbriec@free.fr>, 2006
  # Bruno Roussel <bruno.roussel@free.fr>, 2007
@@ -8988,9 +9202,9 @@ diff -ruNp vdr-1.7.5/po/fr_FR.po vdr-1.7.5-extensions/po/fr_FR.po
 +
 +msgid "Wrong DVD!"
 +msgstr "Mauvais DVD!"
-diff -ruNp vdr-1.7.5/po/it_IT.po vdr-1.7.5-extensions/po/it_IT.po
---- vdr-1.7.5/po/it_IT.po	2009-04-12 11:08:05.000000000 +0200
-+++ vdr-1.7.5-extensions/po/it_IT.po	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/po/it_IT.po vdr-1.7.7-extensions/po/it_IT.po
+--- vdr-1.7.7/po/it_IT.po	2009-05-03 16:15:21.000000000 +0200
++++ vdr-1.7.7-extensions/po/it_IT.po	2009-05-04 09:07:48.000000000 +0200
 @@ -37,6 +37,9 @@ msgstr "nessuno"
  msgid "*** Invalid Channel ***"
  msgstr "*** Canale NON valido ***"
@@ -9240,7 +9454,7 @@ diff -ruNp vdr-1.7.5/po/it_IT.po vdr-1.7.5-extensions/po/it_IT.po
 +msgstr "Non pubblicato"
 +
 +msgid "Content$Live Broadcast"
-+msgstr "ys"
++msgstr "Trasmissione dal vivo"
 +
 +msgid "Content$Special Characteristics"
 +msgstr "Caratteristiche speciali"
@@ -9374,8 +9588,8 @@ diff -ruNp vdr-1.7.5/po/it_IT.po vdr-1.7.5-extensions/po/it_IT.po
 +msgid "Setup.OSD$WarEagle icons"
 +msgstr "Icone WarEagle"
 +
- msgid "Setup.OSD$Left"
- msgstr "Sinistra"
+ msgid "Setup.OSD$Left (%)"
+ msgstr "Sinistra (%)"
  
 @@ -568,12 +881,30 @@ msgstr "Tasto Menu per chiudere"
  msgid "Setup.OSD$Recording directories"
@@ -9745,9 +9959,9 @@ diff -ruNp vdr-1.7.5/po/it_IT.po vdr-1.7.5-extensions/po/it_IT.po
  msgid "Can't shutdown - option '-s' not given!"
  msgstr "Impossibile spegnere - parametro '-s' non assegnato!"
  
-diff -ruNp vdr-1.7.5/po/nl_NL.po vdr-1.7.5-extensions/po/nl_NL.po
---- vdr-1.7.5/po/nl_NL.po	2009-04-12 11:08:05.000000000 +0200
-+++ vdr-1.7.5-extensions/po/nl_NL.po	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/po/nl_NL.po vdr-1.7.7-extensions/po/nl_NL.po
+--- vdr-1.7.7/po/nl_NL.po	2009-05-03 16:15:21.000000000 +0200
++++ vdr-1.7.7-extensions/po/nl_NL.po	2009-05-04 09:07:48.000000000 +0200
 @@ -1011,3 +1011,240 @@ msgstr "Druk een willekeurige toets om h
  #, c-format
  msgid "VDR will shut down in %s minutes"
@@ -9989,9 +10203,9 @@ diff -ruNp vdr-1.7.5/po/nl_NL.po vdr-1.7.5-extensions/po/nl_NL.po
 +
 +msgid "Wrong DVD!"
 +msgstr "Verkeerde DVD!"
-diff -ruNp vdr-1.7.5/po/ru_RU.po vdr-1.7.5-extensions/po/ru_RU.po
---- vdr-1.7.5/po/ru_RU.po	2009-04-12 11:08:06.000000000 +0200
-+++ vdr-1.7.5-extensions/po/ru_RU.po	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/po/ru_RU.po vdr-1.7.7-extensions/po/ru_RU.po
+--- vdr-1.7.7/po/ru_RU.po	2009-05-03 16:15:21.000000000 +0200
++++ vdr-1.7.7-extensions/po/ru_RU.po	2009-05-04 09:07:48.000000000 +0200
 @@ -1008,3 +1008,249 @@ msgstr "½ÐÖÜØâÕ ÛîÑãî ÚÝÞßÚã ÔÛï ÞâÜÕÝë 
  #, c-format
  msgid "VDR will shut down in %s minutes"
@@ -10242,9 +10456,9 @@ diff -ruNp vdr-1.7.5/po/ru_RU.po vdr-1.7.5-extensions/po/ru_RU.po
 +
 +msgid "Wrong DVD!"
 +msgstr "¾èØÑÚÐ DVD!"
-diff -ruNp vdr-1.7.5/README.cmdsubmenu vdr-1.7.5-extensions/README.cmdsubmenu
---- vdr-1.7.5/README.cmdsubmenu	1970-01-01 01:00:00.000000000 +0100
-+++ vdr-1.7.5-extensions/README.cmdsubmenu	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/README.cmdsubmenu vdr-1.7.7-extensions/README.cmdsubmenu
+--- vdr-1.7.7/README.cmdsubmenu	1970-01-01 01:00:00.000000000 +0100
++++ vdr-1.7.7-extensions/README.cmdsubmenu	2009-05-04 09:07:48.000000000 +0200
 @@ -0,0 +1,54 @@
 +CmdSubmenu patch for VDR
 +------------------------
@@ -10300,9 +10514,9 @@ diff -ruNp vdr-1.7.5/README.cmdsubmenu vdr-1.7.5-extensions/README.cmdsubmenu
 +  2006-05-15: Version 0.7 - Thomas Günther <tom@toms-cafe.de>
 +    - Fixed build with G++ 4.1 (extra qualification)
 +    http://toms-cafe.de/vdr/download/vdr-cmdsubmenu-0.7-1.4.0.diff
-diff -ruNp vdr-1.7.5/README-HLCUTTER vdr-1.7.5-extensions/README-HLCUTTER
---- vdr-1.7.5/README-HLCUTTER	1970-01-01 01:00:00.000000000 +0100
-+++ vdr-1.7.5-extensions/README-HLCUTTER	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/README-HLCUTTER vdr-1.7.7-extensions/README-HLCUTTER
+--- vdr-1.7.7/README-HLCUTTER	1970-01-01 01:00:00.000000000 +0100
++++ vdr-1.7.7-extensions/README-HLCUTTER	2009-05-04 09:07:48.000000000 +0200
 @@ -0,0 +1,117 @@
 +
 +                    VDR-HLCUTTER README
@@ -10421,9 +10635,9 @@ diff -ruNp vdr-1.7.5/README-HLCUTTER vdr-1.7.5-extensions/README-HLCUTTER
 +
 +
 +SetBrokenLink may get lost on rare cases, this needs some more thoughts.Index: vdr-1.5.9/README.jumpplay
-diff -ruNp vdr-1.7.5/README.jumpplay vdr-1.7.5-extensions/README.jumpplay
---- vdr-1.7.5/README.jumpplay	1970-01-01 01:00:00.000000000 +0100
-+++ vdr-1.7.5-extensions/README.jumpplay	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/README.jumpplay vdr-1.7.7-extensions/README.jumpplay
+--- vdr-1.7.7/README.jumpplay	1970-01-01 01:00:00.000000000 +0100
++++ vdr-1.7.7-extensions/README.jumpplay	2009-05-04 09:07:48.000000000 +0200
 @@ -0,0 +1,92 @@
 +JumpPlay patch for VDR
 +----------------------
@@ -10517,9 +10731,9 @@ diff -ruNp vdr-1.7.5/README.jumpplay vdr-1.7.5-extensions/README.jumpplay
 +    Play&Jump:
 +      - set resume position to 0 if replay stops at the first mark
 +    Added French language texts (thanks to Michaël Nival)
-diff -ruNp vdr-1.7.5/README.MainMenuHooks vdr-1.7.5-extensions/README.MainMenuHooks
---- vdr-1.7.5/README.MainMenuHooks	1970-01-01 01:00:00.000000000 +0100
-+++ vdr-1.7.5-extensions/README.MainMenuHooks	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/README.MainMenuHooks vdr-1.7.7-extensions/README.MainMenuHooks
+--- vdr-1.7.7/README.MainMenuHooks	1970-01-01 01:00:00.000000000 +0100
++++ vdr-1.7.7-extensions/README.MainMenuHooks	2009-05-04 09:07:48.000000000 +0200
 @@ -0,0 +1,55 @@
 +This is a "patch" for the Video Disk Recorder (VDR).
 +
@@ -10576,9 +10790,9 @@ diff -ruNp vdr-1.7.5/README.MainMenuHooks vdr-1.7.5-extensions/README.MainMenuHo
 +authors first or at least use a service id which differs in more than
 +just the version number.
 +
-diff -ruNp vdr-1.7.5/README.sortrec vdr-1.7.5-extensions/README.sortrec
---- vdr-1.7.5/README.sortrec	1970-01-01 01:00:00.000000000 +0100
-+++ vdr-1.7.5-extensions/README.sortrec	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/README.sortrec vdr-1.7.7-extensions/README.sortrec
+--- vdr-1.7.7/README.sortrec	1970-01-01 01:00:00.000000000 +0100
++++ vdr-1.7.7-extensions/README.sortrec	2009-05-04 09:07:48.000000000 +0200
 @@ -0,0 +1,48 @@
 +Sort Recordings patch for VDR
 +-----------------------------
@@ -10628,9 +10842,9 @@ diff -ruNp vdr-1.7.5/README.sortrec vdr-1.7.5-extensions/README.sortrec
 +2006-08-13 v3, sortrec release for VDR 1.4.1 and liemikuutio 1.8
 +2007-01-28 v3a, moved #ifdef from optimized-rename-patch to sortrec
 +2008-03-29 v3b, removed ASCII-170 and ASCII-183 to make sortrec Utf8-ready
-diff -ruNp vdr-1.7.5/README.timer-info vdr-1.7.5-extensions/README.timer-info
---- vdr-1.7.5/README.timer-info	1970-01-01 01:00:00.000000000 +0100
-+++ vdr-1.7.5-extensions/README.timer-info	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/README.timer-info vdr-1.7.7-extensions/README.timer-info
+--- vdr-1.7.7/README.timer-info	1970-01-01 01:00:00.000000000 +0100
++++ vdr-1.7.7-extensions/README.timer-info	2009-05-04 09:07:48.000000000 +0200
 @@ -0,0 +1,53 @@
 ++------------------------------------------------------------------------------+
 +|               Info about the timer-info-patch by Brougs78                    |
@@ -10685,22 +10899,79 @@ diff -ruNp vdr-1.7.5/README.timer-info vdr-1.7.5-extensions/README.timer-info
 +03.03.2006: v0.5 - Tobias Grimm <tg@e-tobi.net>
 + - Adapted to vdr-1.3.45
 +   http://toms-cafe.de/vdr/download/vdr-timer-info-0.4-1.3.45.diff
-diff -ruNp vdr-1.7.5/recorder.c vdr-1.7.5-extensions/recorder.c
---- vdr-1.7.5/recorder.c	2009-03-20 16:49:02.000000000 +0100
-+++ vdr-1.7.5-extensions/recorder.c	2009-04-16 20:54:09.000000000 +0200
-@@ -22,7 +22,11 @@
+diff -ruNp vdr-1.7.7/receiver.c vdr-1.7.7-extensions/receiver.c
+--- vdr-1.7.7/receiver.c	2007-08-12 13:52:59.000000000 +0200
++++ vdr-1.7.7-extensions/receiver.c	2009-05-04 09:07:48.000000000 +0200
+@@ -12,7 +12,11 @@
+ #include <stdio.h>
+ #include "tools.h"
+ 
++#ifdef USE_TTXTSUBS
++cReceiver::cReceiver(tChannelID ChannelID, int Priority, int Pid, const int *Pids1, const int *Pids2, const int *Pids3, const int *Pids4)
++#else
+ cReceiver::cReceiver(tChannelID ChannelID, int Priority, int Pid, const int *Pids1, const int *Pids2, const int *Pids3)
++#endif /* TTXTSUBS */
+ {
+   device = NULL;
+   channelID = ChannelID;
+@@ -32,6 +36,12 @@ cReceiver::cReceiver(tChannelID ChannelI
+      while (*Pids3 && numPids < MAXRECEIVEPIDS)
+            pids[numPids++] = *Pids3++;
+      }
++#ifdef USE_TTXTSUBS
++  if (Pids4) {
++     while (*Pids4 && numPids < MAXRECEIVEPIDS)
++           pids[numPids++] = *Pids4++;
++     }
++#endif /* TTXTSUBS */
+   if (numPids >= MAXRECEIVEPIDS)
+      dsyslog("too many PIDs in cReceiver");
+ }
+diff -ruNp vdr-1.7.7/receiver.h vdr-1.7.7-extensions/receiver.h
+--- vdr-1.7.7/receiver.h	2007-01-05 12:00:36.000000000 +0100
++++ vdr-1.7.7-extensions/receiver.h	2009-05-04 09:07:48.000000000 +0200
+@@ -38,10 +38,15 @@ protected:
+                ///< will be delivered only ONCE, so the cReceiver must make sure that
+                ///< it will be able to buffer the data if necessary.
+ public:
++#ifdef USE_TTXTSUBS
++  cReceiver(tChannelID ChannelID, int Priority, int Pid, const int *Pids1 = NULL, const int *Pids2 = NULL, const int *Pids3 = NULL, const int *Pids4 = NULL);
++#else
+   cReceiver(tChannelID ChannelID, int Priority, int Pid, const int *Pids1 = NULL, const int *Pids2 = NULL, const int *Pids3 = NULL);
++#endif /* TTXTSUBS */
+                ///< Creates a new receiver for the channel with the given ChannelID with
+                ///< the given Priority. Pid is a single PID (typically the video PID), while
+                ///< Pids1...Pids3 are pointers to zero terminated lists of PIDs.
++               ///< ifdef USE_TTXTSUBS: Pids1...Pids4 are pointers to zero terminated lists of PIDs.
+                ///< If any of these PIDs are 0, they will be silently ignored.
+                ///< The total number of non-zero PIDs must not exceed MAXRECEIVEPIDS.
+                ///< Priority may be any value in the range -99..99. Negative values indicate
+diff -ruNp vdr-1.7.7/recorder.c vdr-1.7.7-extensions/recorder.c
+--- vdr-1.7.7/recorder.c	2009-03-20 16:49:02.000000000 +0100
++++ vdr-1.7.7-extensions/recorder.c	2009-05-04 09:07:48.000000000 +0200
+@@ -21,8 +21,21 @@
+ 
  // --- cRecorder -------------------------------------------------------------
  
++#ifdef USE_TTXTSUBS
++cRecorder::cRecorder(const char *FileName, tChannelID ChannelID, int Priority, int VPid, const int *APids, const int *DPids, const int *SPids, const int *EPids)
++#ifdef USE_DOLBYINREC
++:cReceiver(ChannelID, Priority, VPid, APids, Setup.UseDolbyInRecordings ? DPids : NULL, SPids, EPids)
++#else
++:cReceiver(ChannelID, Priority, VPid, APids, Setup.UseDolbyDigital ? DPids : NULL, SPids, EPids)
++#endif /* DOLBYINREC */
++#else
  cRecorder::cRecorder(const char *FileName, tChannelID ChannelID, int Priority, int VPid, const int *APids, const int *DPids, const int *SPids)
 +#ifdef USE_DOLBYINREC
 +:cReceiver(ChannelID, Priority, VPid, APids, Setup.UseDolbyInRecordings ? DPids : NULL, SPids)
 +#else
  :cReceiver(ChannelID, Priority, VPid, APids, Setup.UseDolbyDigital ? DPids : NULL, SPids)
 +#endif /* DOLBYINREC */
++#endif /* TTXTSUBS */
  ,cThread("recording")
  ,recordingInfo(FileName)
  {
-@@ -85,7 +89,11 @@ bool cRecorder::RunningLowOnDiskSpace(vo
+@@ -85,7 +98,11 @@ bool cRecorder::RunningLowOnDiskSpace(vo
  bool cRecorder::NextFile(void)
  {
    if (recordFile && frameDetector->IndependentFrame()) { // every file shall start with an independent frame
@@ -10712,9 +10983,24 @@ diff -ruNp vdr-1.7.5/recorder.c vdr-1.7.5-extensions/recorder.c
          recordFile = fileName->NextFile();
          fileSize = 0;
          }
-diff -ruNp vdr-1.7.5/recording.c vdr-1.7.5-extensions/recording.c
---- vdr-1.7.5/recording.c	2009-01-30 17:27:19.000000000 +0100
-+++ vdr-1.7.5-extensions/recording.c	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/recorder.h vdr-1.7.7-extensions/recorder.h
+--- vdr-1.7.7/recorder.h	2009-01-06 11:44:58.000000000 +0100
++++ vdr-1.7.7-extensions/recorder.h	2009-05-04 09:07:48.000000000 +0200
+@@ -34,7 +34,11 @@ protected:
+   virtual void Receive(uchar *Data, int Length);
+   virtual void Action(void);
+ public:
++#ifdef USE_TTXTSUBS
++  cRecorder(const char *FileName, tChannelID ChannelID, int Priority, int VPid, const int *APids, const int *DPids, const int *SPids, const int *EPids = NULL);
++#else
+   cRecorder(const char *FileName, tChannelID ChannelID, int Priority, int VPid, const int *APids, const int *DPids, const int *SPids);
++#endif /* TTXTSUBS */
+                // Creates a new recorder for the channel with the given ChannelID and
+                // the given Priority that will record the given PIDs into the file FileName.
+   virtual ~cRecorder();
+diff -ruNp vdr-1.7.7/recording.c vdr-1.7.7-extensions/recording.c
+--- vdr-1.7.7/recording.c	2009-04-13 15:50:39.000000000 +0200
++++ vdr-1.7.7-extensions/recording.c	2009-05-04 09:07:48.000000000 +0200
 @@ -8,6 +8,9 @@
   */
  
@@ -10767,7 +11053,7 @@ diff -ruNp vdr-1.7.5/recording.c vdr-1.7.5-extensions/recording.c
  
  cRecordings DeletedRecordings(true);
  
-@@ -599,9 +623,24 @@ cRecording::cRecording(cTimer *Timer, co
+@@ -600,9 +624,24 @@ cRecording::cRecording(cTimer *Timer, co
  {
    resume = RESUME_NOT_INITIALIZED;
    titleBuffer = NULL;
@@ -10792,7 +11078,7 @@ diff -ruNp vdr-1.7.5/recording.c vdr-1.7.5-extensions/recording.c
    fileSizeMB = -1; // unknown
    channel = Timer->Channel()->Number();
    instanceId = InstanceId;
-@@ -636,6 +675,11 @@ cRecording::cRecording(cTimer *Timer, co
+@@ -637,6 +676,11 @@ cRecording::cRecording(cTimer *Timer, co
                break;
             }
       if (Timer->IsSingleEvent()) {
@@ -10804,7 +11090,7 @@ diff -ruNp vdr-1.7.5/recording.c vdr-1.7.5-extensions/recording.c
          Timer->SetFile(name); // this was an instant recording, so let's set the actual data
          Timers.SetModified();
          }
-@@ -646,6 +690,10 @@ cRecording::cRecording(cTimer *Timer, co
+@@ -647,6 +691,10 @@ cRecording::cRecording(cTimer *Timer, co
       name = strdup(cString::sprintf("%s~%s", Timer->File(), Subtitle));
    // substitute characters that would cause problems in file names:
    strreplace(name, '\n', ' ');
@@ -10815,7 +11101,7 @@ diff -ruNp vdr-1.7.5/recording.c vdr-1.7.5-extensions/recording.c
    start = Timer->StartTime();
    priority = Timer->Priority();
    lifetime = Timer->Lifetime();
-@@ -668,12 +716,27 @@ cRecording::cRecording(const char *FileN
+@@ -669,12 +717,27 @@ cRecording::cRecording(const char *FileN
    framesPerSecond = DEFAULTFRAMESPERSECOND;
    deleted = 0;
    titleBuffer = NULL;
@@ -10843,7 +11129,7 @@ diff -ruNp vdr-1.7.5/recording.c vdr-1.7.5-extensions/recording.c
    info = new cRecordingInfo;
    if (p) {
       time_t now = time(NULL);
-@@ -762,15 +825,34 @@ cRecording::cRecording(const char *FileN
+@@ -763,15 +826,34 @@ cRecording::cRecording(const char *FileN
             LOG_ERROR_STR(*SummaryFileName);
          }
  #endif
@@ -10878,7 +11164,7 @@ diff -ruNp vdr-1.7.5/recording.c vdr-1.7.5-extensions/recording.c
    delete info;
  }
  
-@@ -790,21 +872,46 @@ char *cRecording::StripEpisodeName(char 
+@@ -791,21 +873,46 @@ char *cRecording::StripEpisodeName(char 
          t++;
          }
    if (s1 && s2)
@@ -10925,7 +11211,7 @@ diff -ruNp vdr-1.7.5/recording.c vdr-1.7.5-extensions/recording.c
  }
  
  int cRecording::GetResume(void) const
-@@ -819,7 +926,15 @@ int cRecording::GetResume(void) const
+@@ -820,7 +927,15 @@ int cRecording::GetResume(void) const
  int cRecording::Compare(const cListObject &ListObject) const
  {
    cRecording *r = (cRecording *)&ListObject;
@@ -10941,7 +11227,7 @@ diff -ruNp vdr-1.7.5/recording.c vdr-1.7.5-extensions/recording.c
  }
  
  const char *cRecording::FileName(void) const
-@@ -837,9 +952,359 @@ const char *cRecording::FileName(void) c
+@@ -838,9 +953,359 @@ const char *cRecording::FileName(void) c
    return fileName;
  }
  
@@ -11301,7 +11587,7 @@ diff -ruNp vdr-1.7.5/recording.c vdr-1.7.5-extensions/recording.c
    free(titleBuffer);
    titleBuffer = NULL;
    if (Level < 0 || Level == HierarchyLevels()) {
-@@ -850,7 +1315,14 @@ const char *cRecording::Title(char Delim
+@@ -851,7 +1316,14 @@ const char *cRecording::Title(char Delim
          s++;
       else
          s = name;
@@ -11316,7 +11602,7 @@ diff -ruNp vdr-1.7.5/recording.c vdr-1.7.5-extensions/recording.c
                              t->tm_mday,
                              t->tm_mon + 1,
                              t->tm_year % 100,
-@@ -860,6 +1332,80 @@ const char *cRecording::Title(char Delim
+@@ -861,6 +1333,80 @@ const char *cRecording::Title(char Delim
                              New,
                              Delimiter,
                              s));
@@ -11327,7 +11613,7 @@ diff -ruNp vdr-1.7.5/recording.c vdr-1.7.5-extensions/recording.c
 +        if (Setup.ShowRecLength && FileName()) {
 +           int length = cIndexFile::Length(FileName(), IsPesRecording());
 +           if (length >= 0)
-+              RecLength = cString::sprintf("%d'", length / SecondsToFrames(60));
++              RecLength = cString::sprintf("%d'", length / SecondsToFrames(60, framesPerSecond));
 +           }
 +#endif /* LIEMIEXT */
 +#ifdef USE_DVDARCHIVE
@@ -11397,7 +11683,7 @@ diff -ruNp vdr-1.7.5/recording.c vdr-1.7.5-extensions/recording.c
       // let's not display a trailing '~':
       if (!NewIndicator)
          stripspace(titleBuffer);
-@@ -888,6 +1434,17 @@ const char *cRecording::Title(char Delim
+@@ -889,6 +1435,17 @@ const char *cRecording::Title(char Delim
    return titleBuffer;
  }
  
@@ -11415,7 +11701,7 @@ diff -ruNp vdr-1.7.5/recording.c vdr-1.7.5-extensions/recording.c
  const char *cRecording::PrefixFileName(char Prefix)
  {
    cString p = PrefixVideoFileName(FileName(), Prefix);
-@@ -941,10 +1498,20 @@ bool cRecording::Delete(void)
+@@ -942,10 +1499,20 @@ bool cRecording::Delete(void)
          // the new name already exists, so let's remove that one first:
          isyslog("removing recording '%s'", NewName);
          RemoveVideoFile(NewName);
@@ -11436,7 +11722,7 @@ diff -ruNp vdr-1.7.5/recording.c vdr-1.7.5-extensions/recording.c
       else {
          isyslog("recording '%s' vanished", FileName());
          result = true; // well, we were going to delete it, anyway
-@@ -962,7 +1529,13 @@ bool cRecording::Remove(void)
+@@ -963,7 +1530,13 @@ bool cRecording::Remove(void)
       return false;
       }
    isyslog("removing recording %s", FileName());
@@ -11450,7 +11736,7 @@ diff -ruNp vdr-1.7.5/recording.c vdr-1.7.5-extensions/recording.c
  }
  
  bool cRecording::Undelete(void)
-@@ -979,8 +1552,15 @@ bool cRecording::Undelete(void)
+@@ -980,8 +1553,15 @@ bool cRecording::Undelete(void)
          }
       else {
          isyslog("undeleting recording '%s'", FileName());
@@ -11466,7 +11752,7 @@ diff -ruNp vdr-1.7.5/recording.c vdr-1.7.5-extensions/recording.c
          else {
             isyslog("deleted recording '%s' vanished", FileName());
             result = false;
-@@ -996,6 +1576,54 @@ void cRecording::ResetResume(void) const
+@@ -997,6 +1577,54 @@ void cRecording::ResetResume(void) const
    resume = RESUME_NOT_INITIALIZED;
  }
  
@@ -11521,7 +11807,7 @@ diff -ruNp vdr-1.7.5/recording.c vdr-1.7.5-extensions/recording.c
  // --- cRecordings -----------------------------------------------------------
  
  cRecordings Recordings;
-@@ -1008,6 +1636,9 @@ cRecordings::cRecordings(bool Deleted)
+@@ -1009,6 +1637,9 @@ cRecordings::cRecordings(bool Deleted)
    deleted = Deleted;
    lastUpdate = 0;
    state = 0;
@@ -11531,7 +11817,7 @@ diff -ruNp vdr-1.7.5/recording.c vdr-1.7.5-extensions/recording.c
  }
  
  cRecordings::~cRecordings()
-@@ -1294,14 +1925,72 @@ cMark *cMarks::GetNext(int Position)
+@@ -1295,14 +1926,72 @@ cMark *cMarks::GetNext(int Position)
    return NULL;
  }
  
@@ -11604,7 +11890,7 @@ diff -ruNp vdr-1.7.5/recording.c vdr-1.7.5-extensions/recording.c
       isyslog("executing '%s'", *cmd);
       SystemExec(cmd);
       }
-@@ -1596,6 +2285,17 @@ bool cIndexFile::IsStillRecording()
+@@ -1597,6 +2286,17 @@ bool cIndexFile::IsStillRecording()
    return f >= 0;
  }
  
@@ -11614,7 +11900,7 @@ diff -ruNp vdr-1.7.5/recording.c vdr-1.7.5-extensions/recording.c
 +  struct stat buf;
 +  cString fullname = cString::sprintf("%s%s", FileName, IsPesRecording ? INDEXFILESUFFIX ".vdr" : INDEXFILESUFFIX);
 +  if (FileName && *fullname && access(fullname, R_OK) == 0 && stat(fullname, &buf) == 0)
-+     return (buf.st_size - 1) / sizeof(tIndexTs) + 1;
++     return buf.st_size ? (buf.st_size - 1) / sizeof(tIndexTs) + 1 : 0;
 +  return -1;
 +}
 +#endif /* LIEMIEXT */
@@ -11622,7 +11908,7 @@ diff -ruNp vdr-1.7.5/recording.c vdr-1.7.5-extensions/recording.c
  // --- cFileName -------------------------------------------------------------
  
  #define MAXFILESPERRECORDINGPES 255
-@@ -1625,6 +2325,48 @@ cFileName::cFileName(const char *FileNam
+@@ -1626,6 +2326,48 @@ cFileName::cFileName(const char *FileNam
  cFileName::~cFileName()
  {
    Close();
@@ -11671,7 +11957,7 @@ diff -ruNp vdr-1.7.5/recording.c vdr-1.7.5-extensions/recording.c
    free(fileName);
  }
  
-@@ -1703,6 +2445,22 @@ cUnbufferedFile *cFileName::SetOffset(in
+@@ -1704,6 +2446,22 @@ cUnbufferedFile *cFileName::SetOffset(in
    return NULL;
  }
  
@@ -11694,7 +11980,7 @@ diff -ruNp vdr-1.7.5/recording.c vdr-1.7.5-extensions/recording.c
  cUnbufferedFile *cFileName::NextFile(void)
  {
    return SetOffset(fileNumber + 1);
-@@ -1754,3 +2512,113 @@ int ReadFrame(cUnbufferedFile *f, uchar 
+@@ -1755,3 +2513,113 @@ int ReadFrame(cUnbufferedFile *f, uchar 
       LOG_ERROR;
    return r;
  }
@@ -11808,9 +12094,9 @@ diff -ruNp vdr-1.7.5/recording.c vdr-1.7.5-extensions/recording.c
 +  return(*buf);
 +}
 +#endif /* DVLFRIENDLYFNAMES */
-diff -ruNp vdr-1.7.5/recording.h vdr-1.7.5-extensions/recording.h
---- vdr-1.7.5/recording.h	2009-02-28 11:50:12.000000000 +0100
-+++ vdr-1.7.5-extensions/recording.h	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/recording.h vdr-1.7.7-extensions/recording.h
+--- vdr-1.7.7/recording.h	2009-04-19 11:00:45.000000000 +0200
++++ vdr-1.7.7-extensions/recording.h	2009-05-04 09:07:48.000000000 +0200
 @@ -20,6 +20,9 @@
  
  extern bool VfatFileSystem;
@@ -12033,9 +12319,134 @@ diff -ruNp vdr-1.7.5/recording.h vdr-1.7.5-extensions/recording.h
    cUnbufferedFile *NextFile(void);
    };
  
-diff -ruNp vdr-1.7.5/skinclassic.c vdr-1.7.5-extensions/skinclassic.c
---- vdr-1.7.5/skinclassic.c	2008-02-23 11:31:58.000000000 +0100
-+++ vdr-1.7.5-extensions/skinclassic.c	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/remux.c vdr-1.7.7-extensions/remux.c
+--- vdr-1.7.7/remux.c	2009-05-03 16:43:25.000000000 +0200
++++ vdr-1.7.7-extensions/remux.c	2009-05-04 09:07:48.000000000 +0200
+@@ -215,6 +215,32 @@ int cPatPmtGenerator::MakeSubtitlingDesc
+   return i;
+ }
+ 
++#ifdef USE_TTXTSUBS
++int cPatPmtGenerator::MakeTeletextDescriptor(uchar *Target, cChannel *Channel)
++{
++  int i = 0, j = 0;
++  Target[i++] = SI::TeletextDescriptorTag;
++  int l = i;
++  Target[i++] = 0x00; // length
++  for (int n = 0; Channel->TPages(n); n++) {
++      const char *Language = Channel->Tlang(n);
++      int Pages = Channel->TPages(n);
++      Target[i++] = *Language++;
++      Target[i++] = *Language++;
++      Target[i++] = *Language++;
++      Target[i++] = ((Pages >> 13) & 0xf8) | ((Pages >> 8) & 0x7); // teletext type & magazine number
++      Target[i++] = Pages & 0xff; // teletext page number
++      j++;
++      }
++  if (j > 0) {
++     Target[l] = j * 5; // update length
++     IncEsInfoLength(i);
++     return i;
++     }
++  return 0;
++}
++#endif /* TTXTSUBS */
++
+ int cPatPmtGenerator::MakeLanguageDescriptor(uchar *Target, const char *Language)
+ {
+   int i = 0;
+@@ -295,6 +321,9 @@ void cPatPmtGenerator::GeneratePmt(cChan
+   numPmtPackets = 0;
+   if (Channel) {
+      int Vpid = Channel->Vpid();
++#ifdef USE_TTXTSUBS
++     int Tpid = Channel->Tpid();
++#endif /* TTXTSUBS */
+      uchar *p = buf;
+      int i = 0;
+      p[i++] = 0x02; // table id
+@@ -329,6 +358,12 @@ void cPatPmtGenerator::GeneratePmt(cChan
+          i += MakeStream(buf + i, 0x06, Channel->Spid(n));
+          i += MakeSubtitlingDescriptor(buf + i, Channel->Slang(n));
+          }
++#ifdef USE_TTXTSUBS
++     if (Tpid) {
++        i += MakeStream(buf + i, 0x06, Tpid);
++        i += MakeTeletextDescriptor(buf + i, Channel);
++        }
++#endif /* TTXTSUBS */
+ 
+      int sl = i - SectionLength - 2 + 4; // -2 = SectionLength storage, +4 = length of CRC
+      buf[SectionLength] |= (sl >> 8) & 0x0F;
+@@ -394,6 +429,9 @@ void cPatPmtParser::Reset(void)
+   patVersion = pmtVersion = -1;
+   pmtPid = -1;
+   vpid = vtype = 0;
++#ifdef USE_TTXTSUBS
++  tpid = 0;
++#endif /* TTXTSUBS */
+ }
+ 
+ void cPatPmtParser::ParsePat(const uchar *Data, int Length)
+@@ -477,6 +515,9 @@ void cPatPmtParser::ParsePmt(const uchar
+      int NumDpids = 0;
+      int NumSpids = 0;
+      vpid = vtype = 0;
++#ifdef USE_TTXTSUBS
++     tpid = 0;
++#endif /* TTXTSUBS */
+      SI::PMT::Stream stream;
+      for (SI::Loop::Iterator it; Pmt.streamLoop.getNext(stream, it); ) {
+          dbgpatpmt("     stream type = %02X, pid = %d", stream.getStreamType(), stream.getPid());
+@@ -554,6 +595,12 @@ void cPatPmtParser::ParsePmt(const uchar
+                                     NumSpids++;
+                                     }
+                                  break;
++#ifdef USE_TTXTSUBS
++                            case SI::TeletextDescriptorTag:
++                                 dbgpatpmt(" teletext");
++                                 tpid = stream.getPid();
++                                 break;
++#endif /* TTXTSUBS */
+                             case SI::ISO639LanguageDescriptorTag: {
+                                  SI::ISO639LanguageDescriptor *ld = (SI::ISO639LanguageDescriptor *)d;
+                                  dbgpatpmt(" '%s'", ld->languageCode);
+diff -ruNp vdr-1.7.7/remux.h vdr-1.7.7-extensions/remux.h
+--- vdr-1.7.7/remux.h	2009-04-19 12:57:09.000000000 +0200
++++ vdr-1.7.7-extensions/remux.h	2009-05-04 09:07:48.000000000 +0200
+@@ -169,6 +169,9 @@ protected:
+   int MakeStream(uchar *Target, uchar Type, int Pid);
+   int MakeAC3Descriptor(uchar *Target);
+   int MakeSubtitlingDescriptor(uchar *Target, const char *Language);
++#ifdef USE_TTXTSUBS
++  int MakeTeletextDescriptor(uchar *Target, cChannel *Channel);
++#endif /* TTXTSUBS */
+   int MakeLanguageDescriptor(uchar *Target, const char *Language);
+   int MakeCRC(uchar *Target, const uchar *Data, int Length);
+   void GeneratePmtPid(cChannel *Channel);
+@@ -204,6 +207,9 @@ private:
+   int pmtPid;
+   int vpid;
+   int vtype;
++#ifdef USE_TTXTSUBS
++  int tpid;
++#endif /* TTXTSUBS */
+ protected:
+   int SectionLength(const uchar *Data, int Length) { return (Length >= 3) ? ((int(Data[1]) & 0x0F) << 8)| Data[2] : 0; }
+ public:
+@@ -227,6 +233,9 @@ public:
+   int Vpid(void) { return vpid; }
+        ///< Returns the video pid as defined by the current PMT.
+   int Vtype(void) { return vtype; }
++#ifdef USE_TTXTSUBS
++  int Tpid(void) { return tpid; }
++#endif /* TTXTSUBS */
+   };
+ 
+ // TS to PES converter:
+diff -ruNp vdr-1.7.7/skinclassic.c vdr-1.7.7-extensions/skinclassic.c
+--- vdr-1.7.7/skinclassic.c	2008-02-23 11:31:58.000000000 +0100
++++ vdr-1.7.7-extensions/skinclassic.c	2009-05-04 09:07:48.000000000 +0200
 @@ -314,8 +314,52 @@ void cSkinClassicDisplayMenu::SetItem(co
    for (int i = 0; i < MaxTabs; i++) {
        const char *s = GetTabbedText(Text, i);
@@ -12089,9 +12500,9 @@ diff -ruNp vdr-1.7.5/skinclassic.c vdr-1.7.5-extensions/skinclassic.c
           }
        if (!Tab(i + 1))
           break;
-diff -ruNp vdr-1.7.5/skinsttng.c vdr-1.7.5-extensions/skinsttng.c
---- vdr-1.7.5/skinsttng.c	2008-02-23 11:23:44.000000000 +0100
-+++ vdr-1.7.5-extensions/skinsttng.c	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/skinsttng.c vdr-1.7.7-extensions/skinsttng.c
+--- vdr-1.7.7/skinsttng.c	2008-02-23 11:23:44.000000000 +0100
++++ vdr-1.7.7-extensions/skinsttng.c	2009-05-04 09:07:48.000000000 +0200
 @@ -558,8 +558,52 @@ void cSkinSTTNGDisplayMenu::SetItem(cons
    for (int i = 0; i < MaxTabs; i++) {
        const char *s = GetTabbedText(Text, i);
@@ -12167,9 +12578,9 @@ diff -ruNp vdr-1.7.5/skinsttng.c vdr-1.7.5-extensions/skinsttng.c
    if (!isempty(Event->Description())) {
       int yt = y;
       int yb = y4 - Roundness;
-diff -ruNp vdr-1.7.5/sources.c vdr-1.7.5-extensions/sources.c
---- vdr-1.7.5/sources.c	2008-02-10 15:07:26.000000000 +0100
-+++ vdr-1.7.5-extensions/sources.c	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/sources.c vdr-1.7.7-extensions/sources.c
+--- vdr-1.7.7/sources.c	2008-02-10 15:07:26.000000000 +0100
++++ vdr-1.7.7-extensions/sources.c	2009-05-04 09:07:48.000000000 +0200
 @@ -37,6 +37,9 @@ cString cSource::ToString(int Code)
    char buffer[16];
    char *q = buffer;
@@ -12202,9 +12613,9 @@ diff -ruNp vdr-1.7.5/sources.c vdr-1.7.5-extensions/sources.c
             switch (toupper(*s)) {
               case '0' ... '9': pos *= 10;
                                 pos += *s - '0';
-diff -ruNp vdr-1.7.5/sources.conf vdr-1.7.5-extensions/sources.conf
---- vdr-1.7.5/sources.conf	2008-08-16 12:02:27.000000000 +0200
-+++ vdr-1.7.5-extensions/sources.conf	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/sources.conf vdr-1.7.7-extensions/sources.conf
+--- vdr-1.7.7/sources.conf	2008-08-16 12:02:27.000000000 +0200
++++ vdr-1.7.7-extensions/sources.conf	2009-05-04 09:07:48.000000000 +0200
 @@ -194,3 +194,7 @@ C       Cable
  # Terrestrial
  
@@ -12213,9 +12624,9 @@ diff -ruNp vdr-1.7.5/sources.conf vdr-1.7.5-extensions/sources.conf
 +# Plugin PLUGINPARAM
 +
 +#P       Plugin
-diff -ruNp vdr-1.7.5/sources.h vdr-1.7.5-extensions/sources.h
---- vdr-1.7.5/sources.h	2005-05-14 11:30:41.000000000 +0200
-+++ vdr-1.7.5-extensions/sources.h	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/sources.h vdr-1.7.7-extensions/sources.h
+--- vdr-1.7.7/sources.h	2005-05-14 11:30:41.000000000 +0200
++++ vdr-1.7.7-extensions/sources.h	2009-05-04 09:07:48.000000000 +0200
 @@ -16,10 +16,17 @@ class cSource : public cListObject {
  public:
    enum eSourceType {
@@ -12244,9 +12655,9 @@ diff -ruNp vdr-1.7.5/sources.h vdr-1.7.5-extensions/sources.h
    static bool IsCable(int Code) { return (Code & st_Mask) == stCable; }
    static bool IsSat(int Code) { return (Code & st_Mask) == stSat; }
    static bool IsTerr(int Code) { return (Code & st_Mask) == stTerr; }
-diff -ruNp vdr-1.7.5/status.c vdr-1.7.5-extensions/status.c
---- vdr-1.7.5/status.c	2008-02-16 15:46:31.000000000 +0100
-+++ vdr-1.7.5-extensions/status.c	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/status.c vdr-1.7.7-extensions/status.c
+--- vdr-1.7.7/status.c	2008-02-16 15:46:31.000000000 +0100
++++ vdr-1.7.7-extensions/status.c	2009-05-04 09:07:48.000000000 +0200
 @@ -29,6 +29,20 @@ void cStatus::MsgTimerChange(const cTime
        sm->TimerChange(Timer, Change);
  }
@@ -12357,9 +12768,9 @@ diff -ruNp vdr-1.7.5/status.c vdr-1.7.5-extensions/status.c
 +}
 +#endif /* GRAPHTFT */
 +
-diff -ruNp vdr-1.7.5/status.h vdr-1.7.5-extensions/status.h
---- vdr-1.7.5/status.h	2008-02-16 16:00:33.000000000 +0100
-+++ vdr-1.7.5-extensions/status.h	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/status.h vdr-1.7.7-extensions/status.h
+--- vdr-1.7.7/status.h	2008-02-16 16:00:33.000000000 +0100
++++ vdr-1.7.7-extensions/status.h	2009-05-04 09:07:48.000000000 +0200
 @@ -14,8 +14,14 @@
  #include "device.h"
  #include "player.h"
@@ -12462,10 +12873,10 @@ diff -ruNp vdr-1.7.5/status.h vdr-1.7.5-extensions/status.h
    };
  
  #endif //__STATUS_H
-diff -ruNp vdr-1.7.5/submenu.c vdr-1.7.5-extensions/submenu.c
---- vdr-1.7.5/submenu.c	1970-01-01 01:00:00.000000000 +0100
-+++ vdr-1.7.5-extensions/submenu.c	2009-04-16 20:54:09.000000000 +0200
-@@ -0,0 +1,952 @@
+diff -ruNp vdr-1.7.7/submenu.c vdr-1.7.7-extensions/submenu.c
+--- vdr-1.7.7/submenu.c	1970-01-01 01:00:00.000000000 +0100
++++ vdr-1.7.7-extensions/submenu.c	2009-05-04 09:07:48.000000000 +0200
+@@ -0,0 +1,949 @@
 +#ifdef USE_SETUP
 +/****************************************************************************
 + * DESCRIPTION:
@@ -12483,6 +12894,9 @@ diff -ruNp vdr-1.7.5/submenu.c vdr-1.7.5-extensions/submenu.c
 +#ifndef SUBMENU_H
 +#include "submenu.h"
 +#include "plugin.h"
++#ifdef USE_WAREAGLEICON
++#include "iconpatch.h"
++#endif /* WAREAGLEICON */
 +
 +static const char* TAG_SYSTEM      = "system";
 +static const char* TAG_PLUGIN      = "plugin";
@@ -12497,7 +12911,7 @@ diff -ruNp vdr-1.7.5/submenu.c vdr-1.7.5-extensions/submenu.c
 +//# SubMenuNode
 +//################################################################################
 +
-+cSubMenuNode::cSubMenuNode(TiXmlElement * xml, int level,  cSubMenuNodes *currentMenu, cSubMenuNodes *parentMenu)
++cSubMenuNode::cSubMenuNode(TiXmlElement *xml, int level,  cSubMenuNodes *currentMenu, cSubMenuNodes *parentMenu)
 +{
 +  init();
 +  _parentMenu  = parentMenu;
@@ -12512,7 +12926,7 @@ diff -ruNp vdr-1.7.5/submenu.c vdr-1.7.5-extensions/submenu.c
 +        SetName(xml->Attribute("name"));
 +        if ((_type == COMMAND) || (_type == THREAD)) {
 +           SetCommand(xml->Attribute("execute"));
-+           const char * confirmStr = xml->Attribute("confirm");
++           const char *confirmStr = xml->Attribute("confirm");
 +           if (confirmStr != NULL && strcmp(confirmStr, TRUE_STR) == 0)
 +              _commandConfirm = true;
 +           }
@@ -12602,7 +13016,7 @@ diff -ruNp vdr-1.7.5/submenu.c vdr-1.7.5-extensions/submenu.c
 +}
 +
 +
-+bool cSubMenuNode::SaveXml(TiXmlElement * root)
++bool cSubMenuNode::SaveXml(TiXmlElement *root)
 +{
 +  bool ok = true;
 +
@@ -12672,7 +13086,7 @@ diff -ruNp vdr-1.7.5/submenu.c vdr-1.7.5-extensions/submenu.c
 +  return(type);
 +}
 +
-+void cSubMenuNode::SetType(const char * name)
++void cSubMenuNode::SetType(const char *name)
 +{
 +   _type = IsType(name);
 +}
@@ -12688,7 +13102,7 @@ diff -ruNp vdr-1.7.5/submenu.c vdr-1.7.5-extensions/submenu.c
 +  return(_type);
 +}
 +
-+const char * cSubMenuNode::GetTypeAsString()
++const char *cSubMenuNode::GetTypeAsString()
 +{
 +  const char *str=NULL;
 +  switch(_type) {
@@ -12716,7 +13130,7 @@ diff -ruNp vdr-1.7.5/submenu.c vdr-1.7.5-extensions/submenu.c
 +  return(str);
 +}
 +
-+void cSubMenuNode::SetCommand(const char * command)
++void cSubMenuNode::SetCommand(const char *command)
 +{
 +  if (_command != NULL)
 +     free((void*)_command);
@@ -12727,7 +13141,7 @@ diff -ruNp vdr-1.7.5/submenu.c vdr-1.7.5-extensions/submenu.c
 +     _command = NULL;
 +}
 +
-+const char * cSubMenuNode::GetCommand()
++const char *cSubMenuNode::GetCommand()
 +{
 +  return(_command);
 +}
@@ -12745,7 +13159,7 @@ diff -ruNp vdr-1.7.5/submenu.c vdr-1.7.5-extensions/submenu.c
 +     _commandConfirm = false;
 +}
 +
-+void cSubMenuNode::SetCustomTitle(const char * title)
++void cSubMenuNode::SetCustomTitle(const char *title)
 +{
 +  if (_title != NULL)
 +     free((void*)_title);
@@ -12756,12 +13170,12 @@ diff -ruNp vdr-1.7.5/submenu.c vdr-1.7.5-extensions/submenu.c
 +     _title = NULL;
 +}
 +
-+const char * cSubMenuNode::GetCustomTitle()
++const char *cSubMenuNode::GetCustomTitle()
 +{
 +  return(_title);
 +}
 +
-+void cSubMenuNode::SetName(const char * name)
++void cSubMenuNode::SetName(const char *name)
 +{
 +  if (_name)
 +     free ((void*)_name);
@@ -12772,7 +13186,7 @@ diff -ruNp vdr-1.7.5/submenu.c vdr-1.7.5-extensions/submenu.c
 +     _name = NULL;
 +}
 +
-+const char * cSubMenuNode::GetName()
++const char *cSubMenuNode::GetName()
 +{
 +  return(_name);
 +}
@@ -12801,7 +13215,7 @@ diff -ruNp vdr-1.7.5/submenu.c vdr-1.7.5-extensions/submenu.c
 +  _pluginIndex = index;
 +}
 +
-+void cSubMenuNode::SetPluginMainMenuEntry(const char * mainMenuEntry)
++void cSubMenuNode::SetPluginMainMenuEntry(const char *mainMenuEntry)
 +{
 +  if (_pluginMainMenuEntry != NULL)
 +     free((void*)_pluginMainMenuEntry);
@@ -12814,35 +13228,34 @@ diff -ruNp vdr-1.7.5/submenu.c vdr-1.7.5-extensions/submenu.c
 +     _pluginMainMenuEntry = NULL;
 +}
 +
-+const char * cSubMenuNode::GetPluginMainMenuEntry()
++const char *cSubMenuNode::GetPluginMainMenuEntry()
 +{
 +  return(_pluginMainMenuEntry);
 +}
 +
 +
-+
-+cSubMenuNodes * cSubMenuNode::GetParentMenu()
++cSubMenuNodes *cSubMenuNode::GetParentMenu()
 +{
 +  return(_parentMenu);
 +}
 +
-+void cSubMenuNode::SetParentMenu(cSubMenuNodes * parent)
++void cSubMenuNode::SetParentMenu(cSubMenuNodes *parent)
 +{
 +  _parentMenu = parent;
 +}
 +
-+cSubMenuNodes * cSubMenuNode::GetCurrentMenu()
++cSubMenuNodes *cSubMenuNode::GetCurrentMenu()
 +{
 +  return(_currentMenu);
 +}
 +
-+void cSubMenuNode::SetCurrentMenu(cSubMenuNodes * current)
++void cSubMenuNode::SetCurrentMenu(cSubMenuNodes *current)
 +{
 +  _currentMenu = current;
 +}
 +
 +
-+cSubMenuNodes * cSubMenuNode::GetSubMenus()
++cSubMenuNodes *cSubMenuNode::GetSubMenus()
 +{
 +  return(&_subMenus);
 +}
@@ -12878,8 +13291,6 @@ diff -ruNp vdr-1.7.5/submenu.c vdr-1.7.5-extensions/submenu.c
 +//################################################################################
 +cSubMenu::cSubMenu()
 +{
-+  _menuSuffix            = NULL;
-+  _fname                 = NULL;
 +  _commandResult         = NULL;
 +  _currentMenuTree       = &_menuTree;
 +  _currentParentMenuTree = NULL;
@@ -12893,10 +13304,6 @@ diff -ruNp vdr-1.7.5/submenu.c vdr-1.7.5-extensions/submenu.c
 +
 +cSubMenu::~cSubMenu()
 +{
-+  if (_menuSuffix)
-+     free(_menuSuffix);
-+  if (_fname)
-+     free(_fname);
 +  if (_commandResult)
 +     free(_commandResult);
 +  if (_nodeArray)
@@ -12905,26 +13312,28 @@ diff -ruNp vdr-1.7.5/submenu.c vdr-1.7.5-extensions/submenu.c
 +}
 +
 +
-+bool cSubMenu::LoadXml(char *fname)
++bool cSubMenu::LoadXml(cString fname)
 +{
 +  TiXmlDocument  xmlDoc = TiXmlDocument(fname);
 +  TiXmlElement  *root   = NULL;
 +  cSubMenuNode  *node   = NULL;
 +
 +  bool  ok = true;
-+  //Clear previously loaded Menu
-+  if (_fname != NULL)
-+     free(_fname);
++  // Clear previously loaded Menu
 +  _menuTree.Clear();
-+  _fname = strdup(fname);
++  _fname = fname;
 +
 +  if ((ok = xmlDoc.LoadFile())) {
 +     if ((root = xmlDoc.FirstChildElement("menus")) != NULL) {
-+        char *tmp = NULL;
-+        if ((tmp = (char*)root->Attribute("suffix")) == NULL)
-+           asprintf(&_menuSuffix, " "); // set default menuSuffix // asprintf(&_menuSuffix, " ...");
++        cString tmp = root->Attribute("suffix");
++#ifdef USE_WAREAGLEICON
++        if      (strcmp(tmp, "ICON_FOLDER") == 0)      tmp = cString::sprintf(" %s", IsLangUtf8() ? ICON_FOLDER_UTF8 : ICON_FOLDER);
++        else if (strcmp(tmp, "ICON_MOVE_FOLDER") == 0) tmp = cString::sprintf(" %s", IsLangUtf8() ? ICON_MOVE_FOLDER_UTF8 : ICON_MOVE_FOLDER);
++#endif /* WAREAGLEICON */
++        if (*tmp)
++           _menuSuffix = tmp;
 +        else
-+           asprintf(&_menuSuffix, tmp);
++           _menuSuffix = cString::sprintf(" ");
 +
 +        if ((root = root->FirstChildElement()) != NULL) {
 +           do {
@@ -12942,13 +13351,13 @@ diff -ruNp vdr-1.7.5/submenu.c vdr-1.7.5-extensions/submenu.c
 +           }
 +        }
 +     else {
-+        esyslog("ERROR: in %s, missing Tag <menus>\n", fname);
++        esyslog("ERROR: in %s, missing Tag <menus>\n", *fname);
 +        ok = false;
 +        }
 +     }
 +  else {
 +     esyslog("ERROR: in %s : %s  Col=%d Row=%d\n",
-+            fname,
++            *fname,
 +            xmlDoc.ErrorDesc(),
 +            xmlDoc.ErrorCol(),
 +            xmlDoc.ErrorRow());
@@ -12965,11 +13374,11 @@ diff -ruNp vdr-1.7.5/submenu.c vdr-1.7.5-extensions/submenu.c
 +}
 +
 +
-+bool cSubMenu::SaveXml(char *fname)
++bool cSubMenu::SaveXml(cString fname)
 +{
 +  bool ok = true;
 +
-+  if (_fname != NULL) {
++  if (*_fname) {
 +     TiXmlDocument xml = TiXmlDocument(fname);
 +     TiXmlComment  comment;
 +     comment.SetValue("\n\
@@ -13017,8 +13426,7 @@ diff -ruNp vdr-1.7.5/submenu.c vdr-1.7.5-extensions/submenu.c
 +}
 +
 +
-+
-+cSubMenuNodes * cSubMenu::GetMenuTree()
++cSubMenuNodes *cSubMenu::GetMenuTree()
 +{
 +  return(_currentMenuTree);
 +}
@@ -13050,7 +13458,7 @@ diff -ruNp vdr-1.7.5/submenu.c vdr-1.7.5-extensions/submenu.c
 + * @param index position in the current menu
 + * @return node or null if not found
 + */
-+cSubMenuNode * cSubMenu::GetNode(int index)
++cSubMenuNode *cSubMenu::GetNode(int index)
 +{
 +  cSubMenuNode *node = NULL;
 +  if (_currentMenuTree == NULL || (node=_currentMenuTree->Get(index)) == NULL)
@@ -13065,7 +13473,7 @@ diff -ruNp vdr-1.7.5/submenu.c vdr-1.7.5-extensions/submenu.c
 + * @param index specfies the absolut indes in the list of all nodes
 + * @return node or NULL if not found
 + */
-+cSubMenuNode * cSubMenu::GetAbsNode(int index)
++cSubMenuNode *cSubMenu::GetAbsNode(int index)
 +{
 +  cSubMenuNode *node = NULL;
 +  GetNrOfNodes();
@@ -13144,7 +13552,7 @@ diff -ruNp vdr-1.7.5/submenu.c vdr-1.7.5-extensions/submenu.c
 +  return(ok);
 +}
 +
-+const char * cSubMenu::ExecuteCommand(const char * cmd)
++const char *cSubMenu::ExecuteCommand(const char *cmd)
 +{
 +  free(_commandResult);
 +  _commandResult = NULL;
@@ -13220,7 +13628,7 @@ diff -ruNp vdr-1.7.5/submenu.c vdr-1.7.5-extensions/submenu.c
 + * @param index index of destination
 + * @param menuTitle  Titel of new Menu entry
 + */
-+void cSubMenu::CreateMenu(int index, const char * menuTitle)
++void cSubMenu::CreateMenu(int index, const char *menuTitle)
 +{
 +  if (index >= 0 && index < _nrNodes) {
 +     cSubMenuNode *srcNode  = GetAbsNode(index);
@@ -13254,7 +13662,7 @@ diff -ruNp vdr-1.7.5/submenu.c vdr-1.7.5-extensions/submenu.c
 +
 +// Private Methods
 +
-+int cSubMenu::countNodes(cSubMenuNodes * tree)
++int cSubMenu::countNodes(cSubMenuNodes *tree)
 +{
 +  int count = 0;
 +  if (tree != NULL) {
@@ -13268,7 +13676,7 @@ diff -ruNp vdr-1.7.5/submenu.c vdr-1.7.5-extensions/submenu.c
 +}
 +
 +
-+void cSubMenu::tree2Array(cSubMenuNodes * tree, int &index)
++void cSubMenu::tree2Array(cSubMenuNodes *tree, int &index)
 +{
 +  if (tree != NULL) {
 +     for (cSubMenuNode *node = tree->First(); node; node = tree->Next(node)) {
@@ -13280,7 +13688,7 @@ diff -ruNp vdr-1.7.5/submenu.c vdr-1.7.5-extensions/submenu.c
 +
 +}
 +
-+bool cSubMenu::IsPluginInMenu(const char * name)
++bool cSubMenu::IsPluginInMenu(const char *name)
 +{
 +  bool found = false;
 +  for (int i = 0; i < _nrNodes && found == false; i++) {
@@ -13295,7 +13703,7 @@ diff -ruNp vdr-1.7.5/submenu.c vdr-1.7.5-extensions/submenu.c
 + * Adds the given plugin to the Menu-Tree if not allready in List
 + * @param name specifies the name of the plugin
 + */
-+void cSubMenu::AddPlugin(const char * name)
++void cSubMenu::AddPlugin(const char *name)
 +{
 +  if (! IsPluginInMenu(name)) {
 +     cSubMenuNode *node = new  cSubMenuNode(&_menuTree, NULL);
@@ -13323,7 +13731,7 @@ diff -ruNp vdr-1.7.5/submenu.c vdr-1.7.5-extensions/submenu.c
 + * Adds the given command to the Menu-Tree
 + * @param name specifies the name of the command
 + */
-+void cSubMenu::CreateCommand(int index, const char * name, const char * execute, int confirm)
++void cSubMenu::CreateCommand(int index, const char *name, const char *execute, int confirm)
 +{
 +  if (index >= 0 && index < _nrNodes) {
 +     cSubMenuNode *srcNode  = GetAbsNode(index);
@@ -13343,7 +13751,7 @@ diff -ruNp vdr-1.7.5/submenu.c vdr-1.7.5-extensions/submenu.c
 +     }
 +}
 +
-+void cSubMenu::CreateThread(int index, const char * name, const char * execute, int confirm)
++void cSubMenu::CreateThread(int index, const char *name, const char *execute, int confirm)
 +{
 +  if (index >= 0 && index < _nrNodes) {
 +     cSubMenuNode *srcNode  = GetAbsNode(index);
@@ -13401,7 +13809,7 @@ diff -ruNp vdr-1.7.5/submenu.c vdr-1.7.5-extensions/submenu.c
 +*/
 +const char *cSubMenu::GetParentMenuTitel()
 +{
-+  const char * result = "";
++  const char *result = "";
 +
 +  if (_currentMenuTree != NULL && _currentParentMenuTree != NULL) {
 +     cSubMenuNode *node = NULL;
@@ -13418,10 +13826,10 @@ diff -ruNp vdr-1.7.5/submenu.c vdr-1.7.5-extensions/submenu.c
 +
 +#endif
 +#endif /* SETUP */
-diff -ruNp vdr-1.7.5/submenu.h vdr-1.7.5-extensions/submenu.h
---- vdr-1.7.5/submenu.h	1970-01-01 01:00:00.000000000 +0100
-+++ vdr-1.7.5-extensions/submenu.h	2009-04-16 20:54:09.000000000 +0200
-@@ -0,0 +1,160 @@
+diff -ruNp vdr-1.7.7/submenu.h vdr-1.7.7-extensions/submenu.h
+--- vdr-1.7.7/submenu.h	1970-01-01 01:00:00.000000000 +0100
++++ vdr-1.7.7-extensions/submenu.h	2009-05-04 09:07:48.000000000 +0200
+@@ -0,0 +1,159 @@
 +#ifdef USE_SETUP
 +/****************************************************************************
 + * DESCRIPTION:
@@ -13453,22 +13861,21 @@ diff -ruNp vdr-1.7.5/submenu.h vdr-1.7.5-extensions/submenu.h
 +// execute cmd thread
 +class cExecCmdThread : public cThread {
 +private:
-+  char *ExecCmd;
++  cString ExecCmd;
 +protected:
 +  virtual void Action(void) {
 +     if (system(ExecCmd) == 0)
-+        esyslog("%s - finished", ExecCmd);
++        esyslog("%s - finished", *ExecCmd);
 +     delete(this);
 +     };
 +public:
 +  cExecCmdThread(char *cmd) {
-+     asprintf(&ExecCmd, "%s", cmd);
++     ExecCmd = cString::sprintf("%s", cmd);
 +     }
 +  cExecCmdThread(const char *cmd) {
-+     asprintf(&ExecCmd, "%s", cmd);
++     ExecCmd = cString::sprintf("%s", cmd);
 +     }
 +  ~cExecCmdThread() {
-+     free(ExecCmd);
 +     };
 +  };
 +
@@ -13478,10 +13885,10 @@ diff -ruNp vdr-1.7.5/submenu.h vdr-1.7.5-extensions/submenu.h
 +class cSubMenuNode : public cListObject {
 +public:
 +  enum Type { UNDEFINED, SYSTEM, COMMAND, THREAD, PLUGIN, MENU };
-+  cSubMenuNode(TiXmlElement * xml, int level, cSubMenuNodes *currentMenu, cSubMenuNodes *parentMenu);
++  cSubMenuNode(TiXmlElement *xml, int level, cSubMenuNodes *currentMenu, cSubMenuNodes *parentMenu);
 +  cSubMenuNode(cSubMenuNodes *currentMenu, cSubMenuNodes *parentMenu);
 +  ~cSubMenuNode();
-+  bool SaveXml(TiXmlElement * root);
++  bool SaveXml(TiXmlElement *root);
 +  static cSubMenuNode::Type IsType(const char *name);
 +  void  SetType(const char *name);
 +  void  SetType(enum Type type);
@@ -13535,8 +13942,8 @@ diff -ruNp vdr-1.7.5/submenu.h vdr-1.7.5-extensions/submenu.h
 +  cSubMenu();
 +  ~cSubMenu();
 +  enum Where { BEFORE, BEHIND, INTO};
-+  bool LoadXml(char *fname);
-+  bool SaveXml(char *fname);
++  bool LoadXml(cString fname);
++  bool SaveXml(cString fname);
 +  bool SaveXml();
 +  cSubMenuNodes *GetMenuTree();
 +  bool Up(int *ParentIndex);
@@ -13557,8 +13964,8 @@ diff -ruNp vdr-1.7.5/submenu.h vdr-1.7.5-extensions/submenu.h
 +  void MoveMenu(int index, int toindex, enum Where);
 +  void CreateMenu(int index, const char *menuTitle);
 +  void DeleteMenu(int index);
-+  char *GetMenuSuffix() { return _menuSuffix; }
-+  void SetMenuSuffix(char *suffix) { if (_menuSuffix) free(_menuSuffix); asprintf(&_menuSuffix, suffix); }
++  cString GetMenuSuffix() { return _menuSuffix; }
++  void SetMenuSuffix(char *suffix) { _menuSuffix = suffix; }
 +  bool isTopMenu() { return (_currentParentMenuTree == NULL); }
 +  const char *GetParentMenuTitel();
 +private:
@@ -13568,11 +13975,11 @@ diff -ruNp vdr-1.7.5/submenu.h vdr-1.7.5-extensions/submenu.h
 +#ifdef USE_PINPLUGIN
 +  int _currentParentIndex;
 +#endif /* PINPLUGIN */
-+  char *_fname;
++  cString _fname;
 +  char *_commandResult;
 +  int _nrNodes;
 +  cSubMenuNode **_nodeArray;
-+  char *_menuSuffix;
++  cString _menuSuffix;
 +  int countNodes(cSubMenuNodes *tree);
 +  void tree2Array(cSubMenuNodes *tree, int &index);
 +  void addMissingPlugins();
@@ -13582,9 +13989,9 @@ diff -ruNp vdr-1.7.5/submenu.h vdr-1.7.5-extensions/submenu.h
 +
 +#endif //__SUBMENU_H
 +#endif /* SETUP */
-diff -ruNp vdr-1.7.5/svdrp.c vdr-1.7.5-extensions/svdrp.c
---- vdr-1.7.5/svdrp.c	2009-01-06 15:35:45.000000000 +0100
-+++ vdr-1.7.5-extensions/svdrp.c	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/svdrp.c vdr-1.7.7-extensions/svdrp.c
+--- vdr-1.7.7/svdrp.c	2009-04-13 15:35:29.000000000 +0200
++++ vdr-1.7.7-extensions/svdrp.c	2009-05-04 09:07:48.000000000 +0200
 @@ -39,6 +39,9 @@
  #include "timers.h"
  #include "tools.h"
@@ -13595,7 +14002,7 @@ diff -ruNp vdr-1.7.5/svdrp.c vdr-1.7.5-extensions/svdrp.c
  
  // --- cSocket ---------------------------------------------------------------
  
-@@ -296,6 +299,10 @@ const char *HelpPages[] = {
+@@ -299,6 +302,10 @@ const char *HelpPages[] = {
    "REMO [ on | off ]\n"
    "    Turns the remote control on or off. Without a parameter, the current\n"
    "    status of the remote control is reported.",
@@ -13606,7 +14013,7 @@ diff -ruNp vdr-1.7.5/svdrp.c vdr-1.7.5-extensions/svdrp.c
    "SCAN\n"
    "    Forces an EPG scan. If this is a single DVB device system, the scan\n"
    "    will be done on the primary device unless it is currently recording.",
-@@ -616,6 +623,9 @@ void cSVDRP::CmdDELC(const char *Option)
+@@ -619,6 +626,9 @@ void cSVDRP::CmdDELC(const char *Option)
                Channels.ReNumber();
                Channels.SetModified(true);
                isyslog("channel %s deleted", Option);
@@ -13616,7 +14023,7 @@ diff -ruNp vdr-1.7.5/svdrp.c vdr-1.7.5-extensions/svdrp.c
                if (CurrentChannel && CurrentChannel->Number() != CurrentChannelNr) {
                   if (!cDevice::PrimaryDevice()->Replaying() || cDevice::PrimaryDevice()->Transferring())
                      Channels.SwitchTo(CurrentChannel->Number());
-@@ -1135,6 +1145,9 @@ void cSVDRP::CmdMODC(const char *Option)
+@@ -1138,6 +1148,9 @@ void cSVDRP::CmdMODC(const char *Option)
                      Channels.ReNumber();
                      Channels.SetModified(true);
                      isyslog("modifed channel %d %s", channel->Number(), *channel->ToText());
@@ -13626,7 +14033,7 @@ diff -ruNp vdr-1.7.5/svdrp.c vdr-1.7.5-extensions/svdrp.c
                      Reply(250, "%d %s", channel->Number(), *channel->ToText());
                      }
                   else
-@@ -1221,6 +1234,9 @@ void cSVDRP::CmdMOVC(const char *Option)
+@@ -1224,6 +1237,9 @@ void cSVDRP::CmdMOVC(const char *Option)
                            else
                               cDevice::SetCurrentChannel(CurrentChannel);
                            }
@@ -13636,7 +14043,7 @@ diff -ruNp vdr-1.7.5/svdrp.c vdr-1.7.5-extensions/svdrp.c
                         isyslog("channel %d moved to %d", FromNumber, ToNumber);
                         Reply(250,"Channel \"%d\" moved to \"%d\"", From, To);
                         }
-@@ -1264,6 +1280,9 @@ void cSVDRP::CmdNEWC(const char *Option)
+@@ -1267,6 +1283,9 @@ void cSVDRP::CmdNEWC(const char *Option)
             Channels.ReNumber();
             Channels.SetModified(true);
             isyslog("new channel %d %s", channel->Number(), *channel->ToText());
@@ -13646,7 +14053,7 @@ diff -ruNp vdr-1.7.5/svdrp.c vdr-1.7.5-extensions/svdrp.c
             Reply(250, "%d %s", channel->Number(), *channel->ToText());
             }
          else
-@@ -1466,6 +1485,38 @@ void cSVDRP::CmdSCAN(const char *Option)
+@@ -1485,6 +1504,38 @@ void cSVDRP::CmdSCAN(const char *Option)
    Reply(250, "EPG scan triggered");
  }
  
@@ -13685,7 +14092,7 @@ diff -ruNp vdr-1.7.5/svdrp.c vdr-1.7.5-extensions/svdrp.c
  void cSVDRP::CmdSTAT(const char *Option)
  {
    if (*Option) {
-@@ -1581,6 +1632,9 @@ void cSVDRP::Execute(char *Cmd)
+@@ -1600,6 +1651,9 @@ void cSVDRP::Execute(char *Cmd)
    else if (CMD("PLUG"))  CmdPLUG(s);
    else if (CMD("PUTE"))  CmdPUTE(s);
    else if (CMD("REMO"))  CmdREMO(s);
@@ -13695,9 +14102,9 @@ diff -ruNp vdr-1.7.5/svdrp.c vdr-1.7.5-extensions/svdrp.c
    else if (CMD("SCAN"))  CmdSCAN(s);
    else if (CMD("STAT"))  CmdSTAT(s);
    else if (CMD("UPDT"))  CmdUPDT(s);
-diff -ruNp vdr-1.7.5/svdrp.h vdr-1.7.5-extensions/svdrp.h
---- vdr-1.7.5/svdrp.h	2007-04-30 14:28:28.000000000 +0200
-+++ vdr-1.7.5-extensions/svdrp.h	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/svdrp.h vdr-1.7.7-extensions/svdrp.h
+--- vdr-1.7.7/svdrp.h	2007-04-30 14:28:28.000000000 +0200
++++ vdr-1.7.7-extensions/svdrp.h	2009-05-04 09:07:48.000000000 +0200
 @@ -79,6 +79,9 @@ private:
    void CmdPLUG(const char *Option);
    void CmdPUTE(const char *Option);
@@ -13708,9 +14115,9 @@ diff -ruNp vdr-1.7.5/svdrp.h vdr-1.7.5-extensions/svdrp.h
    void CmdSCAN(const char *Option);
    void CmdSTAT(const char *Option);
    void CmdUPDT(const char *Option);
-diff -ruNp vdr-1.7.5/timers.c vdr-1.7.5-extensions/timers.c
---- vdr-1.7.5/timers.c	2008-04-13 14:41:41.000000000 +0200
-+++ vdr-1.7.5-extensions/timers.c	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/timers.c vdr-1.7.7-extensions/timers.c
+--- vdr-1.7.7/timers.c	2008-04-13 14:41:41.000000000 +0200
++++ vdr-1.7.7-extensions/timers.c	2009-05-04 09:07:48.000000000 +0200
 @@ -46,6 +46,9 @@ cTimer::cTimer(bool Instant, bool Pause,
       stop -= 2400;
    priority = Pause ? Setup.PausePriority : Setup.DefaultPriority;
@@ -13806,9 +14213,9 @@ diff -ruNp vdr-1.7.5/timers.c vdr-1.7.5-extensions/timers.c
  // --- cTimers ---------------------------------------------------------------
  
  cTimers Timers;
-diff -ruNp vdr-1.7.5/timers.h vdr-1.7.5-extensions/timers.h
---- vdr-1.7.5/timers.h	2008-02-16 15:33:23.000000000 +0100
-+++ vdr-1.7.5-extensions/timers.h	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/timers.h vdr-1.7.7-extensions/timers.h
+--- vdr-1.7.7/timers.h	2008-02-16 15:33:23.000000000 +0100
++++ vdr-1.7.7-extensions/timers.h	2009-05-04 09:07:48.000000000 +0200
 @@ -37,6 +37,9 @@ private:
    int start;
    int stop;
@@ -13839,9 +14246,9 @@ diff -ruNp vdr-1.7.5/timers.h vdr-1.7.5-extensions/timers.h
    void ClrFlags(uint Flags);
    void InvFlags(uint Flags);
    bool HasFlags(uint Flags) const;
-diff -ruNp vdr-1.7.5/tinystr.c vdr-1.7.5-extensions/tinystr.c
---- vdr-1.7.5/tinystr.c	1970-01-01 01:00:00.000000000 +0100
-+++ vdr-1.7.5-extensions/tinystr.c	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/tinystr.c vdr-1.7.7-extensions/tinystr.c
+--- vdr-1.7.7/tinystr.c	1970-01-01 01:00:00.000000000 +0100
++++ vdr-1.7.7-extensions/tinystr.c	2009-05-04 09:07:48.000000000 +0200
 @@ -0,0 +1,301 @@
 +#ifdef USE_SETUP
 +/*
@@ -14144,9 +14551,9 @@ diff -ruNp vdr-1.7.5/tinystr.c vdr-1.7.5-extensions/tinystr.c
 +
 +#endif	// TIXML_USE_STL
 +#endif /* SETUP */
-diff -ruNp vdr-1.7.5/tinystr.h vdr-1.7.5-extensions/tinystr.h
---- vdr-1.7.5/tinystr.h	1970-01-01 01:00:00.000000000 +0100
-+++ vdr-1.7.5-extensions/tinystr.h	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/tinystr.h vdr-1.7.7-extensions/tinystr.h
+--- vdr-1.7.7/tinystr.h	1970-01-01 01:00:00.000000000 +0100
++++ vdr-1.7.7-extensions/tinystr.h	2009-05-04 09:07:48.000000000 +0200
 @@ -0,0 +1,244 @@
 +#ifdef USE_SETUP
 +/*
@@ -14392,9 +14799,9 @@ diff -ruNp vdr-1.7.5/tinystr.h vdr-1.7.5-extensions/tinystr.h
 +#endif	// TIXML_STRING_INCLUDED
 +#endif	// TIXML_USE_STL
 +#endif /* SETUP */
-diff -ruNp vdr-1.7.5/tinyxml.c vdr-1.7.5-extensions/tinyxml.c
---- vdr-1.7.5/tinyxml.c	1970-01-01 01:00:00.000000000 +0100
-+++ vdr-1.7.5-extensions/tinyxml.c	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/tinyxml.c vdr-1.7.7-extensions/tinyxml.c
+--- vdr-1.7.7/tinyxml.c	1970-01-01 01:00:00.000000000 +0100
++++ vdr-1.7.7-extensions/tinyxml.c	2009-05-04 09:07:48.000000000 +0200
 @@ -0,0 +1,1429 @@
 +#ifdef USE_SETUP
 +/*
@@ -15825,9 +16232,9 @@ diff -ruNp vdr-1.7.5/tinyxml.c vdr-1.7.5-extensions/tinyxml.c
 +	return TiXmlHandle( 0 );
 +}
 +#endif /* SETUP */
-diff -ruNp vdr-1.7.5/tinyxmlerror.c vdr-1.7.5-extensions/tinyxmlerror.c
---- vdr-1.7.5/tinyxmlerror.c	1970-01-01 01:00:00.000000000 +0100
-+++ vdr-1.7.5-extensions/tinyxmlerror.c	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/tinyxmlerror.c vdr-1.7.7-extensions/tinyxmlerror.c
+--- vdr-1.7.7/tinyxmlerror.c	1970-01-01 01:00:00.000000000 +0100
++++ vdr-1.7.7-extensions/tinyxmlerror.c	2009-05-04 09:07:48.000000000 +0200
 @@ -0,0 +1,53 @@
 +#ifdef USE_SETUP
 +/*
@@ -15882,9 +16289,9 @@ diff -ruNp vdr-1.7.5/tinyxmlerror.c vdr-1.7.5-extensions/tinyxmlerror.c
 +	"Error null (0) or unexpected EOF found in input stream.",
 +};
 +#endif /* SETUP */
-diff -ruNp vdr-1.7.5/tinyxml.h vdr-1.7.5-extensions/tinyxml.h
---- vdr-1.7.5/tinyxml.h	1970-01-01 01:00:00.000000000 +0100
-+++ vdr-1.7.5-extensions/tinyxml.h	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/tinyxml.h vdr-1.7.7-extensions/tinyxml.h
+--- vdr-1.7.7/tinyxml.h	1970-01-01 01:00:00.000000000 +0100
++++ vdr-1.7.7-extensions/tinyxml.h	2009-05-04 09:07:48.000000000 +0200
 @@ -0,0 +1,1372 @@
 +#ifdef USE_SETUP
 +/*
@@ -17258,9 +17665,9 @@ diff -ruNp vdr-1.7.5/tinyxml.h vdr-1.7.5-extensions/tinyxml.h
 +
 +#endif
 +#endif /* SETUP */
-diff -ruNp vdr-1.7.5/tinyxmlparser.c vdr-1.7.5-extensions/tinyxmlparser.c
---- vdr-1.7.5/tinyxmlparser.c	1970-01-01 01:00:00.000000000 +0100
-+++ vdr-1.7.5-extensions/tinyxmlparser.c	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/tinyxmlparser.c vdr-1.7.7-extensions/tinyxmlparser.c
+--- vdr-1.7.7/tinyxmlparser.c	1970-01-01 01:00:00.000000000 +0100
++++ vdr-1.7.7-extensions/tinyxmlparser.c	2009-05-04 09:07:48.000000000 +0200
 @@ -0,0 +1,1494 @@
 +#ifdef USE_SETUP
 +/*
@@ -18756,9 +19163,9 @@ diff -ruNp vdr-1.7.5/tinyxmlparser.c vdr-1.7.5-extensions/tinyxmlparser.c
 +	return true;
 +}
 +#endif /* SETUP */
-diff -ruNp vdr-1.7.5/vdr.c vdr-1.7.5-extensions/vdr.c
---- vdr-1.7.5/vdr.c	2009-04-05 15:21:46.000000000 +0200
-+++ vdr-1.7.5-extensions/vdr.c	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/vdr.c vdr-1.7.7-extensions/vdr.c
+--- vdr-1.7.7/vdr.c	2009-05-03 12:33:06.000000000 +0200
++++ vdr-1.7.7-extensions/vdr.c	2009-05-04 09:07:48.000000000 +0200
 @@ -139,10 +139,17 @@ static bool SetKeepCaps(bool On)
    return true;
  }
@@ -18869,7 +19276,7 @@ diff -ruNp vdr-1.7.5/vdr.c vdr-1.7.5-extensions/vdr.c
                 "  -u USER,  --user=USER    run as user USER; only applicable if started as\n"
                 "                           root\n"
                 "            --userdump     allow coredumps if -u is given (debugging)\n"
-@@ -480,6 +513,197 @@ int main(int argc, char *argv[])
+@@ -480,6 +513,201 @@ int main(int argc, char *argv[])
       return 0;
       }
  
@@ -19045,6 +19452,10 @@ diff -ruNp vdr-1.7.5/vdr.c vdr-1.7.5-extensions/vdr.c
 +     printf("  TIMERINFO\n");
 +#endif /* TIMERINFO */
 +
++#ifdef USE_TTXTSUBS
++     printf("  TTXTSUBS\n");
++#endif /* TTXTSUBS */
++
 +#ifdef USE_VALIDINPUT
 +     printf("  VALIDINPUT\n");
 +#endif /* VALIDINPUT */
@@ -19067,12 +19478,12 @@ diff -ruNp vdr-1.7.5/vdr.c vdr-1.7.5-extensions/vdr.c
    // Log file:
  
    if (SysLogLevel > 0)
-@@ -573,8 +797,20 @@ int main(int argc, char *argv[])
+@@ -573,8 +801,20 @@ int main(int argc, char *argv[])
    Diseqcs.Load(AddDirectory(ConfigDirectory, "diseqc.conf"), true, Setup.DiSEqC);
    Channels.Load(AddDirectory(ConfigDirectory, "channels.conf"), false, true);
    Timers.Load(AddDirectory(ConfigDirectory, "timers.conf"));
 +#ifdef USE_CMDRECCMDI18N
-+  LoadCommandsI18n(Commands,AddDirectory(ConfigDirectory, "commands.conf"), true);
++  LoadCommandsI18n(Commands, AddDirectory(ConfigDirectory, "commands.conf"), true);
 +  LoadCommandsI18n(RecordingCommands, AddDirectory(ConfigDirectory, "reccmds.conf"), true);
 +#else
    Commands.Load(AddDirectory(ConfigDirectory, "commands.conf"), true);
@@ -19088,7 +19499,7 @@ diff -ruNp vdr-1.7.5/vdr.c vdr-1.7.5-extensions/vdr.c
    SVDRPhosts.Load(AddDirectory(ConfigDirectory, "svdrphosts.conf"), true);
    Keys.Load(AddDirectory(ConfigDirectory, "remote.conf"));
    KeyMacros.Load(AddDirectory(ConfigDirectory, "keymacros.conf"), true);
-@@ -735,7 +971,11 @@ int main(int argc, char *argv[])
+@@ -735,7 +975,11 @@ int main(int argc, char *argv[])
          // Make sure we have a visible programme in case device usage has changed:
          if (!EITScanner.Active() && cDevice::PrimaryDevice()->HasDecoder() && !cDevice::PrimaryDevice()->HasProgramme()) {
             static time_t lastTime = 0;
@@ -19100,7 +19511,7 @@ diff -ruNp vdr-1.7.5/vdr.c vdr-1.7.5-extensions/vdr.c
                cChannel *Channel = Channels.GetByNumber(cDevice::CurrentChannel());
                if (Channel && (Channel->Vpid() || Channel->Apid(0))) {
                   if (!Channels.SwitchTo(cDevice::CurrentChannel()) // try to switch to the original channel...
-@@ -910,6 +1150,9 @@ int main(int argc, char *argv[])
+@@ -916,6 +1160,9 @@ int main(int argc, char *argv[])
          cOsdObject *Interact = Menu ? Menu : cControl::Control();
          eKeys key = Interface->GetKey(!Interact || !Interact->NeedsFastResponse());
          if (ISREALKEY(key)) {
@@ -19110,7 +19521,7 @@ diff -ruNp vdr-1.7.5/vdr.c vdr-1.7.5-extensions/vdr.c
             EITScanner.Activity();
             // Cancel shutdown countdown:
             if (ShutdownHandler.countdown)
-@@ -982,10 +1225,16 @@ int main(int argc, char *argv[])
+@@ -988,10 +1235,16 @@ int main(int argc, char *argv[])
                       cControl::Control()->Hide();
                    cPlugin *plugin = cPluginManager::GetPlugin(PluginName);
                    if (plugin) {
@@ -19127,7 +19538,7 @@ diff -ruNp vdr-1.7.5/vdr.c vdr-1.7.5-extensions/vdr.c
                    else
                       esyslog("ERROR: unknown plugin '%s'", PluginName);
                    }
-@@ -1062,8 +1311,15 @@ int main(int argc, char *argv[])
+@@ -1068,8 +1321,15 @@ int main(int argc, char *argv[])
            // Instant recording:
            case kRecord:
                 if (!cControl::Control()) {
@@ -19143,7 +19554,7 @@ diff -ruNp vdr-1.7.5/vdr.c vdr-1.7.5-extensions/vdr.c
                    key = kNone; // nobody else needs to see this key
                    }
                 break;
-@@ -1119,8 +1375,15 @@ int main(int argc, char *argv[])
+@@ -1125,8 +1385,15 @@ int main(int argc, char *argv[])
                                 Skins.Message(mtError, tr("No free DVB device to record!"));
                              break;
               case osRecord: DELETE_MENU;
@@ -19159,7 +19570,7 @@ diff -ruNp vdr-1.7.5/vdr.c vdr-1.7.5-extensions/vdr.c
                              break;
               case osRecordings:
                              DELETE_MENU;
-@@ -1171,13 +1434,26 @@ int main(int argc, char *argv[])
+@@ -1177,13 +1444,26 @@ int main(int argc, char *argv[])
                    Channels.SwitchTo(PreviousChannel[PreviousChannelIndex ^= 1]);
                    break;
                    }
@@ -19186,7 +19597,7 @@ diff -ruNp vdr-1.7.5/vdr.c vdr-1.7.5-extensions/vdr.c
               // Previous/Next rotates through channel groups:
               case kPrev|k_Repeat:
               case kPrev:
-@@ -1195,9 +1471,15 @@ int main(int argc, char *argv[])
+@@ -1201,9 +1481,15 @@ int main(int argc, char *argv[])
               // Instant resume of the last viewed recording:
               case kPlay:
                    if (cReplayControl::LastReplayed()) {
@@ -19202,9 +19613,132 @@ diff -ruNp vdr-1.7.5/vdr.c vdr-1.7.5-extensions/vdr.c
                    break;
               default:    break;
               }
-diff -ruNp vdr-1.7.5/videodir.c vdr-1.7.5-extensions/videodir.c
---- vdr-1.7.5/videodir.c	2008-02-16 14:00:03.000000000 +0100
-+++ vdr-1.7.5-extensions/videodir.c	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/vdrttxtsubshooks.c vdr-1.7.7-extensions/vdrttxtsubshooks.c
+--- vdr-1.7.7/vdrttxtsubshooks.c	1970-01-01 01:00:00.000000000 +0100
++++ vdr-1.7.7-extensions/vdrttxtsubshooks.c	2009-05-04 09:07:48.000000000 +0200
+@@ -0,0 +1,65 @@
++#ifdef USE_TTXTSUBS
++/*
++ * vdr-ttxtsubs - A plugin for the Linux Video Disk Recorder
++ * Copyright (c) 2003 - 2008 Ragnar Sundblad <ragge@nada.kth.se>
++ *
++ * This program is free software; you can redistribute it and/or modify it
++ * under the terms of the GNU General Public License as published by the
++ * Free Software Foundation; either version 2 of the License, or (at your option)
++ * any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but
++ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
++ * details.
++ *
++ * You should have received a copy of the GNU General Public License along with
++ * this program; if not, write to the Free Software Foundation, Inc.,
++ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
++ *
++ */
++
++#include <stdlib.h>
++#include <stdio.h>
++#include <stdint.h>
++
++#include "vdrttxtsubshooks.h"
++
++// XXX Really should be a list...
++static cVDRTtxtsubsHookListener *gListener;
++
++// ------ class cVDRTtxtsubsHookProxy ------
++
++class cVDRTtxtsubsHookProxy : public cVDRTtxtsubsHookListener
++{
++ public:
++  virtual void HideOSD(void) { if(gListener) gListener->HideOSD(); };
++  virtual void ShowOSD(void) { if(gListener) gListener->ShowOSD(); };
++  virtual void PlayerTeletextData(uint8_t *p, int length, bool IsPesRecording)
++    { if(gListener) gListener->PlayerTeletextData(p, length, IsPesRecording); };
++  virtual int ManualPageNumber(const cChannel *channel)
++    { if(gListener) return gListener->ManualPageNumber(channel); else return 0; };
++};
++
++
++// ------ class cVDRTtxtsubsHookListener ------
++
++cVDRTtxtsubsHookListener::~cVDRTtxtsubsHookListener()
++{
++  gListener = 0;
++}
++
++void cVDRTtxtsubsHookListener::HookAttach(void)
++{
++  gListener = this;
++  //printf("cVDRTtxtsubsHookListener::HookAttach\n");
++}
++
++static cVDRTtxtsubsHookProxy gProxy;
++
++cVDRTtxtsubsHookListener *cVDRTtxtsubsHookListener::Hook(void)
++{
++  return &gProxy;
++}
++#endif /* TTXTSUBS */
++
+diff -ruNp vdr-1.7.7/vdrttxtsubshooks.h vdr-1.7.7-extensions/vdrttxtsubshooks.h
+--- vdr-1.7.7/vdrttxtsubshooks.h	1970-01-01 01:00:00.000000000 +0100
++++ vdr-1.7.7-extensions/vdrttxtsubshooks.h	2009-05-04 09:07:48.000000000 +0200
+@@ -0,0 +1,50 @@
++#ifdef USE_TTXTSUBS
++/*
++ * vdr-ttxtsubs - A plugin for the Linux Video Disk Recorder
++ * Copyright (c) 2003 - 2008 Ragnar Sundblad <ragge@nada.kth.se>
++ *
++ * This program is free software; you can redistribute it and/or modify it
++ * under the terms of the GNU General Public License as published by the
++ * Free Software Foundation; either version 2 of the License, or (at your option)
++ * any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but
++ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
++ * details.
++ *
++ * You should have received a copy of the GNU General Public License along with
++ * this program; if not, write to the Free Software Foundation, Inc.,
++ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
++ *
++ */
++
++#ifndef __VDRTTXTSUBSHOOKS_H
++#define __VDRTTXTSUBSHOOKS_H
++
++#define TTXTSUBSVERSNUM 1
++
++class cDevice;
++class cChannel;
++
++#define VDRTTXTSUBSHOOKS
++
++class cVDRTtxtsubsHookListener {
++ public:
++  cVDRTtxtsubsHookListener(void) {};
++  virtual ~cVDRTtxtsubsHookListener();
++
++  void HookAttach(void);
++
++  virtual void HideOSD(void) {};
++  virtual void ShowOSD(void) {};
++  virtual void PlayerTeletextData(uint8_t *p, int length, bool IsPesRecording = true) {};
++  virtual int ManualPageNumber(const cChannel *channel)
++    { return 0; };
++
++  // used by VDR to call hook listeners
++  static cVDRTtxtsubsHookListener *Hook(void);
++};
++
++#endif
++#endif /* TTXTSUBS */
+diff -ruNp vdr-1.7.7/videodir.c vdr-1.7.7-extensions/videodir.c
+--- vdr-1.7.7/videodir.c	2008-02-16 14:00:03.000000000 +0100
++++ vdr-1.7.7-extensions/videodir.c	2009-05-04 09:07:48.000000000 +0200
 @@ -19,6 +19,13 @@
  #include "recording.h"
  #include "tools.h"
@@ -19522,9 +20056,9 @@ diff -ruNp vdr-1.7.5/videodir.c vdr-1.7.5-extensions/videodir.c
  bool IsOnVideoDirectoryFileSystem(const char *FileName)
  {
    cVideoDirectory Dir;
-diff -ruNp vdr-1.7.5/videodir.h vdr-1.7.5-extensions/videodir.h
---- vdr-1.7.5/videodir.h	2008-02-16 13:53:11.000000000 +0100
-+++ vdr-1.7.5-extensions/videodir.h	2009-04-16 20:54:09.000000000 +0200
+diff -ruNp vdr-1.7.7/videodir.h vdr-1.7.7-extensions/videodir.h
+--- vdr-1.7.7/videodir.h	2008-02-16 13:53:11.000000000 +0100
++++ vdr-1.7.7-extensions/videodir.h	2009-05-04 09:07:48.000000000 +0200
 @@ -19,6 +19,9 @@ cUnbufferedFile *OpenVideoFile(const cha
  int CloseVideoFile(cUnbufferedFile *File);
  bool RenameVideoFile(const char *OldName, const char *NewName);
