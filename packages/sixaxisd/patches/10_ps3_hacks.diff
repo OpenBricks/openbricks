@@ -1,0 +1,48 @@
+diff -Nurp a/sixsrv.c b/sixsrv.c
+--- a/sixsrv.c	2009-04-17 18:31:06.000000000 +0800
++++ b/sixsrv.c	2009-05-28 20:04:32.000000000 +0800
+@@ -127,10 +127,14 @@ static void initialize_sixaxis(struct hi
+   recv(client[i].ctrl, buf, sizeof(buf), 0);
+ 
+   /* set LEDs */
+-  if (i < 7)
+-    setleds[11] = ledpattern[i];
++  setleds[11] = ledpattern[i & 0x07];
+   send(client[i].ctrl, setleds, sizeof(setleds), 0);
+   recv(client[i].ctrl, buf, sizeof(buf), 0);
++
++  FILE *fd;
++  fd = fopen("/tmp/sixaxis", "a");
++  fprintf(fd, "%s\n", ba_str(&client[i].addr));
++  fclose(fd);
+ }
+ 
+ static int newclient(int psm, int s, struct hidfd *client) {
+@@ -235,8 +239,12 @@ static void process_data(int controller,
+     			    }
+ 			    uinput_send(c->out, EV_SYN, SYN_REPORT, 0);
+     			} else {
++                            if (j + o == 16 && d & 1) // PS pressed
++                            system("killall mplayer");
++                            else {
+ 			    uinput_send(c->out, ev->type, BTN_JOYSTICK + j + o, d & 1);
+ 			    uinput_send(c->out, EV_SYN, SYN_REPORT, 0);
++                            }
+ 			}
+ 		    }
+     		    mask >>= 1;
+diff -Nurp a/uinputdev.c b/uinputdev.c
+--- a/uinputdev.c	2009-04-17 17:19:21.000000000 +0800
++++ b/uinputdev.c	2009-05-27 03:15:50.000000000 +0800
+@@ -57,9 +57,9 @@ int uinput_open(int mode)
+     memset(&dev, 0, sizeof(dev));
+ 
+     if (mode)
+-	strncpy (dev.name, "sixaxis ps3 (mouse emulation)", UINPUT_MAX_NAME_SIZE);
++	strncpy (dev.name, "Sony PLAYSTATION(R)3 Controller (mouse emulation)", UINPUT_MAX_NAME_SIZE);
+     else
+-	strncpy (dev.name, "sixaxis ps3", UINPUT_MAX_NAME_SIZE);
++	strncpy (dev.name, "Sony PLAYSTATION(R)3 Controller", UINPUT_MAX_NAME_SIZE);
+ 
+     dev.id.version = 1;
+     dev.id.bustype = BUS_BLUETOOTH;
