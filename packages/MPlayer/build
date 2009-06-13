@@ -26,8 +26,8 @@ set_option() {
   return 0
 }
 
-EXTRA_LIBDIR="$LIB_PREFIX/lib"
-EXTRA_INCDIR="$LIB_PREFIX/include"
+EXTRA_LIBDIR="-L$LIB_PREFIX/lib"
+EXTRA_INCDIR="-I$LIB_PREFIX/include"
 EXTRA_LIBS="-lavcodec -lavformat -lavutil -lpostproc -lswscale"
 
 set_option "$SDL" "sdl" "SDL"
@@ -37,7 +37,8 @@ set_option "$VDPAU" "vdpau" "xf86-video-nvidia"
 
 if [ "$LIVE555" = yes ]; then
   $SCRIPTS/build live
-  EXTRA_CONFIG="$EXTRA_CONFIG --with-extraincdir=$LIB_PREFIX/live --with-extralibdir=$LIB_PREFIX/live"
+  EXTRA_LIBDIR="$EXTRA_LIBDIR -L$LIB_PREFIX/live"
+  EXTRA_INCDIR="$EXTRA_INCDIR -I$LIB_PREFIX/live"
 else
   EXTRA_CONFIG="$EXTRA_CONFIG --disable-live"
 fi
@@ -85,6 +86,7 @@ elif [ "$TARGET_PLATFORM" = ps3 ]; then
                --disable-runtime-cpudetection"
   VIDIX_CONFIG="--disable-vidix"
   CFLAGS="$CFLAGS -maltivec -mabi=altivec"
+  EXTRA_LIBS="$EXTRA_LIBS -lspu-medialib -lspe2 -lspeutils"
 else
   ARCH_CONFIG="--disable-win32dll \
                --disable-real \
@@ -104,10 +106,11 @@ fi
 CFLAGS="$CFLAGS -ffast-math -DFIXED_POINT"
 
 cd $BUILD/$1*
+rm -rf libavcodec # ensure we check for headers in external ffmpeg
 ./configure --prefix=/usr \
             --confdir=/etc/mplayer \
-            --with-extralibdir="$EXTRA_LIBDIR" \
-            --with-extraincdir="$EXTRA_INCDIR" \
+            --extra-ldflags="$EXTRA_LIBDIR" \
+            --extra-cflags="$EXTRA_INCDIR" \
             $ARCH_CONFIG \
             $EXTRA_CONFIG \
             --disable-mencoder \
@@ -141,7 +144,7 @@ cd $BUILD/$1*
             --enable-menu \
             --disable-sortsub \
             --disable-enca \
-            --disable-macosx \
+            --disable-quartz \
             --disable-inet6 \
             --disable-gethostbyname2 \
             --enable-ftp \
