@@ -82,7 +82,7 @@ convert () {
   if [ -n "$TMP_PART" ]; then
     # If a partition is specified, we need to translate it into the
     # GRUB's syntax.
-    echo "$TMP_DRIVE" | sed "s%)$%,$(($TMP_PART-1)))%"
+    echo "$TMP_DRIVE" | sed "s%)$%,$(($TMP_PART)))%"
   else
     # If no partition is specified, just print the drive name.
     echo "$TMP_DRIVE"
@@ -100,8 +100,8 @@ update_grub_conf_bootargs () {
 
 # Use the replacement values ($2-$5) in GRUB config file ($1)
 append_grub_conf () {
-  local TMP_GRUB_CONF=/tmp/grub.conf
-  cp /etc/grub/grub.conf $TMP_GRUB_CONF
+  local TMP_GRUB_CONF=/tmp/grub.cfg
+  cp /etc/grub/grub.cfg $TMP_GRUB_CONF
 
   sed -i "s/_TITLE_/$2/" $TMP_GRUB_CONF
   sed -i "s/_HDTV_/$3/" $TMP_GRUB_CONF
@@ -450,7 +450,7 @@ install_grub (){
   mkdir -p $GRUBDIR
 
   [ -f "di/GEEXBOX/usr/share/grub-i386-pc.tar.lzma" ] \
-    && tar xaf "di/GEEXBOX/usr/share/grub-i386-pc.tar.lzma" -C $GRUBDIR \
+    && tar xaf "di/GEEXBOX/usr/share/grub-i386-pc.tar.lzma" -C /usr \
     >> $LOGFILE 2>&1
 
   if [ -f "di/GEEXBOX/usr/share/grub-splash.xpm.gz" ]; then
@@ -461,9 +461,7 @@ install_grub (){
     DISABLE_SPLASHIMAGE="#"
   fi
 
-  cp $GRUBDIR/stage2 $GRUBDIR/stage2_single
-
-  echo "quit" | grub --batch --no-floppy --device-map=$DEVICE_MAP \
+  grub-mkdevicemap --no-floppy --device-map=$DEVICE_MAP \
       >> $LOGFILE 2>&1
   ROOTDEV=$(convert $LOC_DEV $DEVICE_MAP)
 
@@ -478,31 +476,13 @@ install_grub (){
     exit 1
   fi
 
-  dbglg "GRUB setup is: grub --batch --no-floppy --device-map=$DEVICE_MAP"
-  dbglg "root $ROOTDEV"
-  dbglg "install --stage2=$GRUBDIR/stage2_single $GRUBPREFIX/stage1 $ROOTDEV $GRUBPREFIX/stage2_single p $GRUBPREFIX/single.lst"
-
-  grub --batch --no-floppy --device-map=$DEVICE_MAP <<EOF
-root $ROOTDEV
-install --stage2=$GRUBDIR/stage2_single $GRUBPREFIX/stage1 $ROOTDEV $GRUBPREFIX/stage2_single p $GRUBPREFIX/single.lst
-EOF
-
-  cat > $GRUBDIR/single.lst <<EOF
-default  0
-timeout  2
-color cyan/blue white/blue
-${DISABLE_SPLASHIMAGE}splashimage=$ROOTDEV$SPLASHIMAGE
-EOF
-
-  # This function must be called after "grub install" in order
-  # to retrieve the right UUID with vfat.
   get_uuid "$LOC_DEV"
 
-  setup_grub $GRUBDIR/single.lst $DEV_UUID $ROOTDEV $LOC_USE_XORG $LOC_MKFS_TYPE
+  setup_grub $GRUBDIR/grub.cfg $DEV_UUID $ROOTDEV $LOC_USE_XORG $LOC_MKFS_TYPE
 
-  dbglg "*** Start GRUB Single.lst ***"
-  cat $GRUBDIR/single.lst >> $LOGFILE
-  dbglg "*** End GRUB Single.lst ***"
+  dbglg "*** Start GRUB grub.cfg ***"
+  cat $GRUBDIR/grub.cfg >> $LOGFILE
+  dbglg "*** End GRUB grub.cfg ***"
 
   # Detect others OS and ask for MBR only in the case where GeeXboX
   # is not installed on a removable device.
@@ -542,20 +522,18 @@ EOF
 
   if [ "$MBR" = "yes" ]; then
 
-    dbglg "grub --batch --no-floppy --device-map=$DEVICE_MAP"
-    dbglg "root $ROOTDEV"
-    dbglg "setup --stage2=$GRUBDIR/stage2 --prefix=$GRUBPREFIX $MBRDEV"
+    dbglg "grub-install --no-floppy --grub-mkdevicemap=$DEVICE_MAP --root-directory=di $MBRDEV"
 
-    grub --batch --no-floppy --device-map=$DEVICE_MAP <<EOF
-root $ROOTDEV
-setup --stage2=$GRUBDIR/stage2 --prefix=$GRUBPREFIX $MBRDEV
-EOF
+    grub-install --no-floppy --grub-mkdevicemap=$DEVICE_MAP --root-directory=di $MBRDEV
 
-    cat > $GRUBDIR/menu.lst <<EOF
-default  0
-timeout  5
-color cyan/blue white/blue
-${DISABLE_SPLASHIMAGE}splashimage=$ROOTDEV$SPLASHIMAGE
+#FIXME: dunno yet how to set this, hard to find documentation
+#color cyan/blue white/blue
+
+    cat > $GRUBDIR/grub.cfg <<EOF
+set default=0
+set timeout=5
+${DISABLE_SPLASHIMAGE}background_image /boot/grub/$SPLASHIMAGE
+
 EOF
 
     saveifs=$IFS
@@ -573,31 +551,32 @@ EOF
       type=$(echo "$os" | cut -d: -f3)
 
       if [ "$type" = chain ]; then
-        cat >> $GRUBDIR/menu.lst <<EOF
-title	$title
+        cat >> $GRUBDIR/grub.cfg <<EOF
+menuentry "$title" {
 EOF
         if [ $grubdisk != "(hd0)" ]; then
-          cat >> $GRUBDIR/menu.lst <<EOF
-map (hd0) $grubdisk
-map $grubdisk (hd0)
+          cat >> $GRUBDIR/grub.cfg <<EOF
+    map (hd0) $grubdisk
+    map $grubdisk (hd0)
 EOF
         fi
 
-        cat >> $GRUBDIR/menu.lst <<EOF
-rootnoverify $grubpartition
-makeactive
-chainloader +1
-boot
+        cat >> $GRUBDIR/grub.cfg <<EOF
+    set root=$grubpartition
+# parttool command will be available with next version of grub2. Until then, pls make sure the chainloaded partitions was made active and unhidden
+#    parttool $grubpartition boot+
+    chainloader +1
+}
 EOF
       fi
     done
     IFS=$saveifs
 
-    setup_grub $GRUBDIR/menu.lst $DEV_UUID $ROOTDEV $LOC_USE_XORG $LOC_MKFS_TYPE
+    setup_grub $GRUBDIR/grub.cfg $DEV_UUID $ROOTDEV $LOC_USE_XORG $LOC_MKFS_TYPE
 
-    dbglg "*** Start GRUB menu.lst ***"
-    cat $GRUBDIR/menu.lst >> $LOGFILE
-    dbglg "*** End GRUB menu.lst ***"
+    dbglg "*** Start GRUB grub.cfg ***"
+    cat $GRUBDIR/grub.cfg >> $LOGFILE
+    dbglg "*** End GRUB grub.cfg ***"
   else
     dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_BOOTLOADER" \
       --msgbox "\n${MSG_LOADER_ERROR}\n" 0 0 1>&2
@@ -607,7 +586,7 @@ EOF
   # if one intend to boot from removable disk, it'll be considered as
   # primary disk for BIOS
   if [ "`cat /sys/block/$TMP_DISKNAME/removable`" = 1 ]; then
-     for file in menu.lst single.lst; do
+     for file in grub.cfg; do
        [ -f "$GRUBDIR/$file" ] && sed -i 's%(hd[0-9],%(hd0,%g' "$GRUBDIR/$file"
      done
   fi
