@@ -2,28 +2,37 @@
 
 # use r/w directory for some configuration
 # file/directory is created in case it doesn't exist and 4th parameter is set to "create"
-# usage: make_persistent <dir|file> <create|nocreate> <source file/dir> <use link> [create]
+# usage: make_persistent <dir|file> <source file/dir> <use link> [create|nocreate]
 make_persistent() {
   type=$1
   orig=$2
   data=$3
   opt=$4
 
+  # skip if already run
+  [ -L "${orig}" ] && return 0
+
   [ "$opt" = "create" ] || opt="nocreate"
 
-  dirname=`echo $data | sed -e 's/\/$//' -e 's,[^/]*$,,''` 
-  mkdir -p "$dirname"
+  dirname_data=$( echo $data | sed -e 's/\/$//' -e 's,[^/]*$,,' )
+
+  [ -n "$dirname_data" ] && mkdir -p "$dirname_data"
+
+  # use original content if not yet existant
   if [ "$type" = "dir" ]; then
-    [ -d "$data" ] || ( if [ -d "$orig" ]; then cp -dpR "${orig}" "$data"; else [ "$opt" = "create" ] && mkdir "$data"; fi )
+    [ -d "$data" ] || \
+        ( if [ -d "$orig" ]; then cp -dpR "$orig" "$data"; else [ "$opt" = "create" ] && mkdir "$data"; fi )
   elif [ "$type" = "file" ]; then
-    [ -f "$data" ] || ( if [ -f "$orig" ]; then cp "$orig" "$data"; else [ "$opt" = "create" ] && echo -n >"$data"; fi )
+    [ -f "$data" ] || \
+        ( if [ -f "$orig" ]; then cp "$orig" "$data"; else [ "$opt" = "create" ] && echo -n >"$data"; fi )
   else
     exit
   fi
      
-  if [ "$opt" = "create" -o -e "$data" ]; then
-    mv "$orig" "${orig}.orig"
-    ln -s "$data" "$orig"
-  fi
+  # make backup and create link
+  [ -e "$orig" ] && mv -f "$orig" "${orig}.geexdefault"
+  ( echo "$orig" | grep -q '^/' ) || orig="${PWD}/${orig}"
+  ( echo "$data" | grep -q '^/' ) || data="${PWD}/${data}"
+  ln -f -s "$data" "$orig"
 }
 
