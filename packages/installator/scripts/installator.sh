@@ -11,7 +11,7 @@ dbglg () {
 detect_os_microsoft () {
   local LONGNAME
 
-  if [ "$3" != ntfs -a "$3" != vfat -a "$3" != msdos ]; then
+  if [ "$3" != ntfs -a "$3" != vfat -a "$3" != msdos -a "$3" != fuseblk ]; then
     return
   fi
 
@@ -190,6 +190,17 @@ choose_disk () {
       DISK_LIST="$DISK_LIST $i $DISKNAME"
     done
 
+    # add volume groups to list
+    for i in `lvm vgs --noheadings --separator ":" --nosuffix --units M | sed "s/^\ *//g"`; do
+      SIZE=`echo $i | cut -d\: -f6 | sed "s/\.[0-9]*//g"`
+      VENDOR="LVM"
+      MODEL="Volume Group"
+      VGNAME=`echo $i | cut -d\: -f1 | sed 's/ /_/g'`
+      DISKNAME=`echo $VENDOR $MODEL ${SIZE}MB | sed 's/ /_/g'`
+      DISK_LIST="$DISK_LIST $VGNAME $DISKNAME"
+    done
+
+
     if [ -z "$DISK_LIST" ]; then
       dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_ERROR" \
         --yesno "\n${MSG_DISK_NOT_FOUND}" 0 0 1>&2 || exit 1
@@ -233,6 +244,16 @@ choose_partition_dev () {
           ;;
       esac
     done
+    
+    for i in `lvm lvs --noheadings --nosuffix --units M --separator ":" $LOC_DISK | sed "s/^\ *//g"`; do
+      SIZE=`echo $i | cut -d\: -f4 | sed "s/\.[0-9]*//g"`
+      VENDOR="LVM"
+      MODEL="Logical Volume"
+      LVNAME=`echo $i | cut -d\: -f1 | sed 's/ /_/g'`
+      DEVNAME=`echo $VENDOR $MODEL ${SIZE}MB | sed 's/ /_/g'`
+      DEV_LIST="$DEV_LIST /dev/${LOC_DISK}/${LVNAME} $DEVNAME"
+    done
+
     if [ -z "$DEV_LIST" ]; then
       dbglg "DEV_LIST var empty!"
       dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_ERROR" \
@@ -245,7 +266,7 @@ choose_partition_dev () {
     fi
     [ -z "$DEV_SEL" ] && exit 1
     if [ ! -b "$DEV_SEL" ]; then
-      dbglg "DEV_SEL $DEV_SEL is not a block device!"
+      dbglg "DEV_SEL $DEV_SEL is not a valid block device!"
       dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_ERROR" \
         --msgbox "\n'$DEV_SEL' $MSG_INSTALL_DEV_BAD_BLOCK\n" 0 0 1>&2 \
         || exit 1
@@ -290,16 +311,21 @@ format_if_needed () {
   local SUPPORTED_TYPES PART_TYPE
 
   # Set valid FS types based on selected install partition
-  case `sfdisk --print-id ${LOC_DEV%%[0-9]*} ${LOC_DEV#${LOC_DEV%%[0-9]*}}` in
-    1|11|6|e|16|1e|14|b|c|1b|1c)
-      SUPPORTED_TYPES="vfat"
-      PART_TYPE="FAT"
-      ;;
-    83) # Linux
-      SUPPORTED_TYPES="ext4 ext3 ext2"
-      PART_TYPE="Linux"
-      ;;
-  esac
+  if ( lvm lvdisplay $LOC_DEV >/dev/null ); then
+    SUPPORTED_TYPES="vfat ext4 ext3 ext2"
+    PART_TYPE="LVM"
+  else
+    case `sfdisk --print-id ${LOC_DEV%%[0-9]*} ${LOC_DEV#${LOC_DEV%%[0-9]*}}` in
+      1|11|6|e|16|1e|14|b|c|1b|1c)
+        SUPPORTED_TYPES="vfat"
+        PART_TYPE="FAT"
+        ;;
+      83) # Linux
+        SUPPORTED_TYPES="ext4 ext3 ext2"
+        PART_TYPE="Linux"
+        ;;
+    esac
+  fi
 
   dbglg "SUPPORTED_TYPES $SUPPORTED_TYPES PART_TYPE $PART_TYPE"
   dbglg "LOC_MKFS_TYPE \"$LOC_MKFS_TYPE\" LOC_DEV \"$LOC_DEV\""
@@ -327,42 +353,48 @@ format_if_needed () {
     && FORMAT=yes
 
   if [ "$FORMAT" = yes ]; then
-    case `sfdisk --print-id ${LOC_DEV%%[0-9]*} ${LOC_DEV#${LOC_DEV%%[0-9]*}}` in
-      1|11|6|e|16|1e|14) # FAT12 and FAT16
+    if ( lvm lvdisplay $LOC_DEV >/dev/null ); then
+      LOC_MKFS_TYPE=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" \
+        --title "$MSG_INSTALL_PART_TYPE" --menu "$MSG_INSTALL_PART_TYPE_DESC"\
+        0 0 0 ext2 "Linux ext2" ext3 "Linux ext3" ext4 "Linux ext4" vfat "Dos vfat"` \
+        || exit 1
+    else
+      case `sfdisk --print-id ${LOC_DEV%%[0-9]*} ${LOC_DEV#${LOC_DEV%%[0-9]*}}` in
+        1|11|6|e|16|1e|14) # FAT12 and FAT16
+          LOC_MKFS_TYPE="vfat"
+          ;;
+        b|c|1b|1c) # FAT32
+          LOC_MKFS_TYPE="vfat"
+          ;;
+        83) # Linux
+          LOC_MKFS_TYPE=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" \
+            --title "$MSG_INSTALL_PART_TYPE" --menu "$MSG_INSTALL_PART_TYPE_DESC"\
+            0 0 0 ext2 "Linux ext2" ext3 "Linux ext3" ext4 "Linux ext4"` \
+            || exit 1
+          ;;
+      esac
+    fi
+    case $LOC_MKFS_TYPE in
+      vfat)
         MKFS=mkfs.vfat
         MKFS_OPT="-n GEEXBOX"
         LOC_MKFS_TYPE=vfat
         MKFS_TYPENAME="FAT"
         ;;
-      b|c|1b|1c) # FAT32
-        MKFS=mkfs.vfat
-        MKFS_OPT="-n GEEXBOX"
-        LOC_MKFS_TYPE=vfat
-        MKFS_TYPENAME="FAT"
+      ext2)
+        MKFS=mke2fs
+        MKFS_OPT="-L GEEXBOX"
+        MKFS_TYPENAME="Linux ext2"
         ;;
-      83) # Linux
-        LOC_MKFS_TYPE=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" \
-          --title "$MSG_INSTALL_PART_TYPE" --menu "$MSG_INSTALL_PART_TYPE_DESC"\
-          0 0 0 ext2 "Linux ext2" ext3 "Linux ext3" ext4 "Linux ext4"` \
-          || exit 1
-
-        case $LOC_MKFS_TYPE in
-          ext2)
-            MKFS=mke2fs
-            MKFS_OPT="-L GEEXBOX"
-            MKFS_TYPENAME="Linux ext2"
-            ;;
-          ext3)
-            MKFS=mke2fs
-            MKFS_OPT="-L GEEXBOX -j"
-            MKFS_TYPENAME="Linux ext3"
-            ;;
-          ext4)
-            MKFS=mke2fs
-            MKFS_OPT="-L GEEXBOX -t ext4"
-            MKFS_TYPENAME="Linux ext4"
-        esac
+        ext3)
+        MKFS=mke2fs
+        MKFS_OPT="-L GEEXBOX -j"
+        MKFS_TYPENAME="Linux ext3"
         ;;
+      ext4)
+        MKFS=mke2fs
+        MKFS_OPT="-L GEEXBOX -t ext4"
+        MKFS_TYPENAME="Linux ext4"
     esac
 
     if [ -z "$MKFS" ]; then
@@ -395,6 +427,7 @@ format_if_needed () {
   MKFS_TYPE="$LOC_MKFS_TYPE"
 }
 
+#FIXME: function's obsolete now
 # Get the uuid of the device given by input $1
 get_uuid () {
   local DEV_REALNAME NAME LOC_DEV LOC_UUID
@@ -438,10 +471,11 @@ install_grub (){
   local GRUBPREFIX=/boot/grub
   local GRUBDIR=di$GRUBPREFIX
   local DEVICE_MAP=$GRUBDIR/device.map
-  local SPLASHIMAGE="$GRUBPREFIX/grub-splash.xpm.gz"
+  local SPLASHIMAGE="grub-splash.png"
   local LOC_DEV=$1
   local LOC_USE_XORG=$2
   local LOC_MKFS_TYPE=$3
+  local ARCH=i386-pc
 
   TMP_DISK=`echo "$LOC_DEV" | sed -e 's%\([sh]d[a-z]\)[0-9]*$%\1%'`
   TMP_DISKNAME="${TMP_DISK#/dev/}"
@@ -453,17 +487,12 @@ install_grub (){
     && tar xaf "di/GEEXBOX/usr/share/grub-i386-pc.tar.lzma" -C /usr \
     >> $LOGFILE 2>&1
 
-  if [ -f "di/GEEXBOX/usr/share/grub-splash.xpm.gz" ]; then
-    DISABLE_SPLASHIMAGE=
-    cp -f "di/GEEXBOX/usr/share/grub-splash.xpm.gz" $GRUBDIR \
-      || DISABLE_SPLASHIMAGE="#"
-  else
-    DISABLE_SPLASHIMAGE="#"
-  fi
+  [ -f "di/GEEXBOX/usr/share/${SPLASHIMAGE}" ] && cp -f "di/GEEXBOX/usr/share/${SPLASHIMAGE}" $GRUBDIR 
 
+  dbglg "grub-mkdevicemap --no-floppy --device-map=$DEVICE_MAP"
   grub-mkdevicemap --no-floppy --device-map=$DEVICE_MAP \
       >> $LOGFILE 2>&1
-  ROOTDEV=$(convert $LOC_DEV $DEVICE_MAP)
+  ROOTDEV=$(grub-probe --target=drive --device-map=${DEVICE_MAP} /di)
 
   dbglg "ROOTDEV \"$ROOTDEV\" DEV \"$LOC_DEV\""
   dbglg "XORG \"$LOC_USE_XORG\""
@@ -476,9 +505,12 @@ install_grub (){
     exit 1
   fi
 
-  get_uuid "$LOC_DEV"
+  DEV_UUID=$(grub-probe --target=fs_uuid --device-map=${DEVICE_MAP} /di)
+  BOOT_DRV="(UUID=${DEV_UUID})"
 
-  setup_grub $GRUBDIR/grub.cfg $DEV_UUID $ROOTDEV $LOC_USE_XORG $LOC_MKFS_TYPE
+  setup_grub $GRUBDIR/grub.cfg $DEV_UUID $BOOT_DRV $LOC_USE_XORG $LOC_MKFS_TYPE
+
+  dbglg "boot drive: $BOOT_DRV"
 
   dbglg "*** Start GRUB grub.cfg ***"
   cat $GRUBDIR/grub.cfg >> $LOGFILE
@@ -486,7 +518,9 @@ install_grub (){
 
   # Detect others OS and ask for MBR only in the case where GeeXboX
   # is not installed on a removable device.
-  if [ "`cat /sys/block/$TMP_DISKNAME/removable`" = 0 ]; then
+  # Note: lvm is not recognized as removable no matter what it's installed on!
+  # FIXME: should be possible to have lvm boot on removable device as well, but with less priority
+  if [ ! -f /sys/block/$TMP_DISKNAME/removable -o "`cat /sys/block/$TMP_DISKNAME/removable`" = 0 ]; then
     oslist=$(detect_os)
 
     supported_os_list=""
@@ -517,22 +551,56 @@ install_grub (){
   else
     oslist=
     MBR=yes
-    MBRDEV="`echo $ROOTDEV | sed 's/,[0-9]*//'`"
+    MBRDEV=$(grub-probe --target=drive --device-map=${DEVICE_MAP} di)
+    MBRDEV=$(echo $MBRDEV | sed 's/,[0-9]*//g')
   fi
 
   if [ "$MBR" = "yes" ]; then
+    # order is critical, must be: other, disk, fs, partmap, devabstraction
+    dbglg "grub probing..."
+    MOD_OTHER="fs_uuid"
+    MOD_DISK="biosdisk"
+    MOD_FS=$(grub-probe --target=fs --device-map=${DEVICE_MAP} di 2>>$LOGFILE)
+    MOD_PARTMAP=$(grub-probe --target=partmap --device-map=${DEVICE_MAP} di 2>>$LOGFILE)
+    MOD_DEVABSTRACTION=$(grub-probe --target=abstraction --device-map=${DEVICE_MAP} di 2>>$LOGFILE)
+    MODULES="$MOD_DISK $MOD_FS $MOD_PARTMAP $MOD_DEVABSTRACTION $MOD_OTHER"
+    dbglg "grub disk: $MOD_DISK"
+    dbglg "grub fs: $MOD_FS"
+    dbglg "grub dev abstraction: $MOD_DEVABSTRACTION"
+    dbglg "grub partmap: $MOD_PARTMAP"
+    dbglg "grub modules: $MODULES"
+    dbglg "cp -R /usr/lib/grub/${ARCH}/* /usr/lib/grub/fonts /usr/lib/grub/ ${GRUBDIR}/"
+    cp -R /usr/lib/grub/${ARCH}/* /usr/lib/grub/fonts /usr/lib/grub/ ${GRUBDIR}/
 
-    dbglg "grub-install --no-floppy --grub-mkdevicemap=$DEVICE_MAP --root-directory=di $MBRDEV"
+    dbglg "grub-mkimage --output=${GRUBDIR}/core.img --prefix=${BOOT_DRV}${GRUBPREFIX} $MODULES"
+    grub-mkimage --output=${GRUBDIR}/core.img --prefix="${BOOT_DRV}${GRUBPREFIX}" $MODULES \
+      >>$LOGFILE 2>&1
 
-    grub-install --no-floppy --grub-mkdevicemap=$DEVICE_MAP --root-directory=di $MBRDEV
+    dbglg "grub-setup --device-map=${DEVICE_MAP} --directory=${GRUBDIR} $MBRDEV"
+    grub-setup --device-map=${DEVICE_MAP} --directory=${GRUBDIR} $MBRDEV \
+      >> $LOGFILE 2>&1
 
-#FIXME: dunno yet how to set this, hard to find documentation
-#color cyan/blue white/blue
+#FIXME: image format to be used is png, by now all themes grub splash images are xpm.gz, they have to be converted for this to work properly
 
-    cat > $GRUBDIR/grub.cfg <<EOF
+    cat >$GRUBDIR/grub.cfg <<EOF
 set default=0
 set timeout=5
-${DISABLE_SPLASHIMAGE}background_image /boot/grub/$SPLASHIMAGE
+set menu_color_normal=cyan/blue
+set menu_color_highlight=white/blue
+
+if [ -f /boot/grub/$SPLASHIMAGE ]; then
+  if loadfont /boot/grub/fonts/8x13.pf2 ; then
+    set gfxmode="640x480@24;640x480@32;640x480@16"
+    insmod gfxterm
+    insmod vbe
+    insmod png
+    terminal_output gfxterm
+    if background_image /boot/grub/$SPLASHIMAGE ; then
+        set menu_color_normal=cyan/black
+        set menu_color_highlight=white/black
+    fi
+  fi
+fi
 
 EOF
 
@@ -556,23 +624,24 @@ menuentry "$title" {
 EOF
         if [ $grubdisk != "(hd0)" ]; then
           cat >> $GRUBDIR/grub.cfg <<EOF
-    map (hd0) $grubdisk
-    map $grubdisk (hd0)
+    drivemap (hd0) $grubdisk
+    drivemap $grubdisk (hd0)
 EOF
         fi
 
         cat >> $GRUBDIR/grub.cfg <<EOF
     set root=$grubpartition
-# parttool command will be available with next version of grub2. Until then, pls make sure the chainloaded partitions was made active and unhidden
-#    parttool $grubpartition boot+
+    parttool $grubpartition boot+
+    parttool $grubpartition hidden-
     chainloader +1
 }
+
 EOF
       fi
     done
     IFS=$saveifs
 
-    setup_grub $GRUBDIR/grub.cfg $DEV_UUID $ROOTDEV $LOC_USE_XORG $LOC_MKFS_TYPE
+    setup_grub $GRUBDIR/grub.cfg $DEV_UUID $BOOT_DRV $LOC_USE_XORG $LOC_MKFS_TYPE
 
     dbglg "*** Start GRUB grub.cfg ***"
     cat $GRUBDIR/grub.cfg >> $LOGFILE
@@ -608,8 +677,12 @@ setup_keymap
 DISK="`choose_disk`"
 [ -z "$DISK" ] && exit 1
 
-# Make sure disk partitions are not already mounted
-umount /dev/${DISK}* 2>/dev/null
+# Make sure disk partitions are not already mounted in case it's no VG
+if ( lvm vgdisplay /dev/$DISK >/dev/null ); then
+  umount /dev/$DISK/* 2>/dev/null
+else
+  umount /dev/${DISK}* 2>/dev/null
+fi
 
 # Create directory for the install partition to be mounted
 mkdir di
@@ -632,12 +705,14 @@ fi
 
 CFDISK_MSG="$MSG_CFDISK_BEGIN $MSG_DISK_PART $MSG_CFDISK_END"
 
-# Guide user on how to setup with cfdisk tool in the next step
-dialog --stdout --backtitle "$BACKTITLE" --title "$MSG_INSTALL_DEV_CONFIG" \
-  --msgbox "$CFDISK_MSG" 0 0 \
-  || exit 1
+# Guide user on how to setup with cfdisk tool in the next step only if no VG was selected
+if ( ! lvm vgdisplay /dev/$DISK >/dev/null ); then
+  dialog --stdout --backtitle "$BACKTITLE" --title "$MSG_INSTALL_DEV_CONFIG" \
+    --msgbox "$CFDISK_MSG" 0 0 \
+    || exit 1
 
-cfdisk /dev/$DISK
+  cfdisk /dev/$DISK
+fi
 
 DEV="`choose_partition_dev $DISK`"
 [ -z "$DEV" ] && exit 1
