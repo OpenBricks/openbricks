@@ -5,6 +5,7 @@
 $SCRIPTS/build linux
 $SCRIPTS/build toolchain
 $SCRIPTS/build lzo
+$SCRIPTS/build freetype
 
 export CFLAGS="$CFLAGS -O2"
 HEADERS="`kernel_path`/arch/x86/include"
@@ -12,22 +13,26 @@ COMMAND_LINE_SIZE=`cat ${HEADERS}/asm/setup.h | grep "^#define COMMAND_LINE_SIZE
 export TARGET_CPPFLAGS="-DCOMMAND_LINE_SIZE=${COMMAND_LINE_SIZE} ${TARGET_CPPFLAGS}"
 
 cd $BUILD/$1*
+export ac_cv_prog_FREETYPE=$LIB_PREFIX/bin/freetype-config
+#export PATH=$PATH:$LIB_PREFIX/lib/pkgconfig
 ./configure --host=$TARGET_NAME \
             --build=$HOST_NAME \
-            --prefix="/usr" \
-            --disable-shared \
-            --without-curses \
+            --prefix="/usr/" \
+            --enable-grub-mkfont \
 
-#FIXME: dirty workaround, but only every second build runs through, dunno why till now
-make || make
+make || exit 1
 
-BIN_FILES="grub-mkimage grub-mkrescue"
-SBIN_FILES="grub-install grub-mkdevicemap grub-probe grub-setup update-grub"
-LIB_GRUB_FILES="update-grub_lib"
-LIB_GRUB_ARCH_FILES="acorn.mod affs.mod amiga.mod apple.mod ata.mod biosdisk.mod bitmap.mod blocklist.mod boot.img boot.mod cat.mod cdboot.img _chain.mod chain.mod cmp.mod command.lst configfile.mod cpio.mod cpuid.mod diskboot.img echo.mod elf.mod ext2.mod fat.mod font.mod fshelp.mod fs.lst gfxterm.mod gpt.mod gzio.mod halt.mod hello.mod help.mod hexdump.mod hfs.mod hfsplus.mod iso9660.mod jfs.mod jpeg.mod kernel.img _linux.mod linux.mod lnxboot.img loopback.mod ls.mod lspci.mod lvm.mod memdisk.mod minix.mod moddep.lst _multiboot.mod multiboot.mod normal.mod ntfscomp.mod ntfs.mod pci.mod pc.mod play.mod png.mod pxeboot.img raid.mod read.mod reboot.mod reiserfs.mod search.mod serial.mod sfs.mod sun.mod terminal.mod terminfo.mod test.mod tga.mod ufs.mod update-grub_lib vbeinfo.mod vbe.mod vbetest.mod vga.mod video.mod videotest.mod xfs.mod"
+BIN_FILES="grub-mkimage grub-mkelfimage grub-editenv grub-mkrescue"
+SBIN_FILES="grub-install grub-mkconfig grub-dumpbios grub-mkdevicemap grub-probe grub-setup"
+LIB_GRUB_FILES="grub-mkconfig_lib update-grub_lib"
+LIB_GRUB_ARCH_FILES="acorn.mod acpi.mod affs.mod afs.mod amiga.mod aout.mod apple.mod at_keyboard.mod ata.mod ata_pthru.mod biosdisk.mod bitmap.mod blocklist.mod boot.img boot.mod bsd.mod bufio.mod build_env.mk cat.mod cdboot.img chain.mod cmp.mod command.lst config.h configfile.mod cpio.mod cpuid.mod crc.mod date.mod datehook.mod datetime.mod diskboot.img dm_nv.mod drivemap.mod echo.mod efiemu.mod elf.mod ext2.mod extcmd.mod fat.mod font.mod fs.lst fs_file.mod fs_uuid.mod fshelp.mod gfxterm.mod gpt.mod gptsync.mod grub_script.tab.h gzio.mod halt.mod handler.lst handler.mod hdparm.mod hello.mod help.mod hexdump.mod hfs.mod hfsplus.mod iso9660.mod jfs.mod jpeg.mod kernel.img linux.mod linux16.mod lnxboot.img loadenv.mod loopback.mod ls.mod lsmmap.mod lspci.mod lua.mod lvm.mod mdraid.mod memdisk.mod memrw.mod minicmd.mod minix.mod mmap.mod moddep.lst multiboot.mod normal.mod ntfs.mod ntfscomp.mod ohci.mod partmap.lst parttool.lst parttool.mod pc.mod pci.mod pcpart.mod play.mod png.mod probe.mod pxe.mod pxeboot.img pxecmd.mod raid.mod raid5rec.mod raid6rec.mod read.mod reboot.mod reiserfs.mod scsi.mod search.mod serial.mod setjmp.mod sfs.mod sh.mod sleep.mod sun.mod tar.mod terminfo.mod test.mod tga.mod true.mod udf.mod ufs.mod uhci.mod usb.mod usb_keyboard.mod usbms.mod usbtest.mod vbe.mod vbeinfo.mod vbetest.mod vga.mod vga_text.mod video.mod videotest.mod xfs.mod xnu.mod xnu_uuid.mod"
 
-mkdir -p build/bin build/sbin build/lib/grub/i386-pc
-for f in $BIN_FILES; do cp $f build/bin; done
-for f in $SBIN_FILES; do cp $f build/sbin; done
-for f in $LIB_GRUB_FILES; do cp $f build/lib/grub; done
-for f in $LIB_GRUB_ARCH_FILES; do cp $f build/lib/grub/i386-pc; done
+( mkdir -p __build/bin __build/sbin __build/lib/grub/i386-pc && \
+cp $BIN_FILES __build/bin/ && \
+cp $SBIN_FILES __build/sbin/ && \
+cp $LIB_GRUB_FILES __build/lib/grub/ && \
+cp $LIB_GRUB_ARCH_FILES __build/lib/grub/i386-pc/ ) || \
+exit 1
+
+[ -f ../font-misc-misc*/8x13.bdf ] && mkdir -p __build/lib/grub/fonts && ./grub-mkfont -o __build/lib/grub/fonts/8x13.pf2 ../font-misc-misc*/8x13.bdf
+
