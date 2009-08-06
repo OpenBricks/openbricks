@@ -35,7 +35,7 @@ boot_from_cdrom () {
   progress 11000 "Searching for CD-ROM drives"
   CDROM=/cd
   mkdir -p $CDROM
-  for i in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24; do
+  for i in 1 2 3 4 5; do
     if [ -d /dev/cdroms ]; then
       for dev in `ls /dev/cdroms/*`; do
         [ -e $dev ] && mount -o ro $dev $CDROM || continue
@@ -48,7 +48,7 @@ boot_from_cdrom () {
       done
     fi
     [ -n "$GEEXBOX" ] && break
-    sleep 1
+    sleep 2
   done
 }
 
@@ -56,8 +56,7 @@ boot_from_hdd () {
   progress 11000 "HDD Boot Device Detection"
   HDD=/hdd
   mkdir -p $HDD
-  for i in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24; do
-    [ -z "$BOOT_DEV" ] && get_device_from_uuid
+  for i in 1 2 3 4; do
     [ -b "$BOOT_DEV" ] && mount -o ro $BOOT_DEV $HDD
     if [ -d "$HDD$ROOT_LOCATION" ]; then
       GEEXBOX="$HDD$ROOT_LOCATION"
@@ -65,22 +64,38 @@ boot_from_hdd () {
       break
     fi
     [ -n "$GEEXBOX" ] && break
-    sleep 1
+    sleep 2
   done
 }
 
-get_device_from_uuid () {
+get_devices_from_uuids () {
   # cannot be sure whether its written upper or lower case
-  DEV_PATH=$(find /dev/disk/by-uuid/ -iname ${UUID})
-  if [ -n "$DEV_PATH" ]; then
-    if [ "$1" = "data" ]; then
-      DATA_DEV_NAME=$(ls -l ${DEV_PATH} | sed 's#.*\.\.\/##')
-      DATA_DEV=/dev/$DATA_DEV_NAME
-    else
-      BOOT_DEV_NAME=$(ls -l ${DEV_PATH} | sed 's#.*\.\.\/##')
-      BOOT_DEV=/dev/$BOOT_DEV_NAME
+  [ -n "$DATA_UUID" ] && DATA_DEV="" && DATA_DEV_NAME=""
+  [ -n "$BOOT_UUID" ] && BOOT_DEV="" && BOOT_DEV_NAME=""
+
+  for i in 1 2 3 4; do
+
+    if [ -n "$DATA_UUID" -a -z "$DATA_DEV_NAME" ]; then
+      DEV_PATH=$(find /dev/disk/by-uuid/ -iname ${DATA_UUID})
+      if [ -n "$DEV_PATH" ]; then
+        DATA_DEV_NAME=$(ls -l ${DEV_PATH} | sed 's#.*\.\.\/##')
+        DATA_DEV=/dev/$DATA_DEV_NAME
+      fi
     fi
-  fi
+
+    if [ -n "$BOOT_UUID" -a -z "$BOOT_DEV_NAME" ]; then
+      DEV_PATH=$(find /dev/disk/by-uuid/ -iname ${BOOT_UUID})
+      if [ -n "$DEV_PATH" ]; then
+        BOOT_DEV_NAME=$(ls -l ${DEV_PATH} | sed 's#.*\.\.\/##')
+        BOOT_DEV=/dev/$BOOT_DEV_NAME
+      fi
+    fi
+
+    [ -z "$BOOT_UUID" -o -n "$BOOT_DEV" ] && [ -z "$DATA_UUID" -o -n "$DATA_DEV" ] && break
+
+    echo "either boot or data device unavailable, retrying..."
+    sleep 2
+  done 
 }
 
 mount_data_partition() {
@@ -94,6 +109,7 @@ mount_data_partition() {
     mkdir /var/data
   fi
 }
+
 
 echo > /proc/sys/kernel/hotplug
 udevd --daemon
@@ -112,9 +128,8 @@ for arg in $(cat /proc/cmdline); do
       case $BOOT in
         UUID=*)
           # Grab real device name from UUID symlink
-          UUID="${BOOT#UUID=}"
+          BOOT_UUID="${BOOT#UUID=}"
           BOOT=hdd
-          get_device_from_uuid
           ;;
         *)
           if [ "$BOOT" != cdrom -a "$BOOT" != nfs -a "$BOOT" != smb ]; then
@@ -132,9 +147,8 @@ for arg in $(cat /proc/cmdline); do
       case $DATA in
         UUID=*)
           # Grab real device name from UUID symlink
-          UUID="${DATA#UUID=}"
+          DATA_UUID="${DATA#UUID=}"
           DATA=hdd
-          get_device_from_uuid "data"
           ;;
         *)
           if [ "$DATA" != cdrom -a "$DATA" != nfs -a "$DATA" != smb ]; then
@@ -184,6 +198,21 @@ done
 # determine if we use X.Org or not
 [ "$XORG" = yes ] && echo "" > /var/use_xorg
 
+#initialize LVM
+if [ -x /sbin/lvm ]; then
+    modprobe dm_mod
+    devmap=$(cat /proc/misc | grep "device-mapper")
+    if [ -n "$devmap" ]; then
+        lvm vgscan --ignorelockingfailure
+        lvm vgchange -a y --ignorelockingfailure
+    fi
+fi
+
+udevadm trigger
+udevadm settle --timeout=180
+
+get_devices_from_uuids
+
 # select boot device for 2nd stage
 case "$BOOT" in
   nfs)
@@ -229,19 +258,6 @@ fi
 
 # Rebuild module dependancies (initramfs + bin archive)
 depmod -a
-
-#initialize LVM
-if [ -x /sbin/lvm ]; then
-    modprobe dm_mod
-    devmap=$(cat /proc/misc | grep "device-mapper")
-    if [ -n "$devmap" ]; then
-        lvm vgscan --ignorelockingfailure
-        lvm vgchange -a y --ignorelockingfailure
-    fi
-fi
-
-udevadm trigger
-udevadm settle --timeout=180
 
 if test "$BOOT" = nfs -o "$BOOT" = smb; then
   if test "$INSTALLATOR" = yes; then
