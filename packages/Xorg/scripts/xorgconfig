@@ -4,6 +4,7 @@
 # It is required to be able to set custom resolution.
 
 . /etc/X11/X.cfg
+. /etc/funcs
 
 CFG_FILE=/etc/X11/xorg.conf
 DEFAULT_CFG_FILE=/etc/X11/xorg.default
@@ -21,12 +22,12 @@ DRV=${XORG_DRIVER}
 
 set_monitor () {
   # set monitor identifier
-  sed -i "s%::MONITOR_ID::%${MONITOR_ID}%" $CFG_FILE
+  sed_in_place $CFG_FILE "s%::MONITOR_ID::%${MONITOR_ID}%"
 }
 
 no_monitor_info () {
   # no monitor info can be found
-  sed -i 's%::CUSTOM_MONITOR::%%' $CFG_FILE
+  sed_in_place $CFG_FILE 's%::CUSTOM_MONITOR::%%'
 }
 
 add_custom_monitor () {
@@ -49,7 +50,7 @@ read_edid () {
   HAVE_EDID=1
 
   # force disabling DPMS 
-  sed -i 's%.*# DPMS .*%      Option "DPMS" "false"%' $EDID_XORG
+  sed_in_place $EDID_XORG 's%.*# DPMS .*%      Option "DPMS" "false"%'
 
   # declare new monitor settings in config file
   add_custom_monitor "$EDID_XORG"
@@ -109,16 +110,16 @@ configure_device () {
     Xorg -configure -br
     DRV=`cat /xorg.conf.new | grep "Driver.*\"" | grep -v kbd | grep -v mouse | cut -f2 -d\"`
   fi
-  sed -i "s%::DRIVER::%${DRV}%" $CFG_FILE
+  sed_in_place $CFG_FILE "s%::DRIVER::%${DRV}%"
 }
 
 configure_monitor () {
   set_monitor
   if [ "$HAVE_EDID" = 1 -o "$HAVE_DDC" = 1 ]; then
     # monitor has already been configured
-    sed -i "s%.*HorizSync.*::HS::%%" $CFG_FILE
-    sed -i "s%.*VertRefresh.*::VR::%%" $CFG_FILE
-    sed -i "s%::MODELINE::%%" $CFG_FILE
+    sed_in_place $CFG_FILE "s%.*HorizSync.*::HS::%%"
+    sed_in_place $CFG_FILE "s%.*VertRefresh.*::VR::%%"
+    sed_in_place $CFG_FILE "s%::MODELINE::%%"
     return
   fi
 
@@ -138,21 +139,21 @@ configure_monitor () {
     VERTREFRESH="$XORG_VERTREFRESH"
   fi
 
-  sed -i "s%::HS::%${HORIZSYNC}%" $CFG_FILE
-  sed -i "s%::VR::%${VERTREFRESH}%" $CFG_FILE
+  sed_in_place $CFG_FILE "s%::HS::%${HORIZSYNC}%"
+  sed_in_place $CFG_FILE "s%::VR::%${VERTREFRESH}%"
 
   if [ "$XORG_RESX" != "auto" -a "$XORG_RESY" != "auto" ]; then
     if [ "$XORG_RATE" != "auto" ]; then
       # Try to get modeline for resolution user asked for
       MODELINE="`gtf $XORG_RESX $XORG_RESY $XORG_RATE | grep Modeline`"
-      sed -i "s%::MODELINE::%${MODELINE}%" $CFG_FILE
+      sed_in_place $CFG_FILE "s%::MODELINE::%${MODELINE}%"
     else
       # no custom modeline, use built-in ones
-      sed -i "s%::MODELINE::%%" $CFG_FILE
+      sed_in_place $CFG_FILE "s%::MODELINE::%%"
     fi
   else
     # auto: try any fitting resolution
-    sed -i "s%::MODELINE::%%" $CFG_FILE
+    sed_in_place $CFG_FILE "s%::MODELINE::%%"
   fi
 }
 
@@ -175,15 +176,15 @@ configure_screen () {
       MODELINES="\"${XORG_RESX}x${XORG_RESY}\""
     fi
   else
-    sed -i "s%.*::MODES::.*%%g" $CFG_FILE
+    sed_in_place $CFG_FILE "s%.*::MODES::.*%%g"
     return
   fi
   RES="${MODELINES} ${FAILSAFE_RESOLUTIONS}"
-  sed -i "s%::MODES::%${RES}%g" $CFG_FILE
+  sed_in_place $CFG_FILE "s%::MODES::%${RES}%g"
 }
 
 if [ ! -f $CFG_FILE ]; then
-  cp $DEFAULT_CFG_FILE $CFG_FILE
+  cat $DEFAULT_CFG_FILE >$CFG_FILE
 
   if [ "$XORG_RESX" = "auto" -o "$XORG_RESY" = "auto" ]; then
     # try to get/set the best resolution suited for the monitor using EDID
