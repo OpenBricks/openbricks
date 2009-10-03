@@ -1,6 +1,6 @@
-diff -Naur MPlayer-export-2009-06-13.orig/cfg-mplayer.h MPlayer-export-2009-06-13/cfg-mplayer.h
---- MPlayer-export-2009-06-13.orig/cfg-mplayer.h	2009-06-13 22:53:58.000000000 +0200
-+++ MPlayer-export-2009-06-13/cfg-mplayer.h	2009-06-14 00:10:51.000000000 +0200
+diff -Naur MPlayer-export-2009-10-03.orig/cfg-mplayer.h MPlayer-export-2009-10-03/cfg-mplayer.h
+--- MPlayer-export-2009-10-03.orig/cfg-mplayer.h	2009-10-03 20:27:28.000000000 +0200
++++ MPlayer-export-2009-10-03/cfg-mplayer.h	2009-10-03 20:35:35.000000000 +0200
 @@ -277,6 +277,8 @@
  #ifdef CONFIG_UNRAR_EXEC
  	{"unrarexec", &unrar_executable, CONF_TYPE_STRING, 0, 0, 0, NULL},
@@ -10,10 +10,10 @@ diff -Naur MPlayer-export-2009-06-13.orig/cfg-mplayer.h MPlayer-export-2009-06-1
  
  	{"sstep", &step_sec, CONF_TYPE_INT, CONF_MIN, 0, 0, NULL},
  
-diff -Naur MPlayer-export-2009-06-13.orig/command.c MPlayer-export-2009-06-13/command.c
---- MPlayer-export-2009-06-13.orig/command.c	2009-06-13 22:53:58.000000000 +0200
-+++ MPlayer-export-2009-06-13/command.c	2009-06-14 00:10:51.000000000 +0200
-@@ -875,6 +875,10 @@
+diff -Naur MPlayer-export-2009-10-03.orig/command.c MPlayer-export-2009-10-03/command.c
+--- MPlayer-export-2009-10-03.orig/command.c	2009-10-03 20:27:28.000000000 +0200
++++ MPlayer-export-2009-10-03/command.c	2009-10-03 20:36:37.000000000 +0200
+@@ -861,6 +861,10 @@
  		reinit_audio_chain();
  	    }
  	}
@@ -24,20 +24,20 @@ diff -Naur MPlayer-export-2009-06-13.orig/command.c MPlayer-export-2009-06-13/co
  	mp_msg(MSGT_IDENTIFY, MSGL_INFO, "ID_AUDIO_TRACK=%d\n", audio_id);
  	return M_PROPERTY_OK;
      default:
-@@ -1510,6 +1514,10 @@
- 	d_sub->id = dvdsub_id;
-     }
- #endif
+@@ -1505,6 +1509,10 @@
+         pts = mpctx->sh_audio->pts;
+     if (mpctx->sh_video)
+         pts = mpctx->sh_video->pts;
 +#ifdef USE_DVDNAV
 +    if (mpctx->stream->type == STREAMTYPE_DVDNAV)
-+	mp_dvdnav_set_sid(mpctx->stream, dvdsub_id);
++        mp_dvdnav_set_sid(mpctx->stream, dvdsub_id);
 +#endif
-     update_subtitles(mpctx->sh_video, d_sub, 1);
+     update_subtitles(mpctx->sh_video, pts, d_sub, 1);
  
      return M_PROPERTY_OK;
-diff -Naur MPlayer-export-2009-06-13.orig/libmenu/menu.c MPlayer-export-2009-06-13/libmenu/menu.c
---- MPlayer-export-2009-06-13.orig/libmenu/menu.c	2009-06-13 22:53:58.000000000 +0200
-+++ MPlayer-export-2009-06-13/libmenu/menu.c	2009-06-14 00:10:51.000000000 +0200
+diff -Naur MPlayer-export-2009-10-03.orig/libmenu/menu.c MPlayer-export-2009-10-03/libmenu/menu.c
+--- MPlayer-export-2009-10-03.orig/libmenu/menu.c	2009-10-03 20:27:28.000000000 +0200
++++ MPlayer-export-2009-10-03/libmenu/menu.c	2009-10-03 20:35:35.000000000 +0200
 @@ -29,6 +29,7 @@
  #include "libvo/osd.h"
  #include "libvo/font_load.h"
@@ -82,18 +82,19 @@ diff -Naur MPlayer-export-2009-06-13.orig/libmenu/menu.c MPlayer-export-2009-06-
                 mpi->planes[0] + y * mpi->stride[0] + x * (mpi->bpp>>3),
                 mpi->stride[0]);
    }
-diff -Naur MPlayer-export-2009-06-13.orig/libmpcodecs/vf_expand.c MPlayer-export-2009-06-13/libmpcodecs/vf_expand.c
---- MPlayer-export-2009-06-13.orig/libmpcodecs/vf_expand.c	2009-06-13 22:53:58.000000000 +0200
-+++ MPlayer-export-2009-06-13/libmpcodecs/vf_expand.c	2009-06-14 00:10:51.000000000 +0200
-@@ -13,6 +13,7 @@
- #include "vf.h"
- 
+diff -Naur MPlayer-export-2009-10-03.orig/libmpcodecs/vf_expand.c MPlayer-export-2009-10-03/libmpcodecs/vf_expand.c
+--- MPlayer-export-2009-10-03.orig/libmpcodecs/vf_expand.c	2009-10-03 20:27:28.000000000 +0200
++++ MPlayer-export-2009-10-03/libmpcodecs/vf_expand.c	2009-10-03 21:08:16.000000000 +0200
+@@ -15,6 +15,8 @@
  #include "libvo/fastmemcpy.h"
-+#include "libvo/video_out.h"
+ #include "libavutil/avutil.h"
  
++#include "libvo/video_out.h"
++
  #ifdef OSD_SUPPORT
  #include "libvo/sub.h"
-@@ -96,7 +97,47 @@
+ #include "libvo/osd.h"
+@@ -102,7 +104,47 @@
      }
  }
  
@@ -142,7 +143,7 @@ diff -Naur MPlayer-export-2009-06-13.orig/libmpcodecs/vf_expand.c MPlayer-export
      unsigned char* dst;
      if(!vo_osd_changed_flag && vf->dmpi->planes[0]==vf->priv->fb_ptr){
  	// ok, enough to update the area inside the video, leave the black bands
-@@ -124,19 +165,19 @@
+@@ -130,19 +172,19 @@
      switch(vf->dmpi->imgfmt){
      case IMGFMT_BGR15:
      case IMGFMT_RGB15:
@@ -166,7 +167,7 @@ diff -Naur MPlayer-export-2009-06-13.orig/libmpcodecs/vf_expand.c MPlayer-export
  	break;
      case IMGFMT_YV12:
      case IMGFMT_I420:
-@@ -145,13 +186,13 @@
+@@ -151,13 +193,13 @@
      case IMGFMT_IF09:
      case IMGFMT_Y800:
      case IMGFMT_Y8:
@@ -183,7 +184,7 @@ diff -Naur MPlayer-export-2009-06-13.orig/libmpcodecs/vf_expand.c MPlayer-export
  	break;
      }
  }
-@@ -415,6 +456,14 @@
+@@ -425,6 +467,14 @@
      switch(request){
      case VFCTRL_DRAW_OSD:
  	if(vf->priv->osd) return CONTROL_TRUE;
@@ -198,9 +199,9 @@ diff -Naur MPlayer-export-2009-06-13.orig/libmpcodecs/vf_expand.c MPlayer-export
      }
  #endif
      return vf_next_control(vf,request,data);
-diff -Naur MPlayer-export-2009-06-13.orig/libmpcodecs/vf.h MPlayer-export-2009-06-13/libmpcodecs/vf.h
---- MPlayer-export-2009-06-13.orig/libmpcodecs/vf.h	2009-06-13 22:53:58.000000000 +0200
-+++ MPlayer-export-2009-06-13/libmpcodecs/vf.h	2009-06-14 00:10:51.000000000 +0200
+diff -Naur MPlayer-export-2009-10-03.orig/libmpcodecs/vf.h MPlayer-export-2009-10-03/libmpcodecs/vf.h
+--- MPlayer-export-2009-10-03.orig/libmpcodecs/vf.h	2009-10-03 20:27:28.000000000 +0200
++++ MPlayer-export-2009-10-03/libmpcodecs/vf.h	2009-10-03 20:35:35.000000000 +0200
 @@ -89,6 +89,7 @@
  #define VFCTRL_GET_PTS         17 /* Return last pts value that reached vf_vo*/
  #define VFCTRL_SET_DEINTERLACE 18 /* Set deinterlacing status */
@@ -209,9 +210,9 @@ diff -Naur MPlayer-export-2009-06-13.orig/libmpcodecs/vf.h MPlayer-export-2009-0
  
  #include "vfcap.h"
  
-diff -Naur MPlayer-export-2009-06-13.orig/libmpcodecs/vf_vo.c MPlayer-export-2009-06-13/libmpcodecs/vf_vo.c
---- MPlayer-export-2009-06-13.orig/libmpcodecs/vf_vo.c	2009-06-13 22:53:58.000000000 +0200
-+++ MPlayer-export-2009-06-13/libmpcodecs/vf_vo.c	2009-06-14 00:10:51.000000000 +0200
+diff -Naur MPlayer-export-2009-10-03.orig/libmpcodecs/vf_vo.c MPlayer-export-2009-10-03/libmpcodecs/vf_vo.c
+--- MPlayer-export-2009-10-03.orig/libmpcodecs/vf_vo.c	2009-10-03 20:27:28.000000000 +0200
++++ MPlayer-export-2009-10-03/libmpcodecs/vf_vo.c	2009-10-03 20:35:35.000000000 +0200
 @@ -28,6 +28,7 @@
      ass_renderer_t* ass_priv;
      int prev_visibility;
@@ -243,9 +244,9 @@ diff -Naur MPlayer-export-2009-06-13.orig/libmpcodecs/vf_vo.c MPlayer-export-200
      }
      // return video_out->control(request,data);
      return CONTROL_UNKNOWN;
-diff -Naur MPlayer-export-2009-06-13.orig/libvo/mga_common.c MPlayer-export-2009-06-13/libvo/mga_common.c
---- MPlayer-export-2009-06-13.orig/libvo/mga_common.c	2009-06-13 22:53:58.000000000 +0200
-+++ MPlayer-export-2009-06-13/libvo/mga_common.c	2009-06-14 00:10:51.000000000 +0200
+diff -Naur MPlayer-export-2009-10-03.orig/libvo/mga_common.c MPlayer-export-2009-10-03/libvo/mga_common.c
+--- MPlayer-export-2009-10-03.orig/libvo/mga_common.c	2009-10-03 20:27:28.000000000 +0200
++++ MPlayer-export-2009-10-03/libvo/mga_common.c	2009-10-03 20:35:35.000000000 +0200
 @@ -42,20 +42,54 @@
  #endif
  static uint32_t               drwcX,drwcY,dwidth,dheight;
@@ -305,9 +306,9 @@ diff -Naur MPlayer-export-2009-06-13.orig/libvo/mga_common.c MPlayer-export-2009
          break;
      }
  }
-diff -Naur MPlayer-export-2009-06-13.orig/libvo/osd.c MPlayer-export-2009-06-13/libvo/osd.c
---- MPlayer-export-2009-06-13.orig/libvo/osd.c	2009-06-13 22:53:58.000000000 +0200
-+++ MPlayer-export-2009-06-13/libvo/osd.c	2009-06-14 00:15:36.000000000 +0200
+diff -Naur MPlayer-export-2009-10-03.orig/libvo/osd.c MPlayer-export-2009-10-03/libvo/osd.c
+--- MPlayer-export-2009-10-03.orig/libvo/osd.c	2009-10-03 20:27:28.000000000 +0200
++++ MPlayer-export-2009-10-03/libvo/osd.c	2009-10-03 20:35:35.000000000 +0200
 @@ -28,6 +28,7 @@
  #include "mp_msg.h"
  #include <inttypes.h>
@@ -666,9 +667,9 @@ diff -Naur MPlayer-export-2009-06-13.orig/libvo/osd.c MPlayer-export-2009-06-13/
 +  }
  }
  
-diff -Naur MPlayer-export-2009-06-13.orig/libvo/osd.h MPlayer-export-2009-06-13/libvo/osd.h
---- MPlayer-export-2009-06-13.orig/libvo/osd.h	2009-06-13 22:53:58.000000000 +0200
-+++ MPlayer-export-2009-06-13/libvo/osd.h	2009-06-14 00:10:51.000000000 +0200
+diff -Naur MPlayer-export-2009-10-03.orig/libvo/osd.h MPlayer-export-2009-10-03/libvo/osd.h
+--- MPlayer-export-2009-10-03.orig/libvo/osd.h	2009-10-03 20:27:28.000000000 +0200
++++ MPlayer-export-2009-10-03/libvo/osd.h	2009-10-03 20:35:35.000000000 +0200
 @@ -24,12 +24,12 @@
  
  void vo_draw_alpha_init(void); // build tables
@@ -689,9 +690,9 @@ diff -Naur MPlayer-export-2009-06-13.orig/libvo/osd.h MPlayer-export-2009-06-13/
 +void vo_draw_alpha_rgb16(int w, int h, int dp, unsigned char* src, unsigned char *srca, int srcstride, unsigned char* dstbase, int dststride);
  
  #endif /* MPLAYER_OSD_H */
-diff -Naur MPlayer-export-2009-06-13.orig/libvo/osd_template.c MPlayer-export-2009-06-13/libvo/osd_template.c
---- MPlayer-export-2009-06-13.orig/libvo/osd_template.c	2009-06-13 22:53:58.000000000 +0200
-+++ MPlayer-export-2009-06-13/libvo/osd_template.c	2009-06-14 00:10:51.000000000 +0200
+diff -Naur MPlayer-export-2009-10-03.orig/libvo/osd_template.c MPlayer-export-2009-10-03/libvo/osd_template.c
+--- MPlayer-export-2009-10-03.orig/libvo/osd_template.c	2009-10-03 20:27:28.000000000 +0200
++++ MPlayer-export-2009-10-03/libvo/osd_template.c	2009-10-03 21:25:49.000000000 +0200
 @@ -44,7 +44,7 @@
  #define EMMS     "emms"
  #endif
@@ -736,54 +737,54 @@ diff -Naur MPlayer-export-2009-06-13.orig/libvo/osd_template.c MPlayer-export-20
  #endif
      return;
 +    case DEST_PLANES_RB:
-+      for(y=0;y<h;y++){
-+        register unsigned char *dst = dstbase;
-+        register int x;
-+        for(x=0;x<w;x++){
-+          if(srca[x])
-+            dst[0]=((dst[0]*srca[x])>>8)+src[x];
-+          dst+=3; // 24bpp
-+        }
-+        src+=srcstride;
-+        srca+=srcstride;
-+        dstbase+=dststride;
-+      }
-+      return;
++       for(y=0;y<h;y++){
++         register unsigned char *dst = dstbase;
++         register int x;
++         for(x=0;x<w;x++){
++           if(srca[x])
++             dst[0]=((dst[0]*srca[x])>>8)+src[x];
++           dst+=3; // 24bpp
++         }
++         src+=srcstride;
++         srca+=srcstride;
++         dstbase+=dststride;
++       }
++       return;
 +    case DEST_PLANES_G:
-+      for(y=0;y<h;y++){
-+        register unsigned char *dst = dstbase;
-+        register int x;
-+        for(x=0;x<w;x++){
-+          if(srca[x])
-+            dst[1]=((dst[1]*srca[x])>>8)+src[x];
-+          dst+=3; // 24bpp
-+        }
-+        src+=srcstride;
-+        srca+=srcstride;
-+        dstbase+=dststride;
-+      }
-+      return;
++       for(y=0;y<h;y++){
++         register unsigned char *dst = dstbase;
++         register int x;
++         for(x=0;x<w;x++){
++           if(srca[x])
++             dst[1]=((dst[1]*srca[x])>>8)+src[x];
++           dst+=3; // 24bpp
++         }
++         src+=srcstride;
++         srca+=srcstride;
++         dstbase+=dststride;
++       }
++       return;
 +    case DEST_PLANES_BR:
-+      for(y=0;y<h;y++){
-+        register unsigned char *dst = dstbase;
-+        register int x;
-+        for(x=0;x<w;x++){
-+          if(srca[x])
-+            dst[2]=((dst[2]*srca[x])>>8)+src[x];
-+          dst+=3; // 24bpp
-+        }
-+        src+=srcstride;
-+        srca+=srcstride;
-+        dstbase+=dststride;
-+      }
-+      return;
++       for(y=0;y<h;y++){
++         register unsigned char *dst = dstbase;
++         register int x;
++         for(x=0;x<w;x++){
++           if(srca[x])
++             dst[2]=((dst[2]*srca[x])>>8)+src[x];
++           dst+=3; // 24bpp
++         }
++         src+=srcstride;
++         srca+=srcstride;
++         dstbase+=dststride;
++       }
++       return;
 +    }
  }
  
 -static inline void RENAME(vo_draw_alpha_rgb32)(int w,int h, unsigned char* src, unsigned char *srca, int srcstride, unsigned char* dstbase,int dststride){
 +static inline void RENAME(vo_draw_alpha_rgb32)(int w,int h, int dp, unsigned char* src, unsigned char *srca, int srcstride, unsigned char* dstbase,int dststride){
      int y;
- #ifdef WORDS_BIGENDIAN
+ #if HAVE_BIGENDIAN
      dstbase++;
  #endif
 +    switch (dp) {
@@ -833,9 +834,9 @@ diff -Naur MPlayer-export-2009-06-13.orig/libvo/osd_template.c MPlayer-export-20
 +    return;
 +  }
  }
-diff -Naur MPlayer-export-2009-06-13.orig/libvo/sub.c MPlayer-export-2009-06-13/libvo/sub.c
---- MPlayer-export-2009-06-13.orig/libvo/sub.c	2009-06-13 22:53:58.000000000 +0200
-+++ MPlayer-export-2009-06-13/libvo/sub.c	2009-06-14 00:10:51.000000000 +0200
+diff -Naur MPlayer-export-2009-10-03.orig/libvo/sub.c MPlayer-export-2009-10-03/libvo/sub.c
+--- MPlayer-export-2009-10-03.orig/libvo/sub.c	2009-10-03 20:27:28.000000000 +0200
++++ MPlayer-export-2009-10-03/libvo/sub.c	2009-10-03 20:35:35.000000000 +0200
 @@ -167,11 +167,12 @@
  }
  
@@ -877,9 +878,9 @@ diff -Naur MPlayer-export-2009-06-13.orig/libvo/sub.c MPlayer-export-2009-06-13/
    vo_draw_text_ext(dxs, dys, 0, 0, 0, 0, dxs, dys, draw_alpha);
  }
  
-diff -Naur MPlayer-export-2009-06-13.orig/libvo/sub.h MPlayer-export-2009-06-13/libvo/sub.h
---- MPlayer-export-2009-06-13.orig/libvo/sub.h	2009-06-13 22:53:58.000000000 +0200
-+++ MPlayer-export-2009-06-13/libvo/sub.h	2009-06-14 00:10:51.000000000 +0200
+diff -Naur MPlayer-export-2009-10-03.orig/libvo/sub.h MPlayer-export-2009-10-03/libvo/sub.h
+--- MPlayer-export-2009-10-03.orig/libvo/sub.h	2009-10-03 20:27:28.000000000 +0200
++++ MPlayer-export-2009-10-03/libvo/sub.h	2009-10-03 20:35:35.000000000 +0200
 @@ -122,10 +122,10 @@
  extern int spu_aamode;
  extern float spu_gaussvar;
@@ -893,9 +894,9 @@ diff -Naur MPlayer-export-2009-06-13.orig/libvo/sub.h MPlayer-export-2009-06-13/
  void vo_remove_text(int dxs,int dys,void (*remove)(int x0,int y0, int w,int h));
  
  void vo_init_osd(void);
-diff -Naur MPlayer-export-2009-06-13.orig/libvo/vesa_lvo.c MPlayer-export-2009-06-13/libvo/vesa_lvo.c
---- MPlayer-export-2009-06-13.orig/libvo/vesa_lvo.c	2009-06-13 22:53:58.000000000 +0200
-+++ MPlayer-export-2009-06-13/libvo/vesa_lvo.c	2009-06-14 00:10:51.000000000 +0200
+diff -Naur MPlayer-export-2009-10-03.orig/libvo/vesa_lvo.c MPlayer-export-2009-10-03/libvo/vesa_lvo.c
+--- MPlayer-export-2009-10-03.orig/libvo/vesa_lvo.c	2009-10-03 20:27:28.000000000 +0200
++++ MPlayer-export-2009-10-03/libvo/vesa_lvo.c	2009-10-03 20:35:35.000000000 +0200
 @@ -246,50 +246,51 @@
  }
  
@@ -958,9 +959,9 @@ diff -Naur MPlayer-export-2009-06-13.orig/libvo/vesa_lvo.c MPlayer-export-2009-0
      }
  }
  #endif
-diff -Naur MPlayer-export-2009-06-13.orig/libvo/video_out.h MPlayer-export-2009-06-13/libvo/video_out.h
---- MPlayer-export-2009-06-13.orig/libvo/video_out.h	2009-06-13 22:53:58.000000000 +0200
-+++ MPlayer-export-2009-06-13/libvo/video_out.h	2009-06-14 00:10:51.000000000 +0200
+diff -Naur MPlayer-export-2009-10-03.orig/libvo/video_out.h MPlayer-export-2009-10-03/libvo/video_out.h
+--- MPlayer-export-2009-10-03.orig/libvo/video_out.h	2009-10-03 20:27:28.000000000 +0200
++++ MPlayer-export-2009-10-03/libvo/video_out.h	2009-10-03 20:35:35.000000000 +0200
 @@ -97,6 +97,8 @@
    int w,h;
  } mp_win_t;
@@ -986,9 +987,9 @@ diff -Naur MPlayer-export-2009-06-13.orig/libvo/video_out.h MPlayer-export-2009-
  typedef struct vo_info_s
  {
          /* driver name ("Matrox Millennium G200/G400" */
-diff -Naur MPlayer-export-2009-06-13.orig/libvo/vo_aa.c MPlayer-export-2009-06-13/libvo/vo_aa.c
---- MPlayer-export-2009-06-13.orig/libvo/vo_aa.c	2009-06-13 22:53:58.000000000 +0200
-+++ MPlayer-export-2009-06-13/libvo/vo_aa.c	2009-06-14 00:10:51.000000000 +0200
+diff -Naur MPlayer-export-2009-10-03.orig/libvo/vo_aa.c MPlayer-export-2009-10-03/libvo/vo_aa.c
+--- MPlayer-export-2009-10-03.orig/libvo/vo_aa.c	2009-10-03 20:27:28.000000000 +0200
++++ MPlayer-export-2009-10-03/libvo/vo_aa.c	2009-10-03 20:35:35.000000000 +0200
 @@ -518,7 +518,7 @@
      aa_close(c);
  }
@@ -998,9 +999,9 @@ diff -Naur MPlayer-export-2009-06-13.orig/libvo/vo_aa.c MPlayer-export-2009-06-1
      int i,j;
      for (i = 0; i < h; i++) {
  	for (j = 0; j < w; j++) {
-diff -Naur MPlayer-export-2009-06-13.orig/libvo/vo_dfbmga.c MPlayer-export-2009-06-13/libvo/vo_dfbmga.c
---- MPlayer-export-2009-06-13.orig/libvo/vo_dfbmga.c	2009-06-13 22:53:58.000000000 +0200
-+++ MPlayer-export-2009-06-13/libvo/vo_dfbmga.c	2009-06-14 00:10:51.000000000 +0200
+diff -Naur MPlayer-export-2009-10-03.orig/libvo/vo_dfbmga.c MPlayer-export-2009-10-03/libvo/vo_dfbmga.c
+--- MPlayer-export-2009-10-03.orig/libvo/vo_dfbmga.c	2009-10-03 20:27:28.000000000 +0200
++++ MPlayer-export-2009-10-03/libvo/vo_dfbmga.c	2009-10-03 20:35:35.000000000 +0200
 @@ -990,7 +990,7 @@
  }
  
@@ -1117,9 +1118,9 @@ diff -Naur MPlayer-export-2009-06-13.orig/libvo/vo_dfbmga.c MPlayer-export-2009-
       }
  
       subframe->Unlock( subframe );
-diff -Naur MPlayer-export-2009-06-13.orig/libvo/vo_dga.c MPlayer-export-2009-06-13/libvo/vo_dga.c
---- MPlayer-export-2009-06-13.orig/libvo/vo_dga.c	2009-06-13 22:53:58.000000000 +0200
-+++ MPlayer-export-2009-06-13/libvo/vo_dga.c	2009-06-14 00:10:51.000000000 +0200
+diff -Naur MPlayer-export-2009-10-03.orig/libvo/vo_dga.c MPlayer-export-2009-10-03/libvo/vo_dga.c
+--- MPlayer-export-2009-10-03.orig/libvo/vo_dga.c	2009-10-03 20:27:28.000000000 +0200
++++ MPlayer-export-2009-10-03/libvo/vo_dga.c	2009-10-03 20:35:35.000000000 +0200
 @@ -239,7 +239,7 @@
  //---------------------------------------------------------
  
@@ -1153,9 +1154,9 @@ diff -Naur MPlayer-export-2009-06-13.orig/libvo/vo_dga.c MPlayer-export-2009-06-
                                  2 * buffer_stride);
              break;
      }
-diff -Naur MPlayer-export-2009-06-13.orig/libvo/vo_directfb2.c MPlayer-export-2009-06-13/libvo/vo_directfb2.c
---- MPlayer-export-2009-06-13.orig/libvo/vo_directfb2.c	2009-06-13 22:53:58.000000000 +0200
-+++ MPlayer-export-2009-06-13/libvo/vo_directfb2.c	2009-06-14 00:10:51.000000000 +0200
+diff -Naur MPlayer-export-2009-10-03.orig/libvo/vo_directfb2.c MPlayer-export-2009-10-03/libvo/vo_directfb2.c
+--- MPlayer-export-2009-10-03.orig/libvo/vo_directfb2.c	2009-10-03 20:27:28.000000000 +0200
++++ MPlayer-export-2009-10-03/libvo/vo_directfb2.c	2009-10-03 20:35:35.000000000 +0200
 @@ -1456,7 +1456,7 @@
  
  // hopefully will be removed soon
@@ -1255,9 +1256,9 @@ diff -Naur MPlayer-export-2009-06-13.orig/libvo/vo_directfb2.c MPlayer-export-20
  		}
  
  	    unlock();
-diff -Naur MPlayer-export-2009-06-13.orig/libvo/vo_directx.c MPlayer-export-2009-06-13/libvo/vo_directx.c
---- MPlayer-export-2009-06-13.orig/libvo/vo_directx.c	2009-06-13 22:53:58.000000000 +0200
-+++ MPlayer-export-2009-06-13/libvo/vo_directx.c	2009-06-14 00:10:51.000000000 +0200
+diff -Naur MPlayer-export-2009-10-03.orig/libvo/vo_directx.c MPlayer-export-2009-10-03/libvo/vo_directx.c
+--- MPlayer-export-2009-10-03.orig/libvo/vo_directx.c	2009-10-03 20:27:28.000000000 +0200
++++ MPlayer-export-2009-10-03/libvo/vo_directx.c	2009-10-03 20:35:35.000000000 +0200
 @@ -147,7 +147,7 @@
  
  const LIBVO_EXTERN(directx)
@@ -1267,9 +1268,9 @@ diff -Naur MPlayer-export-2009-06-13.orig/libvo/vo_directx.c MPlayer-export-2009
  		unsigned char *srca, int stride)
  {
      switch(image_format) {
-diff -Naur MPlayer-export-2009-06-13.orig/libvo/vo_dxr3.c MPlayer-export-2009-06-13/libvo/vo_dxr3.c
---- MPlayer-export-2009-06-13.orig/libvo/vo_dxr3.c	2009-06-13 22:53:58.000000000 +0200
-+++ MPlayer-export-2009-06-13/libvo/vo_dxr3.c	2009-06-14 00:10:51.000000000 +0200
+diff -Naur MPlayer-export-2009-10-03.orig/libvo/vo_dxr3.c MPlayer-export-2009-10-03/libvo/vo_dxr3.c
+--- MPlayer-export-2009-10-03.orig/libvo/vo_dxr3.c	2009-10-03 20:27:28.000000000 +0200
++++ MPlayer-export-2009-10-03/libvo/vo_dxr3.c	2009-10-03 20:35:35.000000000 +0200
 @@ -568,7 +568,7 @@
  	return 0;
  }
@@ -1279,9 +1280,9 @@ diff -Naur MPlayer-export-2009-06-13.orig/libvo/vo_dxr3.c MPlayer-export-2009-06
  {
  #ifdef SPU_SUPPORT
  	unsigned char *buf = &osdpicbuf[(y * osdpicbuf_w) + x];
-diff -Naur MPlayer-export-2009-06-13.orig/libvo/vo_fbdev2.c MPlayer-export-2009-06-13/libvo/vo_fbdev2.c
---- MPlayer-export-2009-06-13.orig/libvo/vo_fbdev2.c	2009-06-13 22:53:58.000000000 +0200
-+++ MPlayer-export-2009-06-13/libvo/vo_fbdev2.c	2009-06-14 00:10:51.000000000 +0200
+diff -Naur MPlayer-export-2009-10-03.orig/libvo/vo_fbdev2.c MPlayer-export-2009-10-03/libvo/vo_fbdev2.c
+--- MPlayer-export-2009-10-03.orig/libvo/vo_fbdev2.c	2009-10-03 20:27:28.000000000 +0200
++++ MPlayer-export-2009-10-03/libvo/vo_fbdev2.c	2009-10-03 20:35:35.000000000 +0200
 @@ -94,7 +94,7 @@
  static int fb_bpp;		// 32: 32  24: 24  16: 16  15: 15
  static size_t fb_size; // size of frame_buffer
@@ -1309,9 +1310,9 @@ diff -Naur MPlayer-export-2009-06-13.orig/libvo/vo_fbdev2.c MPlayer-export-2009-
  }
  
  static void draw_osd(void)
-diff -Naur MPlayer-export-2009-06-13.orig/libvo/vo_fbdev.c MPlayer-export-2009-06-13/libvo/vo_fbdev.c
---- MPlayer-export-2009-06-13.orig/libvo/vo_fbdev.c	2009-06-13 22:53:58.000000000 +0200
-+++ MPlayer-export-2009-06-13/libvo/vo_fbdev.c	2009-06-14 00:10:51.000000000 +0200
+diff -Naur MPlayer-export-2009-10-03.orig/libvo/vo_fbdev.c MPlayer-export-2009-10-03/libvo/vo_fbdev.c
+--- MPlayer-export-2009-10-03.orig/libvo/vo_fbdev.c	2009-10-03 20:27:28.000000000 +0200
++++ MPlayer-export-2009-10-03/libvo/vo_fbdev.c	2009-10-03 20:35:35.000000000 +0200
 @@ -575,7 +575,7 @@
  static int fb_line_len;
  static int fb_xres;
@@ -1321,7 +1322,7 @@ diff -Naur MPlayer-export-2009-06-13.orig/libvo/vo_fbdev.c MPlayer-export-2009-0
                              unsigned char *srca, int stride,
                              unsigned char *dst, int dstride);
  
-@@ -1000,14 +1000,14 @@
+@@ -994,14 +994,14 @@
      return 0;
  }
  
@@ -1338,9 +1339,9 @@ diff -Naur MPlayer-export-2009-06-13.orig/libvo/vo_fbdev.c MPlayer-export-2009-0
  }
  
  static int draw_frame(uint8_t *src[])
-diff -Naur MPlayer-export-2009-06-13.orig/libvo/vo_gl2.c MPlayer-export-2009-06-13/libvo/vo_gl2.c
---- MPlayer-export-2009-06-13.orig/libvo/vo_gl2.c	2009-06-13 22:53:58.000000000 +0200
-+++ MPlayer-export-2009-06-13/libvo/vo_gl2.c	2009-06-14 00:10:51.000000000 +0200
+diff -Naur MPlayer-export-2009-10-03.orig/libvo/vo_gl2.c MPlayer-export-2009-10-03/libvo/vo_gl2.c
+--- MPlayer-export-2009-10-03.orig/libvo/vo_gl2.c	2009-10-03 20:27:28.000000000 +0200
++++ MPlayer-export-2009-10-03/libvo/vo_gl2.c	2009-10-03 20:35:35.000000000 +0200
 @@ -100,7 +100,7 @@
  static int      use_glFinish;
  
@@ -1383,12 +1384,12 @@ diff -Naur MPlayer-export-2009-06-13.orig/libvo/vo_gl2.c MPlayer-export-2009-06-
  }
  
  #ifdef GL_WIN32
-diff -Naur MPlayer-export-2009-06-13.orig/libvo/vo_quartz.c MPlayer-export-2009-06-13/libvo/vo_quartz.c
---- MPlayer-export-2009-06-13.orig/libvo/vo_quartz.c	2009-06-13 22:53:58.000000000 +0200
-+++ MPlayer-export-2009-06-13/libvo/vo_quartz.c	2009-06-14 00:11:07.000000000 +0200
-@@ -210,23 +210,23 @@
-     }
- }
+diff -Naur MPlayer-export-2009-10-03.orig/libvo/vo_quartz.c MPlayer-export-2009-10-03/libvo/vo_quartz.c
+--- MPlayer-export-2009-10-03.orig/libvo/vo_quartz.c	2009-10-03 20:27:28.000000000 +0200
++++ MPlayer-export-2009-10-03/libvo/vo_quartz.c	2009-10-03 20:35:35.000000000 +0200
+@@ -153,23 +153,23 @@
+ void window_fullscreen(void);
+ void window_panscan(void);
  
 -static void draw_alpha(int x0, int y0, int w, int h, unsigned char *src, unsigned char *srca, int stride)
 +static void draw_alpha(int x0, int y0, int w, int h, int dp, unsigned char *src, unsigned char *srca, int stride)
@@ -1415,9 +1416,9 @@ diff -Naur MPlayer-export-2009-06-13.orig/libvo/vo_quartz.c MPlayer-export-2009-
          break;
      }
  }
-diff -Naur MPlayer-export-2009-06-13.orig/libvo/vo_sdl.c MPlayer-export-2009-06-13/libvo/vo_sdl.c
---- MPlayer-export-2009-06-13.orig/libvo/vo_sdl.c	2009-06-13 22:53:58.000000000 +0200
-+++ MPlayer-export-2009-06-13/libvo/vo_sdl.c	2009-06-14 00:22:27.000000000 +0200
+diff -Naur MPlayer-export-2009-10-03.orig/libvo/vo_sdl.c MPlayer-export-2009-10-03/libvo/vo_sdl.c
+--- MPlayer-export-2009-10-03.orig/libvo/vo_sdl.c	2009-10-03 20:27:28.000000000 +0200
++++ MPlayer-export-2009-10-03/libvo/vo_sdl.c	2009-10-03 20:35:35.000000000 +0200
 @@ -238,7 +238,7 @@
   *
   **/
@@ -1557,9 +1558,9 @@ diff -Naur MPlayer-export-2009-06-13.orig/libvo/vo_sdl.c MPlayer-export-2009-06-
  		break;
  		}
          }
-diff -Naur MPlayer-export-2009-06-13.orig/libvo/vosub_vidix.c MPlayer-export-2009-06-13/libvo/vosub_vidix.c
---- MPlayer-export-2009-06-13.orig/libvo/vosub_vidix.c	2009-06-13 22:53:58.000000000 +0200
-+++ MPlayer-export-2009-06-13/libvo/vosub_vidix.c	2009-06-14 00:11:07.000000000 +0200
+diff -Naur MPlayer-export-2009-10-03.orig/libvo/vosub_vidix.c MPlayer-export-2009-10-03/libvo/vosub_vidix.c
+--- MPlayer-export-2009-10-03.orig/libvo/vosub_vidix.c	2009-10-03 20:27:28.000000000 +0200
++++ MPlayer-export-2009-10-03/libvo/vosub_vidix.c	2009-10-03 20:35:35.000000000 +0200
 @@ -286,7 +286,7 @@
    }
  }
@@ -1654,9 +1655,9 @@ diff -Naur MPlayer-export-2009-06-13.orig/libvo/vosub_vidix.c MPlayer-export-200
  	}
  	free(tmp);
  	free(tmpa);
-diff -Naur MPlayer-export-2009-06-13.orig/libvo/vo_vesa.c MPlayer-export-2009-06-13/libvo/vo_vesa.c
---- MPlayer-export-2009-06-13.orig/libvo/vo_vesa.c	2009-06-13 22:53:58.000000000 +0200
-+++ MPlayer-export-2009-06-13/libvo/vo_vesa.c	2009-06-14 00:11:07.000000000 +0200
+diff -Naur MPlayer-export-2009-10-03.orig/libvo/vo_vesa.c MPlayer-export-2009-10-03/libvo/vo_vesa.c
+--- MPlayer-export-2009-10-03.orig/libvo/vo_vesa.c	2009-10-03 20:27:28.000000000 +0200
++++ MPlayer-export-2009-10-03/libvo/vo_vesa.c	2009-10-03 20:35:35.000000000 +0200
 @@ -111,7 +111,7 @@
  static unsigned video_mode; /* selected video mode for playback */
  static struct VesaModeInfoBlock video_mode_info;
@@ -1733,9 +1734,9 @@ diff -Naur MPlayer-export-2009-06-13.orig/libvo/vo_vesa.c MPlayer-export-2009-06
    UNUSED(src);
    UNUSED(srca);
    UNUSED(stride);
-diff -Naur MPlayer-export-2009-06-13.orig/libvo/vo_x11.c MPlayer-export-2009-06-13/libvo/vo_x11.c
---- MPlayer-export-2009-06-13.orig/libvo/vo_x11.c	2009-06-13 22:53:58.000000000 +0200
-+++ MPlayer-export-2009-06-13/libvo/vo_x11.c	2009-06-14 00:11:07.000000000 +0200
+diff -Naur MPlayer-export-2009-10-03.orig/libvo/vo_x11.c MPlayer-export-2009-10-03/libvo/vo_x11.c
+--- MPlayer-export-2009-10-03.orig/libvo/vo_x11.c	2009-10-03 20:27:28.000000000 +0200
++++ MPlayer-export-2009-10-03/libvo/vo_x11.c	2009-10-03 20:35:35.000000000 +0200
 @@ -70,7 +70,7 @@
  
  const LIBVO_EXTERN(x11)
@@ -1804,9 +1805,9 @@ diff -Naur MPlayer-export-2009-06-13.orig/libvo/vo_x11.c MPlayer-export-2009-06-
      }
      return VO_NOTIMPL;
  }
-diff -Naur MPlayer-export-2009-06-13.orig/libvo/vo_xv.c MPlayer-export-2009-06-13/libvo/vo_xv.c
---- MPlayer-export-2009-06-13.orig/libvo/vo_xv.c	2009-06-13 22:53:58.000000000 +0200
-+++ MPlayer-export-2009-06-13/libvo/vo_xv.c	2009-06-14 00:11:07.000000000 +0200
+diff -Naur MPlayer-export-2009-10-03.orig/libvo/vo_xv.c MPlayer-export-2009-10-03/libvo/vo_xv.c
+--- MPlayer-export-2009-10-03.orig/libvo/vo_xv.c	2009-10-03 20:27:28.000000000 +0200
++++ MPlayer-export-2009-10-03/libvo/vo_xv.c	2009-10-03 20:35:35.000000000 +0200
 @@ -110,47 +110,91 @@
  static struct vo_rect dst_rect;
  static uint32_t max_width = 0, max_height = 0; // zero means: not set
@@ -1907,9 +1908,9 @@ diff -Naur MPlayer-export-2009-06-13.orig/libvo/vo_xv.c MPlayer-export-2009-06-1
                              unsigned char *src, unsigned char *srca,
                              int stride)
  {
-diff -Naur MPlayer-export-2009-06-13.orig/libvo/vo_xvmc.c MPlayer-export-2009-06-13/libvo/vo_xvmc.c
---- MPlayer-export-2009-06-13.orig/libvo/vo_xvmc.c	2009-06-13 22:53:58.000000000 +0200
-+++ MPlayer-export-2009-06-13/libvo/vo_xvmc.c	2009-06-14 00:11:07.000000000 +0200
+diff -Naur MPlayer-export-2009-10-03.orig/libvo/vo_xvmc.c MPlayer-export-2009-10-03/libvo/vo_xvmc.c
+--- MPlayer-export-2009-10-03.orig/libvo/vo_xvmc.c	2009-10-03 20:27:28.000000000 +0200
++++ MPlayer-export-2009-10-03/libvo/vo_xvmc.c	2009-10-03 20:35:35.000000000 +0200
 @@ -108,12 +108,12 @@
  static int free_element;
  
@@ -1944,9 +1945,9 @@ diff -Naur MPlayer-export-2009-06-13.orig/libvo/vo_xvmc.c MPlayer-export-2009-06
      int ox,oy;
      int rez;
  
-diff -Naur MPlayer-export-2009-06-13.orig/libvo/vo_yuv4mpeg.c MPlayer-export-2009-06-13/libvo/vo_yuv4mpeg.c
---- MPlayer-export-2009-06-13.orig/libvo/vo_yuv4mpeg.c	2009-06-13 22:53:58.000000000 +0200
-+++ MPlayer-export-2009-06-13/libvo/vo_yuv4mpeg.c	2009-06-14 00:18:48.000000000 +0200
+diff -Naur MPlayer-export-2009-10-03.orig/libvo/vo_yuv4mpeg.c MPlayer-export-2009-10-03/libvo/vo_yuv4mpeg.c
+--- MPlayer-export-2009-10-03.orig/libvo/vo_yuv4mpeg.c	2009-10-03 20:27:28.000000000 +0200
++++ MPlayer-export-2009-10-03/libvo/vo_yuv4mpeg.c	2009-10-03 20:35:35.000000000 +0200
 @@ -196,25 +196,41 @@
  	}
  }
@@ -1995,9 +1996,9 @@ diff -Naur MPlayer-export-2009-06-13.orig/libvo/vo_yuv4mpeg.c MPlayer-export-200
  						rgb_buffer + (y0 * image_width  + x0) * 3, image_width * 3);
  
  				swap_fields (rgb_buffer, image_height, image_width * 3);
-diff -Naur MPlayer-export-2009-06-13.orig/mp_core.h MPlayer-export-2009-06-13/mp_core.h
---- MPlayer-export-2009-06-13.orig/mp_core.h	2009-06-13 22:53:58.000000000 +0200
-+++ MPlayer-export-2009-06-13/mp_core.h	2009-06-14 00:11:07.000000000 +0200
+diff -Naur MPlayer-export-2009-10-03.orig/mp_core.h MPlayer-export-2009-10-03/mp_core.h
+--- MPlayer-export-2009-10-03.orig/mp_core.h	2009-10-03 20:27:28.000000000 +0200
++++ MPlayer-export-2009-10-03/mp_core.h	2009-10-03 20:35:35.000000000 +0200
 @@ -111,6 +111,7 @@
      unsigned char *nav_start;    ///< pointer to last read video buffer
      int            nav_in_size;  ///< last read size
@@ -2006,10 +2007,10 @@ diff -Naur MPlayer-export-2009-06-13.orig/mp_core.h MPlayer-export-2009-06-13/mp
  } MPContext;
  
  
-diff -Naur MPlayer-export-2009-06-13.orig/mplayer.c MPlayer-export-2009-06-13/mplayer.c
---- MPlayer-export-2009-06-13.orig/mplayer.c	2009-06-13 22:53:58.000000000 +0200
-+++ MPlayer-export-2009-06-13/mplayer.c	2009-06-14 00:11:07.000000000 +0200
-@@ -229,6 +229,7 @@
+diff -Naur MPlayer-export-2009-10-03.orig/mplayer.c MPlayer-export-2009-10-03/mplayer.c
+--- MPlayer-export-2009-10-03.orig/mplayer.c	2009-10-03 20:27:28.000000000 +0200
++++ MPlayer-export-2009-10-03/mplayer.c	2009-10-03 20:35:35.000000000 +0200
+@@ -220,6 +220,7 @@
  // if nonzero, hide current OSD contents when GetTimerMS() reaches this
  unsigned int osd_visible;
  int osd_duration = 1000;
@@ -2017,7 +2018,7 @@ diff -Naur MPlayer-export-2009-06-13.orig/mplayer.c MPlayer-export-2009-06-13/mp
  
  int term_osd = 1;
  static char* term_osd_esc = "\x1b[A\r\x1b[K";
-@@ -1092,6 +1093,7 @@
+@@ -1106,6 +1107,7 @@
  void init_vo_spudec(void) {
    if (vo_spudec)
      spudec_free(vo_spudec);
@@ -2025,7 +2026,7 @@ diff -Naur MPlayer-export-2009-06-13.orig/mplayer.c MPlayer-export-2009-06-13/mp
    initialized_flags &= ~INITIALIZED_SPUDEC;
    vo_spudec = NULL;
    if (spudec_ifo) {
-@@ -1131,6 +1133,16 @@
+@@ -1145,6 +1147,16 @@
    }
  }
  
@@ -2042,7 +2043,7 @@ diff -Naur MPlayer-export-2009-06-13.orig/mplayer.c MPlayer-export-2009-06-13/mp
  /*
   * In Mac OS X the SDL-lib is built upon Cocoa. The easiest way to
   * make it all work is to use the builtin SDL-bootstrap code, which
-@@ -1932,6 +1944,85 @@
+@@ -1966,6 +1978,85 @@
      if (decoded_frame && mpctx->nav_smpi != decoded_frame)
          mpctx->nav_smpi = mp_dvdnav_copy_mpi(mpctx->nav_smpi,decoded_frame);
  }
@@ -2128,7 +2129,7 @@ diff -Naur MPlayer-export-2009-06-13.orig/mplayer.c MPlayer-export-2009-06-13/mp
  #endif /* CONFIG_DVDNAV */
  
  static void adjust_sync_and_print_status(int between_frames, float timing_error)
-@@ -3781,20 +3872,34 @@
+@@ -3828,20 +3919,34 @@
  
  } // end if(mpctx->sh_video)
  
@@ -2169,9 +2170,9 @@ diff -Naur MPlayer-export-2009-06-13.orig/mplayer.c MPlayer-export-2009-06-13/mp
   }
  #endif
  
-diff -Naur MPlayer-export-2009-06-13.orig/spudec.c MPlayer-export-2009-06-13/spudec.c
---- MPlayer-export-2009-06-13.orig/spudec.c	2009-06-13 22:53:58.000000000 +0200
-+++ MPlayer-export-2009-06-13/spudec.c	2009-06-14 00:29:55.000000000 +0200
+diff -Naur MPlayer-export-2009-10-03.orig/spudec.c MPlayer-export-2009-10-03/spudec.c
+--- MPlayer-export-2009-10-03.orig/spudec.c	2009-10-03 20:27:28.000000000 +0200
++++ MPlayer-export-2009-10-03/spudec.c	2009-10-03 20:35:35.000000000 +0200
 @@ -41,6 +41,15 @@
  float spu_gaussvar = 1.0;
  extern int sub_pos;
@@ -3681,9 +3682,9 @@ diff -Naur MPlayer-export-2009-06-13.orig/spudec.c MPlayer-export-2009-06-13/spu
 +    spudec_process_data(spu, spu->last_packet);
 +}
 +
-diff -Naur MPlayer-export-2009-06-13.orig/spudec.h MPlayer-export-2009-06-13/spudec.h
---- MPlayer-export-2009-06-13.orig/spudec.h	2009-06-13 22:53:58.000000000 +0200
-+++ MPlayer-export-2009-06-13/spudec.h	2009-06-14 00:11:07.000000000 +0200
+diff -Naur MPlayer-export-2009-10-03.orig/spudec.h MPlayer-export-2009-10-03/spudec.h
+--- MPlayer-export-2009-10-03.orig/spudec.h	2009-10-03 20:27:28.000000000 +0200
++++ MPlayer-export-2009-10-03/spudec.h	2009-10-03 20:35:35.000000000 +0200
 @@ -5,8 +5,8 @@
  
  void spudec_heartbeat(void *this, unsigned int pts100);
@@ -3704,9 +3705,9 @@ diff -Naur MPlayer-export-2009-06-13.orig/spudec.h MPlayer-export-2009-06-13/spu
 +void spudec_dvdnav_area(void *this, int sx, int sy, int ex, int ey, uint32_t palette);
  
  #endif /* MPLAYER_SPUDEC_H */
-diff -Naur MPlayer-export-2009-06-13.orig/stream/stream_dvdnav.c MPlayer-export-2009-06-13/stream/stream_dvdnav.c
---- MPlayer-export-2009-06-13.orig/stream/stream_dvdnav.c	2009-06-13 22:53:58.000000000 +0200
-+++ MPlayer-export-2009-06-13/stream/stream_dvdnav.c	2009-06-14 00:11:07.000000000 +0200
+diff -Naur MPlayer-export-2009-10-03.orig/stream/stream_dvdnav.c MPlayer-export-2009-10-03/stream/stream_dvdnav.c
+--- MPlayer-export-2009-10-03.orig/stream/stream_dvdnav.c	2009-10-03 20:27:28.000000000 +0200
++++ MPlayer-export-2009-10-03/stream/stream_dvdnav.c	2009-10-03 20:35:35.000000000 +0200
 @@ -36,6 +36,14 @@
  } dvdnav_state_t;
  
@@ -3862,9 +3863,9 @@ diff -Naur MPlayer-export-2009-06-13.orig/stream/stream_dvdnav.c MPlayer-export-
  const stream_info_t stream_info_dvdnav = {
    "DVDNAV stream",
    "null",
-diff -Naur MPlayer-export-2009-06-13.orig/stream/stream_dvdnav.h MPlayer-export-2009-06-13/stream/stream_dvdnav.h
---- MPlayer-export-2009-06-13.orig/stream/stream_dvdnav.h	2009-06-13 22:53:58.000000000 +0200
-+++ MPlayer-export-2009-06-13/stream/stream_dvdnav.h	2009-06-14 00:11:07.000000000 +0200
+diff -Naur MPlayer-export-2009-10-03.orig/stream/stream_dvdnav.h MPlayer-export-2009-10-03/stream/stream_dvdnav.h
+--- MPlayer-export-2009-10-03.orig/stream/stream_dvdnav.h	2009-10-03 20:27:28.000000000 +0200
++++ MPlayer-export-2009-10-03/stream/stream_dvdnav.h	2009-10-03 20:35:35.000000000 +0200
 @@ -29,5 +29,7 @@
  int mp_dvdnav_audio_has_changed (stream_t *stream, int clear);
  int mp_dvdnav_spu_has_changed (stream_t *stream, int clear);
