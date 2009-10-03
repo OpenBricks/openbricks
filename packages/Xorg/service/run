@@ -6,10 +6,6 @@
 
 . /etc/funcs
 
-XORG_SAMPLE=/etc/X11/X.cfg.sample
-XORG_CFG=/etc/X11/X.cfg
-
-make_persistent file $XORG_CFG /var/data/config/X.cfg
 make_persistent file /etc/X11/xorg.conf /var/data/config/xorg.conf
 
 # tty used for the video display
@@ -21,46 +17,11 @@ grep "debug" /proc/cmdline > /dev/null && [ "$1" != "force" ] && exit 1
 # don't start Xorg in installator mode
 grep "installator" /proc/cmdline > /dev/null && [ "$1" != "force" ] && exit 1
 
-[ -f /usr/bin/Xorg -a -f /usr/bin/xorgconfig -a -f /var/use_xorg ] || exit 1
+[ -f /usr/bin/Xorg -a -f /var/use_xorg ] || exit 1
 echo "### Configuring X.Org video settings ###"
 
 # Fix the /etc/X11 case-insensitive fs directory creation issue
 [ -d /etc/x11 ] && ln -s /etc/x11 /etc/X11
-
-# Try to detect manual user settings
-grep -q "xorg=" /proc/cmdline && XORG=`sed 's/.*xorg=\([^\ ]*\).*/\1/' /proc/cmdline`
-if [ -n "$XORG" ]; then
-  RATE="auto"
-  if [ "$XORG" = 1080p ]; then
-    XRES=1920
-    YRES=1080
-  elif [ "$XORG" = 720p ]; then
-    XRES=1280
-    YRES=720
-  elif [ "$XORG" = 480p ]; then
-    XRES=720
-    YRES=480
-  else
-    XRES=`echo $XORG | sed 's%\(.*\)x.*%\1%'`
-    echo $XORG | grep -q @
-    if [ "$?" = 0 ]; then
-      YRES=`echo $XORG | sed 's%.*x\(.*\)@.*%\1%'`
-      RATE=`echo $XORG | sed 's%.*@\(.*\)%\1%'`
-    else
-      YRES=`echo $XORG | sed 's%.*x\(.*\)%\1%'`
-    fi
-  fi
-
-  cat $XORG_SAMPLE > $XORG_CFG
-  sed -i "s%XORG_RESX=.*%XORG_RESX=$XRES%" $XORG_CFG
-  sed -i "s%XORG_RESY=.*%XORG_RESY=$YRES%" $XORG_CFG
-  sed -i "s%XORG_RATE=.*%XORG_RATE=$RATE%" $XORG_CFG
-fi
-
-# Select which Xorg configuration file method to use
-# Do not overwrite user generated settings if any ...
-[ ! -f /etc/X11/xorg.conf ] && [ ! -f $XORG_CFG ] && cat $XORG_SAMPLE >$XORG_CFG
-xorgconfig > /dev/null 2>&1
 
 echo "### Starting X.Org ###"
 
