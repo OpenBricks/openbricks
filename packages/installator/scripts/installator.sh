@@ -19,6 +19,8 @@ detect_os_microsoft () {
     LONGNAME="Windows NT/2000/XP/Vista"
   elif [ -e "$2/windows/win.com" ]; then
     LONGNAME="Windows 95/98/Me"
+  elif [ -e "$2/bootmgr" -a -e "$2/config.sys" -a -d "$2/Boot" ]; then
+    LONGNAME="Windows 7"
   elif [ -d "$2/dos" ]; then
     LONGNAME="MS-DOS 5.x/6.x/Win3.1"
   else
