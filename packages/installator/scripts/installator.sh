@@ -571,8 +571,8 @@ install_grub (){
     dbglg "grub dev abstraction: $MOD_DEVABSTRACTION"
     dbglg "grub partmap: $MOD_PARTMAP"
     dbglg "grub modules: $MODULES"
-    dbglg "cp -R /usr/lib/grub/${ARCH}/* /usr/lib/grub/fonts /usr/lib/grub/ ${GRUBDIR}/"
-    cp -R /usr/lib/grub/${ARCH}/* /usr/lib/grub/fonts /usr/lib/grub/ ${GRUBDIR}/
+    dbglg "cp -R /usr/lib/grub/fonts /usr/lib/grub/${ARCH}/* ${GRUBDIR}/"
+    cp -R /usr/lib/grub/fonts /usr/lib/grub/${ARCH}/* ${GRUBDIR}/
 
     if ! ( dbglg "grub-mkimage --output=${GRUBDIR}/core.img --prefix=${BOOT_DRV}${GRUBPREFIX} $MODULES" && \
     grub-mkimage --output=${GRUBDIR}/core.img --prefix="${BOOT_DRV}${GRUBPREFIX}" $MODULES \
