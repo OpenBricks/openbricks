@@ -574,13 +574,16 @@ install_grub (){
     dbglg "cp -R /usr/lib/grub/${ARCH}/* /usr/lib/grub/fonts /usr/lib/grub/ ${GRUBDIR}/"
     cp -R /usr/lib/grub/${ARCH}/* /usr/lib/grub/fonts /usr/lib/grub/ ${GRUBDIR}/
 
-    dbglg "grub-mkimage --output=${GRUBDIR}/core.img --prefix=${BOOT_DRV}${GRUBPREFIX} $MODULES"
+    if ! ( dbglg "grub-mkimage --output=${GRUBDIR}/core.img --prefix=${BOOT_DRV}${GRUBPREFIX} $MODULES" && \
     grub-mkimage --output=${GRUBDIR}/core.img --prefix="${BOOT_DRV}${GRUBPREFIX}" $MODULES \
-      >>$LOGFILE 2>&1
-
-    dbglg "grub-setup --device-map=${DEVICE_MAP} --directory=${GRUBDIR} $MBRDEV"
+      >>$LOGFILE 2>&1 && \
+    dbglg "grub-setup --device-map=${DEVICE_MAP} --directory=${GRUBDIR} $MBRDEV" && \
     grub-setup --device-map=${DEVICE_MAP} --directory=${GRUBDIR} $MBRDEV \
-      >> $LOGFILE 2>&1
+      >> $LOGFILE 2>&1 ); then
+      dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_BOOTLOADER" --msgbox "$MSG_GRUB_SETUP_ERROR" 0 0
+      dialog --textbox $LOGFILE 0 0
+      exit 1
+    fi
 
 #FIXME: image format to be used is png, by now all themes grub splash images are xpm.gz, they have to be converted for this to work properly
 
