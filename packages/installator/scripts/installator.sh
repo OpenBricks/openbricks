@@ -193,7 +193,7 @@ choose_disk () {
     done
 
     # add volume groups to list
-    for i in `lvm vgs --noheadings --separator ":" --nosuffix --units M | sed "s/^\ *//g"`; do
+    [ -x /sbin/lvm ] && for i in `lvm vgs --noheadings --separator ":" --nosuffix --units M | sed "s/^\ *//g"`; do
       SIZE=`echo $i | cut -d\: -f6 | sed "s/\.[0-9]*//g"`
       VENDOR="LVM"
       MODEL="Volume Group"
@@ -247,7 +247,7 @@ choose_partition_dev () {
       esac
     done
     
-    for i in `lvm lvs --noheadings --nosuffix --units M --separator ":" $LOC_DISK | sed "s/^\ *//g"`; do
+    [ -x /sbin/lvm ] && for i in `lvm lvs --noheadings --nosuffix --units M --separator ":" $LOC_DISK | sed "s/^\ *//g"`; do
       SIZE=`echo $i | cut -d\: -f4 | sed "s/\.[0-9]*//g"`
       VENDOR="LVM"
       MODEL="Logical Volume"
@@ -313,7 +313,7 @@ format_if_needed () {
   local SUPPORTED_TYPES PART_TYPE
 
   # Set valid FS types based on selected install partition
-  if ( lvm lvdisplay $LOC_DEV >/dev/null ); then
+  if ( [ -x /sbin/lvm ] && lvm lvdisplay $LOC_DEV >/dev/null ); then
     SUPPORTED_TYPES="vfat ext4 ext3 ext2"
     PART_TYPE="LVM"
   else
@@ -355,7 +355,7 @@ format_if_needed () {
     && FORMAT=yes
 
   if [ "$FORMAT" = yes ]; then
-    if ( lvm lvdisplay $LOC_DEV >/dev/null ); then
+    if ( [ -x /sbin/lvm ] && lvm lvdisplay $LOC_DEV >/dev/null ); then
       LOC_MKFS_TYPE=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" \
         --title "$MSG_INSTALL_PART_TYPE" --menu "$MSG_INSTALL_PART_TYPE_DESC"\
         0 0 0 ext2 "Linux ext2" ext3 "Linux ext3" ext4 "Linux ext4" vfat "Dos vfat"` \
@@ -683,7 +683,7 @@ DISK="`choose_disk`"
 [ -z "$DISK" ] && exit 1
 
 # Make sure disk partitions are not already mounted in case it's no VG
-if ( lvm vgdisplay /dev/$DISK >/dev/null ); then
+if ( [ -x /sbin/lvm vgdisplay /dev/$DISK >/dev/null ); then
   umount /dev/$DISK/* 2>/dev/null
 else
   umount /dev/${DISK}* 2>/dev/null
@@ -711,7 +711,7 @@ fi
 CFDISK_MSG="$MSG_CFDISK_BEGIN $MSG_DISK_PART $MSG_CFDISK_END"
 
 # Guide user on how to setup with cfdisk tool in the next step only if no VG was selected
-if ( ! lvm vgdisplay /dev/$DISK >/dev/null ); then
+if ( [ -x /sbin/lvm ] && ! lvm vgdisplay /dev/$DISK >/dev/null ); then
   dialog --stdout --backtitle "$BACKTITLE" --title "$MSG_INSTALL_DEV_CONFIG" \
     --msgbox "$CFDISK_MSG" 0 0 \
     || exit 1
