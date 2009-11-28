@@ -1,7 +1,5 @@
 #!/bin/sh
 
-exec 2>/tmp/installator.stderr
-
 LOGFILE=/tmp/install.log
 
 # Acts just like echo cmd, with automatic redirection
