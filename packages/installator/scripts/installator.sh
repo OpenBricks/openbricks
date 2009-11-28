@@ -1,5 +1,7 @@
 #!/bin/sh
 
+exec 2>/tmp/installator.stderr
+
 LOGFILE=/tmp/install.log
 
 # Acts just like echo cmd, with automatic redirection
@@ -683,7 +685,7 @@ DISK="`choose_disk`"
 [ -z "$DISK" ] && exit 1
 
 # Make sure disk partitions are not already mounted in case it's no VG
-if ( [ -x /sbin/lvm vgdisplay /dev/$DISK >/dev/null ); then
+if ( [ -x /sbin/lvm ] && vgdisplay /dev/$DISK >/dev/null ); then
   umount /dev/$DISK/* 2>/dev/null
 else
   umount /dev/${DISK}* 2>/dev/null
