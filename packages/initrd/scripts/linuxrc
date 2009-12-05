@@ -56,7 +56,11 @@ boot_from_hdd () {
   HDD=/hdd
   mkdir -p $HDD
   for i in 1 2 3 4; do
-    [ -b "$BOOT_DEV" ] && mount -o ro $BOOT_DEV $HDD
+    if [ -b "$BOOT_DEV" ]; then
+      mount -o ro $BOOT_DEV $HDD
+    elif [ -n "$BOOT_LABEL" -a -e "/dev/disk/by-label/$BOOT_LABEL" ]; then
+      mount -o ro "/dev/disk/by-label/$BOOT_LABEL" $HDD
+    fi
     if [ -d "$HDD$ROOT_LOCATION" ]; then
       GEEXBOX="$HDD$ROOT_LOCATION"
       progress 11001 "Booting from: $GEEXBOX"
@@ -119,6 +123,10 @@ for arg in $(cat /proc/cmdline); do
         UUID=*)
           # Grab real device name from UUID symlink
           BOOT_UUID="${BOOT#UUID=}"
+          BOOT=hdd
+          ;;
+        LABEL=*)
+          BOOT_LABEL="${BOOT#LABEL=}"
           BOOT=hdd
           ;;
         *)
