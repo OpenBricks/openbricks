@@ -13,27 +13,6 @@ progress() {
   echo "### $2 ###"
 }
 
-boot_from_cdrom () {
-  progress 11000 "Searching for CD-ROM drives"
-  CDROM=/cd
-  mkdir -p $CDROM
-  for i in 1 2 3 4 5; do
-    if [ -d /dev/cdroms ]; then
-      for dev in `ls /dev/cdroms/*`; do
-        [ -e $dev ] && mount -o ro $dev $CDROM || continue
-        if [ -d "$CDROM$ROOT_LOCATION" ]; then
-          GEEXBOX="$CDROM$ROOT_LOCATION"
-          progress 11001 "Booting from: $GEEXBOX"
-          break
-        fi
-        umount $CDROM
-      done
-    fi
-    [ -n "$GEEXBOX" ] && break
-    sleep 2
-  done
-}
-
 boot_from_hdd () {
   progress 11000 "HDD Boot Device Detection"
   HDD=/hdd
@@ -113,10 +92,8 @@ for arg in $(cat /proc/cmdline); do
           BOOT=hdd
           ;;
         *)
-          if [ "$BOOT" != cdrom -a "$BOOT" != nfs -a "$BOOT" != smb ]; then
-            BOOT_DEV=$BOOT
-            BOOT=hdd
-          fi
+          BOOT_DEV=$BOOT
+          BOOT=hdd
           ;;
       esac
       ;;
@@ -188,9 +165,6 @@ get_devices_from_uuids
 
 # select boot device for 2nd stage
 case "$BOOT" in
-  cdrom)
-    boot_from_cdrom
-    ;;
   hdd)
     boot_from_hdd
     ;;
@@ -214,11 +188,9 @@ if test "$BOOT" = nfs -o "$BOOT" = smb; then
   fi
 fi
 
-[ "$BOOT" = cdrom ] && export CDROM="${GEEXBOX%/GEEXBOX}"
 [ "$BOOT" = hdd ] && export HDD="${GEEXBOX%/GEEXBOX}"
 
 if test "$INSTALLATOR" != yes; then
-  [ "$BOOT" = cdrom ] && umount $CDROM
   [ "$BOOT" = hdd ] && umount $HDD
 fi
 
