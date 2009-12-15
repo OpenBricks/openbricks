@@ -1,7 +1,7 @@
 /*
- * D-BUS/HAL based volume automounter for GeeXboX
+ * UDEV based volume automounter for GeeXboX
  *
- * Copyright (C) 2008 Benjamin Zores
+ * Copyright (C) 2009 Benjamin Zores
  *
  * This file is part of GeeXboX.
  *
@@ -22,79 +22,87 @@
 
 #include <stdio.h>
 #include <string.h>
-#include <unistd.h>
 #include <stdlib.h>
-#include <sys/mount.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <unistd.h>
+#include <mntent.h>
+#include <sys/select.h>
+#include <signal.h>
 #include <errno.h>
+#include <unistd.h>
+#include <pthread.h>
+#include <libudev.h>
 
-#include <glib.h>
-#include <dbus/dbus.h>
-#include <dbus/dbus-glib.h>
-#include <dbus/dbus-glib-lowlevel.h>
-#include <libhal.h>
-#include <libhal-storage.h>
+#define MTAB_FILE          "/etc/mtab"
+#define FILTER_SUBSYTEM    "block"
+#define FILTER_BLK_LOOP    "block/loop"
+#define FILTER_BLK_RAM     "block/ram"
+
+#define M_FREE(p) if (p) free (p)
+
+//#define DEBUG
 
 typedef struct volume_s {
+  char *syspath;
   char *device;
   char *name;
   char *type;
   char *fstype;
+  int mounted;
 } volume_t;
 
+typedef struct volume_list_s {
+  volume_t **volumes;
+  int count;
+} volume_list_t;
+
 static const struct {
   const char *name;
-  LibHalDriveBus bus;
+  const char *bus;
 } drv_bus_mapping[] = {
-  { "Unknown",                LIBHAL_DRIVE_BUS_UNKNOWN                  },
-  { "IDE",                    LIBHAL_DRIVE_BUS_IDE                      },
-  { "SATA",                   LIBHAL_DRIVE_BUS_SCSI                     },
-  { "USB",                    LIBHAL_DRIVE_BUS_USB                      },
-  { "FireWire",               LIBHAL_DRIVE_BUS_IEEE1394                 },
-  { "CCW",                    LIBHAL_DRIVE_BUS_CCW                      },
+  { "SATA",                   "scsi"                     },
+  { "SATA",                   "ata"                     },
+  { "IDE",                    "ide"                     },
+  { "USB",                    "usb"                     },
+  { "FireWire",               "ieee1394"                     },
+  { "CCW",                    "ccw"                     },
   { NULL,                     0                                         }
 };
 
 static const struct {
   const char *name;
-  LibHalDriveType type;
+  const char *type;
 } drv_type_mapping[] = {
-  { "Removable Disk",         LIBHAL_DRIVE_TYPE_REMOVABLE_DISK          },
-  { "Disk",                   LIBHAL_DRIVE_TYPE_DISK                    },
-  { "CD-ROM",                 LIBHAL_DRIVE_TYPE_CDROM                   },
-  { "Floppy",                 LIBHAL_DRIVE_TYPE_FLOPPY                  },
-  { "Tape",                   LIBHAL_DRIVE_TYPE_TAPE                    },
-  { "CompactFlash",           LIBHAL_DRIVE_TYPE_COMPACT_FLASH           },
-  { "MemoryStick",            LIBHAL_DRIVE_TYPE_MEMORY_STICK            },
-  { "SmartMedia",             LIBHAL_DRIVE_TYPE_SMART_MEDIA             },
-  { "SD/MMC",                 LIBHAL_DRIVE_TYPE_SD_MMC                  },
-  { "Camera",                 LIBHAL_DRIVE_TYPE_CAMERA                  },
-  { "Portable Audio Player",  LIBHAL_DRIVE_TYPE_PORTABLE_AUDIO_PLAYER   },
-  { "ZIP",                    LIBHAL_DRIVE_TYPE_ZIP                     },
-  { "JAZ",                    LIBHAL_DRIVE_TYPE_JAZ                     },
-  { "FlashKey",               LIBHAL_DRIVE_TYPE_FLASHKEY                },
-  { "MagnetoOptical",         LIBHAL_DRIVE_TYPE_MO                      },
+  { "Disk",                   "disk"                    },
+  { "CD-ROM",                 "cdrom"                   },
+  { "Floppy",                 "floppy"                  },
+  { "Tape",                   "tape"                    },
+  { "CompactFlash",           "compact_flash"           },
+  { "MemoryStick",            "memory_stick"            },
+  { "SmartMedia",             "smart_media"             },
+  { "SD/MMC",                 "sd_mmc"                  },
+  { "ZIP",                    "zip"                     },
+  { "JAZ",                    "jaz"                     },
+  { "FlashKey",               "flashkey"                },
+  { "MagnetoOptical",         "optical"                      },
   { NULL,                     0                                         }
 };
+
 
 static const struct {
   const char *name;
   const char *property;
 } vol_disc_mapping[] = {
-  { "CDDA",                   "volume.disc.has_audio"                   },
-  { "VCD",                    "volume.disc.is_vcd"                      },
-  { "SVCD",                   "volume.disc.is_svcd"                     },
-  { "DVD",                    "volume.disc.is_videodvd"                 },
-  { "CD",                     "volume.disc.has_data"                    },
-  { NULL,                     NULL                                      }
+  { "BLURAY",                 "ID_CDROM_MEDIA_BD"                   },
+  { "CDDA",                   "ID_CDROM_MEDIA_TRACK_COUNT_AUDIO"    },
+  { "VCD",                    "ID_CDROM_MEDIA_VCD"                  },
+  { "SVCD",                   "ID_CDROM_MEDIA_SDVD"                 },
+  { "DVD",                    "ID_CDROM_MEDIA_DVD"                  },
+  { "CD",                     "ID_CDROM_MEDIA_CD"                   },
+  { NULL,                     NULL                                  }
 };
 
-static GMainLoop *loop;
-static GHashTable *devices;
-static LibHalContext *ctx;
-static DBusError error;
+static int udev_exit = 0;
+static volume_list_t *vlist = NULL;
+static pthread_mutex_t vlist_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static volume_t *
 volume_new (void)
@@ -112,22 +120,34 @@ volume_free (volume_t *v)
   if (!v)
     return;
 
-  if (v->device)
-    free (v->device);
-  if (v->name)
-    free (v->name);
-  if (v->type)
-    free (v->type);
-  if (v->fstype)
-    free (v->fstype);
-  free (v);
+  M_FREE (v->syspath);
+  M_FREE (v->device);
+  M_FREE (v->name);
+  M_FREE (v->type);
+  M_FREE (v->fstype);
+  M_FREE (v);
 }
 
 static void
-volume_append_name (volume_t *v, char *str)
+volume_display (volume_t *v)
 {
-  char mp[1024];
+#ifdef DEBUG
+  if (!v)
+    return;
 
+  printf ("Volume Syspath: %s\n", v->syspath);
+  printf ("Volume Device:  %s\n", v->device);
+  printf ("Volume Name:    %s\n", v->name);
+  printf ("Volume Type:    %s\n", v->type);
+  printf ("Volume FS Type: %s\n", v->fstype);
+  printf ("Volume Mounted: %s\n", v->mounted ? "yes" : "no");
+  printf ("\n");
+#endif /* DEBUG */
+}
+
+static void
+volume_append_name (volume_t *v, const char *str)
+{
   if (!v || !str)
     return;
 
@@ -135,7 +155,8 @@ volume_append_name (volume_t *v, char *str)
     v->name = strdup (str);
   else
   {
-    memset (mp, '\0', sizeof (mp));
+    char mp[1024] = { 0 };
+
     snprintf (mp, sizeof (mp), "%s %s", v->name, str);
     free (v->name);
     v->name = strdup (mp);
@@ -143,43 +164,92 @@ volume_append_name (volume_t *v, char *str)
 }
 
 static void
-volume_add (volume_t *v, const char *udi)
+volume_list_add (volume_t *v)
 {
-  char cmd[1024];
+  if (!vlist)
+    vlist = calloc (1, sizeof (volume_list_t));
 
-  if (!v || !udi)
-    return;
-
-  g_hash_table_insert (devices, (gpointer) strdup (udi), (gpointer) v);
-
-  memset (cmd, '\0', sizeof (cmd));
-  snprintf (cmd, sizeof (cmd), "/usr/bin/hmount '%s' '%s' '%s' '%s'",
-            v->type, v->device, v->name, v->fstype);
-
-  printf ("[automountd] Executing: %s\n", cmd);
-  system (cmd);
+  if (v)
+  {
+    vlist->count++;
+    vlist->volumes = realloc (vlist->volumes,
+                              vlist->count * sizeof (volume_t *));
+    vlist->volumes[vlist->count - 1] = v;
+  }
 }
 
 static void
-volume_remove (const char *udi)
+volume_list_remove (int n)
 {
-  volume_t *v;
-  char cmd[1024];
-
-  if (!udi)
+  if (!vlist)
     return;
 
-  v = g_hash_table_lookup (devices, udi);
-  if (!v)
+  if (n >= vlist->count)
     return;
 
-  memset (cmd, '\0', sizeof (cmd));
-  snprintf (cmd, sizeof (cmd), "/usr/bin/humount '%s' '%s' '%s' '%s'",
-            v->type, v->device, v->name, v->fstype);
+  if (vlist->volumes[n])
+  {
+    int i;
 
-  printf ("[automountd] Executing: %s\n", cmd);
-  system (cmd);
-  g_hash_table_remove (devices, udi);
+    volume_free (vlist->volumes[n]);
+    for (i = n ; i < vlist->count - 1 ; i++)
+      vlist->volumes[i] = vlist->volumes[i+1];
+    vlist->count--;
+    vlist->volumes[vlist->count] = NULL;
+  }
+}
+
+static void
+volume_list_free (void)
+{
+  if (!vlist)
+    return;
+
+  if (vlist->volumes)
+  {
+    int i;
+
+    for (i = 0 ; i < vlist->count ; i++)
+      volume_list_remove (i);
+    free (vlist->volumes);
+  }
+  free (vlist);
+}
+
+static int
+volume_list_exists (const char *syspath)
+{
+  int i;
+
+  if (!vlist || !syspath)
+    return 0;
+
+  for (i = 0 ; i < vlist->count ; i++)
+    if (vlist->volumes[i]->syspath &&
+        !strcmp (vlist->volumes[i]->syspath, syspath))
+    {
+      return 1;
+    }
+
+  return 0;
+}
+
+static int
+volume_list_get (const char *syspath)
+{
+  int i;
+
+  if (!vlist || !syspath)
+    return -1;
+
+  for (i = 0 ; i < vlist->count ; i++)
+    if (vlist->volumes[i]->syspath &&
+        !strcmp (vlist->volumes[i]->syspath, syspath))
+    {
+      return i;
+    }
+
+  return -1;
 }
 
 static int
@@ -202,292 +272,462 @@ disk_get_number (int major, int minor)
   return 0;
 }
 
-static void
-add_hdd (LibHalVolume *vol, const char *udi)
+static int
+mtab_is_mounted (const char *devname)
 {
-  volume_t *v;
-  LibHalDrive *drv;
-  LibHalDriveType type;
-  LibHalDriveBus bus;
-  LibHalVolumeUsage usage;
-  const char *parent_udi;
-  char disk[4], part[16];
-  int i, nb;
+  struct mntent *mnt;
+  FILE *fp;
 
-  if (!vol || !udi)
-    return;
+  if (!devname)
+    return 0;
 
-  /* check if it's actually a mountable filesystem */
-  usage = libhal_volume_get_fsusage (vol);
-  if (usage != LIBHAL_VOLUME_USAGE_MOUNTABLE_FILESYSTEM)
-    return;
+  fp = fopen (MTAB_FILE, "r");
+  if (!fp)
+    return 0;
 
-  /* if partition is already mounted, we're done */
-  if (libhal_volume_is_mounted (vol))
-    return;
-
-  /* get volume's storage udi */
-  parent_udi = libhal_volume_get_storage_device_udi (vol);
-  if (!parent_udi)
-    return;
-
-  drv = libhal_drive_from_udi (ctx, parent_udi);
-  if (!drv)
-    return;
-
-  v = volume_new ();
-  v->device = strdup (libhal_volume_get_device_file (vol));
-  v->type = strdup ("HDD"); /* always the case for partitions */
-  v->fstype = strdup (libhal_volume_get_fstype (vol));
-
-  type = libhal_drive_get_type (drv);
-  bus = libhal_drive_get_bus (drv);
-
-  /* get bus' type */
-  for (i = 0; drv_bus_mapping[i].name; i++)
-    if (drv_bus_mapping[i].bus == bus)
-    {
-      volume_append_name (v, (char *) drv_bus_mapping[i].name);
-      break;
-    }
-
-  /* append disk's number to differenciate twice the same hardware */
-  nb = disk_get_number (libhal_volume_get_device_major (vol),
-                        libhal_volume_get_device_minor (vol));
-  memset (disk, '\0', sizeof (disk));
-  snprintf (disk, sizeof (disk), "#%d", nb);
-  volume_append_name (v, disk);
-
-  /* get drive's type */
-  for (i = 0; drv_type_mapping[i].name; i++)
-    if (drv_type_mapping[i].type == type)
-    {
-      volume_append_name (v, (char *) drv_type_mapping[i].name);
-      break;
-    }
-
-  /* either use partition label if any or vendor/model couple otherwise */
-  if (libhal_volume_get_label (vol))
-    volume_append_name (v, (char *) libhal_volume_get_label (vol));
-  else
+  while ((mnt = getmntent (fp)))
   {
-    if (libhal_drive_get_vendor (drv))
-      volume_append_name (v, (char *) libhal_drive_get_vendor (drv));
-    if (libhal_drive_get_model (drv))
-      volume_append_name (v, (char *) libhal_drive_get_model (drv));
+    if (!strcmp (mnt->mnt_fsname, devname))
+    {
+      endmntent (fp);
+      return 1;
+    }
   }
 
-  /* append partition's number to identify multiple partitions on same drive */
-  memset (part, '\0', sizeof (part));
-  snprintf (part, sizeof (part), "(%d)",
-            libhal_volume_get_partition_number (vol));
-  volume_append_name (v, part);
-
-  libhal_drive_free (drv);
-
-  /* add volume to global list of devices */
-  volume_add (v, udi);
+  endmntent (fp);
+  return 0;
 }
 
-static void
-add_disc (LibHalVolume *vol, const char *udi)
+static int
+get_property_value_int (struct udev_device *dev, const char *property)
 {
+  const char *value;
+
+  value = udev_device_get_property_value (dev, property);
+  if (!value)
+    return 0;
+
+  return atoi (value);
+}
+
+static volume_t *
+handle_disc (struct udev_device *dev)
+{
+  const char *id_type;
   volume_t *v;
-  LibHalDrive *drv;
-  LibHalDriveBus bus;
-  const char *parent_udi;
-  char cd[4];
-  int i, nb;
 
-  if (!vol || !udi)
-    return;
+  int major, minor, disk, media;
+  const char *bus, *fs, *label, *vendor, *model, *device;
+  char dsk[8] = { 0 }, part[8] = { 0 };
+  const char *bus_type = NULL;
+  int i;
 
-  /* discard blank CDs */
-  if (libhal_volume_disc_is_blank (vol))
-    return;
+  id_type = udev_device_get_property_value (dev, "ID_TYPE");
+  if (!id_type)
+    return NULL;;
 
-  /* get volume's storage udi */
-  parent_udi = libhal_volume_get_storage_device_udi (vol);
-  if (!parent_udi)
-    return;
+  /* only care about CDs */
+  if (strcmp (id_type, "cd"))
+    return NULL;
 
-  drv = libhal_drive_from_udi (ctx, parent_udi);
-  if (!drv)
-    return;
+  /* ensure a CD has been inserted */
+  media = get_property_value_int (dev, "ID_CDROM_MEDIA");
+  if (media  != 1)
+    return NULL;
 
   v = volume_new ();
-  v->device = strdup (libhal_volume_get_device_file (vol));
 
-  /* get bus' type */
-  bus = libhal_drive_get_bus (drv);
-  for (i = 0; drv_bus_mapping[i].name; i++)
-    if (drv_bus_mapping[i].bus == bus)
-    {
-      volume_append_name (v, (char *) drv_bus_mapping[i].name);
-      break;
-    }
+  device    = udev_device_get_devnode (dev);
+  major     = get_property_value_int (dev, "MAJOR");
+  minor     = get_property_value_int (dev, "MINOR");
 
-  /* append disk's number to differenciate twice the same hardware */
-  nb = disk_get_number (libhal_volume_get_device_major (vol),
-                        libhal_volume_get_device_minor (vol));
-  memset (cd, '\0', sizeof (cd));
-  snprintf (cd, sizeof (cd), "#%d", nb);
-  volume_append_name (v, cd);
+  bus       = udev_device_get_property_value (dev, "ID_BUS");
+  fs        = udev_device_get_property_value (dev, "ID_FS_TYPE");
+
+  vendor    = udev_device_get_property_value (dev, "ID_VENDOR");
+  model     = udev_device_get_property_value (dev, "ID_MODEL");
+  label     = udev_device_get_property_value (dev, "ID_FS_LABEL");
+
+  disk = disk_get_number (major, minor);
+  snprintf (dsk,  sizeof (dsk),  "#%d", disk);
+
+  v->syspath = strdup (udev_device_get_syspath (dev));
+  v->device  = strdup (device ? device : "Unknown");
+  v->fstype  = strdup (fs ? fs : "Unknown");
+  v->mounted = mtab_is_mounted (device);
 
   /* check for disc property: CDDA, VCD, SVCD, DVD, Data CD/DVD */
   for (i = 0; vol_disc_mapping[i].name; i++)
-    if (libhal_device_property_exists (ctx, udi,
-                                       vol_disc_mapping[i].property,
-                                       &error))
+    if (udev_device_get_property_value (dev, vol_disc_mapping[i].property))
     {
-      if (libhal_device_get_property_bool (ctx, udi,
-                                           vol_disc_mapping[i].property,
-                                           &error))
-      {
-        v->type = strdup (vol_disc_mapping[i].name);
-        volume_append_name (v, (char *) vol_disc_mapping[i].name);
-        break;
-      }
+      v->type = strdup (vol_disc_mapping[i].name);
+      break;
     }
 
   /* if no type has been found, consider it's data */
   if (!v->type)
     v->type = strdup ("CD");
 
-  /* if disc contains data and is already mounted, we're done */
-  if ((strcmp (v->type, "CDDA") != 0) && (strcmp (v->type, "DVD") != 0))
-  {
-    if (libhal_volume_is_mounted (vol))
+  /* get bus' type */
+  for (i = 0; drv_bus_mapping[i].name; i++)
+    if (bus && !strcmp (bus, drv_bus_mapping[i].bus))
     {
-      libhal_drive_free (drv);
-      volume_free (v);
-      return;
+      bus_type = drv_bus_mapping[i].name;
+      break;
     }
-  }
+  if (!bus_type)
+    bus_type = "Unknown";
 
-  /* either use partition label if any or vendor/model couple otherwise */
-  if (libhal_volume_get_label (vol))
-    volume_append_name (v, (char *) libhal_volume_get_label (vol));
+  volume_append_name (v, bus_type);
+  volume_append_name (v, v->type);
+  volume_append_name (v, dsk);
+
+  if (label)
+    volume_append_name (v, label);
   else
   {
-    if (libhal_drive_get_vendor (drv))
-      volume_append_name (v, (char *) libhal_drive_get_vendor (drv));
-    if (libhal_drive_get_model (drv))
-      volume_append_name (v, (char *) libhal_drive_get_model (drv));
+    if (vendor)
+    volume_append_name (v, vendor);
+    if (model)
+      volume_append_name (v, model);
   }
+  volume_append_name (v, part);
 
-  /* we need to explicitely unlock the device to ensure it can be ejected */
-  libhal_device_unlock (ctx, udi, NULL);
-
-  /* add volume to global list of devices */
-  volume_add (v, udi);
-
-  libhal_drive_free (drv);
+  return v;
 }
 
-static void
-check_hal_volume (const char *udi)
+static volume_t *
+handle_partition (struct udev_device *dev)
 {
-  LibHalVolume *vol;
+  int major, minor, disk, partition;
+  const char *usage, *type, *bus, *fs;
+  const char *devname, *label, *vendor, *model, *device;
   volume_t *v;
+  char dsk[8] = { 0 }, part[8] = { 0 };
+  const char *bus_type = NULL, *drive_type = NULL;
+  int i;
 
-  /* do we already know this device ?*/
-  v = g_hash_table_lookup (devices, udi);
-  if (v)
-    return;
+  /* ensure we're dealing with a proper filesystem on partition */
+  usage = udev_device_get_property_value (dev, "ID_FS_USAGE");
+  if (!usage || strcmp (usage, "filesystem"))
+    return NULL;;
 
-  /* is it actually an HAL volume ? */
-  vol = libhal_volume_from_udi (ctx, udi);
-  if (!vol)
-    return;
+  v = volume_new ();
 
-  if (libhal_volume_is_disc (vol))
-    add_disc (vol, udi);
+  device    = udev_device_get_devnode (dev);
+  major     = get_property_value_int (dev, "MAJOR");
+  minor     = get_property_value_int (dev, "MINOR");
+  partition = get_property_value_int (dev, "DKD_PARTITION_NUMBER");
+
+  type      = udev_device_get_property_value (dev, "ID_TYPE");
+  bus       = udev_device_get_property_value (dev, "ID_BUS");
+  fs        = udev_device_get_property_value (dev, "ID_FS_TYPE");
+  devname   = udev_device_get_property_value (dev, "DEVNAME");
+
+  vendor    = udev_device_get_property_value (dev, "ID_VENDOR");
+  model     = udev_device_get_property_value (dev, "ID_MODEL");
+  label     = udev_device_get_property_value (dev, "ID_FS_LABEL");
+
+  disk = disk_get_number (major, minor);
+  snprintf (dsk,  sizeof (dsk),  "#%d", disk);
+  snprintf (part, sizeof (part), "(%d)", partition);
+
+  v->syspath = strdup (udev_device_get_syspath (dev));
+  v->device  = strdup (device ? device : "Unknown");
+  v->type    = strdup ("HDD");
+  v->fstype  = strdup (fs ? fs : "Unknown");
+  v->mounted = mtab_is_mounted (device);
+
+  /* get bus' type */
+  for (i = 0; drv_bus_mapping[i].name; i++)
+    if (bus && !strcmp (bus, drv_bus_mapping[i].bus))
+    {
+      bus_type = drv_bus_mapping[i].name;
+      break;
+    }
+  if (!bus_type)
+    bus_type = "Unknown";
+
+  /* get drive's type */
+  for (i = 0; drv_type_mapping[i].name; i++)
+    if (type && !strcmp (type, drv_type_mapping[i].type))
+    {
+      drive_type = drv_type_mapping[i].name;
+      break;
+    }
+  if (!drive_type)
+    drive_type = "Unknown";
+
+  volume_append_name (v, bus_type);
+  volume_append_name (v, drive_type);
+  volume_append_name (v, dsk);
+  if (label)
+    volume_append_name (v, label);
   else
-    add_hdd (vol, udi);
+  {
+    if (vendor)
+    volume_append_name (v, vendor);
+    if (model)
+      volume_append_name (v, model);
+  }
+  volume_append_name (v, part);
 
-  libhal_volume_free (vol);
+  return v;
 }
 
 static void
-cb_device_added (LibHalContext *ctx, const char *udi)
+scan_device_properties (struct udev_device *dev)
 {
-  check_hal_volume (udi);
+#ifdef DEBUG
+  struct udev_list_entry *list, *p;
+
+  if (!dev)
+    return;
+
+  list = udev_device_get_properties_list_entry (dev);
+  udev_list_entry_foreach (p, list)
+  {
+    printf ("Property Name: %s - %s\n",
+            udev_list_entry_get_name (p),
+            udev_device_get_property_value (dev, udev_list_entry_get_name (p))
+      );
+  }
+#endif /* DEBUG */
 }
 
 static void
-cb_device_removed (LibHalContext *ctx, const char *udi)
+add_device (struct udev_device *dev)
 {
-  volume_remove (udi);
+  const char *syspath;
+  const char *devtype;
+  volume_t *v = NULL;
+
+  /* retrieve the device's syspath */
+  syspath = udev_device_get_syspath (dev);
+  if (!syspath)
+    return;
+
+  /* ensure the device does not already exists in our table */
+  if (volume_list_exists (syspath))
+    return;
+
+  devtype = udev_device_get_property_value (dev, "DEVTYPE");
+  if (!devtype)
+    return;
+
+  if (!strcmp (devtype, "disk"))
+    v = handle_disc (dev);
+  else if (!strcmp (devtype, "partition"))
+    v = handle_partition (dev);
+
+  if (v)
+  {
+    char cmd[1024] = { 0 };
+
+    volume_display  (v);
+    volume_list_add (v);
+
+    snprintf (cmd, sizeof (cmd), "/usr/bin/hmount '%s' '%s' '%s' '%s'",
+              v->type, v->device, v->name, v->fstype);
+
+    printf ("[automountd] Executing: %s\n", cmd);
+    system (cmd);
+  }
 }
 
 static void
-signal_handler (int sig)
+remove_device (struct udev_device *dev)
 {
-  g_main_loop_quit (loop);
+  char cmd[1024] = { 0 };
+  const char *syspath;
+  volume_t *v;
+  int c;
+
+  /* retrieve the device's syspath */
+  syspath = udev_device_get_syspath (dev);
+  if (!syspath)
+    return;
+
+  c = volume_list_get (syspath);
+  if (c == -1)
+    return;
+
+  v = vlist->volumes[c];
+  if (!v)
+    return;
+
+  snprintf (cmd, sizeof (cmd), "/usr/bin/humount '%s' '%s' '%s' '%s'",
+            v->type, v->device, v->name, v->fstype);
+
+  printf ("[automountd] Executing: %s\n", cmd);
+  system (cmd);
+  volume_list_remove (c);
+
+}
+
+static void
+change_device (struct udev_device *dev)
+{
+  remove_device (dev);
+  add_device (dev);
+}
+
+static void
+handle_device (struct udev_device *dev, const char *action)
+{
+  scan_device_properties (dev);
+
+  pthread_mutex_lock (&vlist_mutex);
+
+  /* check whether we need to add or remove the device from our list */
+  if (!action || !strcmp (action, "add"))
+    add_device (dev);
+  else if (!strcmp (action, "change"))
+    change_device (dev);
+  else
+    remove_device (dev);
+
+  pthread_mutex_unlock (&vlist_mutex);
+}
+
+static void
+sig_handler (int signum)
+{
+  if (signum == SIGINT || signum == SIGTERM)
+    udev_exit = 1;
 }
 
 int
 main (int argc, char **argv)
 {
-  DBusConnection *conn;
-  char **device_list;
-  int num_devices;
-  int i;
+  struct udev *udev;
+  struct udev_enumerate *en;
+  struct udev_monitor *monitor;
+  struct udev_list_entry *device_list, *device_p;
 
+  struct sigaction act;
+  sigset_t mask;
+  fd_set fds;
+  int err;
+
+  /* do we need to daemonize ? */
   if (argc >= 2 && !strcmp (argv[1], "-d"))
     daemon (0, 0);
 
-  /* connect to D-BUS */
-  dbus_error_init (&error);
-  conn = dbus_bus_get (DBUS_BUS_SYSTEM, &error);
-  if (!conn)
-    goto dbus_error;
+  /* udev listeners */
+  udev = udev_new ();
+  if (!udev)
+    goto err_udev;
 
-  /* create HAL context */
-  ctx = libhal_ctx_new ();
-  if (!ctx)
-    goto hal_error;
+  en = udev_enumerate_new (udev);
+  if (!en)
+    goto err_enumerator;
 
-  /* build global list of handled devices */
-  devices = g_hash_table_new_full (g_str_hash, g_str_equal,
-                                   free, (GDestroyNotify) volume_free);
+  monitor = udev_monitor_new_from_netlink (udev, "udev");
+  if (!monitor)
+    goto err_monitor;
 
-  /* bind HAL to D-BUS */
-  dbus_connection_setup_with_g_main (conn, NULL);
-  libhal_ctx_set_dbus_connection (ctx, conn);
+  err = udev_monitor_enable_receiving (monitor);
+  if (err)
+    goto err_receiver;
 
-  /* set HAL callbacks */
-  libhal_ctx_set_device_added (ctx, cb_device_added);
-  libhal_ctx_set_device_removed (ctx, cb_device_removed);
+  err =
+    udev_monitor_filter_add_match_subsystem_devtype (monitor,
+                                                     FILTER_SUBSYTEM, NULL);
+  if (err)
+    goto err_filter;
 
-  /* init HAL */
-  libhal_ctx_init (ctx, &error);
-  libhal_device_property_watch_all (ctx, &error);
+  /* set signal handlers */
+  act.sa_handler = sig_handler;
+  act.sa_flags   = SA_RESTART;
 
-  /* browse all currently available HAL devices */
-  device_list = libhal_get_all_devices (ctx, &num_devices, &error);
-  for (i = 0; i < num_devices; i++)
-    check_hal_volume (device_list[i]);
+  sigemptyset (&act.sa_mask);
+  sigaction   (SIGINT, &act, NULL);
+  sigaction   (SIGTERM, &act, NULL);
+  sigemptyset (&mask);
+  sigaddset   (&mask, SIGINT);
+  sigaddset   (&mask, SIGTERM);
+  sigprocmask (SIG_UNBLOCK, &mask, NULL);
 
-  /* catch signals */
-  signal (SIGTERM, signal_handler);
-  signal (SIGINT, signal_handler);
+  /* we only care about block devices */
+  udev_enumerate_add_match_subsystem (en, FILTER_SUBSYTEM);
 
-  /* start GLib main loop */
-  loop = g_main_loop_new (NULL, FALSE);
-  g_main_loop_run (loop);
+  /* scan for available devices */
+  udev_enumerate_scan_devices (en);
+  device_list = udev_enumerate_get_list_entry (en);
 
-  /* ends up ... */
-  g_hash_table_destroy (devices);
-  libhal_ctx_shutdown (ctx, &error);
-  libhal_ctx_free (ctx);
+  udev_list_entry_foreach (device_p, device_list)
+  {
+    struct udev_device *dev;
+    const char *syspath;
 
- hal_error:
-  dbus_connection_unref (conn);
-  dbus_error_free (&error);
+    /* based on sys path, discard irrelevant ones */
+    syspath = udev_list_entry_get_name (device_p);
+    if (strstr (syspath, FILTER_BLK_LOOP) ||
+        strstr (syspath, FILTER_BLK_RAM))
+      continue;
 
- dbus_error:
+    dev = udev_device_new_from_syspath (udev, syspath);
+    if (!dev)
+      continue;
+
+    handle_device (dev, NULL);
+    udev_device_unref (dev);
+  }
+
+  /* listen to all further udev events */
+  while (!udev_exit)
+  {
+    int count;
+
+    FD_ZERO (&fds);
+    FD_SET  (udev_monitor_get_fd (monitor), &fds);
+
+    count = select (udev_monitor_get_fd (monitor) + 1, &fds, NULL, NULL, NULL);
+    if (count < 0)
+      continue;
+
+    if (FD_ISSET (udev_monitor_get_fd (monitor), &fds))
+    {
+      struct udev_device *dev;
+      const char *syspath;
+      const char *action;
+
+      dev = udev_monitor_receive_device (monitor);
+      if (!dev)
+        continue;
+
+      action = udev_device_get_action (dev);
+      if (!action)
+        goto err_no_action;
+
+      syspath = udev_device_get_syspath (dev);
+      if (strstr (syspath, FILTER_BLK_LOOP) ||
+          strstr (syspath, FILTER_BLK_RAM))
+        goto err_no_action;
+
+      if (!strcmp (action, "add") ||
+          !strcmp (action, "remove") ||
+          !strcmp (action, "change"))
+        handle_device (dev, action);
+
+    err_no_action:
+      udev_device_unref (dev);
+    }
+  }
+
+  /* erase the volumes list */
+  pthread_mutex_destroy (&vlist_mutex);
+  volume_list_free ();
+
+err_filter:
+err_receiver:
+  udev_monitor_unref (monitor);
+err_monitor:
+  udev_enumerate_unref (en);
+err_enumerator:
+  udev_unref (udev);
+err_udev:
 
   return 0;
 }
