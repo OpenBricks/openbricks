@@ -1,8 +1,8 @@
 #!/bin/sh
 # script to handle mount of persistent data partition
 
-# persistent data partition already mounted or configurator running
-( [ -h /var/data ] || grep configure /var/runlevel ) && exit 0
+# persistent data partition already mounted
+[ -h /var/data ] && exit 0
 
 # parse command line arguments
 for arg in $(cat /proc/cmdline); do
