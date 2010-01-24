@@ -152,7 +152,7 @@ RAM_TOTAL=`sed -n 's/MemTotal:[ \t]*\([0-9]*\).*/\1/p' /proc/meminfo`
 RAM=$(($RAM_TOTAL/1024))
 
 # HDTV
-[ -f /var/use_xorg ] && HDTV=1 || HDTV=0
+( grep -q hdtv /proc/cmdline && HDTV=1 ) || HDTV=0
 
 # MAC Address
 ETH=`ifconfig | grep HWaddr | head -n 1 | sed 's%.*HWaddr \(.*\)%\1%' | cut -d ' ' -f 1`
