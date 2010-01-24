@@ -1,6 +1,4 @@
 #!/bin/sh
-exec 2>/tmp/manage-pers.out
-set -x
 # script to handle mount of persistent data partition
 
 # persistent data partition already mounted or configurator running
