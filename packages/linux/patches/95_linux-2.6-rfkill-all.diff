@@ -1,0 +1,52 @@
+diff --git a/include/linux/input.h b/include/linux/input.h
+index 8b3bc3e..20a622e 100644
+--- a/include/linux/input.h
++++ b/include/linux/input.h
+@@ -595,6 +595,8 @@ struct input_absinfo {
+ #define KEY_NUMERIC_STAR	0x20a
+ #define KEY_NUMERIC_POUND	0x20b
+ 
++#define KEY_RFKILL		0x20c /* Key that controls all radios */
++
+ /* We avoid low common keys in module aliases so they don't get huge. */
+ #define KEY_MIN_INTERESTING	KEY_MUTE
+ #define KEY_MAX			0x2ff
+diff --git a/include/linux/rfkill.h b/include/linux/rfkill.h
+index 278777f..4c39f7e 100644
+--- a/include/linux/rfkill.h
++++ b/include/linux/rfkill.h
+@@ -32,7 +32,7 @@
+ /**
+  * enum rfkill_type - type of rfkill switch.
+  *
+- * @RFKILL_TYPE_ALL: toggles all switches (userspace only)
++ * @RFKILL_TYPE_ALL: toggles all switches (requests only - not a switch type)
+  * @RFKILL_TYPE_WLAN: switch is on a 802.11 wireless network device.
+  * @RFKILL_TYPE_BLUETOOTH: switch is on a bluetooth device.
+  * @RFKILL_TYPE_UWB: switch is on a ultra wideband device.
+diff --git a/net/rfkill/input.c b/net/rfkill/input.c
+index a7295ad..3713d7e 100644
+--- a/net/rfkill/input.c
++++ b/net/rfkill/input.c
+@@ -212,6 +212,9 @@ static void rfkill_event(struct input_handle *handle, unsigned int type,
+ 		case KEY_WIMAX:
+ 			rfkill_schedule_toggle(RFKILL_TYPE_WIMAX);
+ 			break;
++		case KEY_RFKILL:
++			rfkill_schedule_toggle(RFKILL_TYPE_ALL);
++			break;
+ 		}
+ 	} else if (type == EV_SW && code == SW_RFKILL_ALL)
+ 		rfkill_schedule_evsw_rfkillall(data);
+@@ -295,6 +298,11 @@ static const struct input_device_id rfkill_ids[] = {
+ 		.keybit = { [BIT_WORD(KEY_WIMAX)] = BIT_MASK(KEY_WIMAX) },
+ 	},
+ 	{
++		.flags = INPUT_DEVICE_ID_MATCH_EVBIT | INPUT_DEVICE_ID_MATCH_KEYBIT,
++		.evbit = { BIT_MASK(EV_KEY) },
++		.keybit = { [BIT_WORD(KEY_RFKILL)] = BIT_MASK(KEY_RFKILL) },
++	},
++	{
+ 		.flags = INPUT_DEVICE_ID_MATCH_EVBIT | INPUT_DEVICE_ID_MATCH_SWBIT,
+ 		.evbit = { BIT(EV_SW) },
+ 		.swbit = { [BIT_WORD(SW_RFKILL_ALL)] = BIT_MASK(SW_RFKILL_ALL) },
