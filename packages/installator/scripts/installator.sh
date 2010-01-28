@@ -230,14 +230,7 @@ choose_partition_dev () {
     for i in `sfdisk -lq /dev/$LOC_DISK 2>/dev/null | grep ${LOC_DISK%disc} | \
               cut -f1 -d' ' | grep dev`; do
       case `sfdisk --print-id ${i%%[0-9]*} ${i#${i%%[0-9]*}}` in
-        1|11|6|e|16|1e|b|c|1b|1c) #FAT12/16/32 are supported syslinux
-          SIZE=`sfdisk -s "$i" | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
-          VENDOR=`cat /sys/block/$LOC_DISK/device/vendor`
-          MODEL=`cat /sys/block/$LOC_DISK/device/model`
-          DEVNAME=`echo $VENDOR $MODEL ${SIZE}MB | sed 's/ /_/g'`
-          DEV_LIST="$DEV_LIST $i $DEVNAME"
-          ;;
-        83) #Linux is supported only in grub.
+        1|11|6|e|16|1e|b|c|1b|1c|83)
           SIZE=`sfdisk -s "$i" | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
           VENDOR=`cat /sys/block/$LOC_DISK/device/vendor`
           MODEL=`cat /sys/block/$LOC_DISK/device/model`
@@ -449,18 +442,6 @@ get_uuid () {
       break
     fi
   done
-}
-
-# Setup syslinux.cfg file in the /tmp dir
-# $1 is GEEXBOX dir
-setup_syslinux () {
-  # Setup syslinux.cfg file
-  sed -e "s/boot=cdrom/boot=hdd/g" -e "s%^#CFG#%%" \
-    "$1/boot/isolinux.cfg" > /tmp/syslinux.cfg
-
-  dbglg "*** Start Syslinux.cfg ***"
-  cat /tmp/syslinux.cfg >> $LOGFILE
-  dbglg "*** End Syslinux.cfg ***"
 }
 
 # Installs and configures the GRUB bootloader
