@@ -25,6 +25,11 @@ for arg in $(cat /proc/cmdline); do
     data=*)
       DATA="${arg#data=}"
       case "$DATA" in
+	none)
+         DATA=""
+         DATA_DEV=""
+         DATA_UUID=""
+         ;;
         UUID=*)
           # Grab real device name from UUID symlink
           DATA_UUID="${DATA#UUID=}"
