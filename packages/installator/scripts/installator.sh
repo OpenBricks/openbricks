@@ -692,14 +692,8 @@ fi
 # Create directory for the install partition to be mounted
 mkdir di
 
-if [ -n "$NET" ]; then
-  GEEXBOX="$NET"
-else
-  GEEXBOX="$CDROM/GEEXBOX"
-fi
-
 # Configure X.Org
-if [ -f /etc/service/Xorg/run ]; then
+if [ -f /etc/init/xorg.conf ]; then
   USE_XORG=yes # default is to use X if present
   dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_CFG_HDTV" \
     --yesno "\n${MSG_CFG_HDTV_DESC}\n" 0 0 \
