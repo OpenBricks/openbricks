@@ -13,15 +13,15 @@ progress() {
   echo "### $2 ###"
 }
 
-boot_from_hdd () {
+prepare_boot_from_hdd () {
   progress 11000 "HDD Boot Device Detection"
   HDD=/hdd
   mkdir -p $HDD
   for i in 1 2 3 4; do
     if [ -b "$BOOT_DEV" ]; then
-      mount -o ro $BOOT_DEV $HDD
+      mount -o rw $BOOT_DEV $HDD
     elif [ -n "$BOOT_LABEL" -a -e "/dev/disk/by-label/$BOOT_LABEL" ]; then
-      mount -o ro "/dev/disk/by-label/$BOOT_LABEL" $HDD
+      mount -o rw "/dev/disk/by-label/$BOOT_LABEL" $HDD
     fi
     if [ -d "$HDD$ROOT_LOCATION" ]; then
       GEEXBOX="$HDD$ROOT_LOCATION"
@@ -31,6 +31,7 @@ boot_from_hdd () {
     [ -n "$GEEXBOX" ] && break
     sleep 2
   done
+  [ -z "$GEEXBOX" ] && echo "Booting from hdd $GEEXBOX failed! Dropping you on emergency shell..." && /bin/sh -l
 }
 
 get_devices_from_uuids () {
@@ -69,6 +70,10 @@ for arg in $(cat /proc/cmdline); do
           BOOT_LABEL="${BOOT#LABEL=}"
           BOOT=hdd
           ;;
+        cdrom)
+          BOOT_DEV=/dev/cdrom
+          BOOT=cdrom
+          ;;
         *)
           BOOT_DEV=$BOOT
           BOOT=hdd
@@ -77,6 +82,9 @@ for arg in $(cat /proc/cmdline); do
       ;;
     bootdir=*)
       ROOT_LOCATION="${arg#bootdir=}"
+      ;;
+    debugging)
+      INIT_ARGS="--debug"
       ;;
   esac
 done
@@ -103,12 +111,52 @@ if [ -x /sbin/lvm ]; then
 fi
 
 get_devices_from_uuids
+[ "$BOOT" = hdd ] &&  prepare_boot_from_hdd
 
 INIT=/sbin/init
 
-[ "$BOOT" = hdd ] && export HDD="${GEEXBOX%/GEEXBOX}"
-
+# make environment of /etc/profile available to upstart services
 export ENV=/etc/profile
+. $ENV
 
-exec /sbin/init $INIT_ARGS </dev/tty1 >/dev/tty1
+# stop udevd, will be started by upstart again
+echo -n "stopping udevd"
+killall udevadm >/dev/null 2>&1
+killall udevd >/dev/null 2>&1
+# give it some time to end properly
+for i in 1 2 3 4 5 6; do
+  echo -n "."
+  ( ( ps | grep -q "[u]dev" ) && sleep 1 ) || break
+done
+killall -9 udevadm >/dev/null 2>&1
+killall -9 udevd >/dev/null 2>&1
+echo
+
+if [ "$BOOT" = hdd ]; then 
+  # bind geexbox location to a new mountpoint
+  mkdir /newroot
+  mount -o bind ${GEEXBOX} /newroot
+  # clean up mtab
+  echo -n >/newroot/etc/mtab
+  # fix /etc/mtab entry
+  mount | grep " on $HDD " | sed "s| on $HDD | \/ |" >>/newroot/etc/mtab
+  umount $HDD
+
+  # clean up any remaining pid files from last boot
+  find /newroot/var/run -name "*pid" | while read f; do rm $f; done
+  rm -rf /newroot/tmp/* >/dev/null 2>&1
+  # clean up old mount points
+  rmdir -f /newroot/mnt/* >/dev/null 2>&1
+
+  mount -o move /proc /newroot/proc
+  mount -o move /sys /newroot/sys
+
+  # proc and sys already mounted after switch_root
+  grep "^none" /etc/mtab >>/newroot/etc/mtab
+
+  # clean ramdisk, chroot and run init
+  exec switch_root -c /dev/console /newroot $INIT $INIT_ARGS
+else
+  exec /sbin/init $INIT_ARGS </dev/tty1 >/dev/tty1
+fi
 
