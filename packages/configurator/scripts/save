@@ -93,6 +93,34 @@ save_configs () {
 # include configurator common file
 . /usr/share/configurator/common
 
+# parse command line arguments
+for arg in $(cat /proc/cmdline); do
+  case $arg in
+    boot=*)
+      BOOT="${arg#boot=}"
+      case "$BOOT" in
+        UUID=*)
+          BOOT=hdd
+          ;;
+        LABEL=*)
+          BOOT=hdd
+          ;;
+        *)
+          BOOT_DEV=$BOOT
+          BOOT=hdd
+          ;;
+      esac
+      ;;
+  esac
+done
+
+# in case we've booted from hdd, mount fs again
+if [ "$BOOT_DEV" != "cdrom" -a "$BOOT" = hdd ] && [ ! -d /mnt/bootdisk ]; then
+  BOOT_DEV=`mount | grep " on / " | sed "s/^\([^ ]*\).*/\1/"`
+  mkdir -p /mnt/bootdisk
+  mount "$BOOT_DEV" /mnt/bootdisk
+fi
+
 # get i18n strings
 get_i18n
 
@@ -121,25 +149,34 @@ fi
 # find/select data partition (for persistent configuration storage)
 partitions=""
 data_partition=""
+extra_partition_found=0
 for i in /mnt/*; do
   # ensure that this mount point is a disk
   echo "$i" | grep -qi disk || continue;
+  echo "$i" | grep -qv "/mnt/bootdisk" || continue;
 
   partitions="$partitions \"$i\""
   if [ -d "$i/GEEXBOX" ]; then
     partitions="$partitions \"GeeXboX installation\""
+    inst_partition_found=1
   else
     partitions="$partitions \"Other partition\""
+    extra_partition_found=1
   fi
 done
 
 test -z "$partitions" && dialog --aspect 15 --backtitle "$MSG_CFG_TITLE" \
   --title "$MSG_ERROR" --msgbox "$MSG_SAVE_NO_DISK" 0 0 && exit 1
 
-echo dialog --aspect 15 --stdout --backtitle \"$MSG_CFG_TITLE\" \
-  --title \"$MSG_MENU_SAVE\" --menu \"$MSG_SAVE_PARTITIONS\" 0 0 0 $partitions >/tmp/partselect
-data_partition=`sh /tmp/partselect`
-[ -z "$data_partition" ] && exit 1
+if [ $extra_partition_found -gt 0 ]; then 
+  echo dialog --aspect 15 --stdout --backtitle \"$MSG_CFG_TITLE\" \
+    --title \"$MSG_MENU_SAVE\" --menu \"$MSG_SAVE_PARTITIONS\" 0 0 0 $partitions >/tmp/partselect
+  data_partition=`sh /tmp/partselect`
+  [ -z "$data_partition" ] && exit 1
+else
+  # there's only the installation partition to save on, no need to ask
+  data_partition="$geex_partition"
+fi
 
 geex_device=""
 data_device=""
