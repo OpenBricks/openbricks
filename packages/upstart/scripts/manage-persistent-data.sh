@@ -2,7 +2,7 @@
 # script to handle mount of persistent data partition
 
 # persistent data partition already mounted
-[ -h /var/data ] && exit 0
+[ -h /var/data ] && rm /var/data
 
 # parse command line arguments
 for arg in $(cat /proc/cmdline); do
@@ -26,10 +26,10 @@ for arg in $(cat /proc/cmdline); do
       DATA="${arg#data=}"
       case "$DATA" in
 	none)
-         DATA=""
-         DATA_DEV=""
-         DATA_UUID=""
-         ;;
+	  DATA=""
+	  DATA_DEV=""
+	  DATA_UUID=""
+	  ;;
         UUID=*)
           # Grab real device name from UUID symlink
           DATA_UUID="${DATA#UUID=}"
@@ -111,11 +111,15 @@ elif [ -n "$DATA" ]; then
   data_device=$DATA_DEV
 fi
 
-umount "$data_device"
-rm -rf /var/data
-mkdir -p /mnt/data
-mount "$data_device" /mnt/data
-ln -s /mnt/data/$DATA_LOCATION /var/data
+if [ -n "$data_device" ]; then
+  mkdir -p /mnt/data
+  umount "$data_device" >/dev/null 2>&1
+  mount "$data_device" /mnt/data
+  mount -o bind /mnt/data/$DATA_LOCATION /var/data
 
-# doublecheck whether location is writable
-( echo >/var/data/test && rm /var/data/test ) || exit 1
+  # doublecheck whether location is writable
+  ( echo >/var/data/test && rm /var/data/test ) || exit 1
+else
+  exit 0
+fi
+
