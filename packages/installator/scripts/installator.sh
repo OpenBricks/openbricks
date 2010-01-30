@@ -128,6 +128,7 @@ setup_grub () {
     append_grub_conf $1 "GeeXboX HDTV $VERSION (reconfigure)" hdtv "" configure
   fi
 
+  ##TODO: how to decide whether or not to support console mode on runtime?
   # add console mode menu
   append_grub_conf $1 "GeeXboX $VERSION " "" "" ""
   append_grub_conf $1 "GeeXboX $VERSION (debug)" "" debugging ""
@@ -202,7 +203,6 @@ choose_disk () {
       DISK_LIST="$DISK_LIST $VGNAME $DISKNAME"
     done
 
-
     if [ -z "$DISK_LIST" ]; then
       dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_ERROR" \
         --yesno "\n${MSG_DISK_NOT_FOUND}" 0 0 1>&2 || exit 1
@@ -240,7 +240,7 @@ choose_partition_dev () {
       esac
     done
     
-    [ -x /sbin/lvm ] && for i in `lvm lvs --noheadings --nosuffix --units M --separator ":" $LOC_DISK | sed "s/^\ *//g"`; do
+    [ -x /sbin/lvm ] && for i in `lvm lvs --noheadings --nosuffix --units M --separator ":" $LOC_DISK 2>/dev/null | sed "s/^\ *//g"`; do
       SIZE=`echo $i | cut -d\: -f4 | sed "s/\.[0-9]*//g"`
       VENDOR="LVM"
       MODEL="Logical Volume"
@@ -306,7 +306,7 @@ format_if_needed () {
   local SUPPORTED_TYPES PART_TYPE
 
   # Set valid FS types based on selected install partition
-  if ( [ -x /sbin/lvm ] && lvm lvdisplay $LOC_DEV >/dev/null ); then
+  if ( [ -x /sbin/lvm ] && lvm lvdisplay $LOC_DEV >/dev/null 2>&1 ); then
     SUPPORTED_TYPES="vfat ext4 ext3 ext2"
     PART_TYPE="LVM"
   else
@@ -348,7 +348,7 @@ format_if_needed () {
     && FORMAT=yes
 
   if [ "$FORMAT" = yes ]; then
-    if ( [ -x /sbin/lvm ] && lvm lvdisplay $LOC_DEV >/dev/null ); then
+    if ( [ -x /sbin/lvm ] && lvm lvdisplay $LOC_DEV >/dev/null 2>&1 ); then
       LOC_MKFS_TYPE=`dialog --stdout --aspect 15 --backtitle "$BACKTITLE" \
         --title "$MSG_INSTALL_PART_TYPE" --menu "$MSG_INSTALL_PART_TYPE_DESC"\
         0 0 0 ext2 "Linux ext2" ext3 "Linux ext3" ext4 "Linux ext4" vfat "Dos vfat"` \
@@ -651,6 +651,7 @@ VERSION=`cat VERSION`
 BACKTITLE="GeeXboX $VERSION installator"
 
 # should not be present in install mode, but in case of ...
+initctl stop automountd >/dev/null 2>&1
 killall -9 automountd >/dev/null 2>&1
 
 setup_lang
@@ -664,7 +665,7 @@ DISK="`choose_disk`"
 [ -z "$DISK" ] && exit 1
 
 # Make sure disk partitions are not already mounted in case it's no VG
-if ( [ -x /sbin/lvm ] && vgdisplay /dev/$DISK >/dev/null ); then
+if ( [ -x /sbin/lvm ] && vgdisplay /dev/$DISK >/dev/null 2>&1 ); then
   umount /dev/$DISK/* 2>/dev/null
 else
   umount /dev/${DISK}* 2>/dev/null
@@ -686,7 +687,7 @@ fi
 CFDISK_MSG="$MSG_CFDISK_BEGIN $MSG_DISK_PART $MSG_CFDISK_END"
 
 # Guide user on how to setup with cfdisk tool in the next step only if no VG was selected
-if ( [ -x /sbin/lvm ] && ! lvm vgdisplay /dev/$DISK >/dev/null ); then
+if ( [ -x /sbin/lvm ] && ! lvm vgdisplay /dev/$DISK >/dev/null 2>&1 ); then
   dialog --stdout --backtitle "$BACKTITLE" --title "$MSG_INSTALL_DEV_CONFIG" \
     --msgbox "$CFDISK_MSG" 0 0 \
     || exit 1
@@ -720,10 +721,31 @@ dialog --backtitle "$BACKTITLE" --infobox "$MSG_INSTALLING_WAIT" 0 0
 rm -rf di/GEEXBOX 2>&1 >> $LOGFILE
 
 # Copy the main files to the install partition
-cp -a "$GEEXBOX" di/GEEXBOX >> $LOGFILE 2>&1 
+OS_RELEASE=$(uname -r)
+INITRD_ELEMS="/bin/busybox /etc/profile /lib/ /bin/sh /bin/ldd /sbin/init /sbin/blkid /sbin/modprobe /sbin/lvm /sbin/udevd /sbin/udevadm /linuxrc /lib/modules/${OS_RELEASE}/modules.dep /lib/modules/${OS_RELEASE}/kernel/drivers/md/dm-mod.ko"
+INITRD_ELEMS="$INITRD_ELEMS $(find /etc/udev)"
+INITRD_ELEMS="$INITRD_ELEMS $(find /lib -maxdepth 1)"
+INITRD_ELEMS="$INITRD_ELEMS $(find /lib/udev)"
+INITRD_ELEMS="$INITRD_ELEMS $(find /usr/lib/ -maxdepth 1 -name libdevmapper\*)"
+INITRD_ELEMS="$INITRD_ELEMS $(find /usr/lib/ -maxdepth 1 -name libgcc\*)"
 
-# Adjust the location of core boot files to suit non-CDROM install
-mv di/GEEXBOX/boot/vmlinuz di/GEEXBOX/boot/initrd.gz di/
+#TODO: not every empty directory is needed on initial ramdisk. List of needed directories probably depends on included software, so maybe some of these should be created on startup of the very daemon?
+EMPTY_DIRS="/proc /sys /etc /tmp /bin /usr /usr/lib /usr/bin /sbin /usr/sbin /var /var/log /var/lib /var/lib/dbus /var/run /var/run/dbus /lib /lib/modules /lib/modules/${OS_RELEASE} /lib/modules/${OS_RELEASE}/kernel /lib/modules/${OS_RELEASE}/kernel/drivers /lib/modules/${OS_RELEASE}/kernel/drivers/md"
+
+DISK_ELEMS="/bin /etc /lib /firmware /usr /codecs /sbin /dev"
+
+for e in $EMPTY_DIRS $INITRD_ELEMS; do
+  echo "$e" >>/tmp/initrd.install
+done
+for e in $EMPTY_DIRS; do
+  mkdir -p /di/GEEXBOX/$e
+done
+for e in $DISK_ELEMS; do
+  find $e -xdev | sed 's/^\///g' | cpio -pd /di/GEEXBOX 2>&1 | grep -v "newer or same age file exists" >> $LOGFILE
+done
+mkdir -p di/boot && cp /boot/vmlinuz di/boot/
+cat /tmp/initrd.install | sed 's/^\///g' | cpio -o -H newc | gzip -9 > di/boot/initrd.gz
+
 
 install_grub "$DEV" "$USE_XORG" "$MKFS_TYPE"
 
@@ -747,7 +769,7 @@ dialog --aspect 15 --backtitle "$BACKTITLE" \
 dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_SUCCESS" \
   --yesno "\n${MSG_SUCCESS_DESC_BEGIN} '$DEV' !! ${MSG_SUCCESS_DESC_END}\n" \
   0 0 \
-  && configure $DEV
+  && echo >/var/do_configure
 
 # Exit cleanly
 return 0
