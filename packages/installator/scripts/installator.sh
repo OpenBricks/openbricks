@@ -128,11 +128,12 @@ setup_grub () {
     append_grub_conf $1 "GeeXboX HDTV $VERSION (reconfigure)" hdtv "" configure
   fi
 
-  ##TODO: how to decide whether or not to support console mode on runtime?
-  # add console mode menu
-  append_grub_conf $1 "GeeXboX $VERSION " "" "" ""
-  append_grub_conf $1 "GeeXboX $VERSION (debug)" "" debugging ""
-  append_grub_conf $1 "GeeXboX $VERSION (reconfigure)" "" "" configure
+  # conditionally add console mode menu
+  # whether to enable this or not is decided at install time!
+
+  #_CONSOLE_ append_grub_conf $1 "GeeXboX $VERSION " "" "" ""
+  #_CONSOLE_ append_grub_conf $1 "GeeXboX $VERSION (debug)" "" debugging ""
+  #_CONSOLE_ append_grub_conf $1 "GeeXboX $VERSION (reconfigure)" "" "" configure
 
   # put default options
   update_grub_conf_bootargs $1 lang `cmdline_default lang en`
