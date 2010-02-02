@@ -125,6 +125,7 @@ volume_free (volume_t *v)
   M_FREE (v->syspath);
   M_FREE (v->device);
   M_FREE (v->name);
+  M_FREE (v->unique_name);
   M_FREE (v->type);
   M_FREE (v->fstype);
   M_FREE (v);
