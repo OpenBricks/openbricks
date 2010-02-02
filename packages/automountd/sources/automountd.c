@@ -44,9 +44,11 @@ typedef struct volume_s {
   char *syspath;
   char *device;
   char *name;
+  char *unique_name;
   char *type;
   char *fstype;
   int mounted;
+  int unique_id;
 } volume_t;
 
 typedef struct volume_list_s {
@@ -310,6 +312,34 @@ get_property_value_int (struct udev_device *dev, const char *property)
   return atoi (value);
 }
 
+static int 
+volume_set_unique_name(volume_t *v)
+{
+  int i, changed=0;
+
+  if (!vlist || !v || !v->name)
+    return -1;
+
+  for (i = 0 ; i < vlist->count ; i++)
+    if (vlist->volumes[i] != v &&
+        vlist->volumes[i]->name &&
+        !strcmp (vlist->volumes[i]->name, v->name))
+    {
+      if (vlist->volumes[i]->unique_id >= v->unique_id)
+        v->unique_id=vlist->volumes[i]->unique_id+1;
+      changed=1;
+    }
+
+  if (changed)
+  {
+    char mp[1024] = { 0 };
+    snprintf(mp, sizeof(mp), "%s #%i", v->name, v->unique_id);
+    v->unique_name=strdup(mp);
+  }
+
+  return changed;
+}
+
 static volume_t *
 handle_disc (struct udev_device *dev)
 {
@@ -393,6 +423,8 @@ handle_disc (struct udev_device *dev)
   }
   volume_append_name (v, part);
 
+  volume_set_unique_name(v);
+
   return v;
 }
 
@@ -472,6 +504,8 @@ handle_partition (struct udev_device *dev)
   }
   volume_append_name (v, part);
 
+  volume_set_unique_name (v);
+
   return v;
 }
 
@@ -528,7 +562,7 @@ add_device (struct udev_device *dev)
     volume_list_add (v);
 
     snprintf (cmd, sizeof (cmd), "/usr/bin/hmount '%s' '%s' '%s' '%s'",
-              v->type, v->device, v->name, v->fstype);
+              v->type, v->device, v->unique_name?v->unique_name:v->name, v->fstype);
 
     printf ("[automountd] Executing: %s\n", cmd);
     system (cmd);
