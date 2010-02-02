@@ -1,5 +1,7 @@
 #!/bin/sh
 
+BOOTDISK_MNT=/mnt/bootdisk
+
 get_device () {
   local dev=`mount | grep "$1" | sed 's/\(.*\) on.*/\1/'`
   # Debugging
@@ -31,21 +33,20 @@ copy_cfg_file () {
 }
 
 update_boot () {
-  local mount_point_grub="$1/boot/grub"
-  local mount_point_sysl="$1"
+  local mount_point_grub="$1"
   local item="$2"
   local value="$3"
   local file
 
   echo "\"update_boot $@\" called" >> $LOGFILE
   # in case no geexbox installation was found, update boot configuration is impossible
-  test -z "$mount_point_sysl" && return;
+  test -z "$mount_point_grub" && return;
 
   # don't try to set an item with a non-existing value
   test -z "$value" && return;
 
-  grubcfg="$mount_point_grub/grub.cfg"
-  if [ ! -f "$grubcfg" ]; then
+  grubcfg="$mount_point_grub/boot/grub/grub.cfg"
+  if [ -f "$grubcfg" ]; then
 
     echo "Editing \"$grubcfg\" with $2=$3" >> $LOGFILE
     echo "Before edit:" >> $LOGFILE
@@ -113,10 +114,9 @@ for arg in $(cat /proc/cmdline); do
 done
 
 # in case we've booted from hdd, mount fs again
-if [ "$BOOT_DEV" != "cdrom" -a "$BOOT" = hdd ] && [ ! -d /mnt/bootdisk ]; then
+if [ "$BOOT_DEV" != "cdrom" -a "$BOOT" = hdd ] && [ ! -d $BOOTDISK_MNT ]; then
   BOOT_DEV=`mount | grep " on / " | sed "s/^\([^ ]*\).*/\1/"`
-  mkdir -p /mnt/bootdisk
-  mount "$BOOT_DEV" /mnt/bootdisk
+  mkdir -p $BOOTDISK_MNT && mount "$BOOT_DEV" $BOOTDISK_MNT
 fi
 
 # get i18n strings
@@ -132,7 +132,13 @@ for i in /mnt/*; do
   # ensure that this mount point is a disk
   echo "$i" | grep -qi disk || continue;
 
-  test -d "$i/GEEXBOX" && partitions="$partitions \"$i\" \"GeeXboX installation\"";
+  if [ -d "$i/GEEXBOX" ]; then
+    if [ "$i" = "$BOOTDISK_MNT" ]; then 
+      partitions="$partitions \"$i\" \"Current GeeXboX installation\"";
+    else
+      partitions="$partitions \"$i\" \"GeeXboX installation\"";
+    fi
+  fi
 done
 
 if [ -z "$partitions" ]; then
@@ -151,14 +157,21 @@ extra_partition_found=0
 for i in /mnt/*; do
   # ensure that this mount point is a disk
   echo "$i" | grep -qi disk || continue;
-  echo "$i" | grep -qv "/mnt/bootdisk" || continue;
 
   partitions="$partitions \"$i\""
   if [ -d "$i/GEEXBOX" ]; then
-    partitions="$partitions \"GeeXboX installation\""
-    inst_partition_found=1
+    
+    if [ "$i" = "$BOOTDISK_MNT" ]; then
+      partitions="$partitions \"Current GeeXboX installation\""
+    else
+      partitions="$partitions \"GeeXboX installation\""
+    fi
   else
-    partitions="$partitions \"Other partition\""
+    if [ -d "$i/geexbox-data" ]; then
+      partitions="$partitions \"GeeXboX data partition\""
+    else
+      partitions="$partitions \"Other partition\""
+    fi
     extra_partition_found=1
   fi
 done
