@@ -1,6 +1,7 @@
 #!/bin/sh
 
 LOGFILE=/tmp/install.log
+BOOTDISK_MNT=/mnt/bootdisk
 
 # Acts just like echo cmd, with automatic redirection
 dbglg () {
@@ -285,9 +286,9 @@ configure () {
 guess_partition_type () {
   local type FS_TYPE=""
   for type in vfat ext4 ext3 ext2 auto; do
-    if mount -o ro -t $type "$1" di 2>/dev/null; then
+    if mount -o ro -t $type "$1" $BOOTDISK_MNT 2>/dev/null; then
       FS_TYPE=`grep "^$1 " /proc/mounts | cut -d " " -f 3`
-      umount di
+      umount $BOOTDISK_MNT
       break
     fi
   done
@@ -397,7 +398,7 @@ format_if_needed () {
       if [ "$NEED_FORMAT" = yes ]; then
         dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_ERROR" \
           --msgbox "\n${MSG_INSTALL_DEV_NO_FORMAT} ('$LOC_DEV'). ${MSG_INSTALL_FORMAT_NO_TOOLS}\n" 0 0 1>&2
-        rmdir di
+        rmdir $BOOTDISK_MNT
         exit 1
       else
         dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_WARNING"\
@@ -414,7 +415,7 @@ format_if_needed () {
   elif [ "$NEED_FORMAT" = yes ]; then
     dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_ERROR" \
       --msgbox "\n${MSG_INSTALL_DEV_NO_FORMAT} ('$LOC_DEV')\n" 0 0 1>&2
-    rmdir di
+    rmdir $BOOTDISK_MNT
     exit 1
   fi
 
@@ -453,7 +454,7 @@ install_grub (){
   local ROOTDEV
   local MBRDEV
   local GRUBPREFIX=/boot/grub
-  local GRUBDIR=di$GRUBPREFIX
+  local GRUBDIR=$BOOTDISK_MNT/$GRUBPREFIX
   local DEVICE_MAP=$GRUBDIR/device.map
   local SPLASHIMAGE="grub-splash.png"
   local LOC_DEV=$1
@@ -467,16 +468,16 @@ install_grub (){
   rm -rf $GRUBDIR
   mkdir -p $GRUBDIR
 
-  [ -f "di/GEEXBOX/usr/share/grub-i386-pc.tar.lzma" ] \
-    && tar xaf "di/GEEXBOX/usr/share/grub-i386-pc.tar.lzma" -C /usr \
+  [ -f "$BOOTDISK_MNT/GEEXBOX/usr/share/grub-i386-pc.tar.lzma" ] \
+    && tar xaf "$BOOTDISK_MNT/GEEXBOX/usr/share/grub-i386-pc.tar.lzma" -C /usr \
     >> $LOGFILE 2>&1
 
-  [ -f "di/GEEXBOX/usr/share/${SPLASHIMAGE}" ] && cp -f "di/GEEXBOX/usr/share/${SPLASHIMAGE}" $GRUBDIR 
+  [ -f "$BOOTDISK_MNT/GEEXBOX/usr/share/${SPLASHIMAGE}" ] && cp -f "$BOOTDISK_MNT/GEEXBOX/usr/share/${SPLASHIMAGE}" $GRUBDIR 
 
   dbglg "grub-mkdevicemap --no-floppy --device-map=$DEVICE_MAP"
   grub-mkdevicemap --no-floppy --device-map=$DEVICE_MAP \
       >> $LOGFILE 2>&1
-  ROOTDEV=$(grub-probe --target=drive --device-map=${DEVICE_MAP} /di)
+  ROOTDEV=$(grub-probe --target=drive --device-map=${DEVICE_MAP} $BOOTDISK_MNT)
 
   dbglg "ROOTDEV \"$ROOTDEV\" DEV \"$LOC_DEV\""
   dbglg "XORG \"$LOC_USE_XORG\""
@@ -484,12 +485,11 @@ install_grub (){
   if [ -z "$ROOTDEV" ]; then
     dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_ERROR" \
       --msgbox "\n${MSG_GRUB_NO_ROOTDEV}\n" 0 0 1>&2
-    umount di
-    rmdir di
+    umount $BOOTDISK_MNT && rmdir $BOOTDISK_MNT
     exit 1
   fi
 
-  DEV_UUID=$(grub-probe --target=fs_uuid --device-map=${DEVICE_MAP} /di)
+  DEV_UUID=$(grub-probe --target=fs_uuid --device-map=${DEVICE_MAP} $BOOTDISK_MNT)
   BOOT_DRV="(UUID=${DEV_UUID})"
 
   setup_grub $GRUBDIR/grub.cfg $DEV_UUID $BOOT_DRV $LOC_USE_XORG $LOC_MKFS_TYPE
@@ -535,7 +535,7 @@ install_grub (){
   else
     oslist=
     MBR=yes
-    MBRDEV=$(grub-probe --target=drive --device-map=${DEVICE_MAP} di)
+    MBRDEV=$(grub-probe --target=drive --device-map=${DEVICE_MAP} $BOOTDISK_MNT)
     MBRDEV=$(echo $MBRDEV | sed 's/,[0-9]*//g')
   fi
 
@@ -544,9 +544,9 @@ install_grub (){
     dbglg "grub probing..."
     MOD_OTHER="fs_uuid"
     MOD_DISK="biosdisk"
-    MOD_FS=$(grub-probe --target=fs --device-map=${DEVICE_MAP} di 2>>$LOGFILE)
-    MOD_PARTMAP=$(grub-probe --target=partmap --device-map=${DEVICE_MAP} di 2>>$LOGFILE)
-    MOD_DEVABSTRACTION=$(grub-probe --target=abstraction --device-map=${DEVICE_MAP} di 2>>$LOGFILE)
+    MOD_FS=$(grub-probe --target=fs --device-map=${DEVICE_MAP} $BOOTDISK_MNT 2>>$LOGFILE)
+    MOD_PARTMAP=$(grub-probe --target=partmap --device-map=${DEVICE_MAP} $BOOTDISK_MNT 2>>$LOGFILE)
+    MOD_DEVABSTRACTION=$(grub-probe --target=abstraction --device-map=${DEVICE_MAP} $BOOTDISK_MNT 2>>$LOGFILE)
     MODULES="$MOD_DISK $MOD_FS $MOD_PARTMAP $MOD_DEVABSTRACTION $MOD_OTHER"
     dbglg "grub disk: $MOD_DISK"
     dbglg "grub fs: $MOD_FS"
@@ -671,9 +671,10 @@ if ( [ -x /sbin/lvm ] && vgdisplay /dev/$DISK >/dev/null 2>&1 ); then
 else
   umount /dev/${DISK}* 2>/dev/null
 fi
+for d in /mnt/*; do rmdir $d >/dev/null 2>&1; done
 
 # Create directory for the install partition to be mounted
-mkdir di
+mkdir -p $BOOTDISK_MNT
 
 # Configure X.Org
 if [ -f /etc/init/xorg.conf ]; then
@@ -704,22 +705,22 @@ MKFS_TYPE="`guess_partition_type $DEV`"
 format_if_needed "$MKFS_TYPE" "$DEV"
 
 # Attempt to mount the prepared partition using the given partition fs type
-dbglg "mount -t $MKFS_TYPE $DEV di"
-mount -t $MKFS_TYPE "$DEV" di
+dbglg "mount -t $MKFS_TYPE $DEV $BOOTDISK_MNT"
+mount -t $MKFS_TYPE "$DEV" $BOOTDISK_MNT
 ret=$?
 if [ $ret -ne 0 ]; then
   # FS is not mountable! Return an error msg and exit
   dbglg "mount returned $ret"
   dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_ERROR" \
     --msgbox "\n${MSG_INSTALL_MOUNT_FAILED} '$DEV' ($MKFS_TYPENAME).\n" 0 0
-  rmdir di
+  rmdir $BOOTDISK_MNT
   exit 1
 fi
 
 dialog --backtitle "$BACKTITLE" --infobox "$MSG_INSTALLING_WAIT" 0 0
 
 # Cleanup if was left in a messy state previously- remove previous installs
-rm -rf di/GEEXBOX 2>&1 >> $LOGFILE
+rm -rf $BOOTDISK_MNT/GEEXBOX 2>&1 >> $LOGFILE
 
 # Copy the main files to the install partition
 OS_RELEASE=$(uname -r)
@@ -739,23 +740,19 @@ for e in $EMPTY_DIRS $INITRD_ELEMS; do
   echo "$e" >>/tmp/initrd.install
 done
 for e in $EMPTY_DIRS; do
-  mkdir -p /di/GEEXBOX/$e
+  mkdir -p $BOOTDISK_MNT/GEEXBOX/$e
 done
 for e in $DISK_ELEMS; do
-  find $e -xdev | sed 's/^\///g' | cpio -pd /di/GEEXBOX 2>&1 | grep -v "newer or same age file exists" >> $LOGFILE
+  find $e -xdev | sed 's/^\///g' | cpio -pd $BOOTDISK_MNT/GEEXBOX 2>&1 | grep -v "newer or same age file exists" >> $LOGFILE
 done
-mkdir -p di/boot && cp /boot/vmlinuz di/boot/
-cat /tmp/initrd.install | sed 's/^\///g' | cpio -o -H newc | gzip -9 > di/boot/initrd.gz
+mkdir -p $BOOTDISK_MNT/boot && cp /boot/vmlinuz $BOOTDISK_MNT/boot/
+cat /tmp/initrd.install | sed 's/^\///g' | cpio -o -H newc | gzip -9 > $BOOTDISK_MNT/boot/initrd.gz
 
 
 install_grub "$DEV" "$USE_XORG" "$MKFS_TYPE"
 
 # Remove unneeded boot dir from mounted install drive
-rm -rf di/GEEXBOX/boot
-
-# Cleanup
-umount di
-rmdir di
+rm -rf $BOOTDISK_MNT/GEEXBOX/boot
 
 # Eject CD if it was the boot media
 [ -n "$CDROM" ] && eject -s /dev/cdrom &
@@ -771,6 +768,9 @@ dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_SUCCESS" \
   --yesno "\n${MSG_SUCCESS_DESC_BEGIN} '$DEV' !! ${MSG_SUCCESS_DESC_END}\n" \
   0 0 \
   && echo >/var/do_configure
+
+# Cleanup
+umount $BOOTDISK_MNT && rmdir $BOOTDISK_MNT
 
 # Exit cleanly
 return 0
