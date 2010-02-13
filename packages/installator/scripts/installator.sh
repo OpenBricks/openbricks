@@ -677,14 +677,7 @@ for d in /mnt/*; do rmdir $d >/dev/null 2>&1; done
 mkdir -p $BOOTDISK_MNT
 
 # Configure X.Org
-if [ -f /etc/init/xorg.conf ]; then
-  USE_XORG=yes # default is to use X if present
-  dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_CFG_HDTV" \
-    --yesno "\n${MSG_CFG_HDTV_DESC}\n" 0 0 \
-    || USE_XORG=no
-else
-  USE_XORG=no
-fi
+[ -f /etc/init/xorg.conf ] && USE_XORG=yes || USE_XORG=no
 
 CFDISK_MSG="$MSG_CFDISK_BEGIN $MSG_DISK_PART $MSG_CFDISK_END"
 
