@@ -682,13 +682,13 @@ mkdir -p $BOOTDISK_MNT
 CFDISK_MSG="$MSG_CFDISK_BEGIN $MSG_DISK_PART $MSG_CFDISK_END"
 
 # Guide user on how to setup with cfdisk tool in the next step only if no VG was selected
-if ( [ -x /sbin/lvm ] && ! lvm vgdisplay /dev/$DISK >/dev/null 2>&1 ); then
+#if ( [ -x /sbin/lvm ] && ! lvm vgdisplay /dev/$DISK >/dev/null 2>&1 ); then
   dialog --stdout --backtitle "$BACKTITLE" --title "$MSG_INSTALL_DEV_CONFIG" \
     --msgbox "$CFDISK_MSG" 0 0 \
     || exit 1
 
   cfdisk /dev/$DISK
-fi
+#fi
 
 DEV="`choose_partition_dev $DISK`"
 [ -z "$DEV" ] && exit 1
