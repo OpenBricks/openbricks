@@ -717,12 +717,14 @@ rm -rf $BOOTDISK_MNT/GEEXBOX 2>&1 >> $LOGFILE
 
 # Copy the main files to the install partition
 OS_RELEASE=$(uname -r)
-INITRD_ELEMS="/bin/busybox /etc/profile /lib/ /bin/sh /bin/ldd /sbin/init /sbin/blkid /sbin/modprobe /sbin/lvm /sbin/udevd /sbin/udevadm /linuxrc /lib/modules/${OS_RELEASE}/modules.dep /lib/modules/${OS_RELEASE}/kernel/drivers/md/dm-mod.ko"
+INITRD_ELEMS="/bin/busybox /etc/profile /lib/ /bin/sh /sbin/init /sbin/blkid /sbin/modprobe /sbin/udevd /sbin/udevadm /linuxrc /lib/modules/${OS_RELEASE}/modules.dep /lib/modules/${OS_RELEASE}/kernel/drivers/md/dm-mod.ko"
 INITRD_ELEMS="$INITRD_ELEMS $(find /etc/udev)"
 INITRD_ELEMS="$INITRD_ELEMS $(find /lib -maxdepth 1)"
 INITRD_ELEMS="$INITRD_ELEMS $(find /lib/udev)"
 INITRD_ELEMS="$INITRD_ELEMS $(find /usr/lib/ -maxdepth 1 -name libdevmapper\*)"
 INITRD_ELEMS="$INITRD_ELEMS $(find /usr/lib/ -maxdepth 1 -name libgcc\*)"
+[ -x /bin/ldd ]  && INITRD_ELEMS="$INITRD_ELEMS /bin/ldd"
+[ -x /sbin/lvm ] && INITRD_ELEMS="$INITRD_ELEMS /sbin/lvm"
 
 #TODO: not every empty directory is needed on initial ramdisk. List of needed directories probably depends on included software, so maybe some of these should be created on startup of the very daemon?
 EMPTY_DIRS="/proc /sys /etc /tmp /bin /usr /usr/lib /usr/bin /sbin /usr/sbin /var /var/log /var/lib /var/lib/dbus /var/run /var/run/dbus /lib /lib/modules /lib/modules/${OS_RELEASE} /lib/modules/${OS_RELEASE}/kernel /lib/modules/${OS_RELEASE}/kernel/drivers /lib/modules/${OS_RELEASE}/kernel/drivers/md"
