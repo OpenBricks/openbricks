@@ -111,6 +111,8 @@ append_grub_conf () {
   sed -i "s/_DEBUG_/$4/" $TMP_GRUB_CONF
   sed -i "s/_CONFIG_/$5/" $TMP_GRUB_CONF
 
+  [ "$4" = debugging ] && sed -i "s/loglevel=[0-9]//" $TMP_GRUB_CONF
+
   cat $TMP_GRUB_CONF >> $1
   echo "" >> $1
 }
