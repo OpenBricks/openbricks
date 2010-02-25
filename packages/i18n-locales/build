@@ -4,20 +4,27 @@
 
 require_glibc $1
 
+$SCRIPTS/build eglibc-localedef
+
+EGLIBC_DIR="$ROOT/$BUILD/`basename $BUILD/eglibc-2*`"
+export I18NPATH="$EGLIBC_DIR/localedata"
+export GCONV_PATH=iconvdata
+export LC_ALL=C
+
 mkdir -p $BUILD/$1
 cd $BUILD/$1
+
+mkdir -p usr/local/lib/locale
+cp -f "$EGLIBC_DIR/intl/locale.alias" .
 
 for loc in $INCLUDED_LOCALES; do
   LOCALE=`echo $loc|cut -f1 -d.`
   CHARSET=`echo $loc|cut -f2 -d.`
-  gzip -cd $SYSROOT_PREFIX/usr/share/i18n/charmaps/$CHARSET.gz > $CHARSET
-  cp $SYSROOT_PREFIX/usr/share/locale/locale.alias .
   echo "Building $LOCALE.$CHARSET..."
-  mkdir -p usr/lib/locale
-  localedef -c \
-  	-f $CHARSET \
-	-i $SYSROOT_PREFIX/usr/share/i18n/locales/$LOCALE \
-	-A locale.alias \
-	--prefix $ROOT/$BUILD/$1 \
-	$LOCALE
+  $ROOT/$TOOLCHAIN/bin/localedef -c \
+      -f "$EGLIBC_DIR/localedata/charmaps/$CHARSET" \
+      -i "$EGLIBC_DIR/localedata/locales/$LOCALE" \
+      -A locale.alias \
+      --prefix "$ROOT/$BUILD/$1" \
+      $LOCALE
 done
