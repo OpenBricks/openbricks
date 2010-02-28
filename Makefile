@@ -1,6 +1,9 @@
 iso:
 	scripts/iso
 
+flat:
+	scripts/flat
+
 burn: iso
 	scripts/burn
 
