@@ -198,5 +198,5 @@ if [ "$1" = debug ]; then
   echo "URL: $URL"
 else
   # send request to geexbox.org web server
-  wget "$URL" -o /dev/null
+  wget "$URL" -O /dev/null > /dev/null 2>&1
 fi
