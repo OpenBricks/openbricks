@@ -85,7 +85,7 @@ if [ -z "$DATA" -a "$BOOT_DEV"="cdrom" ]; then
   test -z "$partitions" && exit 0 # no potential data partitions found
   
   #todo: i18n
-  echo dialog --aspect 15 --stdout --backtitle \"$MSG_CFG_TITLE\" \
+  echo dialog --timeout 10 --aspect 15 --stdout --backtitle \"$MSG_CFG_TITLE\" \
     --title \"Persistent configuration\" --menu \"Please select a persistent data partition in case you want to use one of the following\" 0 0 0 $partitions >/tmp/partselect
   data_partition=`sh /tmp/partselect`
   [ -z "$data_partition" ] && exit 0 # none selected, working without
