@@ -342,9 +342,8 @@ volume_set_unique_name(volume_t *v)
 }
 
 static volume_t *
-handle_disc (struct udev_device *dev)
+handle_cdrom (struct udev_device *dev)
 {
-  const char *id_type;
   volume_t *v;
 
   int major, minor, disk, media;
@@ -352,14 +351,6 @@ handle_disc (struct udev_device *dev)
   char dsk[8] = { 0 }, part[8] = { 0 };
   const char *bus_type = NULL;
   int i;
-
-  id_type = udev_device_get_property_value (dev, "ID_TYPE");
-  if (!id_type)
-    return NULL;;
-
-  /* only care about CDs */
-  if (strcmp (id_type, "cd"))
-    return NULL;
 
   /* ensure a CD has been inserted */
   media = get_property_value_int (dev, "ID_CDROM_MEDIA");
@@ -425,6 +416,50 @@ handle_disc (struct udev_device *dev)
   volume_append_name (v, part);
 
   volume_set_unique_name(v);
+
+  return v;
+}
+
+static volume_t *
+handle_dm_disk (struct udev_device *dev)
+{
+  int major, minor;
+  const char *usage, *fs;
+  const char *devname, *dm_name, *label, *device;
+  volume_t *v;
+  const char *drive_type = NULL;
+
+  /* ensure we're dealing with a proper filesystem on partition */
+  usage = udev_device_get_property_value (dev, "ID_FS_USAGE");
+  if (!usage || strcmp (usage, "filesystem"))
+    return NULL;;
+
+  v = volume_new ();
+
+  device    = udev_device_get_devnode (dev);
+  major     = get_property_value_int (dev, "MAJOR");
+  minor     = get_property_value_int (dev, "MINOR");
+
+  fs        = udev_device_get_property_value (dev, "ID_FS_TYPE");
+  devname   = udev_device_get_property_value (dev, "DEVNAME");
+
+  dm_name    = udev_device_get_property_value (dev, "DM_NAME");
+  label     = udev_device_get_property_value (dev, "ID_FS_LABEL");
+
+  v->syspath = strdup (udev_device_get_syspath (dev));
+  v->device  = strdup (device ? device : "Unknown");
+  v->type    = strdup ("HDD");
+  v->fstype  = strdup (fs ? fs : "Unknown");
+  v->mounted = mtab_is_mounted (device);
+
+  drive_type = "DM";
+
+  volume_append_name (v, drive_type);
+  volume_append_name (v, dm_name);
+  if (label)
+    volume_append_name (v, label);
+
+  volume_set_unique_name (v);
 
   return v;
 }
@@ -535,6 +570,7 @@ add_device (struct udev_device *dev)
 {
   const char *syspath;
   const char *devtype;
+  const char *disktype;
   volume_t *v = NULL;
 
   /* retrieve the device's syspath */
@@ -551,7 +587,18 @@ add_device (struct udev_device *dev)
     return;
 
   if (!strcmp (devtype, "disk"))
-    v = handle_disc (dev);
+  {
+    disktype = udev_device_get_property_value (dev, "DM_NAME");
+    if (disktype) 
+      v = handle_dm_disk (dev);
+    else 
+    { 
+      disktype = udev_device_get_property_value (dev, "ID_TYPE");
+      /* only care about CDs */
+      if (disktype && strcmp(disktype, "cd"))
+        v = handle_cdrom (dev);
+    }
+  }
   else if (!strcmp (devtype, "partition"))
     v = handle_partition (dev);
 
