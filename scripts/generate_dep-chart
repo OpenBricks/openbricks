@@ -1,0 +1,152 @@
+#!/bin/sh
+
+TMPDIR=/tmp/geexdeps
+TMPGRAPH=/tmp/geexdeps.dot
+TMPGRAPHSIMPLE=/tmp/geexdeps.simple.dot
+
+if [ ! -d packages ]; then
+  echo "run $0 from geexbox repository root!"
+  exit 1
+fi
+
+mkdir -p $TMPDIR
+rm -rf $TMPDIR/*
+echo -n >$TMPGRAPH
+echo -n >$TMPGRAPHSIMPLE
+
+find packages -maxdepth 2 -type f -name "install" -o -name "build" | while read f; do
+  package=$( echo $f | cut -d\/ -f2 )
+  type=$( echo $f | cut -d\/ -f3 )
+  cp $f $TMPDIR/${type}_${package}
+done
+
+# handle special scripts
+cp scripts/image $TMPDIR/install_image
+cp scripts/rootfs $TMPDIR/install_rootfs
+echo "\$SCRIPTS/install rootfs" >>$TMPDIR/install_image
+
+cd $TMPDIR
+
+# special care for vdr plugins
+vdrplugins=$( ls install_vdr-* | sed 's/install_vdr-/vdr-/g' )
+for vdrplugin in $vdrplugins; do
+  [ "$vdrplugin" != "vdr-plugins" ] && \
+    echo "\$SCRIPTS/install $vdrplugin" >>install_vdr-plugins
+done
+
+prepare_all_packages()
+{
+  stored_packages=""
+  for f in *; do
+    type=$( echo $f | cut -d_ -f1 )
+    package=$( echo $f | cut -d_ -f2- )
+    echo "debug: found package $package ($type)"
+    [ -n "$stored_packages" ] && stored_packages="$stored_packages "
+    stored_packages="${stored_packages}${type} ${package}"
+  done
+}
+
+get_package_deps()
+{
+  type=$1
+  package=$2
+
+  echo "gathering dependencies for $package ($type)"
+  [ -n "$stored_deps" ] && stored_deps="${stored_deps} : "
+  stored_deps="$stored_deps${type} ${package}"
+
+  if [ "$type" = "install" ] && [ -f "build_${package}" ]; then
+    echo "debug: enforced dep to self (build)"
+    stored_deps="${stored_deps} build ${package}"
+  fi
+
+  for depline in $( sed -n 's/.*$SCRIPTS\/build \([a-zA-Z0-9_-]*\).*/\1/p' ${type}_${package} ); do
+    dep_type=build
+    dep_name=$( echo $depline | cut -d\  -f3 )
+    stored_deps="${stored_deps} ${dep_type} ${dep_name}"
+    echo "debug: found $dep_name ($dep_type)"
+  done
+  for depline in $( sed -n 's/.*$SCRIPTS\/install \([a-zA-Z0-9_-]*\).*/\1/p' ${type}_${package} ); do
+    dep_type=install
+    dep_name=$( echo $depline | cut -d\  -f3 )
+    stored_deps="${stored_deps} ${dep_type} ${dep_name}"
+    echo "debug: found $dep_name ($dep_type)"
+  done
+}
+
+get_all_packages_deps()
+{
+  while [ -n "$1" ]; do
+    package_type=$1
+    shift
+    package_name=$1
+    shift
+
+    get_package_deps $package_type $package_name
+  done
+}
+
+process_all_packages_deps()
+{
+  alreadydone=" "
+  while [ -n "$1" ]; do
+    type=$1
+    shift
+    package=$1
+    shift
+
+    if [ "$type" = "install" ]; then
+      format="[style=filled, color=lightgray]"
+    else
+      format=""
+    fi
+
+    echo -e "\n\"$package ($type)\" ${format}" >>$TMPGRAPH
+    echo -e "\n\"$package\" ${format}" >>$TMPGRAPHSIMPLE
+    echo "debug: checking dependencies of $package ($type)"
+    while [ -n "$1" -a "$1" != ":" ]; do
+      dependson_type=$1
+      shift
+      dependson_name=$1
+      shift
+
+      if [ "$package" = "$dependson_name" ]; then
+        format="[ color=red ]"
+      else
+        format=""
+      fi
+
+      skipsimple=0
+      if $( echo " $alreadydone" | grep -q " ${package}:${dependson_name} " ); then
+        skipsimple=1
+      else
+        alreadydone="${alreadydone}${package}:${dependson_name} "
+      fi
+
+      echo "debug: found dependency of $dependson_name ($dependson_type)"
+      echo "\"$package ($type)\"->\"$dependson_name ($dependson_type)\" ${format}" >>$TMPGRAPH
+      [ "$skipsimple" -eq 0 ] && \
+        [ "$package" != "$dependson_name" ] && \
+        echo "\"$package\"->\"$dependson_name\" ${format}" >>$TMPGRAPHSIMPLE
+    done
+    [ "$1" = ":" ] && shift
+  done
+}
+
+prepare_all_packages
+echo "digraph geexdeps{" >>$TMPGRAPH
+echo "digraph geexdeps{" >>$TMPGRAPHSIMPLE
+get_all_packages_deps $stored_packages
+process_all_packages_deps $stored_deps
+echo "}" >>$TMPGRAPH
+echo "}" >>$TMPGRAPHSIMPLE
+
+cd - >/dev/null 2>&1
+
+if [ -x /opt/zgrviewer/run.sh ]; then
+  /opt/zgrviewer/run.sh $TMPGRAPH
+  /opt/zgrviewer/run.sh $TMPGRAPHSIMPLE
+else
+  dotty $TMPGRAPH
+  dotty $TMPGRAPHSIMPLE
+fi
