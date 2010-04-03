@@ -1,7 +1,7 @@
 #!/bin/sh
 
 LOGFILE=/tmp/install.log
-BOOTDISK_MNT=/mnt/bootdisk
+BOOTDISK_MNT=/mnt/BootDisk
 
 # Acts just like echo cmd, with automatic redirection
 dbglg () {
@@ -506,7 +506,7 @@ install_grub (){
   # is not installed on a removable device.
   # Note: lvm is not recognized as removable no matter what it's installed on!
   # FIXME: should be possible to have lvm boot on removable device as well, but with less priority
-  if [ ! -f /sys/block/$TMP_DISKNAME/removable -o "`cat /sys/block/$TMP_DISKNAME/removable`" = 0 ]; then
+  if [ ! -f /sys/block/$TMP_DISKNAME/removable -o "`cat /sys/block/$TMP_DISKNAME/removable 2>&1`" = 0 ]; then
     oslist=$(detect_os)
 
     supported_os_list=""
@@ -643,7 +643,7 @@ EOF
   # Special care for removable devices
   # if one intend to boot from removable disk, it'll be considered as
   # primary disk for BIOS
-  if [ "`cat /sys/block/$TMP_DISKNAME/removable`" = 1 ]; then
+  if [ "`cat /sys/block/$TMP_DISKNAME/removable 2>/dev/null`" = 1 ]; then
      for file in grub.cfg; do
        [ -f "$GRUBDIR/$file" ] && sed -i 's%(hd[0-9],%(hd0,%g' "$GRUBDIR/$file"
      done
@@ -684,13 +684,13 @@ mkdir -p $BOOTDISK_MNT
 CFDISK_MSG="$MSG_CFDISK_BEGIN $MSG_DISK_PART $MSG_CFDISK_END"
 
 # Guide user on how to setup with cfdisk tool in the next step only if no VG was selected
-#if ( [ -x /sbin/lvm ] && ! lvm vgdisplay /dev/$DISK >/dev/null 2>&1 ); then
+if ( ! [ -x /sbin/lvm ] || ! lvm vgdisplay /dev/$DISK >/dev/null 2>&1 ); then
   dialog --stdout --backtitle "$BACKTITLE" --title "$MSG_INSTALL_DEV_CONFIG" \
     --msgbox "$CFDISK_MSG" 0 0 \
     || exit 1
 
   cfdisk /dev/$DISK
-#fi
+fi
 
 DEV="`choose_partition_dev $DISK`"
 [ -z "$DEV" ] && exit 1
