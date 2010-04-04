@@ -112,7 +112,7 @@ elif [ -n "$DATA" ]; then
 fi
 
 if [ -n "$data_device" ]; then
-  mkdir -p /mnt/data
+  mkdir -p /mnt/data /var/data
   umount "$data_device" >/dev/null 2>&1
   mount "$data_device" /mnt/data
   mount -o bind /mnt/data/$DATA_LOCATION /var/data
