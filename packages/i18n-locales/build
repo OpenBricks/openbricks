@@ -17,14 +17,35 @@ cd $BUILD/$1
 mkdir -p usr/local/lib/locale
 cp -f "$EGLIBC_DIR/intl/locale.alias" .
 
+# complete locale names
+SUPPORTED_INCLUDED_LOCALES=""
 for loc in $INCLUDED_LOCALES; do
-  LOCALE=`echo $loc|cut -f1 -d.`
-  CHARSET=`echo $loc|cut -f2 -d.`
-  echo "Building $LOCALE.$CHARSET..."
+    [ -n "$SUPPORTED_INCLUDED_LOCALES" ] && SUPPORTED_INCLUDED_LOCALES="$SUPPORTED_INCLUDED_LOCALES "
+    loc_supported=$( grep "^$loc" $EGLIBC_DIR/localedata/SUPPORTED | sed 's/ \\$//g' )
+    [ -n "$loc_supported" ] && SUPPORTED_INCLUDED_LOCALES="${SUPPORTED_INCLUDED_LOCALES}${loc_supported}"
+
+    if [ -z "$loc_supported" ]; then 
+      echo "Warning: locale $loc is not supported the way you specified!"
+    elif [ "$loc_supported" != "$loc" ]; then
+      echo "Warning: using locale $loc_supported instead of $loc!"
+    fi
+done
+
+if [ -z "$SUPPORTED_INCLUDED_LOCALES" ]; then
+  echo "Warning: no locales specified, using all!"
+  SUPPORTED_INCLUDED_LOCALES=$( sed ':;s/\\\n//;N;T' $EGLIBC_DIR/localedata/SUPPORTED )
+fi
+
+for loc in $SUPPORTED_INCLUDED_LOCALES; do
+  CHARSET=`echo $loc | sed -e 's,.*/,,'`
+  LOCALE=`echo $loc | sed -e 's,/[^/]*,,'`
+  INPUT=`echo $LOCALE | sed 's/\([^.]*\)[^@]*\(.*\)/\1\2/'`
+
+  echo "Building $LOCALE/$CHARSET..."
   $ROOT/$TOOLCHAIN/bin/localedef -c \
       -f "$EGLIBC_DIR/localedata/charmaps/$CHARSET" \
-      -i "$EGLIBC_DIR/localedata/locales/$LOCALE" \
+      -i "$EGLIBC_DIR/localedata/locales/$INPUT" \
       -A locale.alias \
       --prefix "$ROOT/$BUILD/$1" \
-      $LOCALE
+      $LOCALE 
 done
