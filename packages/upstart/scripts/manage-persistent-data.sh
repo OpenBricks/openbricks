@@ -113,9 +113,14 @@ fi
 
 if [ -n "$data_device" ]; then
   mkdir -p /mnt/data /var/data
-  umount "$data_device" >/dev/null 2>&1
-  mount "$data_device" /mnt/data
-  mount -o bind /mnt/data/$DATA_LOCATION /var/data
+  # most likely, automount just mounted after our umount, so try 4 times
+  for i in 1 2 3 4; do
+    umount "$data_device" >/dev/null 2>&1
+    mount "$data_device" /mnt/data && \
+      mount -o bind /mnt/data/$DATA_LOCATION /var/data && \
+      usleep 250000 && \
+      break
+  done
 
   # doublecheck whether location is writable
   ( echo >/var/data/test && rm /var/data/test ) || exit 1
