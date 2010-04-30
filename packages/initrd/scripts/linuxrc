@@ -1,7 +1,7 @@
 #!/bin/sh
+busybox mount -t devtmpfs none /dev
 busybox mount -t proc none /proc
 busybox mount -t sysfs none /sys
-busybox mknod /dev/null c 1 3
 busybox --install -s
 [ -x /sbin/bootchartd ] && /sbin/bootchartd
 
@@ -92,10 +92,6 @@ done
 
 echo > /proc/sys/kernel/hotplug
 mkdir -p /dev/.udev /var/log
-udevd --daemon
-udevadm trigger
-udevadm settle --timeout=180
-udevadm monitor 2>&1 >/var/log/udev &
 
 # determine if a bootdir was specified or force the default one
 [ -z "$ROOT_LOCATION" ] && ROOT_LOCATION="/GEEXBOX"
@@ -119,20 +115,6 @@ INIT=/sbin/init
 # make environment of /etc/profile available to upstart services
 export ENV=/etc/profile
 . $ENV
-
-# stop udevd, will be started by upstart again
-echo -n "stopping udevd"
-killall udevadm >/dev/null 2>&1
-killall udevd >/dev/null 2>&1
-# give it some time to end properly
-for i in 0 1 2 3 4 5 6 7 8 9; do
-  echo -n "."
-  ( ( ps | grep -q "[u]dev" ) && usleep 250000 ) || break
-done
-( ps | grep -q "[u]dev" ) && echo "killing udevd."
-killall -9 udevadm >/dev/null 2>&1
-killall -9 udevd >/dev/null 2>&1
-echo
 
 if [ "$BOOT" = hdd ]; then 
   # bind geexbox location to a new mountpoint
