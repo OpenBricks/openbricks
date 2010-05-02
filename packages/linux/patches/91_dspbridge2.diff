@@ -1,0 +1,185 @@
+--- linux-omap-psp/drivers/Makefile	2010-03-20 11:18:43.000000000 -0700
++++ kernel-dspbridge/drivers/Makefile	2010-03-20 10:47:01.000000000 -0700
+@@ -35,6 +35,8 @@
+ obj-$(CONFIG_FB_I810)           += video/i810/
+ obj-$(CONFIG_FB_INTEL)          += video/intelfb/
+ 
++obj-$(CONFIG_MPU_BRIDGE)	+= dsp/bridge/
++
+ obj-y				+= serial/
+ obj-$(CONFIG_PARPORT)		+= parport/
+ obj-y				+= base/ block/ misc/ mfd/
+--- linux-omap-psp/arch/arm//mach-omap2/dspbridge.c	1969-12-31 16:00:00.000000000 -0800
++++ kernel-dspbridge/arch/arm/mach-omap2/dspbridge.c	2010-03-20 10:47:00.000000000 -0700
+@@ -0,0 +1,76 @@
++/*
++ * TI's dspbridge platform device registration
++ *
++ * Copyright (C) 2005-2006 Texas Instruments, Inc.
++ * Copyright (C) 2009 Nokia Corporation
++ *
++ * Written by Hiroshi DOYU <Hiroshi.DOYU@nokia.com>
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 as
++ * published by the Free Software Foundation.
++ */
++
++#include <linux/platform_device.h>
++
++#ifdef CONFIG_BRIDGE_DVFS
++#include <mach/omap-pm.h>
++#endif
++
++#include <dspbridge/host_os.h>
++
++static struct platform_device *dspbridge_pdev;
++
++static struct dspbridge_platform_data dspbridge_pdata __initdata = {
++#ifdef CONFIG_BRIDGE_DVFS
++	.dsp_set_min_opp = omap_pm_dsp_set_min_opp,
++	.dsp_get_opp	 = omap_pm_dsp_get_opp,
++	.cpu_set_freq	 = omap_pm_cpu_set_freq,
++	.cpu_get_freq	 = omap_pm_cpu_get_freq,
++#endif
++};
++
++static int __init dspbridge_init(void)
++{
++	struct platform_device *pdev;
++	int err = -ENOMEM;
++	struct dspbridge_platform_data *pdata = &dspbridge_pdata;
++
++	pdata->phys_mempool_base = dspbridge_get_mempool_base();
++
++	if (pdata->phys_mempool_base) {
++		pdata->phys_mempool_size = CONFIG_BRIDGE_MEMPOOL_SIZE;
++		pr_info("%s: %x bytes @ %x\n", __func__,
++			pdata->phys_mempool_size, pdata->phys_mempool_base);
++	}
++
++	pdev = platform_device_alloc("C6410", -1);
++	if (!pdev)
++		goto err_out;
++
++	err = platform_device_add_data(pdev, pdata, sizeof(*pdata));
++	if (err)
++		goto err_out;
++
++	err = platform_device_add(pdev);
++	if (err)
++		goto err_out;
++
++	dspbridge_pdev = pdev;
++	return 0;
++
++err_out:
++	platform_device_put(pdev);
++	return err;
++}
++module_init(dspbridge_init);
++
++static void __exit dspbridge_exit(void)
++{
++	platform_device_unregister(dspbridge_pdev);
++}
++module_exit(dspbridge_exit);
++
++MODULE_AUTHOR("Hiroshi DOYU");
++MODULE_DESCRIPTION("TI's dspbridge platform device registration");
++MODULE_LICENSE("GPL v2");
+--- linux-omap-psp/arch/arm//mach-omap2/io.c	2010-03-20 11:18:43.000000000 -0700
++++ kernel-dspbridge/arch/arm/mach-omap2/io.c	2010-03-20 10:47:00.000000000 -0700
+@@ -38,6 +38,8 @@
+ #include "omap_hwmod_2430.h"
+ #include "omap_hwmod_34xx.h"
+ 
++#include <dspbridge/host_os.h>
++
+ /*
+  * The machine specific code may provide the extra mapping besides the
+  * default mapping provided here.
+@@ -264,6 +266,7 @@
+ 	omap_sram_init();
+ 	omapfb_reserve_sdram();
+ 	omap_vram_reserve_sdram();
++	dspbridge_reserve_sdram();
+ }
+ 
+ /*
+--- linux-omap-psp/arch/arm/plat-omap/devices.c	2010-03-20 11:24:43.000000000 -0700
++++ kernel-dspbridge/arch/arm/plat-omap/devices.c	2010-03-20 10:47:01.000000000 -0700
+@@ -14,6 +14,8 @@
+ #include <linux/init.h>
+ #include <linux/platform_device.h>
+ #include <linux/io.h>
++#include <linux/bootmem.h>
++#include <plat/dsp_common.h>
+ 
+ #include <mach/hardware.h>
+ #include <asm/mach-types.h>
+@@ -90,6 +92,33 @@
+ static inline void omap_init_dsp(void) { }
+ #endif	/* CONFIG_OMAP_DSP */
+ 
++#if defined(CONFIG_MPU_BRIDGE) ||  defined(CONFIG_MPU_BRIDGE_MODULE)
++
++static unsigned long dspbridge_phys_mempool_base;
++
++void dspbridge_reserve_sdram(void)
++{
++	void *va;
++	unsigned long size = CONFIG_BRIDGE_MEMPOOL_SIZE;
++
++	if (!size)
++		return;
++
++	va = __alloc_bootmem_nopanic(size, SZ_1M, 0);
++	if (!va) {
++		pr_err("%s: Failed to bootmem allocation(%lu bytes)\n",
++		       __func__, size);
++		return;
++	}
++	dspbridge_phys_mempool_base = virt_to_phys(va);
++}
++
++unsigned long dspbridge_get_mempool_base(void)
++{
++	return dspbridge_phys_mempool_base;
++}
++EXPORT_SYMBOL(dspbridge_get_mempool_base);
++#endif
+ /*-------------------------------------------------------------------------*/
+ #if	defined(CONFIG_KEYBOARD_OMAP) || defined(CONFIG_KEYBOARD_OMAP_MODULE)
+ 
+
+--- linux-omap-psp/arch/arm/mach-omap2/Makefile	2010-03-20 11:31:27.000000000 -0700
++++ kernel-dspbridge/arch/arm/mach-omap2/Makefile	2010-03-20 10:47:00.000000000 -0700
+@@ -79,6 +79,8 @@
+ 
+ i2c-omap-$(CONFIG_I2C_OMAP)		:= i2c.o
+ obj-y					+= $(i2c-omap-m) $(i2c-omap-y)
++
++obj-$(CONFIG_MPU_BRIDGE)		+= dspbridge.o
+ 
+ # Specific board support
+ obj-$(CONFIG_MACH_OMAP_GENERIC)		+= board-generic.o
+--- linux-omap-psp/drivers/Kconfig	2010-03-20 11:38:51.000000000 -0700
++++ kernel-dspbridge/drivers/Kconfig	2010-03-20 10:47:01.000000000 -0700
+@@ -113,4 +113,6 @@
+ source "drivers/staging/Kconfig"
+ 
+ source "drivers/platform/Kconfig"
++
++source "drivers/dsp/bridge/Kconfig"
+ endmenu
+--- git/mm/memory.c	2010-03-20 14:28:47.000000000 -0700
++++ git/mm/memory.c	2010-03-20 14:29:16.000000000 -0700
+@@ -1241,6 +1241,7 @@
+ 		return ERR_PTR(-EFAULT);
+ 	return page;
+ }
++EXPORT_SYMBOL_GPL(follow_page);
+ 
+ int __get_user_pages(struct task_struct *tsk, struct mm_struct *mm,
+ 		     unsigned long start, int nr_pages, unsigned int gup_flags,
