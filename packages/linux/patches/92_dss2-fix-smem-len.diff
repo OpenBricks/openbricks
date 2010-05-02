@@ -1,0 +1,37 @@
+With VRFB, an application trying to mmap(...) the framebuffer will
+try to map the whole 4MB (for example), while the size calculated
+by the current code can be less than this, depending on the size of
+yres_virtual, causing the map to fail with -EINVAL. Return smem_len
+to its previous behaviour.
+
+Signed-off-by: Tim Yamin <plasm@roo.me.uk>
+
+--- a/drivers/video/omap2/omapfb/omapfb-main.c
++++ b/drivers/video/omap2/omapfb/omapfb-main.c
+@@ -556,7 +556,7 @@
+ 
+ 	/* used by open/write in fbmem.c */
+ 	fbi->screen_base = ofbi->region.vrfb.vaddr[0];
+-
++	fix->smem_len = rg->size;
+ 	fix->smem_start = ofbi->region.vrfb.paddr[0];
+ 
+ 	switch (var->nonstd) {
+@@ -571,8 +571,6 @@
+ 		break;
+ 	}
+ 
+-	fix->smem_len = var->yres_virtual * fix->line_length;
+-
+ 	return 0;
+ }
+ 
+@@ -617,7 +615,7 @@
+ 			break;
+ 		}
+ 
+-		fix->smem_len = var->yres_virtual * fix->line_length;
++		fix->smem_len = rg->size;
+ 	} else {
+ 		fix->line_length =
+ 			(var->xres_virtual * var->bits_per_pixel) >> 3;
