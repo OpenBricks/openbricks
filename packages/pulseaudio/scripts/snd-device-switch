@@ -1,0 +1,60 @@
+#!/bin/sh
+# switches the default sink to the next device
+
+ALL_SINKS=""
+DEFAULT_SINK_POS=0
+DEFAULT_SINK_INDEX=0
+
+get_all_sinks ()
+{
+  ALL_SINKS="$( pacmd "list-sinks" | grep "index:" | sed 's/\*/DEF/' | \
+    sed 's/\(DEF \| \)[a-zA-Z]*:[ ]*\([0-9]*\).*/\1 \2/' )"
+}
+
+get_next_default_sink_pos ()
+{
+  COUNT=0
+  DEFAULT_SINK_POS=0
+  while [ -n "$1" ]; do
+    if [ "$1" = "DEF" ]; then
+      shift
+      DEFAULT_SINK_POS=$( expr $COUNT + 1 )
+    fi
+    shift
+    COUNT=$( expr $COUNT + 1 )
+  done
+
+  [ "$DEFAULT_SINK_POS" -ge "$COUNT" ] && DEFAULT_SINK_POS=0
+}
+
+get_sink_index_from_pos ()
+{
+  DEFAULT_SINK_INDEX=""
+  COUNT=0
+  while [ -n "$1" ]; do
+    [ "$1" = "DEF" ] && shift
+    [ "$COUNT" -ge "$DEFAULT_SINK_POS" ] && DEFAULT_SINK_INDEX=$1 && break
+    shift
+    COUNT=$( expr $COUNT + 1 )
+  done
+
+  return $DEFAULT_SINK_INDEX
+}
+
+move_inputs_to_default_sink ()
+{
+  ALL_INPUTS="$( pacmd "list-sink-inputs" | grep "index:" | \
+    sed 's/[a-zA-Z]*:[ ]*\([0-9]*\).*/\1/' )"
+  for inp in $ALL_INPUTS; do
+    pacmd "move-sink-input $inp $DEFAULT_SINK_INDEX"
+  done
+}
+
+get_all_sinks
+[ -z "$ALL_SINKS" ] && echo "no sinks found!" >&2 && exit 1
+get_next_default_sink_pos $ALL_SINKS
+get_sink_index_from_pos $ALL_SINKS
+
+echo "setting default sink index to: $DEFAULT_SINK_INDEX"
+pacmd "set-default-sink $DEFAULT_SINK_INDEX"
+move_inputs_to_default_sink

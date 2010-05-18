@@ -1,0 +1,39 @@
+#!/bin/sh
+
+. config/options
+
+mkdir -p $INSTALL/usr/bin
+cp $BUILD/$1-*/src/.libs/pulseaudio $INSTALL/usr/bin
+cp $BUILD/$1-*/src/.libs/pacmd $INSTALL/usr/bin
+cp $BUILD/$1-*/src/.libs/pactl $INSTALL/usr/bin
+cp $PACKAGES/$1/scripts/snd-device-switch $INSTALL/usr/bin
+
+mkdir -p $INSTALL/usr/lib/
+cp $LIB_PREFIX/lib/libpulse*.so* $INSTALL/usr/lib/
+cp -PR $LIB_PREFIX/lib/pulse-*/modules/lib*.so $INSTALL/usr/lib/
+
+mkdir -p $INSTALL/usr/lib/pulse
+cp -PR $LIB_PREFIX/lib/pulse-*/modules/module*.so $INSTALL/usr/lib/pulse
+
+mkdir -p $INSTALL/etc/dbus-1/system.d
+cat $BUILD/$1-*/src/daemon/pulseaudio-system.conf | \
+  sed 's%user="pulse"%user="root"%g' \
+  > $INSTALL/etc/dbus-1/system.d/pulseaudio-system.conf
+
+mkdir -p $INSTALL/etc/pulse
+cp $PACKAGES/$1/config/default.pa $INSTALL/etc/pulse
+for file in client.conf daemon.conf system.pa; do
+  cat $BUILD/$1-*/src/$file | sed "s%$LIB_PREFIX%/usr%g" \
+    > $INSTALL/etc/pulse/$file
+done
+
+mkdir -p $INSTALL/usr/share/pulseaudio/alsa-mixer/profile-sets
+cp $BUILD/$1-*/src/modules/alsa/mixer/profile-sets/* \
+  $INSTALL/usr/share/pulseaudio/alsa-mixer/profile-sets
+mkdir -p $INSTALL/usr/share/pulseaudio/alsa-mixer/paths
+cp $BUILD/$1-*/src/modules/alsa/mixer/paths/* \
+  $INSTALL/usr/share/pulseaudio/alsa-mixer/paths
+
+mkdir -p $INSTALL/etc/udev/rules.d
+cp $BUILD/$1-*/src/modules/alsa/mixer/profile-sets/*.rules \
+  $INSTALL/etc/udev/rules.d
