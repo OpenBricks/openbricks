@@ -729,7 +729,7 @@ INITRD_ELEMS="$INITRD_ELEMS $(find /usr/lib/ -maxdepth 1 -name libgcc\*)"
 [ -x /sbin/lvm ] && INITRD_ELEMS="$INITRD_ELEMS /sbin/lvm"
 
 #TODO: not every empty directory is needed on initial ramdisk. List of needed directories probably depends on included software, so maybe some of these should be created on startup of the very daemon?
-EMPTY_DIRS="/proc /dev /dev/shm /sys /etc /tmp /bin /usr /usr/lib /usr/bin /sbin /usr/sbin /var /var/log /var/lib /var/lib/dbus /var/run /var/run/dbus /lib /lib/modules /lib/modules/${OS_RELEASE} /lib/modules/${OS_RELEASE}/kernel /lib/modules/${OS_RELEASE}/kernel/drivers /lib/modules/${OS_RELEASE}/kernel/drivers/md"
+EMPTY_DIRS="/proc /dev /dev/shm /sys /etc /tmp /bin /usr /usr/lib /usr/bin /sbin /usr/sbin /var /var/log /var/lib /var/lib/dbus /var/run /var/run/dbus /lib /lib/modules /lib/modules/${OS_RELEASE} /lib/modules/${OS_RELEASE}/kernel /lib/modules/${OS_RELEASE}/kernel/drivers /lib/modules/${OS_RELEASE}/kernel/drivers/md /root"
 
 DISK_ELEMS="/bin /etc /lib /firmware /usr /codecs /sbin /dev"
 
