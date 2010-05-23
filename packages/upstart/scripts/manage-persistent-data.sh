@@ -113,14 +113,14 @@ fi
 
 if [ -n "$data_device" ]; then
   mkdir -p /mnt/data /var/data
-  # most likely, automount just mounted after our umount, so try 4 times
-  for i in 1 2 3 4; do
-    umount "$data_device" >/dev/null 2>&1
-    mount "$data_device" /mnt/data && \
-      mount -o bind /mnt/data/$DATA_LOCATION /var/data && \
-      usleep 250000 && \
-      break
-  done
+  # if automountd is started, it prevents us from mounting the device
+  initctl status automountd | grep -iq running
+  automountd_started=$?
+  [ "$automountd_started" ] && initctl stop automountd
+  umount "$data_device" >/dev/null 2>&1
+  mount "$data_device" /mnt/data && \
+    mount -o bind /mnt/data/$DATA_LOCATION /var/data
+  [ "$automountd_started" ] && initctl start automountd
 
   # doublecheck whether location is writable
   ( echo >/var/data/test && rm /var/data/test ) || exit 1
