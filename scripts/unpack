@@ -45,17 +45,17 @@ if [ -d $PACKAGES/$1/sources ]; then
   cp -PRf $PACKAGES/$1/sources/* $BUILD/$1*/
 fi
 
-for i in $PACKAGES/$1/patches/*.diff*; do
-  if [ -f $i ]; then
-    PATCH=`basename $i`
-    PT=`echo $PATCH | sed 's/.*\.\(.*\)$/\1/'`
-    if [ "$PT" != diff -a "$PT" != "$TARGET_ARCH" -a "$PT" != "$TARGET_PLATFORM" ]; then
-      echo "## Skipping patch: $i"
-      continue;
-    else
-      apply_patch $1 $i
-    fi
-  fi
+PBASE=$PACKAGES/$1/patches
+PDIRS="$PBASE $PBASE/$TARGET_ARCH $PBASE/$TARGET_PLATFORM"
+for d in $PBASE/\!*; do
+  P=`echo $d | sed 's/^.*!//'`
+  [ "$TARGET_ARCH" = "$P" -o "$TARGET_PLATFORM" = "$P" ] || \
+    PDIRS="$PDIRS $d"
+done
+for d in $PDIRS; do
+  for i in $d/*.diff; do
+    [ -f $i ] && apply_patch $1 $i
+  done
 done
 
 $SCRIPTS/fixconfigtools $BUILD/$1*
