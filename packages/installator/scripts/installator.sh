@@ -748,6 +748,10 @@ cat /tmp/initrd.install | sed 's/^\///g' | cpio -o -H newc | gzip -9 > $BOOTDISK
 
 install_grub "$DEV" "$USE_XORG" "$MKFS_TYPE"
 
+# Softlink grub.cfg
+rm -f $BOOTDISK_MNT/GEEXBOX/etc/grub/grub.cfg
+ln -s /boot/grub/grub.cfg $BOOTDISK_MNT/GEEXBOX/etc/grub/grub.cfg
+
 # Remove unneeded boot dir from mounted install drive
 rm -rf $BOOTDISK_MNT/GEEXBOX/boot
 
