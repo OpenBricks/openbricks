@@ -455,6 +455,7 @@ get_uuid () {
 install_grub (){
   local ROOTDEV
   local MBRDEV
+  local PARTDEV
   local GRUBPREFIX=/boot/grub
   local GRUBDIR=$BOOTDISK_MNT/$GRUBPREFIX
   local DEVICE_MAP=$GRUBDIR/device.map
@@ -533,31 +534,34 @@ install_grub (){
         && MBR=yes
     fi
 
+    PARTDEV=$(grub-probe --target=drive --device-map=${DEVICE_MAP} $BOOTDISK_MNT)
     MBRDEV="(hd0)"
   else
     oslist=
     MBR=yes
-    MBRDEV=$(grub-probe --target=drive --device-map=${DEVICE_MAP} $BOOTDISK_MNT)
-    MBRDEV=$(echo $MBRDEV | sed 's/,[0-9]*//g')
+    PARTDEV=$(grub-probe --target=drive --device-map=${DEVICE_MAP} $BOOTDISK_MNT)
+    MBRDEV=$(echo $PARTDEV | sed 's/,[0-9]*//g')
   fi
 
-  if [ "$MBR" = "yes" ]; then
-    # order is critical, must be: other, disk, fs, partmap, devabstraction
-    dbglg "grub probing..."
-    MOD_OTHER="fs_uuid"
-    MOD_DISK="biosdisk"
-    MOD_FS=$(grub-probe --target=fs --device-map=${DEVICE_MAP} $BOOTDISK_MNT 2>>$LOGFILE)
-    MOD_PARTMAP=$(grub-probe --target=partmap --device-map=${DEVICE_MAP} $BOOTDISK_MNT 2>>$LOGFILE)
-    MOD_DEVABSTRACTION=$(grub-probe --target=abstraction --device-map=${DEVICE_MAP} $BOOTDISK_MNT 2>>$LOGFILE)
-    MODULES="$MOD_DISK $MOD_FS $MOD_PARTMAP $MOD_DEVABSTRACTION $MOD_OTHER"
-    dbglg "grub disk: $MOD_DISK"
-    dbglg "grub fs: $MOD_FS"
-    dbglg "grub dev abstraction: $MOD_DEVABSTRACTION"
-    dbglg "grub partmap: $MOD_PARTMAP"
-    dbglg "grub modules: $MODULES"
-    dbglg "cp -R /usr/lib/grub/fonts /usr/lib/grub/${ARCH}/* ${GRUBDIR}/"
-    cp -R /usr/lib/grub/fonts /usr/lib/grub/${ARCH}/* ${GRUBDIR}/
+  # install to boot record of geexbox partition either way
+  # order is critical, must be: other, disk, fs, partmap, devabstraction
+  dbglg "grub probing..."
+  MOD_OTHER="fs_uuid"
+  MOD_DISK="biosdisk"
+  MOD_FS=$(grub-probe --target=fs --device-map=${DEVICE_MAP} $BOOTDISK_MNT 2>>$LOGFILE)
+  MOD_PARTMAP=$(grub-probe --target=partmap --device-map=${DEVICE_MAP} $BOOTDISK_MNT 2>>$LOGFILE)
+  MOD_DEVABSTRACTION=$(grub-probe --target=abstraction --device-map=${DEVICE_MAP} $BOOTDISK_MNT 2>>$LOGFILE)
+  MODULES="$MOD_DISK $MOD_FS $MOD_PARTMAP $MOD_DEVABSTRACTION $MOD_OTHER"
+  dbglg "grub disk: $MOD_DISK"
+  dbglg "grub fs: $MOD_FS"
+  dbglg "grub dev abstraction: $MOD_DEVABSTRACTION"
+  dbglg "grub partmap: $MOD_PARTMAP"
+  dbglg "grub modules: $MODULES"
+  dbglg "cp -R /usr/lib/grub/fonts /usr/lib/grub/${ARCH}/* ${GRUBDIR}/"
+  cp -R /usr/lib/grub/fonts /usr/lib/grub/${ARCH}/* ${GRUBDIR}/
 
+
+  if [ "$MBR" = "yes" ]; then
     if ! ( dbglg "grub-mkimage --output=${GRUBDIR}/core.img --prefix=${BOOT_DRV}${GRUBPREFIX} $MODULES" && \
     grub-mkimage --output=${GRUBDIR}/core.img --prefix="${BOOT_DRV}${GRUBPREFIX}" $MODULES \
       >>$LOGFILE 2>&1 && \
@@ -568,8 +572,21 @@ install_grub (){
       dialog --textbox $LOGFILE 0 0
       exit 1
     fi
+  else #try to install into partition
+    # workaround needed
+    ln -s ${GRUBDIR} ${GRUBPREFIX}
 
-#FIXME: image format to be used is png, by now all themes grub splash images are xpm.gz, they have to be converted for this to work properly
+    if ! ( dbglg "grub-mkimage --output=${GRUBDIR}/core.img --prefix=${BOOT_DRV}${GRUBPREFIX} $MODULES" && \
+    grub-mkimage --output=${GRUBDIR}/core.img --prefix="${BOOT_DRV}${GRUBPREFIX}" $MODULES \
+      >>$LOGFILE 2>&1 && \
+    dbglg "grub-setup --device-map=${DEVICE_MAP} --directory=${GRUBDIR} $PARTDEV" && \
+    grub-setup --force --device-map=${DEVICE_MAP} --directory=${GRUBPREFIX} $PARTDEV \
+      >> $LOGFILE 2>&1 ); then
+      dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_BOOTLOADER" --msgbox "$MSG_GRUB_SETUP_ERROR" 0 0
+      dialog --textbox $LOGFILE 0 0
+      exit 1
+    fi
+  fi
 
     cat >$GRUBDIR/grub.cfg <<EOF
 set default=0
@@ -627,15 +644,18 @@ EOF
 
 EOF
       fi
-    done
-    IFS=$saveifs
+  done
+  IFS=$saveifs
 
-    setup_grub $GRUBDIR/grub.cfg $DEV_UUID $BOOT_DRV $LOC_USE_XORG $LOC_MKFS_TYPE
+  setup_grub $GRUBDIR/grub.cfg $DEV_UUID $BOOT_DRV $LOC_USE_XORG $LOC_MKFS_TYPE
 
-    dbglg "*** Start GRUB grub.cfg ***"
-    cat $GRUBDIR/grub.cfg >> $LOGFILE
-    dbglg "*** End GRUB grub.cfg ***"
-  else
+  dbglg "*** Start GRUB grub.cfg ***"
+  cat $GRUBDIR/grub.cfg >> $LOGFILE
+  dbglg "*** End GRUB grub.cfg ***"
+
+  if [ "$MBR" != "yes" ]; then
+    # fixme: i18n strings should be updated. in fact, if not installed into mbr, geexbox is installed into respective partition.
+    # so, if this is the first one and is bootable, booting works fine. otherwise, the (maybe) existing bootloader just has to be configured to chainload
     dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_BOOTLOADER" \
       --msgbox "\n${MSG_LOADER_ERROR}\n" 0 0 1>&2
   fi
