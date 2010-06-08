@@ -395,11 +395,12 @@ xorg_drv_configure_prepend() {
   done
 }
 
-make_install () {
-  install_dir="$PWD/.install"
-  local prefix="$1"
+fix_libs () {
+  local target_dir="$1"
+  local prefix="$2"
   local prefix_dir
 
+  [ -z "$target_dir" ] && exit 1
   [ -z "$prefix" ] && prefix=libprefix
 
   case "$prefix" in
@@ -408,20 +409,28 @@ make_install () {
     libprefix) prefix_dir="$LIB_PREFIX" ;;
   esac
 
+  if [ -d $target_dir/usr/lib ]; then
+    for i in `find $target_dir/usr/lib -name "*.la"`; do
+      sed -i "s:\(['= ]\)/usr:\\1$prefix_dir:g" $i
+    done
+  fi
+
+  if [ -d $target_dir/usr/lib/pkgconfig ]; then
+    for i in `find $target_dir/usr/lib/pkgconfig -name "*.pc"`; do
+      sed -i "s:\(['= ]\)/usr:\\1$prefix_dir:g" $i
+    done
+  fi
+
+  return 0
+}
+
+make_install () {
+  install_dir="$PWD/.install"
+  local prefix="$1"
+
   mkdir -p "$install_dir"
   make DESTDIR="$install_dir" install
-
-  if [ -d $install_dir/usr/lib ]; then
-    for i in `find $install_dir/usr/lib -name "*.la"`; do
-      sed -i "s:\(['= ]\)/usr:\\1$prefix_dir:g" $i
-    done
-  fi
-
-  if [ -d $install_dir/usr/lib/pkgconfig ]; then
-    for i in `find $install_dir/usr/lib/pkgconfig -name "*.pc"`; do
-      sed -i "s:\(['= ]\)/usr:\\1$prefix_dir:g" $i
-    done
-  fi
+  fix_libs "$install_dir" $prefix
 
   return 0
 }
