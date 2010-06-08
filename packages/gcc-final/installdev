@@ -1,0 +1,39 @@
+#!/bin/sh
+
+. config/options
+
+cd $BUILD/gcc-4*
+
+do_installdev usr/bin toolchain
+do_installdev usr/lib toolchain
+do_installdev usr/libexec toolchain
+do_installdev usr/$TARGET_NAME toolchain
+
+get_meta $1
+GCC_VERSION="$PKG_VERSION"
+
+TARGET_CC=$INSTALL/bin/$TARGET_NAME-gcc
+CROSS_CC=$TARGET_CC-$GCC_VERSION
+cat > $TARGET_CC <<EOF
+#!/bin/sh
+$ROOT/$TOOLCHAIN/bin/ccache $CROSS_CC "\$@"
+EOF
+chmod +x $TARGET_CC
+# To avoid cache trashing
+DATE="0501`echo $GCC_VERSION | sed 's/\([0-9]\)/0\1/g' | sed 's/\.//g'`"
+touch -c -t $DATE $CROSS_CC
+
+TARGET_CXX=$INSTALL/bin/$TARGET_NAME-g++
+if [ -f "$TARGET_CXX" ]; then
+  CROSS_CXX=$TARGET_CXX-$GCC_VERSION
+  [ ! -f "$CROSS_CXX" ] && mv $TARGET_CXX $CROSS_CXX
+  cat > $TARGET_CXX <<EOF
+#!/bin/sh
+$ROOT/$TOOLCHAIN/bin/ccache $CROSS_CXX "\$@"
+EOF
+  chmod +x $TARGET_CXX
+  # To avoid cache trashing
+  touch -c -t $DATE $CROSS_CXX
+fi
+
+exit 0
