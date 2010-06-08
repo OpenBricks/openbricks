@@ -1,0 +1,67 @@
+#!/bin/sh
+
+. config/options
+
+add_control() {
+  local KEY="$1"
+  local VAL="$2"
+
+  [ -n "$KEY" -a -n "$VAL" ] && \
+    echo "${KEY}: $VAL" >> $INSTALL/CONTROL/control
+
+  return 0
+}
+
+get_meta $1
+
+mkdir -p $DEVPKGROOT
+STAMP="$DEVPKGROOT/$PKG_OPK_DEV"
+
+if [ -f $STAMP -a $PACKAGES/$1/installdev -nt $STAMP ]; then
+  $SCRIPTS/uninstalldev $1
+  rm -f $STAMP
+fi
+
+if [ -f $STAMP ]; then
+  echo "$1 (dev) is already packaged, skipping..." >&$VERBOSE_OUT
+  exit 0
+fi
+
+if [ ! -f $PACKAGES/$1/installdev ]; then
+  echo "$1 is not a dev package, skipping..." >&$VERBOSE_OUT
+  exit 0
+fi
+
+printf "%${INDENT}c PACKAGEDEV  $1\n" >&$SILENT_OUT
+export INDENT=$((${INDENT:-1}+$INDENT_SIZE))
+
+rm -f $STAMP
+
+export INSTALL="$DEVPKGROOT/staging/$1"
+
+rm -rf $INSTALL
+mkdir -p $INSTALL/CONTROL
+
+for p in $PKG_BUILD_DEPENDS; do
+  $SCRIPTS/installdev $p
+done
+
+# build
+$SCRIPTS/build $1
+
+# install to staging
+$PACKAGES/$1/installdev $1 >&$VERBOSE_OUT
+
+# build opk package
+add_control "Package" "${PKG_NAME}"
+add_control "Version" "${PKG_VERSION}-${PKG_REV}dev${PKG_OPK_ARCH}"
+add_control "Architecture" "`uname -m`"
+add_control "Depends" "$PKG_OPK_BUILD_DEPENDS"
+add_control "Priority" "extra"
+add_control "Section" "devel"
+add_control "Maintainer" "The GeeXboX Team (http://geexbox.org)"
+add_control "Source" "http://hg.geexbox.org/geexbox"
+add_control "Description" "Devel files for ${PKG_NAME}"
+
+mkdir -p $DEVPKGROOT
+opkg-build -c -O -o root -g root $INSTALL $DEVPKGROOT >&$VERBOSE_OUT

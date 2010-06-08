@@ -2,11 +2,39 @@
 
 . config/options
 
-if [ -n "$PACKAGING" ]; then
-  echo "$1" >> $PKGROOT/staging/$PACKAGING.deps
-  $SCRIPTS/package $1
-else
-  $SCRIPTS/pinstall $*
+get_meta $1
+
+mkdir -p $ROOTFS/var/lib/opkg/info/
+STAMP=$ROOTFS/var/lib/opkg/info/$1.control
+PACKAGE=$PKGROOT/$PKG_OPK
+
+if [ ! -f $PACKAGES/$1/install ]; then
+  echo "$1 is not a runtime package, skipping..." >&$VERBOSE_OUT
+  exit 0
+fi
+
+if [ -f $STAMP -a -f $PACKAGE ]; then
+  [ $PACKAGE -nt $STAMP ] && $SCRIPTS/uninstall $1
+fi
+
+if [ -f $STAMP ]; then
+  echo "$1 already installed, skipping..." >&$VERBOSE_OUT
+  exit 0
+fi
+
+printf "%${INDENT}c INSTALL  $1\n" >&$SILENT_OUT
+export INDENT=$((${INDENT:-1}+$INDENT_SIZE))
+
+$SCRIPTS/package $1
+
+for p in $PKG_DEPENDS; do
+  $SCRIPTS/install $p
+done
+
+if [ -f $PACKAGE ]; then
+  $ROOT/$TOOLCHAIN/bin/opkg --force-depends \
+                            --offline-root $ROOTFS \
+                            install $PACKAGE >&$VERBOSE_OUT
 fi
 
 exit 0
