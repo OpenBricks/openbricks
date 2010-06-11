@@ -2,17 +2,29 @@
 
 . config/options
 
-$SCRIPTS/build toolchain
+if [ "$TARGET_ARCH" = arm ]; then
+  ARCH_CONFIG="--disable-mmx --disable-sse2 --disable-vmx --enable-arm-simd --enable-arm-neon"
+elif [ "$TARGET_ARCH" = i386 -o "$TARGET_ARCH" = x86_64  ]; then
+  ARCH_CONFIG="--enable-mmx --enable-sse2 --disable-arm-simd --disable-arm-neon"
+elif [ "$TARGET_ARCH" = powerpc -o "$TARGET_ARCH" = powerpc64 ]; then
+  ARCH_CONFIG="--disable-mmx --disable-sse2 --enable-vmx --disable-arm-simd --disable-arm-neon"
+else
+  ARCH_CONFIG="--disable-mmx --disable-sse2 --disable-vmx --disable-arm-simd --disable-arm-neon"
+fi
 
 cd $BUILD/$1*
 ./configure --host=$TARGET_NAME \
             --build=$HOST_NAME \
-            --prefix=$LIB_PREFIX \
+            --prefix=/usr \
+            --sysconfdir=/etc \
             --enable-shared \
-            --disable-static
+            --disable-static \
+            --disable-gtk \
+            $ARCH_CONFIG
+
 echo "" > test/Makefile.am
 make
 strip_libs pixman
-make install
-cp $LIB_PREFIX/lib/pkgconfig/pixman-1.pc $LIB_PREFIX/lib/pkgconfig/pixman.pc
-cp -rf $LIB_PREFIX/include/pixman-1 $LIB_PREFIX/include/pixman
+make_install
+ln -s pixman-1.pc .install/usr/lib/pkgconfig/pixman.pc
+ln -s pixman-1 .install/usr/include/pixman
