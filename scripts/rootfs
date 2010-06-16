@@ -7,60 +7,35 @@ export INSTALL=$ROOTFS
 rm -rf $INSTALL
 mkdir -p $INSTALL
 
-# create the mandatory files and dirs
-mkdir $INSTALL/bin
-mkdir $INSTALL/etc
-mkdir $INSTALL/etc/ndiswrapper
-mkdir $INSTALL/sbin
-mkdir $INSTALL/usr
-mkdir $INSTALL/usr/bin
-mkdir $INSTALL/usr/sbin
-mkdir $INSTALL/usr/lib
-mkdir $INSTALL/lib
-mkdir $INSTALL/dev
-mkdir $INSTALL/mnt
-mkdir $INSTALL/tmp
-mkdir $INSTALL/root
-mkdir $INSTALL/var
-mkdir $INSTALL/var/run
-mkdir $INSTALL/var/log
-mkdir $INSTALL/var/lock
-mkdir $INSTALL/proc
-mkdir $INSTALL/sys
-mkdir $INSTALL/dev/shm
-mkdir -p $INSTALL/codecs
-mkdir -p $INSTALL/firmware
-
-if [ $TARGET_ARCH = x86_64 -o $TARGET_ARCH = powerpc64 ]; then
-  ln -s /lib $INSTALL/lib64
-  ln -s lib $INSTALL/usr/lib64
-fi
-
-echo -n "" > $INSTALL/etc/mtab
-echo -n "" > $INSTALL/etc/fstab
-echo -n "" > $INSTALL/var/mnts
+# bootstrap the build environment
+$SCRIPTS/build opkg-utils
+$SCRIPTS/build opkg-host
+$SCRIPTS/installdev opkg-utils
+$SCRIPTS/installdev opkg-host
 
 # populate the rootfs
+$SCRIPTS/install base-files
 $SCRIPTS/install $TARGET_LIBC
 $SCRIPTS/install gcc-final
 $SCRIPTS/install busybox
 $SCRIPTS/install opkg
+$SCRIPTS/install linux
 $SCRIPTS/install udev
 $SCRIPTS/install pcmciautils
-$SCRIPTS/install zlib
-$SCRIPTS/install ntfs-3g
-$SCRIPTS/install linux modules
-$SCRIPTS/install linux config
-$SCRIPTS/install exfat
-$SCRIPTS/install util-linux-ng blkid
-[ "$LVM" = "yes" ] && $SCRIPTS/install LVM
+#TODO $SCRIPTS/install ntfs-3g
+#TODO $SCRIPTS/install exfat
+#TODO [ "$LVM" = "yes" ] && $SCRIPTS/install LVM
+
+$SCRIPTS/install upstart
 
 $SCRIPTS/install alsa
+[ "$XORG" = yes ] && $SCRIPTS/install Xorg
+$SCRIPTS/install debug
+
+if false; then #TODO, disable these packages for now
 [ "$CONSOLE" = yes ] && $SCRIPTS/install tvout
 $SCRIPTS/install pciutils
-[ "$XORG" = yes ] && $SCRIPTS/install Xorg
 [ "$SDL" = yes ] && $SCRIPTS/install SDL
-$SCRIPTS/install debug
 $SCRIPTS/install enna
 [ "$DEVTOOLS" = yes ] && $SCRIPTS/install expedite
 [ "$INSTALLATOR" = yes ] && $SCRIPTS/install installator
@@ -96,8 +71,10 @@ if [ "$TARGET_ARCH" = arm -a "$BIOS" = yes ]; then
   $SCRIPTS/install xloader
   $SCRIPTS/install u-boot
 fi
+fi #END TODO
 
 # create kernel modules dependancies
+$SCRIPTS/installdev module-init-tools
 VER=`ls $BUILD/linux*/modules/lib/modules`
 rm -f $INSTALL/lib/modules/$VER/modules.*
 $ROOT/$TOOLCHAIN/bin/depmod -b $INSTALL -v $VER > /dev/null
@@ -109,24 +86,3 @@ done
 for MOD in `find $INSTALL/lib/modules/ -name *.ko`; do
   $STRIP --strip-debug $MOD
 done
-
-# copy system and config files
-cp $PACKAGES/initrd/scripts/linuxrc $INSTALL
-cp $PACKAGES/initrd/scripts/console $INSTALL/sbin
-cp $PACKAGES/initrd/scripts/r[ow] $INSTALL/usr/bin
-
-[ "$FUSEISO" = yes ] && cp $CONFIG/cdvdimg_ext $INSTALL/etc
-cp $CONFIG/file_ext $INSTALL/etc
-cp $CONFIG/list_ext $INSTALL/etc
-cp $CONFIG/subs_ext $INSTALL/etc
-
-ln -s /bin/busybox $INSTALL/bin/sh
-ln -s /firmware $INSTALL/lib
-echo $TARGET_ARCH > $INSTALL/etc/arch
-
-if [ -n "$TARGET_PLATFORM" ]; then
-  echo "${GEEXBOX_VERSION}-${TARGET_PLATFORM}" > $INSTALL/etc/version
-else
-  echo "${GEEXBOX_VERSION}" > $INSTALL/etc/version
-fi
-
