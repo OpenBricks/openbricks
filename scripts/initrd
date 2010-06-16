@@ -1,0 +1,40 @@
+#!/bin/sh
+
+. config/options
+
+INITRD=$ROOT/$BUILD/initrd/initrd
+
+rm -rf $ROOT/$BUILD/initrd
+mkdir -p $ROOT/$BUILD/initrd
+
+# Create a CPIO InitRamfs archive
+cd $ROOTFS
+find . | egrep -v '^./boot.*$' | cpio -o -H newc > $INITRD
+cd -
+
+GZIP="`which pigz`" || GZIP="`which gzip`"
+
+if [ $TARGET_ARCH = i386 ]; then
+  if [ "$COMPRESSION_METHOD" = lzma ]; then
+    lzma -9 $INITRD -S .gz
+  elif [ "$COMPRESSION_METHOD" = gzip ]; then
+    $GZIP -9 $INITRD
+  else
+    mv $INITRD $INITRD.gz
+  fi
+elif [ $TARGET_ARCH = arm ]; then
+  $GZIP -9 $INITRD
+  mkimage -A arm -O linux -T ramdisk -C gzip -n "GeeXboX Ramdisk" -d $INITRD.gz $BUILD/initrd/uinitrd.gz
+  rm -f $INITRD.gz
+else
+  $GZIP -9 $INITRD
+fi
+
+mkdir -p $INSTALL/boot
+if [ $TARGET_ARCH = arm ]; then
+  cp $BUILD/initrd/uinitrd.gz $INSTALL/boot
+else
+  cp $INITRD.gz $INSTALL/boot
+fi
+
+exit 0

@@ -1,0 +1,45 @@
+#!/bin/sh
+
+. config/options
+
+get_meta $1
+
+mkdir -p $ROOT/$TOOLCHAIN/var/lib/opkg/info/
+STAMP=$ROOT/$TOOLCHAIN/var/lib/opkg/info/$1.control
+PACKAGE=$DEVPKGROOT/$PKG_OPK_DEV
+
+if [ ! -f $PACKAGES/$1/installdev ]; then
+  echo "$1 is not a dev package, skipping..." >&$VERBOSE_OUT
+  exit 0
+fi
+
+if [ $PACKAGES/$1/installdev -nt $STAMP ]; then
+  $SCRIPTS/unpackagedev $1
+fi
+
+if [ -f $STAMP -a -f $PACKAGE ]; then
+  [ $PACKAGE -nt $STAMP ] && $SCRIPTS/uninstalldev $1
+fi
+
+if [ -f $STAMP ]; then
+  echo "$1 already installed, skipping..." >&$VERBOSE_OUT
+  exit 0
+fi
+
+printf "%${INDENT}c INSTALLDEV  $1\n" >&$SILENT_OUT
+export INDENT=$((${INDENT:-1}+$INDENT_SIZE))
+
+$SCRIPTS/packagedev $1
+
+if [ -f $PACKAGE ]; then
+  $ROOT/$TOOLCHAIN/bin/opkg --force-depends \
+                            --offline-root $ROOT/$TOOLCHAIN \
+                            install $PACKAGE >&$VERBOSE_OUT
+
+  # opkg installs the control file with the same timestamp of the package
+  # this breaks our scripts, so we touch the control file to make sure it's
+  # more recent than the package
+  touch $STAMP
+fi
+
+exit 0
