@@ -1,9 +1,86 @@
+diff -Naur ffmpeg/doc/multithreading.txt ffmpeg-mt/doc/multithreading.txt
+--- ffmpeg/doc/multithreading.txt	1970-01-01 01:00:00.000000000 +0100
++++ ffmpeg-mt/doc/multithreading.txt	2010-06-16 20:58:55.224744810 +0200
+@@ -0,0 +1,73 @@
++FFmpeg multithreading methods
++==============================================
++
++FFmpeg provides two methods for multithreading codecs, controlled by
++AVCodecContext thread_type:
++
++Slice threading decodes multiple parts of a frame at the same time, using
++execute().
++
++Frame threading decodes more than one frame at once by adding more decoder
++delay. Given X threads, it will queue the first X submitted frames, then
++return the last Xth frame; meanwhile, it decodes the upcoming frames on
++separate threads.
++
++Restrictions on clients
++==============================================
++
++Slice threading -
++* If the client uses draw_horiz_band, it must handle it being called from
++  separate threads.
++
++Frame threading -
++* Restrictions with slice threading also apply.
++* get_buffer and release_buffer will be called by separate threads, but are
++  protected by a mutex, so do not need to be reentrant.
++* There is one frame of delay added for every thread. Use of reordered_opaque
++  will help with A/V sync problems, and clients should not assume that no frame
++  being returned after all frames have been submitted means there are no frames
++  left.
++
++Restrictions on codecs
++==============================================
++
++Slice threading -
++None.
++
++Frame threading -
++* Relying on previous contents of buffers no longer works. This includes using
++  reget_buffer() and not copying skipped MBs. Buffers will have age set to
++  INT_MAX, so this won't be a problem for most cases.
++* Accepting randomly truncated packets (CODEC_FLAG_TRUNCATED) no longer works.
++* Some codecs (such as ffv1) can't be multithreaded.
++* If the codec uses draw_edges, it must be called before
++  ff_report_frame_progress() is called on any row.
++
++Porting codecs to frame threading
++==============================================
++1. Fix the above restrictions.
++
++2. Find all the context variables that are needed by the next frame, and make
++sure they aren't changed after the actual decoding process starts. Code that
++does this can either be moved up, put under if (!USE_FRAME_THREADING()) and
++later copied into update_thread_context(), or changed to work on a copy of the
++variables it changes.
++
++3. If the codec allocates writable tables in its init(), add an init_thread_copy()
++which re-allocates them. If it uses inter-frame compression, add an
++update_thread_context() which copies everything necessary for the next frame and does
++whatever operations would otherwise be done at the end of the last frame
++decoding.
++
++Add CODEC_CAP_FRAME_THREADS to the capabilities - there won't be any speed gain
++but it should work.
++
++4. After decoding some part of a frame, call ff_report_frame_progress(). Units
++don't matter - MB rows work for most codecs, but pixel rows may be better if it
++uses a deblocking filter. Codecs using MpegEncContext should make sure they call
++ff_draw_horiz_slice() correctly.
++
++Before accessing a reference frame, call ff_await_frame_progress().
++
++5. Call ff_report_frame_setup_done() as soon as possible. This will start the
++next thread.
 diff -Naur ffmpeg/ffmpeg.c ffmpeg-mt/ffmpeg.c
---- ffmpeg/ffmpeg.c	2010-01-26 20:02:40.177987932 +0100
-+++ ffmpeg-mt/ffmpeg.c	2010-01-26 20:02:24.951738314 +0100
-@@ -499,11 +499,6 @@
-         else if (st->codec->codec_type == CODEC_TYPE_VIDEO && video_stream_copy)
-             st->stream_copy = 1;
+--- ffmpeg/ffmpeg.c	2010-06-16 20:58:47.674688036 +0200
++++ ffmpeg-mt/ffmpeg.c	2010-06-16 20:58:55.237190038 +0200
+@@ -736,11 +736,6 @@
+                 choose_pixel_fmt(st, codec);
+         }
  
 -        if(!st->codec->thread_count)
 -            st->codec->thread_count = 1;
@@ -13,7 +90,7 @@ diff -Naur ffmpeg/ffmpeg.c ffmpeg-mt/ffmpeg.c
          if(st->codec->flags & CODEC_FLAG_BITEXACT)
              nopts = 1;
      }
-@@ -3068,7 +3063,7 @@
+@@ -3359,7 +3354,7 @@
      bitstream_filters[nb_output_files][oc->nb_streams - 1]= video_bitstream_filters;
      video_bitstream_filters= NULL;
  
@@ -22,7 +99,7 @@ diff -Naur ffmpeg/ffmpeg.c ffmpeg-mt/ffmpeg.c
  
      video_enc = st->codec;
  
-@@ -3213,7 +3208,7 @@
+@@ -3498,7 +3493,7 @@
      bitstream_filters[nb_output_files][oc->nb_streams - 1]= audio_bitstream_filters;
      audio_bitstream_filters= NULL;
  
@@ -30,59 +107,38 @@ diff -Naur ffmpeg/ffmpeg.c ffmpeg-mt/ffmpeg.c
 +    st->codec->thread_count= thread_count;
  
      audio_enc = st->codec;
-     audio_enc->codec_type = CODEC_TYPE_AUDIO;
-diff -Naur ffmpeg/ffplay.c ffmpeg-mt/ffplay.c
---- ffmpeg/ffplay.c	2010-01-22 23:28:32.529237466 +0100
-+++ ffmpeg-mt/ffplay.c	2010-01-26 20:02:24.961738531 +0100
-@@ -215,7 +215,7 @@
- static enum AVDiscard skip_loop_filter= AVDISCARD_DEFAULT;
- static int error_recognition = FF_ER_CAREFUL;
- static int error_concealment = 3;
--static int decoder_reorder_pts= 0;
-+static int decoder_no_reorder_pts= 0;
- 
- /* current context */
- static int is_full_screen;
-@@ -1343,7 +1343,7 @@
-                                     frame, &got_picture,
-                                     pkt);
- 
--        if(   (decoder_reorder_pts || pkt->dts == AV_NOPTS_VALUE)
-+        if(   (!decoder_no_reorder_pts || pkt->dts == AV_NOPTS_VALUE)
-            && frame->reordered_opaque != AV_NOPTS_VALUE)
-             pts= frame->reordered_opaque;
-         else if(pkt->dts != AV_NOPTS_VALUE)
-@@ -2474,7 +2474,7 @@
-     { "vismv", HAS_ARG | OPT_FUNC2 | OPT_EXPERT, {(void*)opt_vismv}, "visualize motion vectors", "" },
-     { "fast", OPT_BOOL | OPT_EXPERT, {(void*)&fast}, "non spec compliant optimizations", "" },
-     { "genpts", OPT_BOOL | OPT_EXPERT, {(void*)&genpts}, "generate pts", "" },
--    { "drp", OPT_BOOL |OPT_EXPERT, {(void*)&decoder_reorder_pts}, "let decoder reorder pts", ""},
-+    { "nodrp", OPT_BOOL |OPT_EXPERT, {(void*)&decoder_no_reorder_pts}, "do not let decoder reorder pts", ""},
-     { "lowres", OPT_INT | HAS_ARG | OPT_EXPERT, {(void*)&lowres}, "", "" },
-     { "skiploop", OPT_INT | HAS_ARG | OPT_EXPERT, {(void*)&skip_loop_filter}, "", "" },
-     { "skipframe", OPT_INT | HAS_ARG | OPT_EXPERT, {(void*)&skip_frame}, "", "" },
+     audio_enc->codec_type = AVMEDIA_TYPE_AUDIO;
 diff -Naur ffmpeg/libavcodec/avcodec.h ffmpeg-mt/libavcodec/avcodec.h
---- ffmpeg/libavcodec/avcodec.h	2010-01-22 23:28:31.447987294 +0100
-+++ ffmpeg-mt/libavcodec/avcodec.h	2010-01-26 20:02:24.981738135 +0100
-@@ -629,6 +629,10 @@
-  * as a last resort.
+--- ffmpeg/libavcodec/avcodec.h	2010-06-16 20:58:48.044688470 +0200
++++ ffmpeg-mt/libavcodec/avcodec.h	2010-06-16 20:58:55.237190038 +0200
+@@ -30,7 +30,7 @@
+ #include "libavutil/avutil.h"
+ 
+ #define LIBAVCODEC_VERSION_MAJOR 52
+-#define LIBAVCODEC_VERSION_MINOR 76
++#define LIBAVCODEC_VERSION_MINOR 77
+ #define LIBAVCODEC_VERSION_MICRO  0
+ 
+ #define LIBAVCODEC_VERSION_INT  AV_VERSION_INT(LIBAVCODEC_VERSION_MAJOR, \
+@@ -651,6 +651,10 @@
+  * encoders
   */
- #define CODEC_CAP_SUBFRAMES        0x0100
+ #define CODEC_CAP_EXPERIMENTAL     0x0200
 +/**
-+ * Codec supports frame-based multithreading.
++ * Codec supports frame-level multithreading.
 + */
-+#define CODEC_CAP_FRAME_THREADS    0x0200
++#define CODEC_CAP_FRAME_THREADS    0x0400
  
  //The following defines may change, don't expect compatibility if you use them.
  #define MB_TYPE_INTRA4x4   0x0001
-@@ -908,7 +912,20 @@
+@@ -931,7 +935,20 @@
       * - decoding: Set by libavcodec\
       */\
      void *hwaccel_picture_private;\
 -
 +\
 +    /**\
-+     * the AVCodecContext which ff_get_buffer was last called on\
++     * the AVCodecContext which ff_thread_get_buffer() was last called on\
 +     * - encoding: Set by libavcodec.\
 +     * - decoding: Set by libavcodec.\
 +     */\
@@ -97,7 +153,7 @@ diff -Naur ffmpeg/libavcodec/avcodec.h ffmpeg-mt/libavcodec/avcodec.h
  
  #define FF_QSCALE_TYPE_MPEG1 0
  #define FF_QSCALE_TYPE_MPEG2 1
-@@ -1114,7 +1131,7 @@
+@@ -1140,7 +1157,7 @@
       * If non NULL, 'draw_horiz_band' is called by the libavcodec
       * decoder to draw a horizontal band. It improves cache usage. Not
       * all codecs can do that. You must check the codec capabilities
@@ -106,7 +162,7 @@ diff -Naur ffmpeg/libavcodec/avcodec.h ffmpeg-mt/libavcodec/avcodec.h
       * The function is also used by hardware acceleration APIs.
       * It is called at least once during frame decoding to pass
       * the data needed for hardware render.
-@@ -1363,7 +1380,8 @@
+@@ -1390,7 +1407,8 @@
       * height, as they normally need to be rounded up to the next multiple of 16.
       * if CODEC_CAP_DR1 is not set then get_buffer() must call
       * avcodec_default_get_buffer() instead of providing buffers allocated by
@@ -116,7 +172,7 @@ diff -Naur ffmpeg/libavcodec/avcodec.h ffmpeg-mt/libavcodec/avcodec.h
       * - encoding: unused
       * - decoding: Set by libavcodec., user can override.
       */
-@@ -1372,7 +1390,9 @@
+@@ -1399,7 +1417,9 @@
      /**
       * Called to release buffers which were allocated with get_buffer.
       * A released buffer can be reused in get_buffer().
@@ -127,7 +183,7 @@ diff -Naur ffmpeg/libavcodec/avcodec.h ffmpeg-mt/libavcodec/avcodec.h
       * - encoding: unused
       * - decoding: Set by libavcodec., user can override.
       */
-@@ -1673,6 +1693,7 @@
+@@ -1701,6 +1721,7 @@
  #define FF_DEBUG_VIS_QP      0x00002000
  #define FF_DEBUG_VIS_MB_TYPE 0x00004000
  #define FF_DEBUG_BUFFERS     0x00008000
@@ -135,10 +191,10 @@ diff -Naur ffmpeg/libavcodec/avcodec.h ffmpeg-mt/libavcodec/avcodec.h
  
      /**
       * debug
-@@ -2576,6 +2597,32 @@
-      * - decoding: unused
-      */
-     int weighted_p_pred;
+@@ -2667,6 +2688,34 @@
+     float crf_max;
+ 
+     int log_level_offset;
 +
 +    /**
 +     * Whether this is a copy of the context which had init() called on it.
@@ -150,14 +206,16 @@ diff -Naur ffmpeg/libavcodec/avcodec.h ffmpeg-mt/libavcodec/avcodec.h
 +    int is_copy;
 +
 +    /**
-+     * Which multithreading methods to use, for codecs that support more than one.
++     * Which multithreading methods to use.
++     * Use of FF_THREAD_FRAME will increase decoding delay by one frame per thread,
++     * so clients which require strictly conforming DTS must not use it.
++     *
 +     * - encoding: Set by user, otherwise the default is used.
 +     * - decoding: Set by user, otherwise the default is used.
 +     */
 +    int thread_type;
 +#define FF_THREAD_FRAME   1 //< Decode more than one frame at once
 +#define FF_THREAD_SLICE   2 //< Decode more than one part of a single frame at once
-+#define FF_THREAD_DEFAULT 3 //< Use both if possible.
 +
 +    /**
 +     * Which multithreading methods are actually active at the moment.
@@ -168,36 +226,36 @@ diff -Naur ffmpeg/libavcodec/avcodec.h ffmpeg-mt/libavcodec/avcodec.h
  } AVCodecContext;
  
  /**
-@@ -2617,6 +2664,26 @@
+@@ -2708,6 +2757,26 @@
      const int *supported_samplerates;       ///< array of supported audio samplerates, or NULL if unknown, array is terminated by 0
      const enum SampleFormat *sample_fmts;   ///< array of supported sample formats, or NULL if unknown, array is terminated by -1
      const int64_t *channel_layouts;         ///< array of support channel layouts, or NULL if unknown. array is terminated by 0
 +
 +    /**
-+     * @defgroup framethreading Frame threading support functions.
++     * @defgroup framethreading Frame-level threading support functions.
 +     * @{
 +     */
 +    /**
-+     * If the codec allocates writable tables in init(), define init_copy() to re-allocate
-+     * them in the copied contexts. Before calling it, priv_data will be set to a copy of
-+     * the original.
++     * If defined, called on thread contexts when they are created.
++     * If the codec allocates writable tables in init(), re-allocate them here.
++     * priv_data will be set to a copy of the original.
 +     */
-+    int (*init_copy)(AVCodecContext *);
++    int (*init_thread_copy)(AVCodecContext *);
 +    /**
-+     * Copy all necessary context variables from the last thread before starting the next one.
-+     * If the codec doesn't define this, the next thread will start automatically; otherwise,
-+     * the codec must call ff_report_frame_setup_done(). Do not assume anything about the
-+     * contents of priv data except that it has been copied from the original some time after
-+     * codec init. Will not be called if frame threading is disabled.
++     * Copy necessary context variables from a previous thread context to the current one.
++     * If not defined, the next thread will start automatically; otherwise, the codec
++     * must call ff_thread_finish_setup().
++     *
++     * dst and src will (rarely) point to the same context, in which case memcpy should be skipped.
 +     */
-+    int (*update_context)(AVCodecContext *, AVCodecContext *from);
++    int (*update_thread_context)(AVCodecContext *dst, AVCodecContext *src);
 +    /** @} */
  } AVCodec;
  
  /**
 diff -Naur ffmpeg/libavcodec/beosthread.c ffmpeg-mt/libavcodec/beosthread.c
---- ffmpeg/libavcodec/beosthread.c	2010-01-22 23:28:31.457987721 +0100
-+++ ffmpeg-mt/libavcodec/beosthread.c	2010-01-26 20:02:24.981738135 +0100
+--- ffmpeg/libavcodec/beosthread.c	2010-06-16 20:58:50.304688072 +0200
++++ ffmpeg-mt/libavcodec/beosthread.c	2010-06-16 20:58:55.287190901 +0200
 @@ -121,7 +121,13 @@
      int i;
      ThreadContext *c;
@@ -213,9 +271,9 @@ diff -Naur ffmpeg/libavcodec/beosthread.c ffmpeg-mt/libavcodec/beosthread.c
      if (thread_count <= 1)
          return 0;
 diff -Naur ffmpeg/libavcodec/dsputil.c ffmpeg-mt/libavcodec/dsputil.c
---- ffmpeg/libavcodec/dsputil.c	2010-01-26 20:02:39.807988063 +0100
-+++ ffmpeg-mt/libavcodec/dsputil.c	2010-01-26 20:02:25.011738173 +0100
-@@ -441,7 +441,7 @@
+--- ffmpeg/libavcodec/dsputil.c	2010-06-16 20:58:49.054687718 +0200
++++ ffmpeg-mt/libavcodec/dsputil.c	2010-06-16 20:58:55.267191349 +0200
+@@ -330,7 +330,7 @@
  
  /* draw the edges of width 'w' of an image of size width, height */
  //FIXME check that this is ok for mpeg4 interlaced
@@ -224,7 +282,7 @@ diff -Naur ffmpeg/libavcodec/dsputil.c ffmpeg-mt/libavcodec/dsputil.c
  {
      uint8_t *ptr, *last_line;
      int i;
-@@ -449,8 +449,8 @@
+@@ -338,8 +338,8 @@
      last_line = buf + (height - 1) * wrap;
      for(i=0;i<w;i++) {
          /* top and bottom */
@@ -235,7 +293,7 @@ diff -Naur ffmpeg/libavcodec/dsputil.c ffmpeg-mt/libavcodec/dsputil.c
      }
      /* left and right */
      ptr = buf;
-@@ -461,10 +461,15 @@
+@@ -350,10 +350,15 @@
      }
      /* corners */
      for(i=0;i<w;i++) {
@@ -256,9 +314,9 @@ diff -Naur ffmpeg/libavcodec/dsputil.c ffmpeg-mt/libavcodec/dsputil.c
  }
  
 diff -Naur ffmpeg/libavcodec/dsputil.h ffmpeg-mt/libavcodec/dsputil.h
---- ffmpeg/libavcodec/dsputil.h	2010-01-22 23:28:31.507987903 +0100
-+++ ffmpeg-mt/libavcodec/dsputil.h	2010-01-26 20:02:25.011738173 +0100
-@@ -499,8 +499,10 @@
+--- ffmpeg/libavcodec/dsputil.h	2010-06-16 20:58:48.294687399 +0200
++++ ffmpeg-mt/libavcodec/dsputil.h	2010-06-16 20:58:55.245498595 +0200
+@@ -498,8 +498,10 @@
  #define BASIS_SHIFT 16
  #define RECON_SHIFT 6
  
@@ -268,11 +326,11 @@ diff -Naur ffmpeg/libavcodec/dsputil.h ffmpeg-mt/libavcodec/dsputil.h
 +#define EDGE_TOP    1
 +#define EDGE_BOTTOM 2
  
-     /* h264 functions */
-     /* NOTE!!! if you implement any of h264_idct8_add, h264_idct8_add4 then you must implement all of them
+     void (*prefetch)(void *mem, int stride, int h);
+ 
 diff -Naur ffmpeg/libavcodec/h263dec.c ffmpeg-mt/libavcodec/h263dec.c
---- ffmpeg/libavcodec/h263dec.c	2010-01-12 20:09:21.363649101 +0100
-+++ ffmpeg-mt/libavcodec/h263dec.c	2010-01-26 20:02:25.041738826 +0100
+--- ffmpeg/libavcodec/h263dec.c	2010-06-16 20:58:50.404687994 +0200
++++ ffmpeg-mt/libavcodec/h263dec.c	2010-06-16 20:58:55.296248582 +0200
 @@ -34,6 +34,7 @@
  #include "mpeg4video_parser.h"
  #include "msmpeg4.h"
@@ -297,18 +355,18 @@ diff -Naur ffmpeg/libavcodec/h263dec.c ffmpeg-mt/libavcodec/h263dec.c
  
          s->mb_x= 0;
      }
-@@ -617,6 +620,8 @@
+@@ -619,6 +622,8 @@
      if(MPV_frame_start(s, avctx) < 0)
          return -1;
  
-+    if (!s->divx_packed) ff_report_frame_setup_done(avctx);
++    if (!s->divx_packed) ff_thread_finish_setup(avctx);
 +
      if (CONFIG_MPEG4_VDPAU_DECODER && (s->avctx->codec->capabilities & CODEC_CAP_HWACCEL_VDPAU)) {
-         ff_vdpau_mpeg4_decode_picture(s, buf, buf_size);
+         ff_vdpau_mpeg4_decode_picture(s, s->gb.buffer, s->gb.buffer_end - s->gb.buffer);
          goto frame_end;
 diff -Naur ffmpeg/libavcodec/h264.c ffmpeg-mt/libavcodec/h264.c
---- ffmpeg/libavcodec/h264.c	2010-01-26 20:28:03.647987785 +0100
-+++ ffmpeg-mt/libavcodec/h264.c	2010-01-26 20:02:25.041738826 +0100
+--- ffmpeg/libavcodec/h264.c	2010-06-16 20:58:50.464688595 +0200
++++ ffmpeg-mt/libavcodec/h264.c	2010-06-16 20:58:55.296248582 +0200
 @@ -36,6 +36,7 @@
  #include "golomb.h"
  #include "mathops.h"
@@ -317,7 +375,7 @@ diff -Naur ffmpeg/libavcodec/h264.c ffmpeg-mt/libavcodec/h264.c
  #include "vdpau_internal.h"
  
  #include "cabac.h"
-@@ -370,6 +371,137 @@
+@@ -371,6 +372,137 @@
  }
  #endif
  
@@ -438,14 +496,14 @@ diff -Naur ffmpeg/libavcodec/h264.c ffmpeg-mt/libavcodec/h264.c
 +                row <<= MB_MBAFF;
 +
 +                if(!FIELD_PICTURE && ref_field_picture){ // frame referencing two fields
-+                    ff_await_field_progress((AVFrame*)ref_pic, FFMIN((row >> 1) - !(row&1), pic_height-1), 1);
-+                    ff_await_field_progress((AVFrame*)ref_pic, FFMIN((row >> 1)           , pic_height-1), 0);
++                    ff_thread_await_progress((AVFrame*)ref_pic, FFMIN((row >> 1) - !(row&1), pic_height-1), 1);
++                    ff_thread_await_progress((AVFrame*)ref_pic, FFMIN((row >> 1)           , pic_height-1), 0);
 +                }else if(FIELD_PICTURE && !ref_field_picture){ // field referencing one field of a frame
-+                    ff_await_field_progress((AVFrame*)ref_pic, FFMIN(row*2 + ref_field    , pic_height-1), 0);
++                    ff_thread_await_progress((AVFrame*)ref_pic, FFMIN(row*2 + ref_field    , pic_height-1), 0);
 +                }else if(FIELD_PICTURE){
-+                    ff_await_field_progress((AVFrame*)ref_pic, FFMIN(row, pic_height-1), ref_field);
++                    ff_thread_await_progress((AVFrame*)ref_pic, FFMIN(row, pic_height-1), ref_field);
 +                }else{
-+                    ff_await_field_progress((AVFrame*)ref_pic, FFMIN(row, pic_height-1), 0);
++                    ff_thread_await_progress((AVFrame*)ref_pic, FFMIN(row, pic_height-1), 0);
 +                }
 +            }
 +        }
@@ -455,15 +513,16 @@ diff -Naur ffmpeg/libavcodec/h264.c ffmpeg-mt/libavcodec/h264.c
  static inline void mc_dir_part(H264Context *h, Picture *pic, int n, int square, int chroma_height, int delta, int list,
                             uint8_t *dest_y, uint8_t *dest_cb, uint8_t *dest_cr,
                             int src_x_offset, int src_y_offset,
-@@ -573,6 +705,7 @@
+@@ -574,6 +706,8 @@
  
      assert(IS_INTER(mb_type));
  
-+    if(USE_FRAME_THREADING(s->avctx)) await_references(h);
++    if(HAVE_PTHREADS && s->avctx->active_thread_type&FF_THREAD_FRAME)
++        await_references(h);
      prefetch_motion(h, 0);
  
      if(IS_16X16(mb_type)){
-@@ -886,6 +1019,107 @@
+@@ -945,6 +1079,109 @@
      return 0;
  }
  
@@ -489,15 +548,15 @@ diff -Naur ffmpeg/libavcodec/h264.c ffmpeg-mt/libavcodec/h264.c
 +}
 +
 +#define copy_fields(to, from, start_field, end_field) memcpy(&to->start_field, &from->start_field, (char*)&to->end_field - (char*)&to->start_field)
-+static int decode_update_context(AVCodecContext *dst, AVCodecContext *src){
++static int decode_update_thread_context(AVCodecContext *dst, AVCodecContext *src){
 +    H264Context *h= dst->priv_data, *h1= src->priv_data;
 +    MpegEncContext * const s = &h->s, * const s1 = &h1->s;
 +    int inited = s->context_initialized, err;
 +    int i;
 +
-+    if(!s1->context_initialized) return 0;
++    if(dst == src || !s1->context_initialized) return 0;
 +
-+    err = ff_mpeg_update_context(dst, src);
++    err = ff_mpeg_update_thread_context(dst, src);
 +    if(err) return err;
 +
 +    //FIXME handle width/height changing
@@ -518,11 +577,12 @@ diff -Naur ffmpeg/libavcodec/h264.c ffmpeg-mt/libavcodec/h264.c
 +        // frame_start may not be called for the next thread (if it's decoding a bottom field)
 +        // so this has to be allocated here
 +        h->s.obmc_scratchpad = av_malloc(16*2*s->linesize + 8*2*s->uvlinesize);
++
++        s->dsp.clear_blocks(h->mb);
 +    }
 +
 +    //extradata/NAL handling
 +    h->is_avc          = h1->is_avc;
-+    h->got_avcC   = h1->got_avcC;
 +
 +    //SPS/PPS
 +    copy_parameter_set((void**)h->sps_buffers, (void**)h1->sps_buffers, MAX_SPS_COUNT, sizeof(SPS));
@@ -543,10 +603,11 @@ diff -Naur ffmpeg/libavcodec/h264.c ffmpeg-mt/libavcodec/h264.c
 +    h->dequant_coeff_pps = h1->dequant_coeff_pps;
 +
 +    //POC timing
-+    copy_fields(h, h1, poc_lsb, use_weight);
++    copy_fields(h, h1, poc_lsb, redundant_pic_count);
 +
 +    //reference lists
 +    copy_fields(h, h1, ref_count, intra_gb);
++    copy_fields(h, h1, short_ref, cabac_init_idc);
 +
 +    copy_picture_range(h->short_ref,   h1->short_ref,   32, s, s1);
 +    copy_picture_range(h->long_ref,    h1->long_ref,    32,  s, s1);
@@ -571,7 +632,7 @@ diff -Naur ffmpeg/libavcodec/h264.c ffmpeg-mt/libavcodec/h264.c
  int ff_h264_frame_start(H264Context *h){
      MpegEncContext * const s = &h->s;
      int i;
-@@ -918,11 +1152,11 @@
+@@ -977,7 +1214,7 @@
      /* can't be in alloc_tables because linesize isn't known there.
       * FIXME: redo bipred weight to not require extra buffer? */
      for(i = 0; i < s->avctx->thread_count; i++)
@@ -579,13 +640,8 @@ diff -Naur ffmpeg/libavcodec/h264.c ffmpeg-mt/libavcodec/h264.c
 +        if(h->thread_context[i] && !h->thread_context[i]->s.obmc_scratchpad)
              h->thread_context[i]->s.obmc_scratchpad = av_malloc(16*2*s->linesize + 8*2*s->uvlinesize);
  
-     /* some macroblocks will be accessed before they're available */
--    if(FRAME_MBAFF || s->avctx->thread_count > 1)
-+    if(FRAME_MBAFF || USE_AVCODEC_EXECUTE(s->avctx))
-         memset(h->slice_table, -1, (s->mb_height*s->mb_stride-1) * sizeof(*h->slice_table));
- 
- //    s->decode= (s->flags&CODEC_FLAG_PSNR) || !s->encoding || s->current_picture.reference /*|| h->contains_intra*/ || 1;
-@@ -938,11 +1172,164 @@
+     /* some macroblocks can be accessed before they're available in case of lost slices, mbaff or threading*/
+@@ -996,11 +1233,167 @@
  
      s->current_picture_ptr->field_poc[0]=
      s->current_picture_ptr->field_poc[1]= INT_MAX;
@@ -615,7 +671,10 @@ diff -Naur ffmpeg/libavcodec/h264.c ffmpeg-mt/libavcodec/h264.c
 +    if (h->next_output_pic) return;
 +
 +    if (cur->field_poc[0]==INT_MAX || cur->field_poc[1]==INT_MAX) {
-+        ff_report_frame_setup_done(s->avctx);
++        //FIXME this allows the next thread to start once we encounter the first field of a PAFF packet
++        //This works if the next packet contains the second field. It does not work if both fields are
++        //in the same packet.
++        //ff_thread_finish_setup(s->avctx);
 +        return;
 +    }
 +
@@ -744,13 +803,13 @@ diff -Naur ffmpeg/libavcodec/h264.c ffmpeg-mt/libavcodec/h264.c
 +        av_log(s->avctx, AV_LOG_DEBUG, "no picture\n");
 +    }
 +
-+    ff_report_frame_setup_done(s->avctx);
++    ff_thread_finish_setup(s->avctx);
 +}
 +
  static inline void backup_mb_border(H264Context *h, uint8_t *src_y, uint8_t *src_cb, uint8_t *src_cr, int linesize, int uvlinesize, int simple){
      MpegEncContext * const s = &h->s;
      uint8_t *top_border;
-@@ -1445,7 +1832,7 @@
+@@ -1506,7 +1899,7 @@
              h->delayed_pic[i]->reference= 0;
          h->delayed_pic[i]= NULL;
      }
@@ -759,14 +818,20 @@ diff -Naur ffmpeg/libavcodec/h264.c ffmpeg-mt/libavcodec/h264.c
      h->prev_interlaced_frame = 1;
      idr(h);
      if(h->s.current_picture_ptr)
-@@ -1587,19 +1974,23 @@
+@@ -1642,24 +2035,28 @@
+     }
+ }
+ 
+-static void field_end(H264Context *h){
++static void field_end(H264Context *h, int in_setup){
+     MpegEncContext * const s = &h->s;
      AVCodecContext * const avctx= s->avctx;
      s->mb_y= 0;
  
 -    s->current_picture_ptr->qscale_type= FF_QSCALE_TYPE_H264;
 -    s->current_picture_ptr->pict_type= s->pict_type;
-+    if (!s->dropable)
-+        ff_report_field_progress((AVFrame*)s->current_picture_ptr, (16*s->mb_height >> FIELD_PICTURE) - 1,
++    if (!in_setup && !s->dropable)
++        ff_thread_report_progress((AVFrame*)s->current_picture_ptr, (16*s->mb_height >> FIELD_PICTURE) - 1,
 +                                 s->picture_structure==PICT_BOTTOM_FIELD);
  
      if (CONFIG_H264_VDPAU_DECODER && s->avctx->codec->capabilities&CODEC_CAP_HWACCEL_VDPAU)
@@ -776,7 +841,7 @@ diff -Naur ffmpeg/libavcodec/h264.c ffmpeg-mt/libavcodec/h264.c
 -        ff_h264_execute_ref_pic_marking(h, h->mmco, h->mmco_index);
 -        h->prev_poc_msb= h->poc_msb;
 -        h->prev_poc_lsb= h->poc_lsb;
-+    if(!USE_FRAME_THREADING(avctx)){
++    if(in_setup || !(avctx->active_thread_type&FF_THREAD_FRAME)){
 +        if(!s->dropable) {
 +            ff_h264_execute_ref_pic_marking(h, h->mmco, h->mmco_index);
 +            h->prev_poc_msb= h->poc_msb;
@@ -791,19 +856,28 @@ diff -Naur ffmpeg/libavcodec/h264.c ffmpeg-mt/libavcodec/h264.c
  
      if (avctx->hwaccel) {
          if (avctx->hwaccel->end_frame(avctx) < 0)
-@@ -1759,8 +2150,10 @@
+@@ -1749,7 +2146,7 @@
  
+     if(first_mb_in_slice == 0){ //FIXME better field boundary detection
+         if(h0->current_slice && FIELD_PICTURE){
+-            field_end(h);
++            field_end(h, 1);
+         }
+ 
+         h0->current_slice = 0;
+@@ -1818,8 +2215,10 @@
      if (s->context_initialized
-         && (   s->width != s->avctx->width || s->height != s->avctx->height)) {
+         && (   s->width != s->avctx->width || s->height != s->avctx->height
+             || av_cmp_q(h->sps.sar, s->avctx->sample_aspect_ratio))) {
 -        if(h != h0)
-+        if(h != h0 || USE_FRAME_THREADING(s->avctx)) {
++        if(h != h0 || s->avctx->active_thread_type&FF_THREAD_FRAME) {
 +            av_log_missing_feature(s->avctx, "Width/height changing with threads is", 0);
              return -1;   // width / height changed during parallelized decoding
 +        }
          free_tables(h);
          flush_dpb(s->avctx);
          MPV_common_end(s);
-@@ -1801,20 +2194,25 @@
+@@ -1865,21 +2264,26 @@
          init_scan_tables(h);
          ff_h264_alloc_tables(h);
  
@@ -812,15 +886,16 @@ diff -Naur ffmpeg/libavcodec/h264.c ffmpeg-mt/libavcodec/h264.c
 -            c = h->thread_context[i] = av_malloc(sizeof(H264Context));
 -            memcpy(c, h->s.thread_context[i], sizeof(MpegEncContext));
 -            memset(&c->s + 1, 0, sizeof(H264Context) - sizeof(MpegEncContext));
+-            c->h264dsp = h->h264dsp;
 -            c->sps = h->sps;
 -            c->pps = h->pps;
 -            init_scan_tables(c);
--            clone_tables(c, h);
+-            clone_tables(c, h, i);
 -        }
 -
 -        for(i = 0; i < s->avctx->thread_count; i++)
 -            if(context_init(h->thread_context[i]) < 0)
-+        if (!USE_AVCODEC_EXECUTE(s->avctx)) {
++        if (!HAVE_THREADS || !(s->avctx->active_thread_type&FF_THREAD_SLICE)) {
 +            if (context_init(h) < 0)
                  return -1;
 +        } else {
@@ -829,10 +904,11 @@ diff -Naur ffmpeg/libavcodec/h264.c ffmpeg-mt/libavcodec/h264.c
 +                c = h->thread_context[i] = av_malloc(sizeof(H264Context));
 +                memcpy(c, h->s.thread_context[i], sizeof(MpegEncContext));
 +                memset(&c->s + 1, 0, sizeof(H264Context) - sizeof(MpegEncContext));
++                c->h264dsp = h->h264dsp;
 +                c->sps = h->sps;
 +                c->pps = h->pps;
 +                init_scan_tables(c);
-+                clone_tables(c, h);
++                clone_tables(c, h, i);
 +            }
 +
 +            for(i = 0; i < s->avctx->thread_count; i++)
@@ -842,7 +918,7 @@ diff -Naur ffmpeg/libavcodec/h264.c ffmpeg-mt/libavcodec/h264.c
      }
  
      h->frame_num= get_bits(&s->gb, h->sps.log2_max_frame_num);
-@@ -1835,6 +2233,10 @@
+@@ -1900,6 +2304,10 @@
      h->mb_field_decoding_flag= s->picture_structure != PICT_FRAME;
  
      if(h0->current_slice == 0){
@@ -853,16 +929,16 @@ diff -Naur ffmpeg/libavcodec/h264.c ffmpeg-mt/libavcodec/h264.c
          while(h->frame_num !=  h->prev_frame_num &&
                h->frame_num != (h->prev_frame_num+1)%(1<<h->sps.log2_max_frame_num)){
              av_log(NULL, AV_LOG_DEBUG, "Frame num gap %d %d\n", h->frame_num, h->prev_frame_num);
-@@ -1843,6 +2245,8 @@
+@@ -1908,6 +2316,8 @@
              h->prev_frame_num++;
              h->prev_frame_num %= 1<<h->sps.log2_max_frame_num;
              s->current_picture_ptr->frame_num= h->prev_frame_num;
-+            ff_report_field_progress((AVFrame*)s->current_picture_ptr, INT_MAX, 0);
-+            ff_report_field_progress((AVFrame*)s->current_picture_ptr, INT_MAX, 1);
++            ff_thread_report_progress((AVFrame*)s->current_picture_ptr, INT_MAX, 0);
++            ff_thread_report_progress((AVFrame*)s->current_picture_ptr, INT_MAX, 1);
              ff_h264_execute_ref_pic_marking(h, NULL, 0);
          }
  
-@@ -1976,6 +2380,9 @@
+@@ -2041,6 +2451,9 @@
      if(h->slice_type_nos!=FF_I_TYPE && ff_h264_decode_ref_pic_list_reordering(h) < 0)
          return -1;
  
@@ -872,7 +948,7 @@ diff -Naur ffmpeg/libavcodec/h264.c ffmpeg-mt/libavcodec/h264.c
      if(h->slice_type_nos!=FF_I_TYPE){
          s->last_picture_ptr= &h->ref_list[0][0];
          ff_copy_picture(&s->last_picture, s->last_picture_ptr);
-@@ -1985,6 +2392,8 @@
+@@ -2050,6 +2463,8 @@
          ff_copy_picture(&s->next_picture, s->next_picture_ptr);
      }
  
@@ -881,18 +957,18 @@ diff -Naur ffmpeg/libavcodec/h264.c ffmpeg-mt/libavcodec/h264.c
      if(   (h->pps.weighted_pred          && h->slice_type_nos == FF_P_TYPE )
         ||  (h->pps.weighted_bipred_idc==1 && h->slice_type_nos== FF_B_TYPE ) )
          pred_weight_table(h);
-@@ -2125,7 +2534,8 @@
+@@ -2196,7 +2611,8 @@
                            +(h->ref_list[j][i].reference&3);
      }
  
 -    h->emu_edge_width= (s->flags&CODEC_FLAG_EMU_EDGE) ? 0 : 16;
 +    //FIXME: fix draw_edges+PAFF+frame threads
-+    h->emu_edge_width= (s->flags&CODEC_FLAG_EMU_EDGE || (!h->sps.frame_mbs_only_flag && USE_FRAME_THREADING(s->avctx))) ? 0 : 16;
++    h->emu_edge_width= (s->flags&CODEC_FLAG_EMU_EDGE || (!h->sps.frame_mbs_only_flag && s->avctx->active_thread_type&FF_THREAD_FRAME)) ? 0 : 16;
      h->emu_edge_height= (FRAME_MBAFF || FIELD_PICTURE) ? 0 : h->emu_edge_width;
  
-     s->avctx->refs= h->sps.ref_frame_count;
-@@ -2219,6 +2629,40 @@
-     s->mb_y= end_mb_y - FRAME_MBAFF;
+     if(s->avctx->debug&FF_DEBUG_PICT_INFO){
+@@ -2517,6 +2933,40 @@
+     h->mb_mbaff = h->mb_field_decoding_flag = IS_INTERLACED(mb_type) ? 1 : 0;
  }
  
 +/**
@@ -925,14 +1001,14 @@ diff -Naur ffmpeg/libavcodec/h264.c ffmpeg-mt/libavcodec/h264.c
 +
 +    if (s->dropable) return;
 +
-+    ff_report_field_progress((AVFrame*)s->current_picture_ptr, top + height - 1,
++    ff_thread_report_progress((AVFrame*)s->current_picture_ptr, top + height - 1,
 +                             s->picture_structure==PICT_BOTTOM_FIELD);
 +}
 +
  static int decode_slice(struct AVCodecContext *avctx, void *arg){
      H264Context *h = *(void**)arg;
      MpegEncContext * const s = &h->s;
-@@ -2268,7 +2712,7 @@
+@@ -2570,7 +3020,7 @@
              if( ++s->mb_x >= s->mb_width ) {
                  s->mb_x = 0;
                  loop_filter(h);
@@ -941,7 +1017,7 @@ diff -Naur ffmpeg/libavcodec/h264.c ffmpeg-mt/libavcodec/h264.c
                  ++s->mb_y;
                  if(FIELD_OR_MBAFF_PICTURE) {
                      ++s->mb_y;
-@@ -2306,7 +2750,7 @@
+@@ -2610,7 +3060,7 @@
              if(++s->mb_x >= s->mb_width){
                  s->mb_x=0;
                  loop_filter(h);
@@ -950,43 +1026,41 @@ diff -Naur ffmpeg/libavcodec/h264.c ffmpeg-mt/libavcodec/h264.c
                  ++s->mb_y;
                  if(FIELD_OR_MBAFF_PICTURE) {
                      ++s->mb_y;
-@@ -2437,7 +2881,7 @@
+@@ -2743,7 +3193,7 @@
      int context_count = 0;
      int next_avc= h->is_avc ? 0 : buf_size;
  
 -    h->max_contexts = avctx->thread_count;
-+    h->max_contexts = USE_AVCODEC_EXECUTE(s->avctx) ? avctx->thread_count : 1;
++    h->max_contexts = (HAVE_THREADS && (s->avctx->active_thread_type&FF_THREAD_SLICE)) ? avctx->thread_count : 1;
  #if 0
      int i;
      for(i=0; i<50; i++){
-@@ -2530,14 +2974,21 @@
+@@ -2843,16 +3293,21 @@
              if((err = decode_slice_header(hx, h)))
                 break;
  
--            if (s->avctx->hwaccel && h->current_slice == 1) {
--                if (s->avctx->hwaccel->start_frame(s->avctx, NULL, 0) < 0)
--                    return -1;
--            }
--
-             s->current_picture_ptr->key_frame |=
-                     (hx->nal_unit_type == NAL_IDR_SLICE) ||
-                     (h->sei_recovery_frame_cnt >= 0);
++            s->current_picture_ptr->key_frame |=
++                    (hx->nal_unit_type == NAL_IDR_SLICE) ||
++                    (h->sei_recovery_frame_cnt >= 0);
 +
-+            if (h->current_slice == 1) {
+             if (h->current_slice == 1) {
 +                if(!(s->flags2 & CODEC_FLAG2_CHUNKS)) {
 +                    decode_postinit(h);
 +                }
 +
-+                if (s->avctx->hwaccel) {
-+                    if (s->avctx->hwaccel->start_frame(s->avctx, NULL, 0) < 0)
-+                        return -1;
-+                }
-+            }
-+
+                 if (s->avctx->hwaccel && s->avctx->hwaccel->start_frame(s->avctx, NULL, 0) < 0)
+                     return -1;
+                 if(CONFIG_H264_VDPAU_DECODER && s->avctx->codec->capabilities&CODEC_CAP_HWACCEL_VDPAU)
+                     ff_vdpau_h264_picture_start(s);
+             }
+ 
+-            s->current_picture_ptr->key_frame |=
+-                    (hx->nal_unit_type == NAL_IDR_SLICE) ||
+-                    (h->sei_recovery_frame_cnt >= 0);
              if(hx->redundant_pic_count==0 && hx->s.hurry_up < 5
                 && (avctx->skip_frame < AVDISCARD_NONREF || hx->nal_ref_idc)
                 && (avctx->skip_frame < AVDISCARD_BIDIR  || hx->slice_type_nos!=FF_B_TYPE)
-@@ -2666,6 +3117,8 @@
+@@ -2981,6 +3436,8 @@
          Picture *out;
          int i, out_idx;
  
@@ -995,19 +1069,20 @@ diff -Naur ffmpeg/libavcodec/h264.c ffmpeg-mt/libavcodec/h264.c
  //FIXME factorize this with the output code below
          out = h->delayed_pic[0];
          out_idx = 0;
-@@ -2744,143 +3197,18 @@
+@@ -3012,143 +3469,18 @@
      }
  
      if(!(s->flags2 & CODEC_FLAG2_CHUNKS) || (s->mb_y >= s->mb_height && s->mb_height)){
 -        Picture *out = s->current_picture_ptr;
 -        Picture *cur = s->current_picture_ptr;
 -        int i, pics, out_of_order, out_idx;
-+
+ 
+-        field_end(h);
 +        if(s->flags2 & CODEC_FLAG2_CHUNKS) decode_postinit(h);
  
-         field_end(h);
- 
 -        if (cur->field_poc[0]==INT_MAX || cur->field_poc[1]==INT_MAX) {
++        field_end(h, 0);
++
 +        if (!h->next_output_pic) {
              /* Wait for second field. */
              *data_size = 0;
@@ -1144,7 +1219,7 @@ diff -Naur ffmpeg/libavcodec/h264.c ffmpeg-mt/libavcodec/h264.c
          }
      }
  
-@@ -3123,10 +3451,11 @@
+@@ -3391,9 +3723,11 @@
      NULL,
      ff_h264_decode_end,
      decode_frame,
@@ -1152,23 +1227,32 @@ diff -Naur ffmpeg/libavcodec/h264.c ffmpeg-mt/libavcodec/h264.c
 +    /*CODEC_CAP_DRAW_HORIZ_BAND |*/ CODEC_CAP_DR1 | CODEC_CAP_DELAY | CODEC_CAP_FRAME_THREADS,
      .flush= flush_dpb,
      .long_name = NULL_IF_CONFIG_SMALL("H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10"),
-     .pix_fmts= ff_hwaccel_pixfmt_list_420,
-+    .update_context = ONLY_IF_THREADS_ENABLED(decode_update_context)
++    .pix_fmts= ff_hwaccel_pixfmt_list_420,
++    .update_thread_context = ONLY_IF_THREADS_ENABLED(decode_update_thread_context)
  };
  
  #if CONFIG_H264_VDPAU_DECODER
 diff -Naur ffmpeg/libavcodec/h264_direct.c ffmpeg-mt/libavcodec/h264_direct.c
---- ffmpeg/libavcodec/h264_direct.c	2010-01-22 23:28:31.457987721 +0100
-+++ ffmpeg-mt/libavcodec/h264_direct.c	2010-01-26 20:02:25.051739168 +0100
-@@ -32,6 +32,7 @@
+--- ffmpeg/libavcodec/h264_direct.c	2010-06-16 20:58:49.014688448 +0200
++++ ffmpeg-mt/libavcodec/h264_direct.c	2010-06-16 20:58:55.267191349 +0200
+@@ -31,6 +31,7 @@
+ #include "mpegvideo.h"
  #include "h264.h"
- #include "h264_mvpred.h"
  #include "rectangle.h"
 +#include "thread.h"
  
  //#undef NDEBUG
  #include <assert.h>
-@@ -130,11 +131,27 @@
+@@ -126,7 +127,7 @@
+         h->col_parity= (FFABS(col_poc[0] - cur_poc) >= FFABS(col_poc[1] - cur_poc));
+         ref1sidx=sidx= h->col_parity;
+     }else if(!(s->picture_structure & h->ref_list[1][0].reference) && !h->ref_list[1][0].mbaff){ // FL -> FL & differ parity
+-        h->col_fieldoff= s->mb_stride*(2*(h->ref_list[1][0].reference) - 3);
++        h->col_fieldoff= 2*(h->ref_list[1][0].reference) - 3;
+     }
+ 
+     if(cur->pict_type != FF_B_TYPE || h->direct_spatial_mv_pred)
+@@ -140,11 +141,27 @@
      }
  }
  
@@ -1178,26 +1262,26 @@ diff -Naur ffmpeg/libavcodec/h264_direct.c ffmpeg-mt/libavcodec/h264_direct.c
 +    int ref_field_picture = ref->field_picture;
 +    int ref_height = 16*h->s.mb_height >> ref_field_picture;
 +
-+    if(!USE_FRAME_THREADING(h->s.avctx))
++    if(!HAVE_PTHREADS || !(h->s.avctx->active_thread_type&FF_THREAD_FRAME))
 +        return;
 +
 +    //FIXME it can be safe to access mb stuff
 +    //even if pixels aren't deblocked yet
 +
-+    ff_await_field_progress((AVFrame*)ref, FFMIN(16*mb_y >> ref_field_picture, ref_height-1),
-+                            ref_field_picture && ref_field);
++    ff_thread_await_progress((AVFrame*)ref, FFMIN(16*mb_y >> ref_field_picture, ref_height-1),
++                             ref_field_picture && ref_field);
 +}
 +
- void ff_h264_pred_direct_motion(H264Context * const h, int *mb_type){
+ static void pred_spatial_direct_motion(H264Context * const h, int *mb_type){
      MpegEncContext * const s = &h->s;
-     int b8_stride = h->b8_stride;
+     int b8_stride = 2;
      int b4_stride = h->b_stride;
 -    int mb_xy = h->mb_xy;
 +    int mb_xy = h->mb_xy, mb_y = s->mb_y;
      int mb_type_col[2];
      const int16_t (*l1mv0)[2], (*l1mv1)[2];
      const int8_t *l1ref0, *l1ref1;
-@@ -144,6 +161,8 @@
+@@ -157,6 +174,8 @@
  
      assert(h->ref_list[1][0].reference&3);
  
@@ -1205,55 +1289,27 @@ diff -Naur ffmpeg/libavcodec/h264_direct.c ffmpeg-mt/libavcodec/h264_direct.c
 +
  #define MB_TYPE_16x16_OR_INTRA (MB_TYPE_16x16|MB_TYPE_INTRA4x4|MB_TYPE_INTRA16x16|MB_TYPE_INTRA_PCM)
  
+ 
+@@ -217,14 +236,17 @@
+ 
      if(IS_INTERLACED(h->ref_list[1][0].mb_type[mb_xy])){ // AFL/AFR/FR/FL -> AFL/FL
-@@ -151,24 +170,27 @@
-             int cur_poc = s->current_picture_ptr->poc;
-             int *col_poc = h->ref_list[1]->field_poc;
-             int col_parity = FFABS(col_poc[0] - cur_poc) >= FFABS(col_poc[1] - cur_poc);
--            mb_xy= s->mb_x + ((s->mb_y&~1) + col_parity)*s->mb_stride;
-+            mb_y = (s->mb_y&~1) + col_parity;
-+            mb_xy= s->mb_x + mb_y*s->mb_stride;
+         if(!IS_INTERLACED(*mb_type)){                    //     AFR/FR    -> AFL/FL
++            mb_y = (s->mb_y&~1) + h->col_parity;
+             mb_xy= s->mb_x + ((s->mb_y&~1) + h->col_parity)*s->mb_stride;
              b8_stride = 0;
-         }else if(!(s->picture_structure & h->ref_list[1][0].reference) && !h->ref_list[1][0].mbaff){// FL -> FL & differ parity
-             int fieldoff= 2*(h->ref_list[1][0].reference)-3;
-+            mb_y  += fieldoff;
-             mb_xy += s->mb_stride*fieldoff;
+         }else{
+-            mb_xy += h->col_fieldoff; // non zero for FL -> FL & differ parity
++            mb_y  += h->col_fieldoff;
++            mb_xy += s->mb_stride*h->col_fieldoff; // non zero for FL -> FL & differ parity
          }
          goto single_col;
      }else{                                               // AFL/AFR/FR/FL -> AFR/FR
          if(IS_INTERLACED(*mb_type)){                     // AFL       /FL -> AFR/FR
--            mb_xy= s->mb_x + (s->mb_y&~1)*s->mb_stride;
 +            mb_y = s->mb_y&~1;
-+            mb_xy= s->mb_x + mb_y*s->mb_stride;
+             mb_xy= s->mb_x + (s->mb_y&~1)*s->mb_stride;
              mb_type_col[0] = h->ref_list[1][0].mb_type[mb_xy];
              mb_type_col[1] = h->ref_list[1][0].mb_type[mb_xy + s->mb_stride];
-             b8_stride *= 3;
-             b4_stride *= 6;
-             //FIXME IS_8X8(mb_type_col[0]) && !h->sps.direct_8x8_inference_flag
-             if(    (mb_type_col[0] & MB_TYPE_16x16_OR_INTRA)
--                && (mb_type_col[1] & MB_TYPE_16x16_OR_INTRA)
--                && !is_b8x8){
-+               && (mb_type_col[1] & MB_TYPE_16x16_OR_INTRA)
-+               && !is_b8x8){
-                 sub_mb_type = MB_TYPE_16x16|MB_TYPE_P0L0|MB_TYPE_P0L1|MB_TYPE_DIRECT2; /* B_SUB_8x8 */
-                 *mb_type   |= MB_TYPE_16x8 |MB_TYPE_L0L1|MB_TYPE_DIRECT2; /* B_16x8 */
-             }else{
-@@ -176,12 +198,12 @@
-                 *mb_type   |= MB_TYPE_8x8|MB_TYPE_L0L1;
-             }
-         }else{                                           //     AFR/FR    -> AFR/FR
--single_col:
-+        single_col:
-             mb_type_col[0] =
-             mb_type_col[1] = h->ref_list[1][0].mb_type[mb_xy];
-             if(IS_8X8(mb_type_col[0]) && !h->sps.direct_8x8_inference_flag){
-                 /* FIXME save sub mb types from previous frames (or derive from MVs)
--                * so we know exactly what block size to use */
-+                 * so we know exactly what block size to use */
-                 sub_mb_type = MB_TYPE_8x8|MB_TYPE_P0L0|MB_TYPE_P0L1|MB_TYPE_DIRECT2; /* B_SUB_4x4 */
-                 *mb_type   |= MB_TYPE_8x8|MB_TYPE_L0L1;
-             }else if(!is_b8x8 && (mb_type_col[0] & MB_TYPE_16x16_OR_INTRA)){
-@@ -194,6 +216,8 @@
+@@ -260,6 +282,8 @@
          }
      }
  
@@ -1261,11 +1317,52 @@ diff -Naur ffmpeg/libavcodec/h264_direct.c ffmpeg-mt/libavcodec/h264_direct.c
 +
      l1mv0  = &h->ref_list[1][0].motion_val[0][h->mb2b_xy [mb_xy]];
      l1mv1  = &h->ref_list[1][0].motion_val[1][h->mb2b_xy [mb_xy]];
-     l1ref0 = &h->ref_list[1][0].ref_index [0][h->mb2b8_xy[mb_xy]];
+     l1ref0 = &h->ref_list[1][0].ref_index [0][4*mb_xy];
+@@ -384,7 +408,7 @@
+     MpegEncContext * const s = &h->s;
+     int b8_stride = 2;
+     int b4_stride = h->b_stride;
+-    int mb_xy = h->mb_xy;
++    int mb_xy = h->mb_xy, mb_y = s->mb_y;
+     int mb_type_col[2];
+     const int16_t (*l1mv0)[2], (*l1mv1)[2];
+     const int8_t *l1ref0, *l1ref1;
+@@ -394,16 +418,21 @@
+ 
+     assert(h->ref_list[1][0].reference&3);
+ 
++    await_reference_mb_row(h, &h->ref_list[1][0], s->mb_y + !!IS_INTERLACED(*mb_type));
++
+     if(IS_INTERLACED(h->ref_list[1][0].mb_type[mb_xy])){ // AFL/AFR/FR/FL -> AFL/FL
+         if(!IS_INTERLACED(*mb_type)){                    //     AFR/FR    -> AFL/FL
++            mb_y = (s->mb_y&~1) + h->col_parity;
+             mb_xy= s->mb_x + ((s->mb_y&~1) + h->col_parity)*s->mb_stride;
+             b8_stride = 0;
+         }else{
+-            mb_xy += h->col_fieldoff; // non zero for FL -> FL & differ parity
++            mb_y  += h->col_fieldoff;
++            mb_xy += s->mb_stride*h->col_fieldoff; // non zero for FL -> FL & differ parity
+         }
+         goto single_col;
+     }else{                                               // AFL/AFR/FR/FL -> AFR/FR
+         if(IS_INTERLACED(*mb_type)){                     // AFL       /FL -> AFR/FR
++            mb_y = s->mb_y&~1;
+             mb_xy= s->mb_x + (s->mb_y&~1)*s->mb_stride;
+             mb_type_col[0] = h->ref_list[1][0].mb_type[mb_xy];
+             mb_type_col[1] = h->ref_list[1][0].mb_type[mb_xy + s->mb_stride];
+@@ -440,6 +469,8 @@
+         }
+     }
+ 
++    await_reference_mb_row(h, &h->ref_list[1][0], mb_y);
++
+     l1mv0  = &h->ref_list[1][0].motion_val[0][h->mb2b_xy [mb_xy]];
+     l1mv1  = &h->ref_list[1][0].motion_val[1][h->mb2b_xy [mb_xy]];
+     l1ref0 = &h->ref_list[1][0].ref_index [0][4*mb_xy];
 diff -Naur ffmpeg/libavcodec/h264.h ffmpeg-mt/libavcodec/h264.h
---- ffmpeg/libavcodec/h264.h	2010-01-26 20:28:03.647987785 +0100
-+++ ffmpeg-mt/libavcodec/h264.h	2010-01-26 20:02:25.051739168 +0100
-@@ -428,9 +428,9 @@
+--- ffmpeg/libavcodec/h264.h	2010-06-16 20:58:48.274688027 +0200
++++ ffmpeg-mt/libavcodec/h264.h	2010-06-16 20:58:55.245498595 +0200
+@@ -391,9 +391,9 @@
      /**
       * num_ref_idx_l0/1_active_minus1 + 1
       */
@@ -1273,12 +1370,12 @@ diff -Naur ffmpeg/libavcodec/h264.h ffmpeg-mt/libavcodec/h264.h
      unsigned int ref_count[2];   ///< counts frames or fields, depending on current mb mode
      unsigned int list_count;
 -    uint8_t *list_counts;            ///< Array of list_count per MB specifying the slice type
-     Picture *short_ref[32];
+     Picture ref_list[2][48];         /**< 0..15: frame refs, 16..47: mbaff field refs.
+                                           Reordered version of default_ref_list
+                                           according to picture reordering in slice header */
+@@ -502,7 +502,9 @@
      Picture *long_ref[32];
      Picture default_ref_list[2][32]; ///< base reference list for all slices of a coded picture
-@@ -439,7 +439,9 @@
-                                           according to picture reordering in slice header */
-     int ref2frm[MAX_SLICES][2][64];  ///< reference to frame number lists, used in the loop filter, the first 2 are for -2,-1
      Picture *delayed_pic[MAX_DELAYED_PIC_COUNT+2]; //FIXME size?
 +    Picture *next_output_pic;
      int outputed_poc;
@@ -1287,8 +1384,8 @@ diff -Naur ffmpeg/libavcodec/h264.h ffmpeg-mt/libavcodec/h264.h
      /**
       * memory management control operations buffer.
 diff -Naur ffmpeg/libavcodec/huffyuv.c ffmpeg-mt/libavcodec/huffyuv.c
---- ffmpeg/libavcodec/huffyuv.c	2010-01-22 23:28:31.447987294 +0100
-+++ ffmpeg-mt/libavcodec/huffyuv.c	2010-01-26 20:02:25.051739168 +0100
+--- ffmpeg/libavcodec/huffyuv.c	2010-06-16 20:58:48.274688027 +0200
++++ ffmpeg-mt/libavcodec/huffyuv.c	2010-06-16 20:58:55.245498595 +0200
 @@ -32,6 +32,7 @@
  #include "get_bits.h"
  #include "put_bits.h"
@@ -1297,12 +1394,12 @@ diff -Naur ffmpeg/libavcodec/huffyuv.c ffmpeg-mt/libavcodec/huffyuv.c
  
  #define VLC_BITS 11
  
-@@ -523,6 +524,28 @@
+@@ -526,6 +527,28 @@
  
      return 0;
  }
 +
-+static av_cold int decode_init_copy(AVCodecContext *avctx)
++static av_cold int decode_init_thread_copy(AVCodecContext *avctx)
 +{
 +    HYuvContext *s = avctx->priv_data;
 +    int i;
@@ -1326,44 +1423,44 @@ diff -Naur ffmpeg/libavcodec/huffyuv.c ffmpeg-mt/libavcodec/huffyuv.c
  #endif /* CONFIG_HUFFYUV_DECODER || CONFIG_FFVHUFF_DECODER */
  
  #if CONFIG_HUFFYUV_ENCODER || CONFIG_FFVHUFF_ENCODER
-@@ -946,10 +969,10 @@
+@@ -949,10 +972,10 @@
      s->dsp.bswap_buf((uint32_t*)s->bitstream_buffer, (const uint32_t*)buf, buf_size/4);
  
      if(p->data[0])
 -        avctx->release_buffer(avctx, p);
-+        ff_release_buffer(avctx, p);
++        ff_thread_release_buffer(avctx, p);
  
      p->reference= 0;
 -    if(avctx->get_buffer(avctx, p) < 0){
-+    if(ff_get_buffer(avctx, p) < 0){
++    if(ff_thread_get_buffer(avctx, p) < 0){
          av_log(avctx, AV_LOG_ERROR, "get_buffer() failed\n");
          return -1;
      }
-@@ -1421,8 +1444,9 @@
+@@ -1424,8 +1447,9 @@
      NULL,
      decode_end,
      decode_frame,
 -    CODEC_CAP_DR1 | CODEC_CAP_DRAW_HORIZ_BAND,
 +    CODEC_CAP_DR1 | CODEC_CAP_DRAW_HORIZ_BAND | CODEC_CAP_FRAME_THREADS,
      NULL,
-+    .init_copy = ONLY_IF_THREADS_ENABLED(decode_init_copy),
++    .init_thread_copy = ONLY_IF_THREADS_ENABLED(decode_init_thread_copy),
      .long_name = NULL_IF_CONFIG_SMALL("Huffyuv / HuffYUV"),
  };
  #endif
-@@ -1437,8 +1461,9 @@
+@@ -1440,8 +1464,9 @@
      NULL,
      decode_end,
      decode_frame,
 -    CODEC_CAP_DR1 | CODEC_CAP_DRAW_HORIZ_BAND,
 +    CODEC_CAP_DR1 | CODEC_CAP_DRAW_HORIZ_BAND | CODEC_CAP_FRAME_THREADS,
      NULL,
-+    .init_copy = ONLY_IF_THREADS_ENABLED(decode_init_copy),
++    .init_thread_copy = ONLY_IF_THREADS_ENABLED(decode_init_thread_copy),
      .long_name = NULL_IF_CONFIG_SMALL("Huffyuv FFmpeg variant"),
  };
  #endif
 diff -Naur ffmpeg/libavcodec/mdec.c ffmpeg-mt/libavcodec/mdec.c
---- ffmpeg/libavcodec/mdec.c	2010-01-26 20:02:39.777988242 +0100
-+++ ffmpeg-mt/libavcodec/mdec.c	2010-01-26 20:02:25.091738239 +0100
+--- ffmpeg/libavcodec/mdec.c	2010-06-16 20:58:48.714688256 +0200
++++ ffmpeg-mt/libavcodec/mdec.c	2010-06-16 20:58:55.256750894 +0200
 @@ -31,6 +31,7 @@
  #include "dsputil.h"
  #include "mpegvideo.h"
@@ -1377,11 +1474,11 @@ diff -Naur ffmpeg/libavcodec/mdec.c ffmpeg-mt/libavcodec/mdec.c
  
      if(p->data[0])
 -        avctx->release_buffer(avctx, p);
-+        ff_release_buffer(avctx, p);
++        ff_thread_release_buffer(avctx, p);
  
      p->reference= 0;
 -    if(avctx->get_buffer(avctx, p) < 0){
-+    if(ff_get_buffer(avctx, p) < 0){
++    if(ff_thread_get_buffer(avctx, p) < 0){
          av_log(avctx, AV_LOG_ERROR, "get_buffer() failed\n");
          return -1;
      }
@@ -1389,7 +1486,7 @@ diff -Naur ffmpeg/libavcodec/mdec.c ffmpeg-mt/libavcodec/mdec.c
      return 0;
  }
  
-+static av_cold int decode_init_copy(AVCodecContext *avctx){
++static av_cold int decode_init_thread_copy(AVCodecContext *avctx){
 +    MDECContext * const a = avctx->priv_data;
 +    AVFrame *p = (AVFrame*)&a->picture;
 +
@@ -1411,12 +1508,12 @@ diff -Naur ffmpeg/libavcodec/mdec.c ffmpeg-mt/libavcodec/mdec.c
 -    CODEC_CAP_DR1,
 +    CODEC_CAP_DR1 | CODEC_CAP_FRAME_THREADS,
      .long_name= NULL_IF_CONFIG_SMALL("Sony PlayStation MDEC (Motion DECoder)"),
-+    .init_copy= ONLY_IF_THREADS_ENABLED(decode_init_copy)
++    .init_thread_copy= ONLY_IF_THREADS_ENABLED(decode_init_thread_copy)
  };
  
 diff -Naur ffmpeg/libavcodec/mimic.c ffmpeg-mt/libavcodec/mimic.c
---- ffmpeg/libavcodec/mimic.c	2010-01-22 23:28:31.477987662 +0100
-+++ ffmpeg-mt/libavcodec/mimic.c	2010-01-26 20:02:25.091738239 +0100
+--- ffmpeg/libavcodec/mimic.c	2010-06-16 20:58:48.254688568 +0200
++++ ffmpeg-mt/libavcodec/mimic.c	2010-06-16 20:58:55.245498595 +0200
 @@ -27,6 +27,7 @@
  #include "get_bits.h"
  #include "bytestream.h"
@@ -1436,13 +1533,15 @@ diff -Naur ffmpeg/libavcodec/mimic.c ffmpeg-mt/libavcodec/mimic.c
  } MimicContext;
  
  static const uint32_t huffcodes[] = {
-@@ -121,6 +126,21 @@
+@@ -121,6 +126,23 @@
      return 0;
  }
  
-+static int mimic_decode_update_context(AVCodecContext *avctx, AVCodecContext *avctx_from)
++static int mimic_decode_update_thread_context(AVCodecContext *avctx, AVCodecContext *avctx_from)
 +{
 +    MimicContext *dst = avctx->priv_data, *src = avctx_from->priv_data;
++
++    if (avctx == avctx_from) return 0;
 +
 +    dst->cur_index  = src->next_cur_index;
 +    dst->prev_index = src->next_prev_index;
@@ -1458,7 +1557,7 @@ diff -Naur ffmpeg/libavcodec/mimic.c ffmpeg-mt/libavcodec/mimic.c
  static const int8_t vlcdec_lookup[9][64] = {
      {    0, },
      {   -1,   1, },
-@@ -205,7 +225,7 @@
+@@ -205,7 +227,7 @@
  static int decode(MimicContext *ctx, int quality, int num_coeffs,
                    int is_iframe)
  {
@@ -1467,38 +1566,38 @@ diff -Naur ffmpeg/libavcodec/mimic.c ffmpeg-mt/libavcodec/mimic.c
  
      for(plane = 0; plane < 3; plane++) {
          const int is_chroma = !!plane;
-@@ -236,6 +256,7 @@
+@@ -236,6 +258,7 @@
                          int index = (ctx->cur_index+backref)&15;
                          uint8_t *p = ctx->flipped_ptrs[index].data[0];
  
-+                        ff_await_frame_progress(&ctx->buf_ptrs[index], cur_row);
++                        ff_thread_await_progress(&ctx->buf_ptrs[index], cur_row, 0);
                          if(p) {
                              p += src -
                                  ctx->flipped_ptrs[ctx->prev_index].data[plane];
-@@ -246,6 +267,7 @@
+@@ -246,6 +269,7 @@
                          }
                      }
                  } else {
-+                    ff_await_frame_progress(&ctx->buf_ptrs[ctx->prev_index], cur_row);
++                    ff_thread_await_progress(&ctx->buf_ptrs[ctx->prev_index], cur_row, 0);
                      ctx->dsp.put_pixels_tab[1][0](dst, src, stride, 8);
                  }
                  src += 8;
-@@ -253,6 +275,8 @@
+@@ -253,6 +277,8 @@
              }
              src += (stride - ctx->num_hblocks[plane])<<3;
              dst += (stride - ctx->num_hblocks[plane])<<3;
 +
-+            ff_report_frame_progress(&ctx->buf_ptrs[ctx->cur_index], cur_row++);
++            ff_thread_report_progress(&ctx->buf_ptrs[ctx->cur_index], cur_row++, 0);
          }
      }
  
-@@ -326,14 +350,20 @@
+@@ -326,14 +352,20 @@
      }
  
      ctx->buf_ptrs[ctx->cur_index].reference = 1;
 -    if(avctx->get_buffer(avctx, &ctx->buf_ptrs[ctx->cur_index])) {
 +    ctx->buf_ptrs[ctx->cur_index].pict_type = is_pframe ? FF_P_TYPE:FF_I_TYPE;
-+    if(ff_get_buffer(avctx, &ctx->buf_ptrs[ctx->cur_index])) {
++    if(ff_thread_get_buffer(avctx, &ctx->buf_ptrs[ctx->cur_index])) {
          av_log(avctx, AV_LOG_ERROR, "get_buffer() failed\n");
          return -1;
      }
@@ -1509,21 +1608,21 @@ diff -Naur ffmpeg/libavcodec/mimic.c ffmpeg-mt/libavcodec/mimic.c
      prepare_avpic(ctx, &ctx->flipped_ptrs[ctx->cur_index],
                    (AVPicture*) &ctx->buf_ptrs[ctx->cur_index]);
  
-+    ff_report_frame_setup_done(avctx);
++    ff_thread_finish_setup(avctx);
 +
      av_fast_malloc(&ctx->swap_buf, &ctx->swap_buf_size,
                                   swap_buf_size + FF_INPUT_BUFFER_PADDING_SIZE);
      if(!ctx->swap_buf)
-@@ -345,21 +375,23 @@
+@@ -345,21 +377,23 @@
      init_get_bits(&ctx->gb, ctx->swap_buf, swap_buf_size << 3);
  
      if(!decode(ctx, quality, num_coeffs, !is_pframe)) {
 -        avctx->release_buffer(avctx, &ctx->buf_ptrs[ctx->cur_index]);
 -        return -1;
-+        if (USE_FRAME_THREADING(avctx))
-+            ff_report_frame_progress(&ctx->buf_ptrs[ctx->cur_index], INT_MAX);
++        if (avctx->active_thread_type&FF_THREAD_FRAME)
++            ff_thread_report_progress(&ctx->buf_ptrs[ctx->cur_index], INT_MAX, 0);
 +        else {
-+            ff_release_buffer(avctx, &ctx->buf_ptrs[ctx->cur_index]);
++            ff_thread_release_buffer(avctx, &ctx->buf_ptrs[ctx->cur_index]);
 +            return -1;
 +        }
      }
@@ -1541,11 +1640,11 @@ diff -Naur ffmpeg/libavcodec/mimic.c ffmpeg-mt/libavcodec/mimic.c
      /* Only release frames that aren't used for backreferences anymore */
      if(ctx->buf_ptrs[ctx->cur_index].data[0])
 -        avctx->release_buffer(avctx, &ctx->buf_ptrs[ctx->cur_index]);
-+        ff_release_buffer(avctx, &ctx->buf_ptrs[ctx->cur_index]);
++        ff_thread_release_buffer(avctx, &ctx->buf_ptrs[ctx->cur_index]);
  
      return buf_size;
  }
-@@ -370,9 +402,12 @@
+@@ -370,9 +404,12 @@
      int i;
  
      av_free(ctx->swap_buf);
@@ -1555,22 +1654,22 @@ diff -Naur ffmpeg/libavcodec/mimic.c ffmpeg-mt/libavcodec/mimic.c
      for(i = 0; i < 16; i++)
          if(ctx->buf_ptrs[i].data[0])
 -            avctx->release_buffer(avctx, &ctx->buf_ptrs[i]);
-+            ff_release_buffer(avctx, &ctx->buf_ptrs[i]);
++            ff_thread_release_buffer(avctx, &ctx->buf_ptrs[i]);
      free_vlc(&ctx->vlc);
  
      return 0;
-@@ -387,6 +422,7 @@
+@@ -387,6 +424,7 @@
      NULL,
      mimic_decode_end,
      mimic_decode_frame,
 -    CODEC_CAP_DR1,
 +    CODEC_CAP_DR1 | CODEC_CAP_FRAME_THREADS,
      .long_name = NULL_IF_CONFIG_SMALL("Mimic"),
-+    .update_context = ONLY_IF_THREADS_ENABLED(mimic_decode_update_context)
++    .update_thread_context = ONLY_IF_THREADS_ENABLED(mimic_decode_update_thread_context)
  };
 diff -Naur ffmpeg/libavcodec/mpeg12.c ffmpeg-mt/libavcodec/mpeg12.c
---- ffmpeg/libavcodec/mpeg12.c	2010-01-26 20:02:39.787987552 +0100
-+++ ffmpeg-mt/libavcodec/mpeg12.c	2010-01-26 20:02:25.101738348 +0100
+--- ffmpeg/libavcodec/mpeg12.c	2010-06-16 20:58:49.244687691 +0200
++++ ffmpeg-mt/libavcodec/mpeg12.c	2010-06-16 20:58:55.267191349 +0200
 @@ -37,6 +37,7 @@
  #include "bytestream.h"
  #include "vdpau_internal.h"
@@ -1583,16 +1682,16 @@ diff -Naur ffmpeg/libavcodec/mpeg12.c ffmpeg-mt/libavcodec/mpeg12.c
      return 0;
  }
  
-+static int mpeg_decode_update_context(AVCodecContext *avctx, AVCodecContext *avctx_from)
++static int mpeg_decode_update_thread_context(AVCodecContext *avctx, AVCodecContext *avctx_from)
 +{
 +    Mpeg1Context *ctx = avctx->priv_data, *ctx_from = avctx_from->priv_data;
 +    MpegEncContext *s = &ctx->mpeg_enc_ctx, *s1 = &ctx_from->mpeg_enc_ctx;
 +    int err;
 +
-+    if(!ctx_from->mpeg_enc_ctx_allocated || !s1->context_initialized)
++    if(avctx == avctx_from || !ctx_from->mpeg_enc_ctx_allocated || !s1->context_initialized)
 +        return 0;
 +
-+    err = ff_mpeg_update_context(avctx, avctx_from);
++    err = ff_mpeg_update_thread_context(avctx, avctx_from);
 +    if(err) return err;
 +
 +    if(!ctx->mpeg_enc_ctx_allocated)
@@ -1611,23 +1710,24 @@ diff -Naur ffmpeg/libavcodec/mpeg12.c ffmpeg-mt/libavcodec/mpeg12.c
  
          if (s1->mpeg_enc_ctx_allocated) {
              ParseContext pc= s->parse_context;
-+            if(USE_FRAME_THREADING(avctx)) {
++            if(avctx->active_thread_type&FF_THREAD_FRAME) {
 +                av_log_missing_feature(avctx, "Width/height changing with frame threads is", 0);
 +                return -1;
 +            }
              s->parse_context.buffer=0;
              MPV_common_end(s);
              s->parse_context= pc;
-@@ -1624,6 +1650,8 @@
+@@ -1624,6 +1650,9 @@
          }
  
          *s->current_picture_ptr->pan_scan= s1->pan_scan;
 +
-+        if (USE_FRAME_THREADING(avctx)) ff_report_frame_setup_done(avctx);
++        if (HAVE_PTHREADS && avctx->active_thread_type&FF_THREAD_FRAME)
++            ff_thread_finish_setup(avctx);
      }else{ //second field
              int i;
  
-@@ -1796,6 +1824,7 @@
+@@ -1798,6 +1827,7 @@
              const int mb_size= 16>>s->avctx->lowres;
  
              ff_draw_horiz_band(s, mb_size*(s->mb_y>>field_pic), mb_size);
@@ -1635,57 +1735,54 @@ diff -Naur ffmpeg/libavcodec/mpeg12.c ffmpeg-mt/libavcodec/mpeg12.c
  
              s->mb_x = 0;
              s->mb_y += 1<<field_pic;
-@@ -1951,7 +1980,7 @@
+@@ -1953,7 +1983,8 @@
              *pict= *(AVFrame*)s->current_picture_ptr;
              ff_print_debug_info(s, pict);
          } else {
 -            s->picture_number++;
-+            if (!USE_FRAME_THREADING(avctx)) s->picture_number++;
++            if (avctx->active_thread_type&FF_THREAD_FRAME)
++                s->picture_number++;
              /* latency of 1 frame for I- and P-frames */
              /* XXX: use another variable than picture_number */
              if (s->last_picture_ptr != NULL) {
-@@ -2287,7 +2316,7 @@
+@@ -2289,7 +2320,7 @@
          buf_ptr = ff_find_start_code(buf_ptr,buf_end, &start_code);
          if (start_code > 0x1ff){
              if(s2->pict_type != FF_B_TYPE || avctx->skip_frame <= AVDISCARD_DEFAULT){
 -                if(avctx->thread_count > 1){
-+                if(USE_AVCODEC_EXECUTE(avctx)){
++                if(HAVE_THREADS && avctx->active_thread_type&FF_THREAD_SLICE){
                      int i;
  
                      avctx->execute(avctx, slice_decode_thread,  &s2->thread_context[0], NULL, s->slice_count, sizeof(void*));
-@@ -2449,7 +2478,7 @@
+@@ -2451,7 +2482,7 @@
                      break;
                  }
  
 -                if(avctx->thread_count > 1){
-+                if(USE_AVCODEC_EXECUTE(avctx)){
++                if(HAVE_THREADS && avctx->active_thread_type&FF_THREAD_SLICE){
                      int threshold= (s2->mb_height*s->slice_count + avctx->thread_count/2) / avctx->thread_count;
                      if(threshold <= mb_y){
                          MpegEncContext *thread_context= s2->thread_context[s->slice_count];
-@@ -2507,9 +2536,10 @@
-     NULL,
-     mpeg_decode_end,
-     mpeg_decode_frame,
--    CODEC_CAP_DRAW_HORIZ_BAND | CODEC_CAP_DR1 | CODEC_CAP_TRUNCATED | CODEC_CAP_DELAY,
-+    CODEC_CAP_DRAW_HORIZ_BAND | CODEC_CAP_DR1 | CODEC_CAP_TRUNCATED | CODEC_CAP_DELAY | CODEC_CAP_FRAME_THREADS,
+@@ -2512,6 +2543,7 @@
+     CODEC_CAP_DRAW_HORIZ_BAND | CODEC_CAP_DR1 | CODEC_CAP_TRUNCATED | CODEC_CAP_DELAY,
      .flush= flush,
      .long_name= NULL_IF_CONFIG_SMALL("MPEG-1 video"),
-+    .update_context= ONLY_IF_THREADS_ENABLED(mpeg_decode_update_context)
++    .update_thread_context= ONLY_IF_THREADS_ENABLED(mpeg_decode_update_thread_context)
  };
  
  AVCodec mpeg2video_decoder = {
-@@ -2543,7 +2573,7 @@
+@@ -2545,7 +2577,7 @@
  
  #if CONFIG_MPEG_XVMC_DECODER
  static av_cold int mpeg_mc_decode_init(AVCodecContext *avctx){
 -    if( avctx->thread_count > 1)
-+    if( USE_AVCODEC_EXECUTE(avctx) )
++    if( avctx->active_thread_type & FF_THREAD_SLICE )
          return -1;
      if( !(avctx->slice_flags & SLICE_FLAG_CODED_ORDER) )
          return -1;
 diff -Naur ffmpeg/libavcodec/mpeg4videodec.c ffmpeg-mt/libavcodec/mpeg4videodec.c
---- ffmpeg/libavcodec/mpeg4videodec.c	2010-01-12 20:09:21.373649366 +0100
-+++ ffmpeg-mt/libavcodec/mpeg4videodec.c	2010-01-26 20:02:25.101738348 +0100
+--- ffmpeg/libavcodec/mpeg4videodec.c	2010-06-16 20:58:48.564688075 +0200
++++ ffmpeg-mt/libavcodec/mpeg4videodec.c	2010-06-16 20:58:55.256750894 +0200
 @@ -23,6 +23,7 @@
  #include "mpegvideo.h"
  #include "mpeg4video.h"
@@ -1702,7 +1799,7 @@ diff -Naur ffmpeg/libavcodec/mpeg4videodec.c ffmpeg-mt/libavcodec/mpeg4videodec.
 +        int mb_x = 0, mb_y = 0;
 +
 +        while(s->next_picture.mbskip_table[ s->mb_index2xy[ mb_num ] ]) {
-+            if (!mb_x) ff_await_frame_progress((AVFrame*)s->next_picture_ptr, mb_y++);
++            if (!mb_x) ff_thread_await_progress((AVFrame*)s->next_picture_ptr, mb_y++, 0);
 +            mb_num++;
 +            if (++mb_x == s->mb_width) mb_x = 0;
 +        }
@@ -1714,7 +1811,7 @@ diff -Naur ffmpeg/libavcodec/mpeg4videodec.c ffmpeg-mt/libavcodec/mpeg4videodec.
                  s->last_mv[i][1][1]= 0;
              }
 +
-+            ff_await_frame_progress((AVFrame*)s->next_picture_ptr, s->mb_y);
++            ff_thread_await_progress((AVFrame*)s->next_picture_ptr, s->mb_y, 0);
          }
  
          /* if we skipped it in the future P Frame than skip it now too */
@@ -1724,25 +1821,25 @@ diff -Naur ffmpeg/libavcodec/mpeg4videodec.c ffmpeg-mt/libavcodec/mpeg4videodec.
              const int delta= s->mb_x + 1 == s->mb_width ? 2 : 1;
 +
 +            if(s->pict_type==FF_B_TYPE){
-+                ff_await_frame_progress((AVFrame*)s->next_picture_ptr,
-+                                        (s->mb_x + delta >= s->mb_width) ? FFMIN(s->mb_y+1, s->mb_height-1) : s->mb_y);
++                ff_thread_await_progress((AVFrame*)s->next_picture_ptr,
++                                        (s->mb_x + delta >= s->mb_width) ? FFMIN(s->mb_y+1, s->mb_height-1) : s->mb_y, 0);
 +            }
 +
              if(s->pict_type==FF_B_TYPE && s->next_picture.mbskip_table[xy + delta])
                  return SLICE_OK;
              return SLICE_END;
-@@ -2242,6 +2257,7 @@
+@@ -2247,6 +2262,7 @@
      .flush= ff_mpeg_flush,
      .long_name= NULL_IF_CONFIG_SMALL("MPEG-4 part 2"),
      .pix_fmts= ff_hwaccel_pixfmt_list_420,
-+    .update_context= ONLY_IF_THREADS_ENABLED(ff_mpeg_update_context)
++    .update_thread_context= ONLY_IF_THREADS_ENABLED(ff_mpeg_update_thread_context)
  };
  
  
 diff -Naur ffmpeg/libavcodec/mpegvideo.c ffmpeg-mt/libavcodec/mpegvideo.c
---- ffmpeg/libavcodec/mpegvideo.c	2010-01-22 23:28:31.437987751 +0100
-+++ ffmpeg-mt/libavcodec/mpegvideo.c	2010-01-26 20:02:25.111738472 +0100
-@@ -35,6 +35,7 @@
+--- ffmpeg/libavcodec/mpegvideo.c	2010-06-16 20:58:50.374688650 +0200
++++ ffmpeg-mt/libavcodec/mpegvideo.c	2010-06-16 20:58:55.296248582 +0200
+@@ -37,6 +37,7 @@
  #include "msmpeg4.h"
  #include "faandct.h"
  #include "xvmc_internal.h"
@@ -1750,33 +1847,33 @@ diff -Naur ffmpeg/libavcodec/mpegvideo.c ffmpeg-mt/libavcodec/mpegvideo.c
  #include <limits.h>
  
  //#undef NDEBUG
-@@ -171,7 +172,7 @@
+@@ -204,7 +205,7 @@
   */
  static void free_frame_buffer(MpegEncContext *s, Picture *pic)
  {
 -    s->avctx->release_buffer(s->avctx, (AVFrame*)pic);
-+    ff_release_buffer(s->avctx, (AVFrame*)pic);
++    ff_thread_release_buffer(s->avctx, (AVFrame*)pic);
      av_freep(&pic->hwaccel_picture_private);
  }
  
-@@ -193,7 +194,7 @@
+@@ -226,7 +227,7 @@
          }
      }
  
 -    r = s->avctx->get_buffer(s->avctx, (AVFrame*)pic);
-+    r = ff_get_buffer(s->avctx, (AVFrame*)pic);
++    r = ff_thread_get_buffer(s->avctx, (AVFrame*)pic);
  
      if (r<0 || !pic->age || !pic->type || !pic->data[0]) {
          av_log(s->avctx, AV_LOG_ERROR, "get_buffer() failed (%d %d %d %p)\n", r, pic->age, pic->type, pic->data[0]);
-@@ -407,6 +408,80 @@
+@@ -440,6 +441,80 @@
  //STOP_TIMER("update_duplicate_context") //about 10k cycles / 0.01 sec for 1000frames on 1ghz with 2 threads
  }
  
-+int ff_mpeg_update_context(AVCodecContext *dst, AVCodecContext *src)
++int ff_mpeg_update_thread_context(AVCodecContext *dst, AVCodecContext *src)
 +{
 +    MpegEncContext *s = dst->priv_data, *s1 = src->priv_data;
 +
-+    if(!s1->context_initialized) return 0;
++    if(dst == src || !s1->context_initialized) return 0;
 +
 +    //FIXME can parameters change on I-frames? in that case dst may need a reinit
 +    if(!s->context_initialized){
@@ -1849,7 +1946,7 @@ diff -Naur ffmpeg/libavcodec/mpegvideo.c ffmpeg-mt/libavcodec/mpegvideo.c
  /**
   * sets the given MpegEncContext to common defaults (same for encoding and decoding).
   * the changed fields will not depend upon the prior state of the MpegEncContext.
-@@ -427,6 +502,9 @@
+@@ -460,6 +535,9 @@
  
      s->f_code = 1;
      s->b_code = 1;
@@ -1859,17 +1956,17 @@ diff -Naur ffmpeg/libavcodec/mpegvideo.c ffmpeg-mt/libavcodec/mpegvideo.c
  }
  
  /**
-@@ -455,7 +533,8 @@
+@@ -488,7 +566,8 @@
          return -1;
      }
  
 -    if(s->avctx->thread_count > MAX_THREADS || (s->avctx->thread_count > s->mb_height && s->mb_height)){
-+    if(USE_AVCODEC_EXECUTE(s->avctx) &&
++    if(s->avctx->active_thread_type&FF_THREAD_SLICE &&
 +       (s->avctx->thread_count > MAX_THREADS || (s->avctx->thread_count > s->mb_height && s->mb_height))){
          av_log(s->avctx, AV_LOG_ERROR, "too many threads\n");
          return -1;
      }
-@@ -554,8 +633,9 @@
+@@ -581,8 +660,9 @@
              FF_ALLOCZ_OR_GOTO(s->avctx, s->dct_offset, 2 * 64 * sizeof(uint16_t), fail)
          }
      }
@@ -1881,7 +1978,7 @@ diff -Naur ffmpeg/libavcodec/mpegvideo.c ffmpeg-mt/libavcodec/mpegvideo.c
          avcodec_get_frame_defaults((AVFrame *)&s->picture[i]);
      }
  
-@@ -621,20 +701,26 @@
+@@ -648,20 +728,26 @@
      }
  
      s->context_initialized = 1;
@@ -1893,7 +1990,7 @@ diff -Naur ffmpeg/libavcodec/mpegvideo.c ffmpeg-mt/libavcodec/mpegvideo.c
 -        s->thread_context[i]= av_malloc(sizeof(MpegEncContext));
 -        memcpy(s->thread_context[i], s, sizeof(MpegEncContext));
 -    }
-+    if (USE_AVCODEC_EXECUTE(s->avctx)) {
++    if (HAVE_THREADS && s->avctx->active_thread_type&FF_THREAD_SLICE) {
 +        threads = s->avctx->thread_count;
  
 -    for(i=0; i<threads; i++){
@@ -1919,7 +2016,7 @@ diff -Naur ffmpeg/libavcodec/mpegvideo.c ffmpeg-mt/libavcodec/mpegvideo.c
      }
  
      return 0;
-@@ -648,12 +734,14 @@
+@@ -675,12 +761,14 @@
  {
      int i, j, k;
  
@@ -1929,7 +2026,7 @@ diff -Naur ffmpeg/libavcodec/mpegvideo.c ffmpeg-mt/libavcodec/mpegvideo.c
 -    for(i=1; i<s->avctx->thread_count; i++){
 -        av_freep(&s->thread_context[i]);
 -    }
-+    if (USE_AVCODEC_EXECUTE(s->avctx)) {
++    if (HAVE_THREADS && s->avctx->active_thread_type&FF_THREAD_SLICE) {
 +        for(i=0; i<s->avctx->thread_count; i++){
 +            free_duplicate_context(s->thread_context[i]);
 +        }
@@ -1940,7 +2037,7 @@ diff -Naur ffmpeg/libavcodec/mpegvideo.c ffmpeg-mt/libavcodec/mpegvideo.c
  
      av_freep(&s->parse_context.buffer);
      s->parse_context.buffer_size=0;
-@@ -709,8 +797,8 @@
+@@ -736,8 +824,8 @@
      av_freep(&s->reordered_input_picture);
      av_freep(&s->dct_offset);
  
@@ -1951,17 +2048,17 @@ diff -Naur ffmpeg/libavcodec/mpegvideo.c ffmpeg-mt/libavcodec/mpegvideo.c
              free_picture(s, &s->picture[i]);
          }
      }
-@@ -724,7 +812,8 @@
+@@ -751,7 +839,8 @@
      for(i=0; i<3; i++)
          av_freep(&s->visualization_buffer[i]);
  
 -    avcodec_default_free_buffers(s->avctx);
-+    if(!USE_FRAME_THREADING(s->avctx))
++    if(!(s->avctx->active_thread_type&FF_THREAD_FRAME))
 +        avcodec_default_free_buffers(s->avctx);
  }
  
  void init_rl(RLTable *rl, uint8_t static_store[2][2*MAX_RUN + MAX_LEVEL + 3])
-@@ -822,14 +911,14 @@
+@@ -849,14 +938,14 @@
      int i;
  
      if(shared){
@@ -1979,7 +2076,7 @@ diff -Naur ffmpeg/libavcodec/mpegvideo.c ffmpeg-mt/libavcodec/mpegvideo.c
              if(s->picture[i].data[0]==NULL) return i;
          }
      }
-@@ -886,7 +975,7 @@
+@@ -913,7 +1002,7 @@
          /* release forgotten pictures */
          /* if(mpeg124/h263) */
          if(!s->encoding){
@@ -1988,7 +2085,7 @@ diff -Naur ffmpeg/libavcodec/mpegvideo.c ffmpeg-mt/libavcodec/mpegvideo.c
                  if(s->picture[i].data[0] && &s->picture[i] != s->next_picture_ptr && s->picture[i].reference){
                      av_log(avctx, AV_LOG_ERROR, "releasing zombie picture\n");
                      free_frame_buffer(s, &s->picture[i]);
-@@ -898,7 +987,7 @@
+@@ -925,7 +1014,7 @@
  
      if(!s->encoding){
          /* release non reference frames */
@@ -1997,7 +2094,7 @@ diff -Naur ffmpeg/libavcodec/mpegvideo.c ffmpeg-mt/libavcodec/mpegvideo.c
              if(s->picture[i].data[0] && !s->picture[i].reference /*&& s->picture[i].type!=FF_BUFFER_TYPE_SHARED*/){
                  free_frame_buffer(s, &s->picture[i]);
              }
-@@ -927,6 +1016,7 @@
+@@ -954,6 +1043,7 @@
          s->current_picture_ptr= pic;
          s->current_picture_ptr->top_field_first= s->top_field_first; //FIXME use only the vars from current_pic
          s->current_picture_ptr->interlaced_frame= !s->progressive_frame && !s->progressive_sequence;
@@ -2005,7 +2102,23 @@ diff -Naur ffmpeg/libavcodec/mpegvideo.c ffmpeg-mt/libavcodec/mpegvideo.c
      }
  
      s->current_picture_ptr->pict_type= s->pict_type;
-@@ -1014,20 +1104,25 @@
+@@ -982,6 +1072,7 @@
+             s->last_picture_ptr= &s->picture[i];
+             if(ff_alloc_picture(s, s->last_picture_ptr, 0) < 0)
+                 return -1;
++            ff_thread_finish_frame((AVFrame*)s->last_picture_ptr);
+         }
+         if((s->next_picture_ptr==NULL || s->next_picture_ptr->data[0]==NULL) && s->pict_type==FF_B_TYPE){
+             /* Allocate a dummy frame */
+@@ -989,6 +1080,7 @@
+             s->next_picture_ptr= &s->picture[i];
+             if(ff_alloc_picture(s, s->next_picture_ptr, 0) < 0)
+                 return -1;
++            ff_thread_finish_frame((AVFrame*)s->next_picture_ptr);
+         }
+     }
+ 
+@@ -1041,20 +1133,25 @@
  void MPV_frame_end(MpegEncContext *s)
  {
      int i;
@@ -2036,7 +2149,7 @@ diff -Naur ffmpeg/libavcodec/mpegvideo.c ffmpeg-mt/libavcodec/mpegvideo.c
      emms_c();
  
      s->last_pict_type    = s->pict_type;
-@@ -1048,7 +1143,7 @@
+@@ -1075,7 +1172,7 @@
  
      if(s->encoding){
          /* release non-reference frames */
@@ -2045,17 +2158,18 @@ diff -Naur ffmpeg/libavcodec/mpegvideo.c ffmpeg-mt/libavcodec/mpegvideo.c
              if(s->picture[i].data[0] && !s->picture[i].reference /*&& s->picture[i].type!=FF_BUFFER_TYPE_SHARED*/){
                  free_frame_buffer(s, &s->picture[i]);
              }
-@@ -1061,6 +1156,9 @@
+@@ -1088,6 +1185,10 @@
      memset(&s->current_picture, 0, sizeof(Picture));
  #endif
      s->avctx->coded_frame= (AVFrame*)s->current_picture_ptr;
 +
-+    if (USE_FRAME_THREADING(s->avctx) && s->codec_id != CODEC_ID_H264 && s->current_picture.reference)
-+        ff_report_frame_progress((AVFrame*)s->current_picture_ptr, s->mb_height - 1);
++    if (s->codec_id != CODEC_ID_H264 && s->current_picture.reference) {
++        ff_thread_report_progress((AVFrame*)s->current_picture_ptr, s->mb_height-1, 0);
++    }
  }
  
  /**
-@@ -1725,6 +1823,43 @@
+@@ -1752,6 +1853,43 @@
      }
  }
  
@@ -2099,24 +2213,24 @@ diff -Naur ffmpeg/libavcodec/mpegvideo.c ffmpeg-mt/libavcodec/mpegvideo.c
  /* put block[] to dest[] */
  static inline void put_dct(MpegEncContext *s,
                             DCTELEM *block, int i, uint8_t *dest, int line_size, int qscale)
-@@ -1884,6 +2019,16 @@
+@@ -1911,6 +2049,16 @@
              /* motion handling */
              /* decoding or more than one mb_type (MC was already done otherwise) */
              if(!s->encoding){
 +
-+                if(USE_FRAME_THREADING(s->avctx)) {
++                if(HAVE_PTHREADS && s->avctx->active_thread_type&FF_THREAD_FRAME) {
 +                    if (s->mv_dir & MV_DIR_FORWARD) {
-+                        ff_await_frame_progress((AVFrame*)s->last_picture_ptr, MPV_lowest_referenced_row(s, 0));
++                        ff_thread_await_progress((AVFrame*)s->last_picture_ptr, MPV_lowest_referenced_row(s, 0), 0);
 +                    }
 +                    if (s->mv_dir & MV_DIR_BACKWARD) {
-+                        ff_await_frame_progress((AVFrame*)s->next_picture_ptr, MPV_lowest_referenced_row(s, 1));
++                        ff_thread_await_progress((AVFrame*)s->next_picture_ptr, MPV_lowest_referenced_row(s, 1), 0);
 +                    }
 +                }
 +
                  if(lowres_flag){
                      h264_chroma_mc_func *op_pix = s->dsp.put_h264_chroma_pixels_tab;
  
-@@ -2048,19 +2193,37 @@
+@@ -2075,19 +2223,37 @@
   * @param h is the normal height, this will be reduced automatically if needed for the last row
   */
  void ff_draw_horiz_band(MpegEncContext *s, int y, int h){
@@ -2163,7 +2277,7 @@ diff -Naur ffmpeg/libavcodec/mpegvideo.c ffmpeg-mt/libavcodec/mpegvideo.c
          if(s->pict_type==FF_B_TYPE || s->low_delay || (s->avctx->slice_flags&SLICE_FLAG_CODED_ORDER))
              src= (AVFrame*)s->current_picture_ptr;
          else if(s->last_picture_ptr)
-@@ -2126,7 +2289,7 @@
+@@ -2153,7 +2319,7 @@
      if(s==NULL || s->picture==NULL)
          return;
  
@@ -2172,7 +2286,7 @@ diff -Naur ffmpeg/libavcodec/mpegvideo.c ffmpeg-mt/libavcodec/mpegvideo.c
         if(s->picture[i].data[0] && (   s->picture[i].type == FF_BUFFER_TYPE_INTERNAL
                                      || s->picture[i].type == FF_BUFFER_TYPE_USER))
          free_frame_buffer(s, &s->picture[i]);
-@@ -2380,3 +2543,9 @@
+@@ -2407,3 +2573,9 @@
      s->y_dc_scale= s->y_dc_scale_table[ qscale ];
      s->c_dc_scale= s->c_dc_scale_table[ s->chroma_qscale ];
  }
@@ -2180,12 +2294,12 @@ diff -Naur ffmpeg/libavcodec/mpegvideo.c ffmpeg-mt/libavcodec/mpegvideo.c
 +void MPV_report_decode_progress(MpegEncContext *s)
 +{
 +    if (s->pict_type != FF_B_TYPE && !s->partitioned_frame)
-+        ff_report_frame_progress((AVFrame*)s->current_picture_ptr, s->mb_y);
++        ff_thread_report_progress((AVFrame*)s->current_picture_ptr, s->mb_y, 0);
 +}
 diff -Naur ffmpeg/libavcodec/mpegvideo_enc.c ffmpeg-mt/libavcodec/mpegvideo_enc.c
---- ffmpeg/libavcodec/mpegvideo_enc.c	2010-01-22 23:28:31.487987887 +0100
-+++ ffmpeg-mt/libavcodec/mpegvideo_enc.c	2010-01-26 20:02:25.111738472 +0100
-@@ -35,6 +35,7 @@
+--- ffmpeg/libavcodec/mpegvideo_enc.c	2010-06-16 20:58:50.214688071 +0200
++++ ffmpeg-mt/libavcodec/mpegvideo_enc.c	2010-06-16 20:58:55.287190901 +0200
+@@ -36,6 +36,7 @@
  #include "mjpegenc.h"
  #include "msmpeg4.h"
  #include "faandct.h"
@@ -2193,19 +2307,19 @@ diff -Naur ffmpeg/libavcodec/mpegvideo_enc.c ffmpeg-mt/libavcodec/mpegvideo_enc.
  #include "aandcttab.h"
  #include "flv.h"
  #include "mpeg4video.h"
-@@ -1223,9 +1224,9 @@
+@@ -1228,9 +1229,9 @@
  {
      MpegEncContext *s = avctx->priv_data;
      AVFrame *pic_arg = data;
 -    int i, stuffing_count;
-+    int i, stuffing_count, context_count = USE_AVCODEC_EXECUTE(avctx) ? avctx->thread_count : 1;
++    int i, stuffing_count, context_count = avctx->active_thread_type&FF_THREAD_SLICE ? avctx->thread_count : 1;
  
 -    for(i=0; i<avctx->thread_count; i++){
 +    for(i=0; i<context_count; i++){
          int start_y= s->thread_context[i]->start_mb_y;
          int   end_y= s->thread_context[i]->  end_mb_y;
          int h= s->mb_height;
-@@ -1287,7 +1288,7 @@
+@@ -1294,7 +1295,7 @@
                      s->last_non_b_time= s->time - s->pp_time;
                  }
  //                av_log(NULL, AV_LOG_ERROR, "R:%d ", s->next_lambda);
@@ -2214,15 +2328,15 @@ diff -Naur ffmpeg/libavcodec/mpegvideo_enc.c ffmpeg-mt/libavcodec/mpegvideo_enc.
                      PutBitContext *pb= &s->thread_context[i]->pb;
                      init_put_bits(pb, pb->buf, pb->buf_end - pb->buf);
                  }
-@@ -2753,6 +2754,7 @@
+@@ -2760,6 +2761,7 @@
  {
      int i;
      int bits;
-+    int context_count = USE_AVCODEC_EXECUTE(s->avctx) ? s->avctx->thread_count : 1;
++    int context_count = s->avctx->active_thread_type&FF_THREAD_SLICE ? s->avctx->thread_count : 1;
  
      s->picture_number = picture_number;
  
-@@ -2792,7 +2794,7 @@
+@@ -2799,7 +2801,7 @@
      }
  
      s->mb_intra=0; //for the rate distortion & bit compare functions
@@ -2231,7 +2345,7 @@ diff -Naur ffmpeg/libavcodec/mpegvideo_enc.c ffmpeg-mt/libavcodec/mpegvideo_enc.
          ff_update_duplicate_context(s->thread_context[i], s);
      }
  
-@@ -2805,11 +2807,11 @@
+@@ -2812,11 +2814,11 @@
          s->lambda2= (s->lambda2* (int64_t)s->avctx->me_penalty_compensation + 128)>>8;
          if(s->pict_type != FF_B_TYPE && s->avctx->me_threshold==0){
              if((s->avctx->pre_me && s->last_non_b_pict_type==FF_I_TYPE) || s->avctx->pre_me==2){
@@ -2245,7 +2359,7 @@ diff -Naur ffmpeg/libavcodec/mpegvideo_enc.c ffmpeg-mt/libavcodec/mpegvideo_enc.
      }else /* if(s->pict_type == FF_I_TYPE) */{
          /* I-Frame */
          for(i=0; i<s->mb_stride*s->mb_height; i++)
-@@ -2817,10 +2819,10 @@
+@@ -2824,10 +2826,10 @@
  
          if(!s->fixed_qscale){
              /* finding spatial complexity for I-frame rate control */
@@ -2258,7 +2372,7 @@ diff -Naur ffmpeg/libavcodec/mpegvideo_enc.c ffmpeg-mt/libavcodec/mpegvideo_enc.
          merge_context_after_me(s, s->thread_context[i]);
      }
      s->current_picture.mc_mb_var_sum= s->current_picture_ptr->mc_mb_var_sum= s->me.mc_mb_var_sum_temp;
-@@ -2954,11 +2956,11 @@
+@@ -2963,11 +2965,11 @@
      bits= put_bits_count(&s->pb);
      s->header_bits= bits - s->last_bits;
  
@@ -2274,8 +2388,8 @@ diff -Naur ffmpeg/libavcodec/mpegvideo_enc.c ffmpeg-mt/libavcodec/mpegvideo_enc.
      }
      emms_c();
 diff -Naur ffmpeg/libavcodec/mpegvideo.h ffmpeg-mt/libavcodec/mpegvideo.h
---- ffmpeg/libavcodec/mpegvideo.h	2010-01-12 20:09:21.353647884 +0100
-+++ ffmpeg-mt/libavcodec/mpegvideo.h	2010-01-26 20:02:25.111738472 +0100
+--- ffmpeg/libavcodec/mpegvideo.h	2010-06-16 20:58:49.484688234 +0200
++++ ffmpeg-mt/libavcodec/mpegvideo.h	2010-06-16 20:58:55.274690566 +0200
 @@ -123,6 +123,7 @@
      int ref_poc[2][2][16];      ///< h264 POCs of the frames used as reference (FIXME need per slice)
      int ref_count[2][2];        ///< number of entries in ref_poc              (FIXME need per slice)
@@ -2302,20 +2416,20 @@ diff -Naur ffmpeg/libavcodec/mpegvideo.h ffmpeg-mt/libavcodec/mpegvideo.h
  
  void MPV_decode_defaults(MpegEncContext *s);
  int MPV_common_init(MpegEncContext *s);
-@@ -700,6 +705,9 @@
+@@ -701,6 +706,9 @@
  int ff_find_unused_picture(MpegEncContext *s, int shared);
  void ff_denoise_dct(MpegEncContext *s, DCTELEM *block);
  void ff_update_duplicate_context(MpegEncContext *dst, MpegEncContext *src);
 +int MPV_lowest_referenced_row(MpegEncContext *s, int dir);
 +void MPV_report_decode_progress(MpegEncContext *s);
-+int ff_mpeg_update_context(AVCodecContext *dst, AVCodecContext *src);
++int ff_mpeg_update_thread_context(AVCodecContext *dst, AVCodecContext *src);
  const uint8_t *ff_find_start_code(const uint8_t *p, const uint8_t *end, uint32_t *state);
+ void ff_set_qscale(MpegEncContext * s, int qscale);
  
- void ff_er_frame_start(MpegEncContext *s);
 diff -Naur ffmpeg/libavcodec/options.c ffmpeg-mt/libavcodec/options.c
---- ffmpeg/libavcodec/options.c	2010-01-12 20:09:21.313649119 +0100
-+++ ffmpeg-mt/libavcodec/options.c	2010-01-26 20:02:25.121738799 +0100
-@@ -246,6 +246,7 @@
+--- ffmpeg/libavcodec/options.c	2010-06-16 20:58:49.594688132 +0200
++++ ffmpeg-mt/libavcodec/options.c	2010-06-16 20:58:55.274690566 +0200
+@@ -247,6 +247,7 @@
  {"vis_qp", "visualize quantization parameter (QP), lower QP are tinted greener", 0, FF_OPT_TYPE_CONST, FF_DEBUG_VIS_QP, INT_MIN, INT_MAX, V|D, "debug"},
  {"vis_mb_type", "visualize block types", 0, FF_OPT_TYPE_CONST, FF_DEBUG_VIS_MB_TYPE, INT_MIN, INT_MAX, V|D, "debug"},
  {"buffers", "picture buffer allocations", 0, FF_OPT_TYPE_CONST, FF_DEBUG_BUFFERS, INT_MIN, INT_MAX, V|D, "debug"},
@@ -2323,19 +2437,19 @@ diff -Naur ffmpeg/libavcodec/options.c ffmpeg-mt/libavcodec/options.c
  {"vismv", "visualize motion vectors (MVs)", OFFSET(debug_mv), FF_OPT_TYPE_INT, DEFAULT, 0, INT_MAX, V|D, "debug_mv"},
  {"pf", "forward predicted MVs of P-frames", 0, FF_OPT_TYPE_CONST, FF_DEBUG_VIS_MV_P_FOR, INT_MIN, INT_MAX, V|D, "debug_mv"},
  {"bf", "forward predicted MVs of B-frames", 0, FF_OPT_TYPE_CONST, FF_DEBUG_VIS_MV_B_FOR, INT_MIN, INT_MAX, V|D, "debug_mv"},
-@@ -403,6 +404,9 @@
- {"colorspace", NULL, OFFSET(colorspace), FF_OPT_TYPE_INT, AVCOL_SPC_UNSPECIFIED, 1, AVCOL_SPC_NB-1, V|E|D},
- {"color_range", NULL, OFFSET(color_range), FF_OPT_TYPE_INT, AVCOL_RANGE_UNSPECIFIED, 0, AVCOL_RANGE_NB-1, V|E|D},
- {"chroma_sample_location", NULL, OFFSET(chroma_sample_location), FF_OPT_TYPE_INT, AVCHROMA_LOC_UNSPECIFIED, 0, AVCHROMA_LOC_NB-1, V|E|D},
-+{"thread_type", "select multithreading type", OFFSET(thread_type), FF_OPT_TYPE_INT, FF_THREAD_DEFAULT, 0, INT_MAX, V|E|D, "thread_type"},
+@@ -414,6 +415,9 @@
+ {"intra_refresh", "use periodic insertion of intra blocks instead of keyframes", 0, FF_OPT_TYPE_CONST, CODEC_FLAG2_INTRA_REFRESH, INT_MIN, INT_MAX, V|E, "flags2"},
+ {"crf_max", "in crf mode, prevents vbv from lowering quality beyond this point", OFFSET(crf_max), FF_OPT_TYPE_FLOAT, DEFAULT, 0, 51, V|E},
+ {"log_level_offset", "set the log level offset", OFFSET(log_level_offset), FF_OPT_TYPE_INT, 0, INT_MIN, INT_MAX },
++{"thread_type", "select multithreading type", OFFSET(thread_type), FF_OPT_TYPE_INT, FF_THREAD_SLICE|FF_THREAD_FRAME, 0, INT_MAX, V|E|D, "thread_type"},
 +{"slice", NULL, 0, FF_OPT_TYPE_CONST, FF_THREAD_SLICE, INT_MIN, INT_MAX, V|E|D, "thread_type"},
 +{"frame", NULL, 0, FF_OPT_TYPE_CONST, FF_THREAD_FRAME, INT_MIN, INT_MAX, V|E|D, "thread_type"},
  {NULL},
  };
  
 diff -Naur ffmpeg/libavcodec/os2thread.c ffmpeg-mt/libavcodec/os2thread.c
---- ffmpeg/libavcodec/os2thread.c	2010-01-22 23:28:31.487987887 +0100
-+++ ffmpeg-mt/libavcodec/os2thread.c	2010-01-26 20:02:25.121738799 +0100
+--- ffmpeg/libavcodec/os2thread.c	2010-06-16 20:58:48.384688150 +0200
++++ ffmpeg-mt/libavcodec/os2thread.c	2010-06-16 20:58:55.245498595 +0200
 @@ -114,7 +114,13 @@
      ThreadContext *c;
      uint32_t threadid;
@@ -2351,8 +2465,8 @@ diff -Naur ffmpeg/libavcodec/os2thread.c ffmpeg-mt/libavcodec/os2thread.c
      if (thread_count <= 1)
          return 0;
 diff -Naur ffmpeg/libavcodec/pthread.c ffmpeg-mt/libavcodec/pthread.c
---- ffmpeg/libavcodec/pthread.c	2010-01-22 23:28:31.507987903 +0100
-+++ ffmpeg-mt/libavcodec/pthread.c	2010-01-26 20:02:25.131739264 +0100
+--- ffmpeg/libavcodec/pthread.c	2010-06-16 20:58:50.314688297 +0200
++++ ffmpeg-mt/libavcodec/pthread.c	2010-06-16 20:58:55.287190901 +0200
 @@ -1,5 +1,6 @@
  /*
   * Copyright (c) 2004 Roman Shaposhnik
@@ -2371,12 +2485,14 @@ diff -Naur ffmpeg/libavcodec/pthread.c ffmpeg-mt/libavcodec/pthread.c
  
  typedef int (action_func)(AVCodecContext *c, void *arg);
  typedef int (action_func2)(AVCodecContext *c, void *arg, int jobnr, int threadnr);
-@@ -45,6 +50,67 @@
+@@ -45,6 +50,66 @@
      int done;
  } ThreadContext;
  
 +typedef struct PerThreadContext {
-+    pthread_t thread;
++    struct FrameThreadContext *parent;
++
++    pthread_t      thread;
 +    pthread_cond_t input_cond;      ///< Used to wait for a new frame from the main thread.
 +    pthread_cond_t progress_cond;   ///< Used by child threads to wait for decoding/encoding progress.
 +    pthread_cond_t output_cond;     ///< Used by the main thread to wait for frames to finish.
@@ -2386,42 +2502,41 @@ diff -Naur ffmpeg/libavcodec/pthread.c ffmpeg-mt/libavcodec/pthread.c
 +
 +    AVCodecContext *avctx;          ///< Context used to decode frames passed to this thread.
 +
-+    uint8_t *buf;                   ///< Input frame (for decoding) or output (for encoding).
-+    int buf_size;
-+    int allocated_buf_size;
++    AVPacket       avpkt;           ///< Input frame (for decoding) or output (for encoding).
++    int            allocated_buf_size;
 +
 +    AVFrame picture;                ///< Output frame (for decoding) or input (for encoding).
-+    int got_picture;                ///< The output of got_picture_ptr from the last avcodec_decode_video() call (for decoding).
-+    int result;                     ///< The result of the last codec decode/encode() call.
-+
-+    struct FrameThreadContext *parent;
++    int     got_picture;            ///< The output of got_picture_ptr from the last avcodec_decode_video() call (for decoding).
++    int     result;                 ///< The result of the last codec decode/encode() call.
 +
 +    enum {
 +        STATE_INPUT_READY,          ///< Set when the thread is sleeping.
-+        STATE_SETTING_UP,           ///< Set before the codec has called ff_report_frame_setup_done().
++        STATE_SETTING_UP,           ///< Set before the codec has called ff_thread_finish_setup().
 +        STATE_SETUP_FINISHED        /**<
-+                                     * Set after the codec has called ff_report_frame_setup_done().
++                                     * Set after the codec has called ff_thread_finish_setup().
 +                                     * At this point it is safe to start the next thread.
 +                                     */
 +    } state;
 +
 +    /**
-+     * Array of frames passed to ff_release_buffer(),
++     * Array of frames passed to ff_thread_release_buffer(),
 +     * to be released later.
 +     */
 +    AVFrame released_buffers[MAX_BUFFERS];
-+    int num_released_buffers;
++    int     num_released_buffers;
 +
 +    /**
-+     * Array of progress values for ff_get_buffer().
++     * Array of progress values for ff_thread_get_buffer().
 +     */
-+    int progress[MAX_BUFFERS][2];
++    int     progress[MAX_BUFFERS][2];
 +    uint8_t used_progress[MAX_BUFFERS];
 +} PerThreadContext;
 +
 +typedef struct FrameThreadContext {
 +    PerThreadContext *threads;     ///< The contexts for frame decoding threads.
 +    PerThreadContext *prev_thread; ///< The last thread submit_frame() was called on.
++
++    pthread_mutex_t buffer_mutex;  ///< Mutex used to protect get/release_buffer().
 +
 +    int next_decoding;             ///< The next context to submit frames to.
 +    int next_finished;             ///< The next context to return output from.
@@ -2431,15 +2546,13 @@ diff -Naur ffmpeg/libavcodec/pthread.c ffmpeg-mt/libavcodec/pthread.c
 +                                    * While it is set, ff_en/decode_frame_threaded won't return any results.
 +                                    */
 +
-+    pthread_mutex_t buffer_mutex;  ///< Mutex used to protect get/release_buffer().
-+
 +    int die;                       ///< Set to cause threads to exit.
 +} FrameThreadContext;
 +
  static void* attribute_align_arg worker(void *v)
  {
      AVCodecContext *avctx = v;
-@@ -84,7 +150,7 @@
+@@ -84,7 +149,7 @@
      pthread_mutex_unlock(&c->current_job_lock);
  }
  
@@ -2448,17 +2561,17 @@ diff -Naur ffmpeg/libavcodec/pthread.c ffmpeg-mt/libavcodec/pthread.c
  {
      ThreadContext *c = avctx->thread_opaque;
      int i;
-@@ -109,6 +175,9 @@
+@@ -109,6 +174,9 @@
      ThreadContext *c= avctx->thread_opaque;
      int dummy_ret;
  
-+    if (!USE_AVCODEC_EXECUTE(avctx) || avctx->thread_count <= 1)
++    if (!(avctx->active_thread_type&FF_THREAD_SLICE) || avctx->thread_count <= 1)
 +        return avcodec_default_execute(avctx, func, arg, ret, job_count, job_size);
 +
      if (job_count <= 0)
          return 0;
  
-@@ -140,10 +209,11 @@
+@@ -140,10 +208,11 @@
      return avcodec_thread_execute(avctx, NULL, arg, ret, job_count, 0);
  }
  
@@ -2471,24 +2584,23 @@ diff -Naur ffmpeg/libavcodec/pthread.c ffmpeg-mt/libavcodec/pthread.c
  
      avctx->thread_count = thread_count;
  
-@@ -184,3 +254,547 @@
+@@ -184,3 +253,549 @@
      avctx->execute2 = avcodec_thread_execute2;
      return 0;
  }
 +
 +/**
 + * Read and decode frames from the main thread until fctx->die is set.
-+ * ff_report_frame_setup_done() is called before decoding if the codec
-+ * doesn't define update_context(), and afterwards if the codec errors
++ * ff_thread_finish_setup() is called before decoding if the codec
++ * doesn't define update_thread_context(), and afterwards if the codec errors
 + * before calling it.
 + */
 +static attribute_align_arg void *frame_worker_thread(void *arg)
 +{
-+    PerThreadContext * p = arg;
++    PerThreadContext *p = arg;
++    FrameThreadContext *fctx = p->parent;
 +    AVCodecContext *avctx = p->avctx;
-+    FrameThreadContext * fctx = p->parent;
 +    AVCodec *codec = avctx->codec;
-+    AVPacket avpkt;
 +
 +    while (1) {
 +        if (p->state == STATE_INPUT_READY && !fctx->die) {
@@ -2500,17 +2612,13 @@ diff -Naur ffmpeg/libavcodec/pthread.c ffmpeg-mt/libavcodec/pthread.c
 +
 +        if (fctx->die) break;
 +
-+        if (!codec->update_context) ff_report_frame_setup_done(avctx);
++        if (!codec->update_thread_context) ff_thread_finish_setup(avctx);
 +
 +        pthread_mutex_lock(&p->mutex);
-+        av_init_packet(&avpkt);
-+        avpkt.data = p->buf;
-+        avpkt.size = p->buf_size;
-+        p->result = codec->decode(avctx, &p->picture, &p->got_picture, &avpkt);
++        p->result = codec->decode(avctx, &p->picture, &p->got_picture, &p->avpkt);
 +
-+        if (p->state == STATE_SETTING_UP) ff_report_frame_setup_done(avctx);
++        if (p->state == STATE_SETTING_UP) ff_thread_finish_setup(avctx);
 +
-+        p->buf_size = 0;
 +        p->state = STATE_INPUT_READY;
 +
 +        pthread_mutex_lock(&p->progress_mutex);
@@ -2529,58 +2637,64 @@ diff -Naur ffmpeg/libavcodec/pthread.c ffmpeg-mt/libavcodec/pthread.c
 + *
 + * @param dst The destination context.
 + * @param src The source context.
-+ * @param for_user Whether or not dst is the user-visible context. update_context won't be called and some pointers will be copied.
++ * @param for_user Whether or not dst is the user-visible context. update_thread_context won't be called and some pointers will be copied.
 + */
-+static int update_context_from_copy(AVCodecContext *dst, AVCodecContext *src, int for_user)
++static int update_thread_context_from_copy(AVCodecContext *dst, AVCodecContext *src, int for_user)
 +{
 +    int err = 0;
 +#define COPY(f) dst->f = src->f;
 +#define COPY_FIELDS(s, e) memcpy(&dst->s, &src->s, (char*)&dst->e - (char*)&dst->s);
 +
-+    //coded_width/height are not copied here, so that codecs' update_context can see when they change
++    //coded_width/height are not copied here, so that codecs' update_thread_context can see when they change
 +    //many encoding parameters could be theoretically changed during encode, but aren't copied ATM
 +
-+    COPY(sub_id);
-+    COPY(width);
-+    COPY(height);
-+    COPY(pix_fmt);
-+    COPY(real_pict_num); //necessary?
-+    COPY(delay);
-+    COPY(max_b_frames);
++    if (dst != src) {
++        COPY(sub_id);
++        COPY(time_base);
++        COPY(width);
++        COPY(height);
++        COPY(pix_fmt);
++        COPY(real_pict_num); //necessary?
++        COPY(delay);
++        COPY(max_b_frames);
 +
-+    COPY_FIELDS(mv_bits, opaque);
++        COPY_FIELDS(mv_bits, opaque);
 +
-+    COPY(has_b_frames);
-+    COPY(bits_per_coded_sample);
-+    COPY(sample_aspect_ratio);
-+    COPY(idct_algo);
-+    memcpy(dst->error, src->error, sizeof(src->error));
-+    COPY(last_predictor_count); //necessary?
-+    COPY(dtg_active_format);
-+    COPY(color_table_id);
-+    COPY(profile);
-+    COPY(level);
-+    COPY(bits_per_raw_sample);
-+    COPY(ticks_per_frame);
-+    COPY(color_primaries);
-+    COPY(color_trc);
-+    COPY(colorspace);
-+    COPY(color_range);
++        COPY(has_b_frames);
++        COPY(bits_per_coded_sample);
++        COPY(sample_aspect_ratio);
++        COPY(idct_algo);
++        memcpy(dst->error, src->error, sizeof(src->error));
++        COPY(last_predictor_count); //necessary?
++        COPY(dtg_active_format);
++        COPY(color_table_id);
++        COPY(profile);
++        COPY(level);
++        COPY(bits_per_raw_sample);
++        COPY(ticks_per_frame);
++        COPY(color_primaries);
++        COPY(color_trc);
++        COPY(colorspace);
++        COPY(color_range);
++    }
 +
 +    if (for_user) {
 +        COPY(coded_frame);
 +        dst->has_b_frames += src->thread_count - 1;
 +    } else {
-+        if (dst->codec->update_context)
-+            err = dst->codec->update_context(dst, src);
++        if (dst->codec->update_thread_context)
++            err = dst->codec->update_thread_context(dst, src);
 +    }
 +
 +    return err;
 +}
 +
 +///Update the next decoding thread with values set by the user
-+static void update_context_from_user(AVCodecContext *dst, AVCodecContext *src)
++static void update_thread_context_from_user(AVCodecContext *dst, AVCodecContext *src)
 +{
++    COPY(get_buffer);
++    COPY(release_buffer);
++    COPY(opaque);
 +    COPY(hurry_up);
 +    COPY_FIELDS(skip_loop_filter, bidir_refine);
 +    COPY(frame_number);
@@ -2595,7 +2709,7 @@ diff -Naur ffmpeg/libavcodec/pthread.c ffmpeg-mt/libavcodec/pthread.c
 +    p->used_progress[(progress - p->progress[0]) / 2] = 0;
 +}
 +
-+/// Release all frames passed to ff_release_buffer()
++/// Release all frames passed to ff_thread_release_buffer()
 +static void handle_delayed_releases(PerThreadContext *p)
 +{
 +    FrameThreadContext *fctx = p->parent;
@@ -2613,11 +2727,12 @@ diff -Naur ffmpeg/libavcodec/pthread.c ffmpeg-mt/libavcodec/pthread.c
 +}
 +
 +/// Submit a frame to the next decoding thread
-+static int submit_frame(PerThreadContext * p, AVPacket *avpkt)
++static int submit_frame(PerThreadContext *p, AVPacket *avpkt)
 +{
 +    FrameThreadContext *fctx = p->parent;
 +    PerThreadContext *prev_thread = fctx->prev_thread;
 +    AVCodec *codec = p->avctx->codec;
++    uint8_t *buf = p->avpkt.data;
 +    int err = 0;
 +
 +    if (!avpkt->size && !(codec->capabilities & CODEC_CAP_DELAY)) return 0;
@@ -2634,15 +2749,15 @@ diff -Naur ffmpeg/libavcodec/pthread.c ffmpeg-mt/libavcodec/pthread.c
 +            pthread_mutex_unlock(&prev_thread->progress_mutex);
 +        }
 +
-+        err = update_context_from_copy(p->avctx, prev_thread->avctx, 0);
++        err = update_thread_context_from_copy(p->avctx, prev_thread->avctx, 0);
 +        if (err) return err;
 +    }
 +
-+    //FIXME: try to reuse the avpkt data instead of copying it
-+    p->buf = av_fast_realloc(p->buf, &p->allocated_buf_size, avpkt->size + FF_INPUT_BUFFER_PADDING_SIZE);
-+    memcpy(p->buf, avpkt->data, avpkt->size);
-+    memset(p->buf + avpkt->size, 0, FF_INPUT_BUFFER_PADDING_SIZE);
-+    p->buf_size = avpkt->size;
++    av_fast_malloc(&buf, &p->allocated_buf_size, avpkt->size + FF_INPUT_BUFFER_PADDING_SIZE);
++    p->avpkt = *avpkt;
++    p->avpkt.data = buf;
++    memcpy(buf, avpkt->data, avpkt->size);
++    memset(buf + avpkt->size, 0, FF_INPUT_BUFFER_PADDING_SIZE);
 +
 +    p->state = STATE_SETTING_UP;
 +    pthread_cond_signal(&p->input_cond);
@@ -2653,17 +2768,17 @@ diff -Naur ffmpeg/libavcodec/pthread.c ffmpeg-mt/libavcodec/pthread.c
 +    return err;
 +}
 +
-+int ff_decode_frame_threaded(AVCodecContext *avctx,
++int ff_thread_decode_frame(AVCodecContext *avctx,
 +                             void *data, int *data_size,
 +                             AVPacket *avpkt)
 +{
 +    FrameThreadContext *fctx = avctx->thread_opaque;
-+    PerThreadContext * p;
 +    int thread_count = avctx->thread_count, err = 0;
 +    int returning_thread = fctx->next_finished;
++    PerThreadContext *p;
 +
 +    p = &fctx->threads[fctx->next_decoding];
-+    update_context_from_user(p->avctx, avctx);
++    update_thread_context_from_user(p->avctx, avctx);
 +    err = submit_frame(p, avpkt);
 +    if (err) return err;
 +
@@ -2697,7 +2812,7 @@ diff -Naur ffmpeg/libavcodec/pthread.c ffmpeg-mt/libavcodec/pthread.c
 +        if (returning_thread >= thread_count) returning_thread = 0;
 +    } while (!avpkt->size && !*data_size && returning_thread != fctx->next_finished);
 +
-+    update_context_from_copy(avctx, p->avctx, 1);
++    update_thread_context_from_copy(avctx, p->avctx, 1);
 +
 +    if (fctx->next_decoding >= thread_count) fctx->next_decoding = 0;
 +    fctx->next_finished = returning_thread;
@@ -2705,7 +2820,7 @@ diff -Naur ffmpeg/libavcodec/pthread.c ffmpeg-mt/libavcodec/pthread.c
 +    return p->result;
 +}
 +
-+void ff_report_field_progress(AVFrame *f, int n, int field)
++void ff_thread_report_progress(AVFrame *f, int n, int field)
 +{
 +    PerThreadContext *p;
 +    int *progress = f->thread_opaque;
@@ -2723,7 +2838,7 @@ diff -Naur ffmpeg/libavcodec/pthread.c ffmpeg-mt/libavcodec/pthread.c
 +    pthread_mutex_unlock(&p->progress_mutex);
 +}
 +
-+void ff_await_field_progress(AVFrame *f, int n, int field)
++void ff_thread_await_progress(AVFrame *f, int n, int field)
 +{
 +    PerThreadContext *p;
 +    int *progress = f->thread_opaque;
@@ -2741,20 +2856,16 @@ diff -Naur ffmpeg/libavcodec/pthread.c ffmpeg-mt/libavcodec/pthread.c
 +    pthread_mutex_unlock(&p->progress_mutex);
 +}
 +
-+void ff_report_frame_progress(AVFrame *f, int n)
++void ff_thread_finish_frame(AVFrame *f)
 +{
-+    ff_report_field_progress(f, n, 0);
++    ff_thread_report_progress(f, INT_MAX, 0);
++    ff_thread_report_progress(f, INT_MAX, 1);
 +}
 +
-+void ff_await_frame_progress(AVFrame *f, int n)
-+{
-+    ff_await_field_progress(f, n, 0);
-+}
-+
-+void ff_report_frame_setup_done(AVCodecContext *avctx) {
++void ff_thread_finish_setup(AVCodecContext *avctx) {
 +    PerThreadContext *p = avctx->thread_opaque;
 +
-+    if (!USE_FRAME_THREADING(avctx)) return;
++    if (!(avctx->active_thread_type&FF_THREAD_FRAME)) return;
 +
 +    pthread_mutex_lock(&p->progress_mutex);
 +    p->state = STATE_SETUP_FINISHED;
@@ -2787,8 +2898,8 @@ diff -Naur ffmpeg/libavcodec/pthread.c ffmpeg-mt/libavcodec/pthread.c
 +
 +    park_frame_worker_threads(fctx, thread_count);
 +
-+    if (fctx->prev_thread && fctx->prev_thread != fctx->threads)
-+        update_context_from_copy(fctx->threads->avctx, fctx->prev_thread->avctx, 0);
++    if (fctx->prev_thread)
++        update_thread_context_from_copy(fctx->threads->avctx, fctx->prev_thread->avctx, 0);
 +
 +    fctx->die = 1;
 +
@@ -2817,7 +2928,7 @@ diff -Naur ffmpeg/libavcodec/pthread.c ffmpeg-mt/libavcodec/pthread.c
 +        pthread_cond_destroy(&p->input_cond);
 +        pthread_cond_destroy(&p->progress_cond);
 +        pthread_cond_destroy(&p->output_cond);
-+        av_freep(&p->buf);
++        av_freep(&p->avpkt.data);
 +
 +        if (i)
 +            av_freep(&p->avctx->priv_data);
@@ -2869,8 +2980,8 @@ diff -Naur ffmpeg/libavcodec/pthread.c ffmpeg-mt/libavcodec/pthread.c
 +            copy->priv_data = av_malloc(codec->priv_data_size);
 +            memcpy(copy->priv_data, src->priv_data, codec->priv_data_size);
 +
-+            if (codec->init_copy)
-+                err = codec->init_copy(copy);
++            if (codec->init_thread_copy)
++                err = codec->init_thread_copy(copy);
 +        }
 +
 +        if (err) goto error;
@@ -2878,7 +2989,7 @@ diff -Naur ffmpeg/libavcodec/pthread.c ffmpeg-mt/libavcodec/pthread.c
 +        pthread_create(&p->thread, NULL, frame_worker_thread, p);
 +    }
 +
-+    update_context_from_copy(avctx, src, 1);
++    update_thread_context_from_copy(avctx, src, 1);
 +
 +    return 0;
 +
@@ -2889,7 +3000,7 @@ diff -Naur ffmpeg/libavcodec/pthread.c ffmpeg-mt/libavcodec/pthread.c
 +    return err;
 +}
 +
-+void ff_frame_thread_flush(AVCodecContext *avctx)
++void ff_thread_flush(AVCodecContext *avctx)
 +{
 +    FrameThreadContext *fctx = avctx->thread_opaque;
 +
@@ -2897,8 +3008,8 @@ diff -Naur ffmpeg/libavcodec/pthread.c ffmpeg-mt/libavcodec/pthread.c
 +
 +    park_frame_worker_threads(fctx, avctx->thread_count);
 +
-+    if (fctx->prev_thread && fctx->prev_thread != fctx->threads)
-+        update_context_from_copy(fctx->threads->avctx, fctx->prev_thread->avctx, 0);
++    if (fctx->prev_thread)
++        update_thread_context_from_copy(fctx->threads->avctx, fctx->prev_thread->avctx, 0);
 +
 +    fctx->next_decoding = fctx->next_finished = 0;
 +    fctx->delaying = 1;
@@ -2922,21 +3033,25 @@ diff -Naur ffmpeg/libavcodec/pthread.c ffmpeg-mt/libavcodec/pthread.c
 +    return p->progress[i];
 +}
 +
-+int ff_get_buffer(AVCodecContext *avctx, AVFrame *f)
++int ff_thread_get_buffer(AVCodecContext *avctx, AVFrame *f)
 +{
 +    int ret, *progress;
 +    PerThreadContext *p = avctx->thread_opaque;
 +
 +    f->owner = avctx;
 +
-+    if (!USE_FRAME_THREADING(avctx)) {
++    if (!(avctx->active_thread_type&FF_THREAD_FRAME)) {
 +        f->thread_opaque = NULL;
 +        return avctx->get_buffer(avctx, f);
 +    }
 +
 +    pthread_mutex_lock(&p->parent->buffer_mutex);
 +    f->thread_opaque = progress = allocate_progress(p);
-+    if (!progress) return -1;
++
++    if (!progress) {
++        pthread_mutex_unlock(&p->parent->buffer_mutex);
++        return -1;
++    }
 +
 +    progress[0] =
 +    progress[1] = -1;
@@ -2954,11 +3069,11 @@ diff -Naur ffmpeg/libavcodec/pthread.c ffmpeg-mt/libavcodec/pthread.c
 +    return ret;
 +}
 +
-+void ff_release_buffer(AVCodecContext *avctx, AVFrame *f)
++void ff_thread_release_buffer(AVCodecContext *avctx, AVFrame *f)
 +{
 +    PerThreadContext *p = avctx->thread_opaque;
 +
-+    if (!USE_FRAME_THREADING(avctx)) {
++    if (!(avctx->active_thread_type&FF_THREAD_FRAME)) {
 +        avctx->release_buffer(avctx, f);
 +        return;
 +    }
@@ -3003,9 +3118,9 @@ diff -Naur ffmpeg/libavcodec/pthread.c ffmpeg-mt/libavcodec/pthread.c
 +    if (avctx->codec) {
 +        validate_thread_parameters(avctx);
 +
-+        if (USE_AVCODEC_EXECUTE(avctx))
++        if (avctx->active_thread_type&FF_THREAD_SLICE)
 +            return thread_init(avctx);
-+        else if (USE_FRAME_THREADING(avctx))
++        else if (avctx->active_thread_type&FF_THREAD_FRAME)
 +            return frame_thread_init(avctx);
 +    }
 +
@@ -3014,15 +3129,15 @@ diff -Naur ffmpeg/libavcodec/pthread.c ffmpeg-mt/libavcodec/pthread.c
 +
 +void avcodec_thread_free(AVCodecContext *avctx)
 +{
-+    if (USE_FRAME_THREADING(avctx))
++    if (avctx->active_thread_type&FF_THREAD_FRAME)
 +        frame_thread_free(avctx, avctx->thread_count);
 +    else
 +        thread_free(avctx);
 +}
 diff -Naur ffmpeg/libavcodec/snow.c ffmpeg-mt/libavcodec/snow.c
---- ffmpeg/libavcodec/snow.c	2010-01-12 20:09:24.487399114 +0100
-+++ ffmpeg-mt/libavcodec/snow.c	2010-01-26 20:02:25.151739191 +0100
-@@ -2658,9 +2658,9 @@
+--- ffmpeg/libavcodec/snow.c	2010-06-16 20:58:48.754688396 +0200
++++ ffmpeg-mt/libavcodec/snow.c	2010-06-16 20:58:55.256750894 +0200
+@@ -1977,9 +1977,9 @@
     int h= s->avctx->height;
  
      if(s->current_picture.data[0]){
@@ -3037,8 +3152,8 @@ diff -Naur ffmpeg/libavcodec/snow.c ffmpeg-mt/libavcodec/snow.c
      release_buffer(s->avctx);
 diff -Naur ffmpeg/libavcodec/thread.h ffmpeg-mt/libavcodec/thread.h
 --- ffmpeg/libavcodec/thread.h	1970-01-01 01:00:00.000000000 +0100
-+++ ffmpeg-mt/libavcodec/thread.h	2010-01-26 20:02:25.161739400 +0100
-@@ -0,0 +1,139 @@
++++ ffmpeg-mt/libavcodec/thread.h	2010-06-16 20:58:55.245498595 +0200
+@@ -0,0 +1,112 @@
 +/*
 + * Multithreading support
 + * Copyright (c) 2008 Alexander Strange <astrange@ithinksw.com>
@@ -3073,127 +3188,100 @@ diff -Naur ffmpeg/libavcodec/thread.h ffmpeg-mt/libavcodec/thread.h
 +#include "avcodec.h"
 +
 +/**
-+ * Wait for all decoding threads to finish and then reset the internal state.
++ * Waits for decoding threads to finish and resets the internal
++ * state. Called by avcodec_flush_buffers().
 + */
-+void ff_frame_thread_flush(AVCodecContext *avctx);
++void ff_thread_flush(AVCodecContext *avctx);
 +
 +/**
-+ * Submit a new frame for multithreaded decoding. Parameters
-+ * are the same as avcodec_decode_video(). The result will be
-+ * what the codec output (X-1) frames ago, where X is the number
-+ * of threads.
++ * Submits a new frame to a decoding thread. Parameters are the
++ * same as avcodec_decode_video2(). Returns the earliest available
++ * decoded picture.
++ *
 + * NULL AVFrames returned from the codec will be dropped if
-+ * the client is flushing frames at EOF, and the next available
-+ * frame will be returned.
++ * the client passes NULL data in.
 + */
-+int ff_decode_frame_threaded(AVCodecContext *avctx,
++int ff_thread_decode_frame(AVCodecContext *avctx,
 +                        void *data, int *data_size,
 +                        AVPacket *avpkt);
 +
-+#if HAVE_PTHREADS
-+
 +/**
-+ * If the codec defines update_context, call this after doing
-+ * all setup work for the next thread. update_context will be
-+ * called sometime afterwards, after which no variable read by
-+ * it may be changed by the codec.
++ * For codecs which define update_thread_context.
++ * Call this when the context is set up for the next frame to be
++ * decoded. The next decoding thread will start afterwards.
++ * The codec must not modify parts of the context read by
++ * update_thread_context after calling this or it will cause a race
++ * condition.
 + */
-+void ff_report_frame_setup_done(AVCodecContext *avctx);
++void ff_thread_finish_setup(AVCodecContext *avctx);
 +
 +/**
-+ * Call this function after decoding some part of a frame.
-+ * Subsequent calls with lower values for \p progress will be ignored.
++ * Call this when some part of the picture is finished decoding.
++ * Later calls with lower progress values will be ignored.
 + *
-+ * @param f The frame being decoded
++ * @param f The AVFrame containing the current field or frame
 + * @param progress The highest-numbered part finished so far
++ * @param field The field being decoded, for field pictures.
++ * 0 for top field or progressive, 1 for bottom.
 + */
-+void ff_report_frame_progress(AVFrame *f, int progress);
++void ff_thread_report_progress(AVFrame *f, int progress, int field);
 +
 +/**
-+ * Call this function before accessing some part of a reference frame.
-+ * On return, all parts up to the requested number will be available.
-+ */
-+void ff_await_frame_progress(AVFrame *f, int progress);
-+
-+/**
-+ * Equivalent of ff_report_frame_progress() for pictures whose fields
-+ * are stored in seperate frames.
++ * Call this before accessing some part of a previous field or frame.
++ * Returns after the previous decoding thread has called ff_thread_report_progress()
++ * with sufficiently high progress.
 + *
-+ * @param f The frame containing the current field
-+ * @param progress The highest-numbered part finished so far
-+ * @param field The current field. 0 for top field/frame, 1 for bottom.
++ * @param f The AVFrame containing the reference field or frame
++ * @param progress The highest-numbered part of the reference picture to wait for
++ * @param field The field being referenced, for field pictures.
++ * 0 for top field or progressive, 1 for bottom.
 + */
-+void ff_report_field_progress(AVFrame *f, int progress, int field);
++void ff_thread_await_progress(AVFrame *f, int progress, int field);
 +
 +/**
-+ * Equivalent of ff_await_frame_progress() for pictures whose fields
-+ * are stored in seperate frames.
++ * Convenience function to set progress for both fields to INT_MAX.
++ * Can be used to prevent deadlocks in later threads when a decoder
++ * exits early due to errors.
++ *
++ * @param f The frame or field picture being decoded.
 + */
-+void ff_await_field_progress(AVFrame *f, int progress, int field);
++void ff_thread_finish_frame(AVFrame *f);
 +
 +/**
-+ * Allocate a frame with avctx->get_buffer() and set
-+ * values needed for multithreading. Codecs must call
-+ * this instead of using get_buffer() directly if
-+ * frame threading is enabled.
++ * Replacement for get_buffer() for frame-level threading.
++ *
++ * Codecs with CODEC_CAP_FRAME_THREADS must call this instead
++ * of calling get_buffer() directly.
 + */
-+int ff_get_buffer(AVCodecContext *avctx, AVFrame *f);
++int ff_thread_get_buffer(AVCodecContext *avctx, AVFrame *f);
 +
 +/**
-+ * Release a frame at a later time, after all earlier
-+ * decoding threads have completed. On return, \p f->data
-+ * will be cleared. Codec must call this instead of using
-+ * release_buffer() directly if frame threading is enabled.
++ * Replacement for release_buffer() for frame-level threading.
++ *
++ * Codecs with CODEC_CAP_FRAME_THREADS must call this instead
++ * of calling release_buffer() directly.
++ *
++ * On return, \p f->data will be cleared.
 + */
-+void ff_release_buffer(AVCodecContext *avctx, AVFrame *f);
-+
-+///True if frame threading is active.
-+#define USE_FRAME_THREADING(avctx) (avctx->active_thread_type == FF_THREAD_FRAME)
-+///True if calling AVCodecContext execute() will run in parallel.
-+#define USE_AVCODEC_EXECUTE(avctx) (avctx->active_thread_type == FF_THREAD_SLICE)
-+
-+#else
-+
-+//Stub out these functions for systems without pthreads
-+static inline void ff_report_frame_setup_done(AVCodecContext *avctx) {}
-+static inline void ff_report_frame_progress(AVFrame *f, int progress) {}
-+static inline void ff_report_field_progress(AVFrame *f, int progress, int field) {}
-+static inline void ff_await_frame_progress(AVFrame *f, int progress) {}
-+static inline void ff_await_field_progress(AVFrame *f, int progress, int field) {}
-+
-+static inline int ff_get_buffer(AVCodecContext *avctx, AVFrame *f)
-+{
-+    f->owner = avctx;
-+    return avctx->get_buffer(avctx, f);
-+}
-+
-+static inline void ff_release_buffer(AVCodecContext *avctx, AVFrame *f)
-+{
-+    f->owner->release_buffer(f->owner, f);
-+}
-+
-+#define USE_FRAME_THREADING(avctx) 0
-+#define USE_AVCODEC_EXECUTE(avctx) (HAVE_THREADS && avctx->active_thread_type)
-+
-+#endif
++void ff_thread_release_buffer(AVCodecContext *avctx, AVFrame *f);
 +
 +#endif /* AVCODEC_THREAD_H */
 diff -Naur ffmpeg/libavcodec/utils.c ffmpeg-mt/libavcodec/utils.c
---- ffmpeg/libavcodec/utils.c	2010-01-22 23:28:31.477987662 +0100
-+++ ffmpeg-mt/libavcodec/utils.c	2010-01-26 20:02:25.171738682 +0100
-@@ -35,6 +35,7 @@
+--- ffmpeg/libavcodec/utils.c	2010-06-16 20:58:48.174688104 +0200
++++ ffmpeg-mt/libavcodec/utils.c	2010-06-16 20:58:55.245498595 +0200
+@@ -36,6 +36,7 @@
  #include "dsputil.h"
  #include "opt.h"
  #include "imgconvert.h"
 +#include "thread.h"
  #include "audioconvert.h"
+ #include "libxvid_internal.h"
  #include "internal.h"
- #include <stdlib.h>
-@@ -225,6 +226,11 @@
+@@ -262,6 +263,11 @@
      (*picture_number)++;
  
      if(buf->base[0] && (buf->width != w || buf->height != h || buf->pix_fmt != s->pix_fmt)){
-+        if(USE_FRAME_THREADING(s)) {
++        if(s->active_thread_type&FF_THREAD_FRAME) {
 +            av_log_missing_feature(s, "Width/height changing with frame threads is", 0);
 +            return -1;
 +        }
@@ -3201,7 +3289,7 @@ diff -Naur ffmpeg/libavcodec/utils.c ffmpeg-mt/libavcodec/utils.c
          for(i=0; i<4; i++){
              av_freep(&buf->base[i]);
              buf->data[i]= NULL;
-@@ -333,6 +339,7 @@
+@@ -360,6 +366,7 @@
      assert(pic->type==FF_BUFFER_TYPE_INTERNAL);
      assert(s->internal_buffer_count);
  
@@ -3209,7 +3297,7 @@ diff -Naur ffmpeg/libavcodec/utils.c ffmpeg-mt/libavcodec/utils.c
      buf = NULL; /* avoids warning */
      for(i=0; i<s->internal_buffer_count; i++){ //just 3-5 checks so is not worth to optimize
          buf= &((InternalBuffer*)s->internal_buffer)[i];
-@@ -344,6 +351,7 @@
+@@ -371,6 +378,7 @@
      last = &((InternalBuffer*)s->internal_buffer)[s->internal_buffer_count];
  
      FFSWAP(InternalBuffer, *buf, *last);
@@ -3217,7 +3305,7 @@ diff -Naur ffmpeg/libavcodec/utils.c ffmpeg-mt/libavcodec/utils.c
  
      for(i=0; i<4; i++){
          pic->data[i]=NULL;
-@@ -485,7 +493,17 @@
+@@ -512,7 +520,17 @@
          goto free_and_end;
      }
      avctx->frame_number = 0;
@@ -3232,15 +3320,15 @@ diff -Naur ffmpeg/libavcodec/utils.c ffmpeg-mt/libavcodec/utils.c
 +        }
 +    }
 +
-+    if(avctx->codec->init && !USE_FRAME_THREADING(avctx)){
++    if(avctx->codec->init && !(avctx->active_thread_type&FF_THREAD_FRAME)){
          ret = avctx->codec->init(avctx);
          if (ret < 0) {
              goto free_and_end;
-@@ -576,12 +594,15 @@
+@@ -603,12 +621,15 @@
                           AVPacket *avpkt)
  {
      int ret;
-+    int threaded = USE_FRAME_THREADING(avctx);
++    int threaded = avctx->active_thread_type&FF_THREAD_FRAME;
  
      *got_picture_ptr= 0;
      if((avctx->coded_width||avctx->coded_height) && avcodec_check_dimensions(avctx,avctx->coded_width,avctx->coded_height))
@@ -3248,38 +3336,83 @@ diff -Naur ffmpeg/libavcodec/utils.c ffmpeg-mt/libavcodec/utils.c
 -    if((avctx->codec->capabilities & CODEC_CAP_DELAY) || avpkt->size){
 -        ret = avctx->codec->decode(avctx, picture, got_picture_ptr,
 +    if((avctx->codec->capabilities & CODEC_CAP_DELAY) || avpkt->size || threaded){
-+        if (threaded) ret = ff_decode_frame_threaded(avctx, picture,
++        if (HAVE_PTHREADS && threaded) ret = ff_thread_decode_frame(avctx, picture,
 +                                got_picture_ptr, avpkt);
 +        else ret = avctx->codec->decode(avctx, picture, got_picture_ptr,
                                  avpkt);
  
          emms_c(); //needed to avoid an emms_c() call before every return;
-@@ -679,11 +700,12 @@
+@@ -706,7 +727,7 @@
  
      if (HAVE_THREADS && avctx->thread_opaque)
          avcodec_thread_free(avctx);
 -    if (avctx->codec && avctx->codec->close)
-+    if (avctx->codec && avctx->codec->close && !USE_FRAME_THREADING(avctx))
++    if (avctx->codec && avctx->codec->close && !(avctx->active_thread_type&FF_THREAD_FRAME))
          avctx->codec->close(avctx);
      avcodec_default_free_buffers(avctx);
-     av_freep(&avctx->priv_data);
+     avctx->coded_frame = NULL;
+@@ -714,6 +735,7 @@
+     if(avctx->codec && avctx->codec->encode)
+         av_freep(&avctx->extradata);
      avctx->codec = NULL;
 +    avctx->active_thread_type = 0;
      entangled_thread_counter--;
  
      /* Release any user-supplied mutex. */
-@@ -919,6 +941,8 @@
+@@ -954,6 +976,8 @@
  
  void avcodec_flush_buffers(AVCodecContext *avctx)
  {
-+    if(USE_FRAME_THREADING(avctx))
-+        ff_frame_thread_flush(avctx);
++    if(HAVE_PTHREADS && avctx->active_thread_type&FF_THREAD_FRAME)
++        ff_thread_flush(avctx);
      if(avctx->codec->flush)
          avctx->codec->flush(avctx);
  }
+@@ -1309,7 +1333,38 @@
+ unsigned int ff_toupper4(unsigned int x)
+ {
+     return     toupper( x     &0xFF)
+-            + (toupper((x>>8 )&0xFF)<<8 )
+-            + (toupper((x>>16)&0xFF)<<16)
+-            + (toupper((x>>24)&0xFF)<<24);
++    + (toupper((x>>8 )&0xFF)<<8 )
++    + (toupper((x>>16)&0xFF)<<16)
++    + (toupper((x>>24)&0xFF)<<24);
++}
++
++#if !HAVE_PTHREADS
++
++int ff_thread_get_buffer(AVCodecContext *avctx, AVFrame *f)
++{
++    f->owner = avctx;
++    return avctx->get_buffer(avctx, f);
++}
++
++void ff_thread_release_buffer(AVCodecContext *avctx, AVFrame *f)
++{
++    f->owner->release_buffer(f->owner, f);
++}
++
++void ff_thread_finish_setup(AVCodecContext *avctx)
++{
++}
++
++void ff_thread_report_progress(AVFrame *f, int progress, int field)
++{
+ }
++
++void ff_thread_await_progress(AVFrame *f, int progress, int field)
++{
++}
++
++void ff_thread_finish_frame(AVFrame *f)
++{
++}
++
++#endif
 diff -Naur ffmpeg/libavcodec/vp3.c ffmpeg-mt/libavcodec/vp3.c
---- ffmpeg/libavcodec/vp3.c	2010-01-22 23:28:31.427987241 +0100
-+++ ffmpeg-mt/libavcodec/vp3.c	2010-01-26 20:02:25.181739366 +0100
+--- ffmpeg/libavcodec/vp3.c	2010-06-16 20:58:48.264688727 +0200
++++ ffmpeg-mt/libavcodec/vp3.c	2010-06-16 20:58:55.245498595 +0200
 @@ -39,6 +39,7 @@
  
  #include "vp3data.h"
@@ -3288,32 +3421,35 @@ diff -Naur ffmpeg/libavcodec/vp3.c ffmpeg-mt/libavcodec/vp3.c
  
  #define FRAGMENT_PIXELS 8
  
-@@ -56,6 +57,8 @@
-     /* address of first pixel taking into account which plane the fragment
-      * lives on as well as the plane stride */
-     int first_pixel;
-+    /* the y component of first_pixel */
-+    int first_row;
-     /* this is the macroblock that the fragment belongs to */
-     uint16_t macroblock;
-     uint8_t coding_method;
-@@ -1389,6 +1392,33 @@
-     }
+@@ -1317,6 +1318,12 @@
+     int h, cy;
+     int offset[4];
+ 
++    if (HAVE_PTHREADS && s->avctx->active_thread_type&FF_THREAD_FRAME) {
++        int y_flipped = s->flipped_image ? s->height-y : y;
++
++        ff_thread_report_progress(&s->current_frame, y_flipped==s->height ? s->height : y_flipped-1, 0);
++    }
++
+     if(s->avctx->draw_horiz_band==NULL)
+         return;
+ 
+@@ -1340,6 +1347,32 @@
+     s->last_slice_end= y + h;
  }
  
 +/**
 + * Wait for the reference frame of a fragment.
-+ * Units used are pixel rows with chroma after luma rows.
++ * Units used are luma pixel rows.
 + */
-+static void await_reference_row(Vp3DecodeContext *s, int plane, Vp3Fragment *fragment)
++static void await_reference_row(Vp3DecodeContext *s, Vp3Fragment *fragment, int motion_y, int y)
 +{
 +    AVFrame *ref_frame;
-+    int border = fragment->motion_y&1;
-+    int scale = 1 + !!plane;
-+    int max_row = s->height * 2;
++    int border = motion_y&1;
++    int max_row = s->height;
 +    int ref_row;
 +
-+    if (!USE_FRAME_THREADING(s->avctx))
++    if (!HAVE_PTHREADS || !(s->avctx->active_thread_type&FF_THREAD_FRAME))
 +        return;
 +
 +    if (fragment->coding_method == MODE_USING_GOLDEN ||
@@ -3322,165 +3458,99 @@ diff -Naur ffmpeg/libavcodec/vp3.c ffmpeg-mt/libavcodec/vp3.c
 +    else
 +        ref_frame = &s->last_frame;
 +
-+    ref_row = fragment->first_row + (fragment->motion_y >> scale);
++    ref_row = y + (motion_y >> 1);
 +    ref_row = FFMAX(FFABS(ref_row), ref_row + 8 + border);
 +
-+    ff_await_frame_progress(ref_frame, FFMIN(ref_row, max_row));
++    ff_thread_await_progress(ref_frame, FFMIN(ref_row, max_row), 0);
 +}
 +
  /*
   * Perform the final rendering for a particular slice of data.
-  * The slice number ranges from 0..(macroblock_height - 1).
-@@ -1435,6 +1465,9 @@
-                     return;
-                 }
+  * The slice number ranges from 0..(c_superblock_height - 1).
+@@ -1400,6 +1433,9 @@
  
-+                if (s->all_fragments[i].coding_method != MODE_INTRA)
-+                    await_reference_row(s, plane, &s->all_fragments[i]);
+                 first_pixel = 8*y*stride + 8*x;
+ 
++                if (s->all_fragments[i].coding_method != MODE_INTRA && !plane)
++                    await_reference_row(s, &s->all_fragments[i], motion_val[y*fragment_width + x][1], 8*y);
 +
                  /* transform if this block was coded */
-                 if ((s->all_fragments[i].coding_method != MODE_COPY) &&
-                     !((s->avctx->flags & CODEC_FLAG_GRAY) && plane)) {
-@@ -1600,6 +1633,7 @@
-     int plane;
-     int x, y;
-     int *bounding_values= s->bounding_values_array+127;
-+    int rows = 0;
- 
- #if 0
-     int bounding_values_array[256];
-@@ -1676,7 +1710,13 @@
- 
-                 fragment++;
-             }
-+
-+            ff_report_frame_progress(&s->current_frame, rows);
-+            rows += FRAGMENT_PIXELS;
-         }
-+
-+        //needs to be called twice to catch the last row in a plane
-+        ff_report_frame_progress(&s->current_frame, rows);
-     }
+                 if (s->all_fragments[i].coding_method != MODE_COPY) {
+                     if ((s->all_fragments[i].coding_method == MODE_USING_GOLDEN) ||
+@@ -1511,6 +1547,38 @@
+     vp3_draw_horiz_band(s, FFMIN(64*slice + 64-16, s->height-16));
  }
  
-@@ -1692,40 +1732,77 @@
- 
-     int i, x, y;
-     const int y_inc = s->flipped_image ? 1 : -1;
-+    int rows = 0;
- 
-     /* figure out the first pixel addresses for each of the fragments */
-     /* Y plane */
-     i = 0;
-     for (y = Y_INITIAL(0); Y_FINISHED(0); y += y_inc) {
-         for (x = 0; x < s->fragment_width; x++) {
--            s->all_fragments[i++].first_pixel =
-+            s->all_fragments[i].first_pixel =
-                 s->golden_frame.linesize[0] * y * FRAGMENT_PIXELS -
-                     s->golden_frame.linesize[0] +
-                     x * FRAGMENT_PIXELS;
-+            s->all_fragments[i++].first_row = rows * FRAGMENT_PIXELS;
-         }
-+        rows++;
-     }
- 
-     /* U plane */
-     i = s->fragment_start[1];
-     for (y = Y_INITIAL(1); Y_FINISHED(1); y += y_inc) {
-         for (x = 0; x < s->fragment_width / 2; x++) {
--            s->all_fragments[i++].first_pixel =
-+            s->all_fragments[i].first_pixel =
-                 s->golden_frame.linesize[1] * y * FRAGMENT_PIXELS -
-                     s->golden_frame.linesize[1] +
-                     x * FRAGMENT_PIXELS;
-+            s->all_fragments[i++].first_row = rows * FRAGMENT_PIXELS;
-         }
-+        rows++;
-     }
- 
-     /* V plane */
-     i = s->fragment_start[2];
-     for (y = Y_INITIAL(1); Y_FINISHED(1); y += y_inc) {
-         for (x = 0; x < s->fragment_width / 2; x++) {
--            s->all_fragments[i++].first_pixel =
-+            s->all_fragments[i].first_pixel =
-                 s->golden_frame.linesize[2] * y * FRAGMENT_PIXELS -
-                     s->golden_frame.linesize[2] +
-                     x * FRAGMENT_PIXELS;
-+            s->all_fragments[i++].first_row = rows * FRAGMENT_PIXELS;
-         }
-+        rows++;
-+    }
-+}
-+
 +/// Allocate tables for frame data in Vp3DecodeContext
 +static av_cold int allocate_tables(AVCodecContext *avctx)
 +{
 +    Vp3DecodeContext *s = avctx->priv_data;
++    int y_fragment_count, c_fragment_count;
++
++    y_fragment_count = s->fragment_width[0] * s->fragment_height[0];
++    c_fragment_count = s->fragment_width[1] * s->fragment_height[1];
 +
 +    s->superblock_coding = av_malloc(s->superblock_count);
 +    s->all_fragments = av_malloc(s->fragment_count * sizeof(Vp3Fragment));
-+    s->coeff_counts = av_malloc(s->fragment_count * sizeof(*s->coeff_counts));
-+    s->coeffs = av_malloc(s->fragment_count * sizeof(Coeff) * 65);
-+    s->coded_fragment_list = av_malloc(s->fragment_count * sizeof(int));
-+    s->fast_fragment_list = av_malloc(s->fragment_count * sizeof(int));
++    s->coded_fragment_list[0] = av_malloc(s->fragment_count * sizeof(int));
++    s->dct_tokens_base = av_malloc(64*s->fragment_count * sizeof(*s->dct_tokens_base));
++    s->motion_val[0] = av_malloc(y_fragment_count * sizeof(*s->motion_val[0]));
++    s->motion_val[1] = av_malloc(c_fragment_count * sizeof(*s->motion_val[1]));
 +
 +    /* work out the block mapping tables */
 +    s->superblock_fragments = av_malloc(s->superblock_count * 16 * sizeof(int));
-+    s->superblock_macroblocks = av_malloc(s->superblock_count * 4 * sizeof(int));
-+    s->macroblock_fragments = av_malloc(s->macroblock_count * 6 * sizeof(int));
 +    s->macroblock_coding = av_malloc(s->macroblock_count + 1);
 +
-+    if (!s->superblock_coding || !s->all_fragments || !s->coeff_counts ||
-+        !s->coeffs || !s->coded_fragment_list || !s->fast_fragment_list ||
-+		!s->superblock_fragments || !s->superblock_macroblocks ||
-+        !s->macroblock_fragments || !s->macroblock_coding) {
++    if (!s->superblock_coding || !s->all_fragments || !s->dct_tokens_base ||
++        !s->coded_fragment_list[0] || !s->superblock_fragments || !s->macroblock_coding ||
++        !s->motion_val[0] || !s->motion_val[1]) {
 +        vp3_decode_end(avctx);
 +        return -1;
-     }
++    }
++
 +    init_block_mapping(s);
 +
 +    return 0;
- }
- 
++}
++
  /*
-@@ -1775,7 +1852,6 @@
-     s->superblock_count = y_superblock_count + (c_superblock_count * 2);
-     s->u_superblock_start = y_superblock_count;
-     s->v_superblock_start = s->u_superblock_start + c_superblock_count;
+  * This is the ffmpeg/libavcodec API init function.
+  */
+@@ -1560,7 +1628,6 @@
+     s->superblock_count = s->y_superblock_count + (s->c_superblock_count * 2);
+     s->u_superblock_start = s->y_superblock_count;
+     s->v_superblock_start = s->u_superblock_start + s->c_superblock_count;
 -    s->superblock_coding = av_malloc(s->superblock_count);
  
      s->macroblock_width = (s->width + 15) / 16;
      s->macroblock_height = (s->height + 15) / 16;
-@@ -1789,17 +1865,7 @@
-     s->fragment_start[1] = s->fragment_width * s->fragment_height;
-     s->fragment_start[2] = s->fragment_width * s->fragment_height * 5 / 4;
+@@ -1578,18 +1645,6 @@
+     s->fragment_start[1] = y_fragment_count;
+     s->fragment_start[2] = y_fragment_count + c_fragment_count;
  
 -    s->all_fragments = av_malloc(s->fragment_count * sizeof(Vp3Fragment));
--    s->coeff_counts = av_malloc(s->fragment_count * sizeof(*s->coeff_counts));
--    s->coeffs = av_malloc(s->fragment_count * sizeof(Coeff) * 65);
--    s->coded_fragment_list = av_malloc(s->fragment_count * sizeof(int));
--    s->fast_fragment_list = av_malloc(s->fragment_count * sizeof(int));
-     s->pixel_addresses_initialized = 0;
--    if (!s->superblock_coding || !s->all_fragments || !s->coeff_counts ||
--        !s->coeffs || !s->coded_fragment_list || !s->fast_fragment_list) {
+-    s->coded_fragment_list[0] = av_malloc(s->fragment_count * sizeof(int));
+-    s->dct_tokens_base = av_malloc(64*s->fragment_count * sizeof(*s->dct_tokens_base));
+-    s->motion_val[0] = av_malloc(y_fragment_count * sizeof(*s->motion_val[0]));
+-    s->motion_val[1] = av_malloc(c_fragment_count * sizeof(*s->motion_val[1]));
+-
+-    if (!s->superblock_coding || !s->all_fragments || !s->dct_tokens_base ||
+-        !s->coded_fragment_list[0] || !s->motion_val[0] || !s->motion_val[1]) {
 -        vp3_decode_end(avctx);
 -        return -1;
 -    }
- 
+-
      if (!s->theora_tables)
      {
-@@ -1900,31 +1966,80 @@
+         for (i = 0; i < 64; i++) {
+@@ -1689,28 +1744,92 @@
          &motion_vector_vlc_table[0][1], 2, 1,
          &motion_vector_vlc_table[0][0], 2, 1, 0);
  
 -    /* work out the block mapping tables */
 -    s->superblock_fragments = av_malloc(s->superblock_count * 16 * sizeof(int));
--    s->superblock_macroblocks = av_malloc(s->superblock_count * 4 * sizeof(int));
--    s->macroblock_fragments = av_malloc(s->macroblock_count * 6 * sizeof(int));
 -    s->macroblock_coding = av_malloc(s->macroblock_count + 1);
--    if (!s->superblock_fragments || !s->superblock_macroblocks ||
--        !s->macroblock_fragments || !s->macroblock_coding) {
+-    if (!s->superblock_fragments || !s->macroblock_coding) {
 -        vp3_decode_end(avctx);
 -        return -1;
 -    }
@@ -3507,54 +3577,66 @@ diff -Naur ffmpeg/libavcodec/vp3.c ffmpeg-mt/libavcodec/vp3.c
 +
 +    /* release the last frame, if it is allocated and if it is not the
 +     * golden frame */
-+    if ((s->last_frame.data[0]) &&
-+        (s->last_frame.data[0] != s->golden_frame.data[0]))
-+        ff_release_buffer(avctx, &s->last_frame);
++    if (s->last_frame.data[0] && s->last_frame.type != FF_BUFFER_TYPE_COPY)
++        ff_thread_release_buffer(avctx, &s->last_frame);
 +
 +    /* shuffle frames (last = current) */
 +    s->last_frame= s->current_frame;
++
++    if (s->keyframe) {
++        if (s->golden_frame.data[0])
++            ff_thread_release_buffer(avctx, &s->golden_frame);
++        s->golden_frame = s->current_frame;
++        s->last_frame.type = FF_BUFFER_TYPE_COPY;
++    }
++
 +    s->current_frame.data[0]= NULL; /* ensure that we catch any access to this released frame */
 +}
 +
 +#define copy_fields(to, from, start_field, end_field) memcpy(&to->start_field, &from->start_field, (char*)&to->end_field - (char*)&to->start_field)
-+static int vp3_update_context(AVCodecContext *dst, AVCodecContext *src)
++static int vp3_update_thread_context(AVCodecContext *dst, AVCodecContext *src)
 +{
 +    Vp3DecodeContext *s = dst->priv_data, *s1 = src->priv_data;
 +    int qps_changed = 0, i, err;
 +
-+    if (!s1->pixel_addresses_initialized
-+       ||s->width != s1->width
-+       ||s->height!= s1->height)
++    if (!s1->current_frame.data[0]
++        ||s->width != s1->width
++        ||s->height!= s1->height)
 +        return -1;
 +
-+    // init tables the first time
-+    if (!s->pixel_addresses_initialized) {
-+        s->avctx = dst;
-+        err = allocate_tables(dst);
-+        if (err)
-+            return err;
-+        memcpy(s->all_fragments, s1->all_fragments, s->fragment_count * sizeof(Vp3Fragment));
-+        s->pixel_addresses_initialized = s1->pixel_addresses_initialized;
-+    }
-+
-+    // copy previous frame data
-+    copy_fields(s, s1, golden_frame, keyframe);
-+
-+    // copy qscale data if necessary
-+    for (i = 0; i < 3; i++) {
-+        if (s->qps[i] != s1->qps[1]) {
-+            qps_changed = 1;
-+            memcpy(&s->qmat[i], &s1->qmat[i], sizeof(s->qmat[i]));
++    if (s != s1) {
++        // init tables if the first frame hasn't been decoded
++        if (!s->current_frame.data[0]) {
++            int y_fragment_count, c_fragment_count;
++            s->avctx = dst;
++            err = allocate_tables(dst);
++            if (err)
++                return err;
++            y_fragment_count = s->fragment_width[0] * s->fragment_height[0];
++            c_fragment_count = s->fragment_width[1] * s->fragment_height[1];
++            memcpy(s->motion_val[0], s1->motion_val[0], y_fragment_count * sizeof(*s->motion_val[0]));
++            memcpy(s->motion_val[1], s1->motion_val[1], c_fragment_count * sizeof(*s->motion_val[1]));
 +        }
-+    }
 +
-+    if (s->qps[0] != s1->qps[0]) {
-+        memcpy(&s->qscale_table, &s1->qscale_table, sizeof(s->qscale_table));
-+        memcpy(&s->bounding_values_array, &s1->bounding_values_array, sizeof(s->bounding_values_array));
-+    }
++        // copy previous frame data
++        copy_fields(s, s1, golden_frame, dsp);
 +
-+    if (qps_changed)
-+        copy_fields(s, s1, qps, superblock_count);
++        // copy qscale data if necessary
++        for (i = 0; i < 3; i++) {
++            if (s->qps[i] != s1->qps[1]) {
++                qps_changed = 1;
++                memcpy(&s->qmat[i], &s1->qmat[i], sizeof(s->qmat[i]));
++            }
++        }
++
++        if (s->qps[0] != s1->qps[0]) {
++            memcpy(&s->qscale_table, &s1->qscale_table, sizeof(s->qscale_table));
++            memcpy(&s->bounding_values_array, &s1->bounding_values_array, sizeof(s->bounding_values_array));
++        }
++
++        if (qps_changed)
++            copy_fields(s, s1, qps, superblock_count);
++    }
 +
 +    update_frames(dst);
 +
@@ -3564,7 +3646,7 @@ diff -Naur ffmpeg/libavcodec/vp3.c ffmpeg-mt/libavcodec/vp3.c
  /*
   * This is the ffmpeg/libavcodec API frame decode function.
   */
-@@ -1936,7 +2051,6 @@
+@@ -1722,7 +1841,6 @@
      int buf_size = avpkt->size;
      Vp3DecodeContext *s = avctx->priv_data;
      GetBitContext gb;
@@ -3572,7 +3654,7 @@ diff -Naur ffmpeg/libavcodec/vp3.c ffmpeg-mt/libavcodec/vp3.c
      int i;
  
      init_get_bits(&gb, buf, buf_size * 8);
-@@ -1962,8 +2076,7 @@
+@@ -1748,8 +1866,7 @@
  
      if (s->avctx->debug & FF_DEBUG_PICT_INFO)
          av_log(s->avctx, AV_LOG_INFO, " VP3 %sframe #%d: Q index = %d\n",
@@ -3580,9 +3662,18 @@ diff -Naur ffmpeg/libavcodec/vp3.c ffmpeg-mt/libavcodec/vp3.c
 -    counter++;
 +            s->keyframe?"key":"", avctx->frame_number+1, s->qps[0]);
  
-     if (s->qps[0] != s->last_qps[0])
-         init_loop_filter(s);
-@@ -1985,7 +2098,7 @@
+     s->skip_loop_filter = !s->filter_limit_values[s->qps[0]] ||
+         avctx->skip_loop_filter >= (s->keyframe ? AVDISCARD_ALL : AVDISCARD_NONKEY);
+@@ -1768,7 +1885,7 @@
+ 
+     s->current_frame.reference = 3;
+     s->current_frame.pict_type = s->keyframe ? FF_I_TYPE : FF_P_TYPE;
+-    if (avctx->get_buffer(avctx, &s->current_frame) < 0) {
++    if (ff_thread_get_buffer(avctx, &s->current_frame) < 0) {
+         av_log(s->avctx, AV_LOG_ERROR, "get_buffer() failed\n");
+         goto error;
+     }
+@@ -1781,7 +1898,7 @@
              if (s->version)
              {
                  s->version = get_bits(&gb, 5);
@@ -3591,141 +3682,104 @@ diff -Naur ffmpeg/libavcodec/vp3.c ffmpeg-mt/libavcodec/vp3.c
                      av_log(s->avctx, AV_LOG_DEBUG, "VP version: %d\n", s->version);
              }
          }
-@@ -1998,17 +2111,17 @@
+@@ -1797,7 +1914,7 @@
  
-         if (s->last_frame.data[0] == s->golden_frame.data[0]) {
-             if (s->golden_frame.data[0])
--                avctx->release_buffer(avctx, &s->golden_frame);
-+                ff_release_buffer(avctx, &s->golden_frame);
-             s->last_frame= s->golden_frame; /* ensure that we catch any access to this released frame */
-         } else {
-             if (s->golden_frame.data[0])
--                avctx->release_buffer(avctx, &s->golden_frame);
-+                ff_release_buffer(avctx, &s->golden_frame);
-             if (s->last_frame.data[0])
--                avctx->release_buffer(avctx, &s->last_frame);
-+                ff_release_buffer(avctx, &s->last_frame);
-         }
- 
-         s->golden_frame.reference = 3;
--        if(avctx->get_buffer(avctx, &s->golden_frame) < 0) {
-+        if(ff_get_buffer(avctx, &s->golden_frame) < 0) {
-             av_log(s->avctx, AV_LOG_ERROR, "vp3: get_buffer() failed\n");
-             return -1;
-         }
-@@ -2029,7 +2142,7 @@
-             av_log(s->avctx, AV_LOG_ERROR, "vp3: first frame not a keyframe\n");
-             return -1;
-         }
--        if(avctx->get_buffer(avctx, &s->current_frame) < 0) {
-+        if(ff_get_buffer(avctx, &s->current_frame) < 0) {
-             av_log(s->avctx, AV_LOG_ERROR, "vp3: get_buffer() failed\n");
-             return -1;
-         }
-@@ -2038,27 +2151,29 @@
-     s->current_frame.qscale_table= s->qscale_table; //FIXME allocate individual tables per AVFrame
+             s->golden_frame.reference = 3;
+             s->golden_frame.pict_type = FF_I_TYPE;
+-            if (avctx->get_buffer(avctx, &s->golden_frame) < 0) {
++            if (ff_thread_get_buffer(avctx, &s->golden_frame) < 0) {
+                 av_log(s->avctx, AV_LOG_ERROR, "get_buffer() failed\n");
+                 goto error;
+             }
+@@ -1810,6 +1927,7 @@
      s->current_frame.qstride= 0;
  
-+    ff_report_frame_setup_done(avctx);
-+
-     init_frame(s, &gb);
+     memset(s->all_fragments, 0, s->fragment_count * sizeof(Vp3Fragment));
++    ff_thread_finish_setup(avctx);
  
      if (unpack_superblocks(s, &gb)){
          av_log(s->avctx, AV_LOG_ERROR, "error in unpack_superblocks\n");
--        return -1;
-+        goto error;
-     }
-     if (unpack_modes(s, &gb)){
-         av_log(s->avctx, AV_LOG_ERROR, "error in unpack_modes\n");
--        return -1;
-+        goto error;
-     }
-     if (unpack_vectors(s, &gb)){
-         av_log(s->avctx, AV_LOG_ERROR, "error in unpack_vectors\n");
--        return -1;
-+        goto error;
-     }
-     if (unpack_block_qpis(s, &gb)){
-         av_log(s->avctx, AV_LOG_ERROR, "error in unpack_block_qpis\n");
--        return -1;
-+        goto error;
-     }
-     if (unpack_dct_coeffs(s, &gb)){
-         av_log(s->avctx, AV_LOG_ERROR, "error in unpack_dct_coeffs\n");
--        return -1;
-+        goto error;
-     }
- 
-     for (i = 0; i < s->macroblock_height; i++)
-@@ -2069,17 +2184,13 @@
+@@ -1854,28 +1972,17 @@
      *data_size=sizeof(AVFrame);
      *(AVFrame*)data= s->current_frame;
  
 -    /* release the last frame, if it is allocated and if it is not the
 -     * golden frame */
--    if ((s->last_frame.data[0]) &&
--        (s->last_frame.data[0] != s->golden_frame.data[0]))
+-    if (s->last_frame.data[0] && s->last_frame.type != FF_BUFFER_TYPE_COPY)
 -        avctx->release_buffer(avctx, &s->last_frame);
 -
 -    /* shuffle frames (last = current) */
 -    s->last_frame= s->current_frame;
+-
+-    if (s->keyframe) {
+-        if (s->golden_frame.data[0])
+-            avctx->release_buffer(avctx, &s->golden_frame);
+-        s->golden_frame = s->current_frame;
+-        s->last_frame.type = FF_BUFFER_TYPE_COPY;
+-    }
+-
 -    s->current_frame.data[0]= NULL; /* ensure that we catch any access to this released frame */
-+    if (!USE_FRAME_THREADING(avctx))
++    if (!HAVE_PTHREADS || !(s->avctx->active_thread_type&FF_THREAD_FRAME))
 +        update_frames(avctx);
  
      return buf_size;
-+error:
-+    ff_report_frame_progress(&s->current_frame, INT_MAX);
-+    return -1;
+ 
+ error:
+-    if (s->current_frame.data[0])
++    ff_thread_report_progress(&s->current_frame, INT_MAX, 0);
++
++    if (!HAVE_PTHREADS || !(s->avctx->active_thread_type&FF_THREAD_FRAME))
+         avctx->release_buffer(avctx, &s->current_frame);
++
+     return -1;
  }
  
- /*
-@@ -2101,6 +2212,8 @@
-     av_free(s->macroblock_fragments);
-     av_free(s->macroblock_coding);
+@@ -1896,6 +2003,8 @@
+     av_free(s->motion_val[0]);
+     av_free(s->motion_val[1]);
  
 +    if (avctx->is_copy) return 0;
 +
      for (i = 0; i < 16; i++) {
          free_vlc(&s->dc_vlc[i]);
          free_vlc(&s->ac_vlc_1[i]);
-@@ -2116,9 +2229,9 @@
+@@ -1911,9 +2020,9 @@
  
      /* release all frames */
-     if (s->golden_frame.data[0] && s->golden_frame.data[0] != s->last_frame.data[0])
+     if (s->golden_frame.data[0])
 -        avctx->release_buffer(avctx, &s->golden_frame);
-+        ff_release_buffer(avctx, &s->golden_frame);
-     if (s->last_frame.data[0])
++        ff_thread_release_buffer(avctx, &s->golden_frame);
+     if (s->last_frame.data[0] && s->last_frame.type != FF_BUFFER_TYPE_COPY)
 -        avctx->release_buffer(avctx, &s->last_frame);
-+        ff_release_buffer(avctx, &s->last_frame);
++        ff_thread_release_buffer(avctx, &s->last_frame);
      /* no need to release the current_frame since it will always be pointing
       * to the same frame as either the golden or last frame */
  
-@@ -2418,9 +2531,10 @@
+@@ -2223,9 +2332,10 @@
      NULL,
      vp3_decode_end,
      vp3_decode_frame,
--    CODEC_CAP_DR1,
-+    CODEC_CAP_DR1 | CODEC_CAP_FRAME_THREADS,
+-    CODEC_CAP_DR1 | CODEC_CAP_DRAW_HORIZ_BAND,
++    CODEC_CAP_DR1 | CODEC_CAP_DRAW_HORIZ_BAND | CODEC_CAP_FRAME_THREADS,
      NULL,
      .long_name = NULL_IF_CONFIG_SMALL("Theora"),
-+    .update_context = ONLY_IF_THREADS_ENABLED(vp3_update_context)
++    .update_thread_context = ONLY_IF_THREADS_ENABLED(vp3_update_thread_context)
  };
  #endif
  
-@@ -2433,7 +2547,8 @@
+@@ -2238,7 +2348,8 @@
      NULL,
      vp3_decode_end,
      vp3_decode_frame,
--    CODEC_CAP_DR1,
-+    CODEC_CAP_DR1 | CODEC_CAP_FRAME_THREADS,
+-    CODEC_CAP_DR1 | CODEC_CAP_DRAW_HORIZ_BAND,
++    CODEC_CAP_DR1 | CODEC_CAP_DRAW_HORIZ_BAND | CODEC_CAP_FRAME_THREADS,
      NULL,
      .long_name = NULL_IF_CONFIG_SMALL("On2 VP3"),
-+    .update_context = ONLY_IF_THREADS_ENABLED(vp3_update_context),
++    .update_thread_context = ONLY_IF_THREADS_ENABLED(vp3_update_thread_context)
  };
 diff -Naur ffmpeg/libavcodec/w32thread.c ffmpeg-mt/libavcodec/w32thread.c
---- ffmpeg/libavcodec/w32thread.c	2010-01-22 23:28:31.397987519 +0100
-+++ ffmpeg-mt/libavcodec/w32thread.c	2010-01-26 20:02:25.191738206 +0100
+--- ffmpeg/libavcodec/w32thread.c	2010-06-16 20:58:50.264688510 +0200
++++ ffmpeg-mt/libavcodec/w32thread.c	2010-06-16 20:58:55.287190901 +0200
 @@ -129,7 +129,13 @@
      ThreadContext *c;
      uint32_t threadid;
@@ -3741,9 +3795,9 @@ diff -Naur ffmpeg/libavcodec/w32thread.c ffmpeg-mt/libavcodec/w32thread.c
      if (thread_count <= 1)
          return 0;
 diff -Naur ffmpeg/libavcodec/x86/dsputil_mmx.c ffmpeg-mt/libavcodec/x86/dsputil_mmx.c
---- ffmpeg/libavcodec/x86/dsputil_mmx.c	2010-01-26 20:02:39.047988289 +0100
-+++ ffmpeg-mt/libavcodec/x86/dsputil_mmx.c	2010-01-26 20:02:25.201737901 +0100
-@@ -806,7 +806,7 @@
+--- ffmpeg/libavcodec/x86/dsputil_mmx.c	2010-06-16 20:58:49.934688297 +0200
++++ ffmpeg-mt/libavcodec/x86/dsputil_mmx.c	2010-06-16 20:58:55.287190901 +0200
+@@ -807,7 +807,7 @@
  
  /* draw the edges of width 'w' of an image of size width, height
     this mmx version can only handle w==8 || w==16 */
@@ -3752,7 +3806,7 @@ diff -Naur ffmpeg/libavcodec/x86/dsputil_mmx.c ffmpeg-mt/libavcodec/x86/dsputil_
  {
      uint8_t *ptr, *last_line;
      int i;
-@@ -861,34 +861,39 @@
+@@ -862,34 +862,39 @@
  
      for(i=0;i<w;i+=4) {
          /* top and bottom (and hopefully also the corners) */
@@ -3820,10 +3874,25 @@ diff -Naur ffmpeg/libavcodec/x86/dsputil_mmx.c ffmpeg-mt/libavcodec/x86/dsputil_
      }
  }
  
+diff -Naur ffmpeg/libavformat/utils.c ffmpeg-mt/libavformat/utils.c
+--- ffmpeg/libavformat/utils.c	2010-06-16 20:58:54.337188101 +0200
++++ ffmpeg-mt/libavformat/utils.c	2010-06-16 20:58:55.296248582 +0200
+@@ -863,6 +863,11 @@
+     /* do we have a video B-frame ? */
+     delay= st->codec->has_b_frames;
+     presentation_delayed = 0;
++
++    // this delay should not count for undecoded frames
++    if (delay && st->codec->active_thread_type&FF_THREAD_FRAME)
++        delay -= st->codec->thread_count-1;
++
+     /* XXX: need has_b_frame, but cannot get it if the codec is
+         not initialized */
+     if (delay &&
 diff -Naur ffmpeg/libavutil/internal.h ffmpeg-mt/libavutil/internal.h
---- ffmpeg/libavutil/internal.h	2010-01-22 23:28:26.567987822 +0100
-+++ ffmpeg-mt/libavutil/internal.h	2010-01-26 20:02:25.261737789 +0100
-@@ -279,4 +279,10 @@
+--- ffmpeg/libavutil/internal.h	2010-06-16 20:58:54.917188198 +0200
++++ ffmpeg-mt/libavutil/internal.h	2010-06-16 20:58:55.307191387 +0200
+@@ -196,4 +196,10 @@
  #   define NULL_IF_CONFIG_SMALL(x) x
  #endif
  
@@ -3834,15 +3903,3 @@ diff -Naur ffmpeg/libavutil/internal.h ffmpeg-mt/libavutil/internal.h
 +#endif
 +
  #endif /* AVUTIL_INTERNAL_H */
-diff -Naur ffmpeg/libavutil/log.c ffmpeg-mt/libavutil/log.c
---- ffmpeg/libavutil/log.c	2010-01-12 20:09:15.833649036 +0100
-+++ ffmpeg-mt/libavutil/log.c	2010-01-26 20:02:25.261737789 +0100
-@@ -38,6 +38,8 @@
-     static int count;
-     static char line[1024], prev[1024];
-     AVClass* avc= ptr ? *(AVClass**)ptr : NULL;
-+    char buf[1024];
-+    int prefix_length=0;
-     if(level>av_log_level)
-         return;
- #undef fprintf
