@@ -1,0 +1,61 @@
+#!/bin/sh
+
+. config/options
+
+SPECS_DIR="`ls -d $BUILD/$1*`/mkspecs/linux-g++-geexbox"
+
+mkdir -p $SPECS_DIR
+
+cat > $SPECS_DIR/qplatformdefs.h <<EOF
+#include "../linux-g++/qplatformdefs.h"
+EOF
+
+cat > $SPECS_DIR/qmake.conf <<EOF
+MAKEFILE_GENERATOR      = UNIX
+TARGET_PLATFORM         = unix
+TEMPLATE                = app
+CONFIG                  += qt warn_on release incremental link_prl
+QT                      += core gui network
+QMAKE_INCREMENTAL_STYLE = sublib
+
+include(../common/g++.conf)
+include(../common/linux.conf)
+
+# Override compiler settings
+# QMAKE_CFLAGS            = $TARGET_CFLAGS
+# QMAKE_LFLAGS            = $TARGET_LDFLAGS
+
+QMAKE_CC                = $TARGET_CC
+QMAKE_CXX               = $TARGET_CXX
+QMAKE_LINK              = $TARGET_CXX
+QMAKE_LINK_SHLIB        = $TARGET_CXX
+QMAKE_AR                = $TARGET_AR cqs
+QMAKE_OBJCOPY           = $TARGET_OBJCOPY
+QMAKE_STRIP             = $TARGET_STRIP
+
+# Headers Search Path
+QMAKE_INCDIR          = $LIB_PREFIX/include
+QMAKE_INCDIR_X11      = $LIB_PREFIX/include/X11
+QMAKE_INCDIR_OPENGL   = $LIB_PREFIX/include
+
+# Libraries Search Path
+QMAKE_LIBDIR          = $LIB_PREFIX/lib
+QMAKE_LIBDIR_X11      = $LIB_PREFIX/lib
+QMAKE_LIBDIR_OPENGL   = $LIB_PREFIX/lib
+
+EOF
+
+if [ "$TARGET_ARCH" = arm ]; then
+  cat >> $SPECS_DIR/qmake.conf <<EOF
+# Work round PowerVR SGX 1.3 driver bug with glScissor & FBOs:
+DEFINES += QT_GL_NO_SCISSOR_TEST
+
+# Work round SGX 1.4 driver bug (text corrupted), modify glyph cache width:
+DEFINES += QT_DEFAULT_TEXTURE_GLYPH_CACHE_WIDTH=1024
+
+EOF
+fi
+
+cat >> $SPECS_DIR/qmake.conf <<EOF
+load(qt_config)
+EOF
