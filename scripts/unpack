@@ -28,22 +28,26 @@ done
 printf "%${INDENT}c UNPACK   $1\n" >&$SILENT_OUT
 export INDENT=$((${INDENT:-1}+$INDENT_SIZE))
 
-rm -rf $BUILD/$1[-_][0-9]*
-rm -rf $BUILD/$1[-_]r[0-9]*
-rm -rf $BUILD/$1[-_]cvs*
-rm -rf $BUILD/$1[-_]svn*
-rm -rf $BUILD/$1[-_]git*
+get_meta $1
+
+rm -rf $PKG_BUILD_DIR
+mkdir -p $PKG_BUILD_DIR
 
 if [ -f $PACKAGE_URL ]; then
-  $SCRIPTS/extract $1 "$1*.tar.bz2" $BUILD
-  $SCRIPTS/extract $1 "$1*.tar.gz"  $BUILD
-  $SCRIPTS/extract $1 "$1*.tgz"     $BUILD
+  $SCRIPTS/extract $1 "*.tar.bz2" $PKG_BUILD_DIR
+  $SCRIPTS/extract $1 "*.tar.gz"  $PKG_BUILD_DIR
+  $SCRIPTS/extract $1 "*.tgz"     $PKG_BUILD_DIR
 fi
 
-if [ -d $PACKAGES/$1/sources ]; then
-  [ ! -d $BUILD/$1* ] && mkdir -p $BUILD/$1
-  cp -PRf $PACKAGES/$1/sources/* $BUILD/$1*/
+# move the extracted files up one level
+PKGTMPDIR=`find $PKG_BUILD_DIR -maxdepth 1 -type d ! -wholename $PKG_BUILD_DIR`
+if [ -d "$PKGTMPDIR" ] && [ "$PKGTMPDIR" != "." -a "$PKGTMPDIR" != ".." ]; then
+  # warning: this will skip dotfiles (usually stuff like .cvsignore)
+  mv $PKGTMPDIR/* $PKG_BUILD_DIR
+  rm -rf $PKGTMPDIR
 fi
+
+[ -d $PACKAGES/$1/sources ] && cp -PRf $PACKAGES/$1/sources/* $PKG_BUILD_DIR
 
 PBASE=$PACKAGES/$1/patches
 PDIRS="$PBASE"
@@ -60,7 +64,7 @@ for d in $PDIRS; do
   done
 done
 
-$SCRIPTS/fixconfigtools $BUILD/$1*
+$SCRIPTS/fixconfigtools $PKG_BUILD_DIR
 
 [ -f $PACKAGES/$1/unpack ] && $PACKAGES/$1/unpack $@ >&$VERBOSE_OUT
 
