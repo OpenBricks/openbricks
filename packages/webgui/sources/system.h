@@ -1,2 +1,0 @@
-void printGeexboxControls();
-void printPlayerState();
