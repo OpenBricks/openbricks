@@ -3,9 +3,7 @@
 . config/options
 
 $SCRIPTS/build linux
-$SCRIPTS/build toolchain
-$SCRIPTS/build lzo
-$SCRIPTS/build freetype
+$SCRIPTS/unpack font-misc-misc
 
 export CFLAGS="$CFLAGS -O2"
 HEADERS="`kernel_path`/arch/x86/include"
@@ -14,28 +12,16 @@ export TARGET_CPPFLAGS="-DCOMMAND_LINE_SIZE=${COMMAND_LINE_SIZE} ${TARGET_CPPFLA
 
 cd $BUILD/$1*
 
-setup_toolchain host
 mkdir -p host-build
 cd host-build
-../configure --host=$HOST_NAME \
-             --build=$HOST_NAME \
+do_configure host \
              --enable-grub-mkfont \
 
 make grub-mkfont
-cp -f grub-mkfont $ROOT/$TOOLCHAIN/bin
-
-make distclean
-
 cd ..
-rm -rf host-build
-
-setup_toolchain target
 
 export ac_cv_prog_FREETYPE=$LIB_PREFIX/bin/freetype-config
-#export PATH=$PATH:$LIB_PREFIX/lib/pkgconfig
-./configure --host=$TARGET_NAME \
-            --build=$HOST_NAME \
-            --prefix="/usr/" \
+do_configure target \
             --disable-grub-mkfont \
 
 make
@@ -53,7 +39,10 @@ cp $LIB_GRUB_ARCH_FILES __build/lib/grub/i386-pc/
 
 if [ -f ../font-misc-misc*/8x13.bdf ]; then
   mkdir -p __build/lib/grub/fonts
-  $ROOT/$TOOLCHAIN/bin/grub-mkfont -o __build/lib/grub/fonts/8x13.pf2 ../font-misc-misc*/8x13.bdf
+  ./host-build/grub-mkfont -o __build/lib/grub/fonts/8x13.pf2 ../font-misc-misc*/8x13.bdf
 fi
 
-exit 0
+mkdir -p .install/usr/share
+# mod files have to be stripped (debugging symbols) in any case, otherwise grub isn't installable anymore
+find __build -name "*.mod" -exec $HOST_STRIP -d {} \;
+tar cf - -C __build "." | lzma -9 -c > .install/usr/share/grub-i386-pc.tar.lzma
