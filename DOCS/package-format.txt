@@ -1,0 +1,169 @@
+
+| GEEXBOX PACKAGE STRUCTURE
+| ~~~~~~~~~~~~~~~~~~~~~~~~~
+
+GeeXboX packages live under the packages/ directory in the source tree. Every
+package is composed of several elements:
+
+* meta: package metadata information file
+* url: where the package sources can be downloaded from
+* unpack: a script which takes care of unpacking the package sources
+* build: a script which takes care of building the package from source
+* install: a script to construct the runtime package
+* installdev: a script to construct the devel package
+
+| META FILE FORMAT
+| ~~~~~~~~~~~~~~~~
+
+The 'meta' file is used to provide the package metadata information (hence
+the name). It is a POSIX shell script which is sourced by the build system; it
+can contain variable assignments and conditional instructions.
+
+A devel-only package (e.g. gmp, gcc-core) has three mandatory fields:
+
+* PKG_NAME
+  + the name of the package
+  + must coincide with the package directory name
+  + can be different from the upstream tarball name
+  + will be used to create the package build directory
+* PKG_VERSION
+  + the upstream package current version
+  + will be used to create the package build directory
+* PKG_REV
+  + the GeeXboX package revision
+  + incremented on every major change in the package
+  + reset to 1 every time PKG_VERSION changes
+
+A devel-only package has one optional field:
+
+* PKG_BUILD_DEPENDS
+  + the build time package dependencies, i.e. the packages required to be able
+    to build the package
+  + will be packaged and installed to sysroot before the package is built
+  + defaults to "" (no build depends)
+
+A runtime package has the same mandatory fields of a devel-only package, plus:
+
+* PKG_PRIORITY
+  + the package priority, i.e. how much the package is important
+  + can be (XXX to be discussed)
+    - required: the system will not boot without this package (e.g. linux)
+    - standard: this package is part of the GeeXboX base system
+    - optional: normal priority for packages not part of GeeXboX base system
+    - extra: this is a minor non-essential package
+* PKG_SECTION
+  + the package category, used to group packages by function
+  + can be:
+    - libs
+    - (XXX to be discussed/defined)
+* PKG_SHORTDESC
+  + used as the short description for the package
+  + should be one-line summary
+  + should not start with the package name
+* PKG_LONG_DESC
+  + used as the long description for the package
+
+A regular package has the same optional fields of a devel-only package, plus:
+
+* PKG_DEPENDS
+  + the runtime package dependencies, i.e. the packages required to be able
+    to run the package
+  + will be packaged and installed to the target system before the package is
+    installed
+  + defaults to "" (no runtime depends)
+* PKG_ARCH
+  + the target architectures supported by the package
+  + can be:
+    - any: the package is supported on all the available architectures
+    - all: this is an architecture-indipendent package (e.g. enna-theme)
+    - a spaced list of architecture names
+  + defaults to "any"
+* PKG_LICENSE
+  + the upstream package license
+  + can be:
+    - free: the package is distributed under a DFSG-compliant license (i.e
+      GPL, LGPL, MIT, etc.)
+    - non-free: the package license does not meet the DFSG
+  + a non-free package may restrict the distribution of the entire distro
+    if it is built in, and may have unreasonable/difficult to meet restrictions
+  + defaults to "free"
+
+
+| META EXAMPLES
+| ~~~~~~~~~~~~~
+
+The following examples refer to r9002.
+
+A devel-only package
+
+PKG_NAME=gmp
+PKG_VERSION=4.3.1
+PKG_REV=1
+PKG_BUILD_DEPENDS="ccache make"
+
+A standard runtime package; note the use of $TARGET_LIBC in PKG_DEPENDS
+to refer to the runtime system libc (which could be uClibc, glibc or eglibc)
+
+PKG_NAME=lsof
+PKG_VERSION=4.83
+PKG_REV=1
+PKG_DEPENDS="$TARGET_LIBC"
+PKG_BUILD_DEPENDS="toolchain"
+PKG_PRIORITY=optional
+PKG_SECTION=utils
+PKG_SHORTDESC="List open files"
+PKG_LONGDESC="Lsof is a Unix-specific diagnostic tool.  Its name stands for LiSt Open Files, and it does just that.  It lists information about any files that are open, by processes currently running on the system."
+
+A non-free package available only on selected archs
+
+PKG_NAME=xf86-video-nvidia
+PKG_VERSION=195.36.24
+PKG_REV=1
+PKG_ARCH="i386 x86_64"
+PKG_LICENSE=non-free
+PKG_BUILD_DEPENDS="toolchain xorg-server"
+PKG_DEPENDS="$TARGET_LIBC xorg-server"
+PKG_PRIORITY=optional
+PKG_SECTION=x11
+PKG_SHORT_DESC="NVIDIA binary Xorg driver"
+PKG_LONG_DESC="These binary drivers provide optimized hardware acceleration of OpenGL applications via a direct-rendering X Server. AGP, PCIe, SLI, TV-out and flat panel displays are also supported. This version only supports GeForce 6xxx and higher of the Geforce GPUs plus complimentary Quadros and nforce."
+
+A complex package which shows the usage of conditionals to define the depends
+
+PKG_NAME=MPlayer
+PKG_VERSION=r30437
+PKG_REV=1
+PKG_BUILD_DEPENDS="toolchain zlib ffmpeg freetype alsa-lib fribidi libcdio faad2 libpng libbluray"
+PKG_DEPENDS="$TARGET_LIBC zlib ffmpeg freetype alsa-lib fribidi libcdio libpng faad2 libbluray"
+if [ "$TARGET_LIBC" = "uClibc" ]; then
+  PKG_BUILD_DEPENDS="$PKG_BUILD_DEPENDS libiconv"
+  PKG_DEPENDS="$PKG_DEPENDS libiconv"
+fi
+if [ "$VDPAU" = yes ]; then
+  PKG_BUILD_DEPENDS="$PKG_BUILD_DEPENDS libvdpau"
+  PKG_DEPENDS="$PKG_DEPENDS libvdpau"
+fi
+if [ "$SDL" = yes ]; then
+  PKG_BUILD_DEPENDS="$PKG_BUILD_DEPENDS SDL"
+  PKG_DEPENDS="$PKG_DEPENDS SDL"
+fi
+if [ "$UNRAR" = yes ]; then
+  PKG_BUILD_DEPENDS="$PKG_BUILD_DEPENDS unrar"
+  PKG_DEPENDS="$PKG_DEPENDS unrar"
+fi
+if [ "$XORG" = yes ]; then
+  PKG_BUILD_DEPENDS="$PKG_BUILD_DEPENDS libX11 libXv libXxf86vm"
+  PKG_DEPENDS="$PKG_DEPENDS libX11 libXv libXxf86vm"
+fi
+if [ "$LIVE555" = yes ]; then
+  PKG_BUILD_DEPENDS="$PKG_BUILD_DEPENDS live"
+fi
+if [ "$TARGET_ARCH" = i386 ]; then
+  PKG_BUILD_DEPENDS="$PKG_BUILD_DEPENDS vesautils"
+  PKG_DEPENDS="$PKG_DEPENDS vesautils"
+fi
+PKG_PRIORITY=standard
+PKG_SECTION=video
+PKG_SHORT_DESC="movie player for Unix-like systems"
+PKG_LONG_DESC="MPlayer plays most MPEG, VOB, AVI, Ogg/OGM, VIVO, ASF/WMA/WMV, QT/MOV/MP4, FLI, RM, NuppelVideo, yuv4mpeg, FILM, RoQ, PVA files, supported by many native, XAnim, RealPlayer, and Win32 DLL codecs. It can also play VideoCD, SVCD, DVD, 3ivx, RealMedia, and DivX movies. Another big feature of MPlayer is the wide range of supported output drivers. It works with X11, Xv, DGA, OpenGL, SVGAlib, fbdev, DirectFB, but also SDL (plus all its drivers) and some low level card-specific drivers (for Matrox, 3Dfx and Radeon, Mach64 and Permedia3). Most of them support software or hardware scaling, therefore allowing fullscreen display. MPlayer is also able to use some hardware MPEG decoder boards, such as the DVB and DXR3/Hollywood+."
+
