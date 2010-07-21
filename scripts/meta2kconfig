@@ -1,0 +1,77 @@
+#!/bin/sh
+
+# TODO: this is really ugly and should probably be rewritten in Perl
+
+KCONFIG=$1
+
+do_package() {
+  package=$1
+  [ -f packages/$package/install ] || continue
+  PKG_NAME=
+  PKG_SHORT_DESC=
+  PKG_DEPENDS=
+  PKG_ARCH=any
+  PKG_KCONFIG_DEPENDS=
+  PKG_KCONFIG_EXTRA=
+  PKG_LONG_DESC=
+  . packages/$package/meta
+  KCONFIG_NAME="$PKG_NAME"
+  [ -n "$PKG_SHORT_DESC" ] && KCONFIG_NAME="$KCONFIG_NAME - $PKG_SHORT_DESC"
+  cat >> $KCONFIG <<EOF
+config PKG_$PKG_NAME
+  tristate "$KCONFIG_NAME"
+EOF
+  if [ "$PKG_ARCH" != any -a "$PKG_ARCH" != all ]; then
+    archlist=""
+    for a in $PKG_ARCH; do
+      if [ -z "$archlist" ]; then
+        archlist="TARGET_ARCH_$a"
+      else
+        archlist="$archlist || TARGET_ARCH_$a"
+      fi
+    done
+    echo "  depends on ( $archlist )" >> $KCONFIG
+  fi
+  for d in $PKG_DEPENDS; do
+    echo "  select PKG_$d" >> $KCONFIG
+  done
+  [ -n "$PKG_KCONFIG_DEPENDS" ] && echo "$PKG_KCONFIG_DEPENDS" >> $KCONFIG
+  [ -n "$PKG_LONG_DESC" ] && cat >> $KCONFIG <<EOF
+  help
+    $PKG_LONG_DESC
+EOF
+  echo >> $KCONFIG
+  if [ -n "$PKG_KCONFIG_EXTRA" ]; then
+    echo "$PKG_KCONFIG_EXTRA" >> $KCONFIG
+    echo >> $KCONFIG
+  fi
+}
+
+rm -f $KCONFIG
+
+for package in packages/*; do
+  package=`echo $package | sed s:packages/::`
+  [ -f packages/$package/meta ] || continue
+  PKG_SECTION=
+  var=
+  old=
+  cmd=
+  . packages/$package/meta
+  var="SEC_$PKG_SECTION"
+  eval old="\$$var"
+  cmd="$var=\"$old $package\""
+  eval $cmd
+done
+
+for section in admin libs misc net sound utils video x11; do
+  echo "menu \"$section\"" >> $KCONFIG
+  var="SEC_$section"
+  eval pkgs="\$$var"
+  for package in $pkgs; do
+    do_package $package
+  done
+  echo endmenu >> $KCONFIG
+done
+
+exit 0
+
