@@ -24,7 +24,19 @@ if [ -f $PACKAGE_URL ]; then
   if [ -f $STAMP ]; then
     [ ! $STAMP -ot $PACKAGE_URL ] && exit 0
   fi
+  DL="yes"
+fi
 
+get_meta $1
+
+if [ -n "$PKG_URL" ]; then
+  if [ -f $STAMP ]; then
+    [ ! $STAMP -ot $PACKAGES/$1/meta ] && exit 0
+  fi
+  DL="yes"
+fi
+
+if [ "$DL" = yes ]; then
   $SCRIPTS/checkdeps get
 
   rm -f $STAMP
@@ -36,7 +48,13 @@ if [ -f $PACKAGE_URL ]; then
 
   mkdir -p $SOURCES/$1
 
-  for i in `sed s%GEEXBOX_SRCS%$GEEXBOX_SRCS% $PACKAGE_URL`; do
+  [ -f $PACKAGE_URL ] && \
+    URLS=`sed s%GEEXBOX_SRCS%$GEEXBOX_SRCS% $PACKAGE_URL`
+
+  [ -n "$PKG_URL" ] && \
+    URLS="$URLS `echo $PKG_URL | sed s%GEEXBOX_SRCS%$GEEXBOX_SRCS%`"
+
+  for i in $URLS; do
     NBWGET=1
     until [ -f $STAMPS_NOARCH/$1/`basename $i`.ok ] || wget --no-check-certificate --passive-ftp -c $WGET_OPT -P $SOURCES/$1 $i; do
       NBWGET=$(($NBWGET+1))
@@ -48,7 +66,12 @@ if [ -f $PACKAGE_URL ]; then
     touch $STAMPS_NOARCH/$1/`basename $i`.ok
   done
 
-  cp -p $PACKAGE_URL $STAMP
+  [ -f $PACKAGE_URL ] && \
+    cp -p $PACKAGE_URL $STAMP
+
+  [ -n "$PKG_URL" ] && \
+    cp -p $PACKAGES/$1/meta $STAMP
+
   rm -f $BUILD_BASE*/$STAMPS_NOARCH/$1/unpack
   rm -f $BUILD_BASE*/$STAMPS_NOARCH/$1/build
 fi
