@@ -1,3 +1,16 @@
+all: iso
+
+.stamps/kconfiginit:
+	scripts/kconfiginit
+
+config: .stamps/kconfiginit
+	$(MAKE) -C build/bst-kconfig* $@
+	scripts/kconfig2options
+
+%config: .stamps/kconfiginit
+	$(MAKE) -C build/bst-kconfig* $@
+	scripts/kconfig2options
+
 iso:
 	scripts/iso
 
@@ -39,7 +52,7 @@ clean:
 	scripts/clean
 
 distclean:
-	rm -rf .stamps build.* sources geexbox*
+	rm -rf .stamps build* sources geexbox* config/options
 
 
 .PHONY: iso burn dist fulldist generator installator exec clean distclean
