@@ -10,6 +10,7 @@ do_package() {
   PKG_NAME=
   PKG_SHORT_DESC=
   PKG_DEPENDS=
+  PKG_USE=
   PKG_ARCH=any
   PKG_LICENSE=free
   PKG_KCONFIG_DEPENDS=
@@ -37,12 +38,37 @@ EOF
   for d in $PKG_DEPENDS; do
     echo "  select PKG_$d" >> $KCONFIG
   done
+
+  for use in $PKG_USE; do
+    if [ "$use"="uclibc" ]; then
+      for p in $PKG_USE_uclibc_DEPENDS; do
+        echo "  select PKG_$p if TARGET_LIBC_UCLIBC" >> $KCONFIG
+      done
+    fi
+  done
+
   [ -n "$PKG_KCONFIG_DEPENDS" ] && echo "$PKG_KCONFIG_DEPENDS" >> $KCONFIG
   [ -n "$PKG_LONG_DESC" ] && cat >> $KCONFIG <<EOF
   help
     $PKG_LONG_DESC
 EOF
   echo >> $KCONFIG
+  for use in $PKG_USE; do
+    [ "$use" = uclibc ] && continue
+    tmp=
+    var="PKG_USE_${use}_DEPENDS"
+    eval tmp="\$$var"
+    cat >> $KCONFIG <<EOF
+config GX_${PKG_NAME}_${use}
+  bool "Enable $use support
+  default y if USE_$use
+  default n
+  depends on PKG_${PKG_NAME}
+EOF
+    for p in $tmp; do
+      echo "  select PKG_$p" >> $KCONFIG
+    done
+  done
   if [ -n "$PKG_KCONFIG_EXTRA" ]; then
     echo "$PKG_KCONFIG_EXTRA" >> $KCONFIG
     echo >> $KCONFIG
