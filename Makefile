@@ -23,9 +23,6 @@ burn: iso
 dist:
 	scripts/dist
 
-fulldist:
-	scripts/dist full
-
 generator:
 	scripts/generator
 
