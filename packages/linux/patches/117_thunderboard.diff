@@ -1,11 +1,62 @@
-diff -Naur linux-2.6.33.5.orig/arch/arm/mach-omap2/board-omap3thunder.c linux-2.6.33.5/arch/arm/mach-omap2/board-omap3thunder.c
---- linux-2.6.33.5.orig/arch/arm/mach-omap2/board-omap3thunder.c	1970-01-01 01:00:00.000000000 +0100
-+++ linux-2.6.33.5/arch/arm/mach-omap2/board-omap3thunder.c	2010-06-08 23:51:09.844688134 +0200
-@@ -0,0 +1,653 @@
+117_thunderboard.diff
+
+From: Benjamin Zores <ben@q6600.(none)>
+
+
+---
+ arch/arm/mach-omap2/Kconfig                      |    5 
+ arch/arm/mach-omap2/Makefile                     |    2 
+ arch/arm/mach-omap2/board-omap3thunder.c         |  651 ++++++++++++++++++++++
+ drivers/video/omap2/displays/Kconfig             |    6 
+ drivers/video/omap2/displays/Makefile            |    1 
+ drivers/video/omap2/displays/panel-lg-lb043wq2.c |  118 ++++
+ sound/soc/omap/Kconfig                           |   10 
+ sound/soc/omap/Makefile                          |    3 
+ sound/soc/omap/omap3thunder.c                    |  160 +++++
+ 9 files changed, 956 insertions(+), 0 deletions(-)
+ create mode 100644 arch/arm/mach-omap2/board-omap3thunder.c
+ create mode 100644 drivers/video/omap2/displays/panel-lg-lb043wq2.c
+ create mode 100644 sound/soc/omap/omap3thunder.c
+
+diff --git a/arch/arm/mach-omap2/Kconfig b/arch/arm/mach-omap2/Kconfig
+index b31b6f1..8db3b0b 100644
+--- a/arch/arm/mach-omap2/Kconfig
++++ b/arch/arm/mach-omap2/Kconfig
+@@ -142,6 +142,11 @@ config MACH_IGEP0020
+ 	depends on ARCH_OMAP3
+ 	select OMAP_PACKAGE_CBB
+ 
++config MACH_OMAP3_THUNDER
++	bool "Thunder OMAP3530 board"
++	depends on ARCH_OMAP3
++	 select OMAP_PACKAGE_CUS
++
+ config MACH_SBC3530
+ 	bool "OMAP3 SBC STALKER board"
+ 	depends on ARCH_OMAP3
+diff --git a/arch/arm/mach-omap2/Makefile b/arch/arm/mach-omap2/Makefile
+index ea52b03..a66b063 100644
+--- a/arch/arm/mach-omap2/Makefile
++++ b/arch/arm/mach-omap2/Makefile
+@@ -138,6 +138,8 @@ obj-$(CONFIG_MACH_IGEP0020)		+= board-igep0020.o \
+ 					   hsmmc.o
+ obj-$(CONFIG_MACH_OMAP3_TOUCHBOOK)	+= board-omap3touchbook.o \
+ 					   hsmmc.o
++obj-$(CONFIG_MACH_OMAP3_THUNDER)	+= board-omap3thunder.o \
++					   hsmmc.o
+ obj-$(CONFIG_MACH_OMAP_4430SDP)		+= board-4430sdp.o \
+ 					   hsmmc.o
+ 
+diff --git a/arch/arm/mach-omap2/board-omap3thunder.c b/arch/arm/mach-omap2/board-omap3thunder.c
+new file mode 100644
+index 0000000..9ee32b7
+--- /dev/null
++++ b/arch/arm/mach-omap2/board-omap3thunder.c
+@@ -0,0 +1,651 @@
 +/*
 + * linux/arch/arm/mach-omap2/board-omap3touchbook.c
 + *
-+ * Copyright (C) 2009 Technexion 
++ * Copyright (C) 2009 Technexion
 + *
 + * Modified from mach-omap2/board-omap3beagleboard.c
 + *
@@ -56,9 +107,9 @@ diff -Naur linux-2.6.33.5.orig/arch/arm/mach-omap2/board-omap3thunder.c linux-2.
 +
 +#include <linux/spi/spi.h>
 +#include <linux/spi/ads7846.h>
-+#include <plat/mcspi.h> 
++#include <plat/mcspi.h>
 +
-+#include <plat/mmc.h> 
++#include <plat/mmc.h>
 +
 +
 +#define OMAP3_THUNDER_TS_GPIO	136
@@ -69,7 +120,7 @@ diff -Naur linux-2.6.33.5.orig/arch/arm/mach-omap2/board-omap3thunder.c linux-2.
 +#define NAND_BLOCK_SIZE		SZ_128K
 +
 +#define THUNDER_DVI_PANEL_EN_GPIO 199 /* GPIO 7 on TWL4030 */
-+#define THUNDER_LCD_PANEL_ENVDD 138 
++#define THUNDER_LCD_PANEL_ENVDD 138
 +#define THUNDER_LCD_PON 139
 +
 +#define TWL_INTBR_GPBR1 0x0c
@@ -84,14 +135,14 @@ diff -Naur linux-2.6.33.5.orig/arch/arm/mach-omap2/board-omap3thunder.c linux-2.
 +{
 +	gpio_request(THUNDER_LCD_PANEL_ENVDD, "lcd_panel_envdd");
 +	gpio_request(THUNDER_LCD_PON, "lcd_panel_pon");
-+	gpio_direction_output(THUNDER_LCD_PON, 1); 
++	gpio_direction_output(THUNDER_LCD_PON, 1);
 +	gpio_direction_output(THUNDER_LCD_PANEL_ENVDD, 0);
 +	return;
 +}
 +
 +static int thunder_enable_lcd(struct omap_dss_device *dssdev)
 +{
-+	
++
 +	if (dvi_enabled) {
 +		printk(KERN_ERR "cannot enable LCD, DVI is enabled\n");
 +		return -EINVAL;
@@ -120,7 +171,7 @@ diff -Naur linux-2.6.33.5.orig/arch/arm/mach-omap2/board-omap3thunder.c linux-2.
 +}
 +
 +
-+static int thunder_set_backlight ( struct omap_dss_device *dssdev, int level) 
++static int thunder_set_backlight ( struct omap_dss_device *dssdev, int level)
 +{
 +	return 0;
 +}
@@ -265,15 +316,15 @@ diff -Naur linux-2.6.33.5.orig/arch/arm/mach-omap2/board-omap3thunder.c linux-2.
 +		.mmc		= 1,
 +		.wires		= 8,
 +		.gpio_cd	= -EINVAL,
-+		.gpio_wp	= 29, 
++		.gpio_wp	= 29,
 +	},
-+	{ 
-+		.mmc		= 2, 
-+		.wires		= 4, 
++	{
++		.mmc		= 2,
++		.wires		= 4,
 +		.gpio_cd	= -EINVAL,
-+		.gpio_wp	= -EINVAL, 
-+		
-+	}, 
++		.gpio_wp	= -EINVAL,
++
++	},
 +	{}	/* Terminator */
 +};
 +
@@ -307,10 +358,10 @@ diff -Naur linux-2.6.33.5.orig/arch/arm/mach-omap2/board-omap3thunder.c linux-2.
 +	omap2_hsmmc_init(mmc);
 +
 +	/* link regulators to MMC adapters */
-+	thunder_vmmc1_supply.dev = mmc[0].dev; 
++	thunder_vmmc1_supply.dev = mmc[0].dev;
 +	thunder_vmmc2_supply.dev = mmc[1].dev;
 +	thunder_vsim_supply.dev = mmc[0].dev;
-+	
++
 +	/* the LED marked LED 2 (LEDA) */
 +	gpio_leds[0].gpio = gpio + TWL4030_GPIO_MAX + 1;
 +
@@ -352,7 +403,7 @@ diff -Naur linux-2.6.33.5.orig/arch/arm/mach-omap2/board-omap3thunder.c linux-2.
 +static struct regulator_init_data thunder_vmmc2 = {
 +        .constraints = {
 +                .min_uV                 = 1850000,
-+		.max_uV			= 3150000, 
++		.max_uV			= 3150000,
 +                .apply_uV               = true,
 +                .valid_modes_mask       = REGULATOR_MODE_NORMAL
 +                                        | REGULATOR_MODE_STANDBY,
@@ -404,7 +455,7 @@ diff -Naur linux-2.6.33.5.orig/arch/arm/mach-omap2/board-omap3thunder.c linux-2.
 +    .constraints = {
 +        .name           = "VDVI",
 +        .min_uV         = 1800000,
-+        .max_uV         = 1800000,        
++        .max_uV         = 1800000,
 +	.valid_modes_mask   = REGULATOR_MODE_NORMAL
 +                    | REGULATOR_MODE_STANDBY,
 +        .valid_ops_mask     = REGULATOR_CHANGE_MODE
@@ -423,7 +474,7 @@ diff -Naur linux-2.6.33.5.orig/arch/arm/mach-omap2/board-omap3thunder.c linux-2.
 +	/* platform_data for children goes here */
 +	.usb		= &thunder_usb_data,
 +	.gpio		= &thunder_gpio_data,
-+	.vmmc1		= &thunder_vmmc1, 
++	.vmmc1		= &thunder_vmmc1,
 +	.vmmc2          = &thunder_vmmc2,
 +	.vsim		= &thunder_vsim,
 +	.vdac       	= &thunder_vdac,
@@ -495,9 +546,7 @@ diff -Naur linux-2.6.33.5.orig/arch/arm/mach-omap2/board-omap3thunder.c linux-2.
 +		printk(KERN_ERR "can't get ads7846 pen down GPIO\n");
 +
 +	gpio_direction_input(OMAP3_THUNDER_TS_GPIO);
-+
-+	omap_set_gpio_debounce(OMAP3_THUNDER_TS_GPIO, 1);
-+	omap_set_gpio_debounce_time(OMAP3_THUNDER_TS_GPIO, 0xa);
++	gpio_set_debounce(OMAP3_THUNDER_TS_GPIO, 310);
 +}
 +
 +static int ads7846_get_pendown_state(void)
@@ -534,15 +583,15 @@ diff -Naur linux-2.6.33.5.orig/arch/arm/mach-omap2/board-omap3thunder.c linux-2.
 +		.controller_data	= &ads7846_mcspi_config,
 +		.irq			= OMAP_GPIO_IRQ(OMAP3_THUNDER_TS_GPIO),
 +		.platform_data		= &ads7846_config,
-+	}, 
++	},
 +};
 +
 +
 +/* G-sensor on SPI bus 4 */
 +static struct spi_board_info omap3thunder_spi_board_info[] = {
 +	{
-+		.modalias = "spidev", 
-+		.max_speed_hz   = 1500000, 
++		.modalias = "spidev",
++		.max_speed_hz   = 1500000,
 +                .bus_num        = 4,
 +                .chip_select    = 0,
 +                .mode = SPI_MODE_0,
@@ -610,17 +659,17 @@ diff -Naur linux-2.6.33.5.orig/arch/arm/mach-omap2/board-omap3thunder.c linux-2.
 +
 +        .phy_reset  = false,
 +        .reset_gpio_port[0]  = -EINVAL,
-+        .reset_gpio_port[1]  = 162, 
++        .reset_gpio_port[1]  = 162,
 +        .reset_gpio_port[2]  = -EINVAL
 +};
 +
 +static void __init omap3_thunder_init(void)
 +{
 +	omap3_thunder_i2c_init();
-+	
++
 +	/* Turn on Wireless LAN */
 +        gpio_request( 157 , "WIFI ENABLE");
-+        gpio_direction_output( 157, 0);	
++        gpio_direction_output( 157, 0);
 +
 +	platform_add_devices(omap3_thunder_devices,
 +			ARRAY_SIZE(omap3_thunder_devices));
@@ -634,7 +683,7 @@ diff -Naur linux-2.6.33.5.orig/arch/arm/mach-omap2/board-omap3thunder.c linux-2.
 +
 +	ads7846_dev_init();
 +	spi_register_board_info(omap3thunder_spi_board_touch, ARRAY_SIZE(omap3thunder_spi_board_touch));
-+	spi_register_board_info(omap3thunder_spi_board_info, ARRAY_SIZE(omap3thunder_spi_board_info));	
++	spi_register_board_info(omap3thunder_spi_board_info, ARRAY_SIZE(omap3thunder_spi_board_info));
 +
 +	thunder_display_init();
 +}
@@ -655,38 +704,11 @@ diff -Naur linux-2.6.33.5.orig/arch/arm/mach-omap2/board-omap3thunder.c linux-2.
 +	.init_machine	= omap3_thunder_init,
 +	.timer		= &omap_timer,
 +MACHINE_END
-diff -Naur linux-2.6.33.5.orig/arch/arm/mach-omap2/Kconfig linux-2.6.33.5/arch/arm/mach-omap2/Kconfig
---- linux-2.6.33.5.orig/arch/arm/mach-omap2/Kconfig	2010-06-08 23:50:33.037187650 +0200
-+++ linux-2.6.33.5/arch/arm/mach-omap2/Kconfig	2010-06-08 23:50:53.836576741 +0200
-@@ -153,6 +153,11 @@
- 	bool "OMAP 4430 SDP board"
- 	depends on ARCH_OMAP4
- 
-+config MACH_OMAP3_THUNDER
-+	bool "Thunder OMAP3530 board" 
-+	depends on ARCH_OMAP3 && ARCH_OMAP34XX 
-+	 select OMAP_PACKAGE_CUS
-+
- config OMAP3_EMU
- 	bool "OMAP3 debugging peripherals"
- 	depends on ARCH_OMAP3
-diff -Naur linux-2.6.33.5.orig/arch/arm/mach-omap2/Makefile linux-2.6.33.5/arch/arm/mach-omap2/Makefile
---- linux-2.6.33.5.orig/arch/arm/mach-omap2/Makefile	2010-06-08 23:50:32.867187992 +0200
-+++ linux-2.6.33.5/arch/arm/mach-omap2/Makefile	2010-06-08 23:51:05.895938869 +0200
-@@ -113,6 +113,9 @@
- 
- obj-$(CONFIG_MACH_OMAP3517EVM)     += board-am3517evm.o
- 
-+obj-$(CONFIG_MACH_OMAP3_THUNDER)	+= board-omap3thunder.o \
-+					   hsmmc.o
-+
- # Platform specific device init code
- obj-y					+= usb-musb.o
- obj-$(CONFIG_MACH_OMAP2_TUSB6010)	+= usb-tusb6010.o
-diff -Naur linux-2.6.33.5.orig/drivers/video/omap2/displays/Kconfig linux-2.6.33.5/drivers/video/omap2/displays/Kconfig
---- linux-2.6.33.5.orig/drivers/video/omap2/displays/Kconfig	2010-06-08 23:50:26.044886312 +0200
-+++ linux-2.6.33.5/drivers/video/omap2/displays/Kconfig	2010-06-08 23:50:54.414688065 +0200
-@@ -19,4 +19,11 @@
+diff --git a/drivers/video/omap2/displays/Kconfig b/drivers/video/omap2/displays/Kconfig
+index 881c9f7..d880575 100644
+--- a/drivers/video/omap2/displays/Kconfig
++++ b/drivers/video/omap2/displays/Kconfig
+@@ -26,6 +26,12 @@ config PANEL_TAAL
          help
            Taal DSI command mode panel from TPO.
  
@@ -694,22 +716,28 @@ diff -Naur linux-2.6.33.5.orig/drivers/video/omap2/displays/Kconfig linux-2.6.33
 +        tristate "LG LB043WQ2 Panel"
 +        depends on OMAP2_DSS
 +        help
-+                LG LB043WQ2 Panel on Thunder board
++          LG LB043WQ2 Panel on Thunder board
 +
-+
- endmenu
-diff -Naur linux-2.6.33.5.orig/drivers/video/omap2/displays/Makefile linux-2.6.33.5/drivers/video/omap2/displays/Makefile
---- linux-2.6.33.5.orig/drivers/video/omap2/displays/Makefile	2010-06-08 23:50:26.044886312 +0200
-+++ linux-2.6.33.5/drivers/video/omap2/displays/Makefile	2010-06-08 23:50:54.414688065 +0200
-@@ -2,3 +2,5 @@
- obj-$(CONFIG_PANEL_SHARP_LS037V7DW01) += panel-sharp-ls037v7dw01.o
+ config PANEL_TOPPOLY_TDO35S
+         tristate "Toppoly TDO35S LCD Panel support"
+         depends on OMAP2_DSS
+diff --git a/drivers/video/omap2/displays/Makefile b/drivers/video/omap2/displays/Makefile
+index aa38609..1afcd2b 100644
+--- a/drivers/video/omap2/displays/Makefile
++++ b/drivers/video/omap2/displays/Makefile
+@@ -3,6 +3,7 @@ obj-$(CONFIG_PANEL_SHARP_LS037V7DW01) += panel-sharp-ls037v7dw01.o
+ obj-$(CONFIG_PANEL_SHARP_LQ043T1DG01) += panel-sharp-lq043t1dg01.o
  
  obj-$(CONFIG_PANEL_TAAL) += panel-taal.o
 +obj-$(CONFIG_PANEL_LG_LB043WQ2) += panel-lg-lb043wq2.o
-+
-diff -Naur linux-2.6.33.5.orig/drivers/video/omap2/displays/panel-lg-lb043wq2.c linux-2.6.33.5/drivers/video/omap2/displays/panel-lg-lb043wq2.c
---- linux-2.6.33.5.orig/drivers/video/omap2/displays/panel-lg-lb043wq2.c	1970-01-01 01:00:00.000000000 +0100
-+++ linux-2.6.33.5/drivers/video/omap2/displays/panel-lg-lb043wq2.c	2010-06-08 23:50:54.414688065 +0200
+ obj-$(CONFIG_PANEL_TOPPOLY_TDO35S) += panel-toppoly-tdo35s.o
+ obj-$(CONFIG_PANEL_TPO_TD043MTEA1) += panel-tpo-td043mtea1.o
+ obj-$(CONFIG_PANEL_ACX565AKM) += panel-acx565akm.o
+diff --git a/drivers/video/omap2/displays/panel-lg-lb043wq2.c b/drivers/video/omap2/displays/panel-lg-lb043wq2.c
+new file mode 100644
+index 0000000..29b63e7
+--- /dev/null
++++ b/drivers/video/omap2/displays/panel-lg-lb043wq2.c
 @@ -0,0 +1,118 @@
 +/*
 + * LCD panel driver for LG LB043WQ2 panel 
@@ -829,10 +857,11 @@ diff -Naur linux-2.6.33.5.orig/drivers/video/omap2/displays/panel-lg-lb043wq2.c 
 +module_init(lg_lb043wq2_panel_drv_init);
 +module_exit(lg_lb043wq2_panel_drv_exit);
 +MODULE_LICENSE("GPL");
-diff -Naur linux-2.6.33.5.orig/sound/soc/omap/Kconfig linux-2.6.33.5/sound/soc/omap/Kconfig
---- linux-2.6.33.5.orig/sound/soc/omap/Kconfig	2010-06-08 23:50:26.605975170 +0200
-+++ linux-2.6.33.5/sound/soc/omap/Kconfig	2010-06-08 23:50:54.414688065 +0200
-@@ -116,3 +116,13 @@
+diff --git a/sound/soc/omap/Kconfig b/sound/soc/omap/Kconfig
+index d542ea2..681cb8a 100644
+--- a/sound/soc/omap/Kconfig
++++ b/sound/soc/omap/Kconfig
+@@ -140,3 +140,13 @@ config SND_OMAP_SOC_IGEP0020
  	select SND_SOC_TWL4030
  	help
  	  Say Y if you want to add support for Soc audio on IGEP v2 board.
@@ -846,26 +875,29 @@ diff -Naur linux-2.6.33.5.orig/sound/soc/omap/Kconfig linux-2.6.33.5/sound/soc/o
 +          Say Y if you want to add support for SoC audio on the Thunder Board.
 +
 +
-diff -Naur linux-2.6.33.5.orig/sound/soc/omap/Makefile linux-2.6.33.5/sound/soc/omap/Makefile
---- linux-2.6.33.5.orig/sound/soc/omap/Makefile	2010-06-08 23:50:26.605975170 +0200
-+++ linux-2.6.33.5/sound/soc/omap/Makefile	2010-06-08 23:50:54.584687662 +0200
-@@ -18,6 +18,7 @@
+diff --git a/sound/soc/omap/Makefile b/sound/soc/omap/Makefile
+index ba9fc65..d51d510 100644
+--- a/sound/soc/omap/Makefile
++++ b/sound/soc/omap/Makefile
+@@ -22,6 +22,7 @@ snd-soc-omap3pandora-objs := omap3pandora.o
  snd-soc-omap3beagle-objs := omap3beagle.o
  snd-soc-zoom2-objs := zoom2.o
  snd-soc-igep0020-objs := igep0020.o
 +snd-soc-omap3thunder-objs := omap3thunder.o
  
  obj-$(CONFIG_SND_OMAP_SOC_N810) += snd-soc-n810.o
- obj-$(CONFIG_SND_OMAP_SOC_AMS_DELTA) += snd-soc-ams-delta.o
-@@ -31,3 +32,5 @@
+ obj-$(CONFIG_SND_OMAP_SOC_RX51) += snd-soc-rx51.o
+@@ -37,3 +38,5 @@ obj-$(CONFIG_SND_OMAP_SOC_OMAP3_PANDORA) += snd-soc-omap3pandora.o
  obj-$(CONFIG_SND_OMAP_SOC_OMAP3_BEAGLE) += snd-soc-omap3beagle.o
  obj-$(CONFIG_SND_OMAP_SOC_ZOOM2) += snd-soc-zoom2.o
  obj-$(CONFIG_SND_OMAP_SOC_IGEP0020) += snd-soc-igep0020.o
 +obj-$(CONFIG_SND_OMAP_SOC_OMAP3_THUNDER) += snd-soc-omap3thunder.o
 +
-diff -Naur linux-2.6.33.5.orig/sound/soc/omap/omap3thunder.c linux-2.6.33.5/sound/soc/omap/omap3thunder.c
---- linux-2.6.33.5.orig/sound/soc/omap/omap3thunder.c	1970-01-01 01:00:00.000000000 +0100
-+++ linux-2.6.33.5/sound/soc/omap/omap3thunder.c	2010-06-08 23:50:54.584687662 +0200
+diff --git a/sound/soc/omap/omap3thunder.c b/sound/soc/omap/omap3thunder.c
+new file mode 100644
+index 0000000..aba7ca7
+--- /dev/null
++++ b/sound/soc/omap/omap3thunder.c
 @@ -0,0 +1,160 @@
 +/*
 + * omap3 audio support for Technexion Thunder boards. 
