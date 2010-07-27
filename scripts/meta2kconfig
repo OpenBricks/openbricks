@@ -1,5 +1,7 @@
 #!/bin/sh
 
+. config/path
+
 # TODO: this is really ugly and should probably be rewritten in Perl
 
 KCONFIG=$1
@@ -60,18 +62,14 @@ EOF
   echo >> $KCONFIG
   for use in $PKG_USE; do
     [ "$use" = uclibc ] && continue
-    tmp=
-    var="PKG_USE_NAME_${use}"
-    eval tmp="\$$var"
-    [ -n "$tmp" ] && use_name=$tmp || use_name=$use
-    tmp=
-    var="PKG_USE_DESC_${use}"
-    eval tmp="\$$var"
-    [ -n "$tmp" ] && use_desc="$tmp" || use_desc="Enable $use_name support"
-    tmp=
-    var="PKG_USE_HELP_${use}"
-    eval tmp="\$$var"
-    [ -n "$tmp" ] && use_help="$tmp" || use_help="${use_desc}."
+
+    use_name=`valueof "PKG_USE_NAME_${use}"`
+    [ -z "$use_name" ] && use_name=$use
+    use_desc=`valueof "PKG_USE_DESC_${use}"`
+    [ -z "$use_desc" ] && use_desc="Enable $use_name support"
+    use_help=`valueof "PKG_USE_HELP_${use}"`
+    [ -z "$use_help" ] && use_help="$use_desc"
+
     cat >> $KCONFIG <<EOF
 config GX_${PKG_NAME}_${use}
   bool "$use_desc"
@@ -81,16 +79,10 @@ config GX_${PKG_NAME}_${use}
   help
     $use_help
 EOF
-    tmp=
-    var="PKG_RUN_DEPENDS_${use}"
-    eval tmp="\$$var"
-    for p in $tmp; do
+    for p in `valueof "PKG_RUN_DEPENDS_${use}"`; do
       echo "  select PKG_$p" >> $KCONFIG
     done
-    tmp=
-    var="PKG_DEPENDS_${use}"
-    eval tmp="\$$var"
-    for p in $tmp; do
+    for p in `valueof "PKG_DEPENDS_${use}"`; do
       echo "  select PKG_$p" >> $KCONFIG
     done
   done
@@ -106,21 +98,18 @@ for package in packages/*; do
   package=`echo $package | sed s:packages/::`
   [ -f packages/$package/meta ] || continue
   PKG_SECTION=
-  var=
   old=
   cmd=
   . packages/$package/meta
   var="SEC_$PKG_SECTION"
-  eval old="\$$var"
+  old="`valueof $var`"
   cmd="$var=\"$old $package\""
   eval $cmd
 done
 
 for section in admin libs misc net sound utils video x11; do
   echo "menu \"$section\"" >> $KCONFIG
-  var="SEC_$section"
-  eval pkgs="\$$var"
-  for package in $pkgs; do
+  for package in `valueof "SEC_$section"`; do
     do_package $package
   done
   echo endmenu >> $KCONFIG
