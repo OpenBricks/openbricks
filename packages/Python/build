@@ -1,0 +1,49 @@
+#!/bin/sh
+
+. config/options
+
+cd $BUILD/$1*
+
+rm -rf config.cache
+
+# build hostpython and hostpgen
+unset CONFIG_SITE
+export OPT="$HOST_CFLAGS" 
+
+do_configure host \
+            --without-cxx-main \
+            --with-threads \
+            --enable-unicode=ucs4 \
+
+make python Parser/pgen
+
+mv python hostpython
+mv Parser/pgen Parser/hostpgen
+make distclean
+
+# build target python
+export OPT="$CFLAGS"
+
+do_configure target \
+            --with-threads \
+            --enable-unicode=ucs4 \
+            --disable-ipv6 \
+            --disable-profiling \
+            --without-pydebug \
+            --without-doc-strings \
+            --without-tsc \
+            --without-pymalloc \
+            --without-fpectl \
+            --without-wctype-functions \
+            --without-cxx-main \
+            --with-system-ffi \
+
+export HOSTPYTHON="./hostpython"
+export HOSTPGEN="./Parser/hostpgen"
+export CROSS_COMPILE_TARGET=yes
+
+make
+make_install
+
+mkdir -p .install/bin
+cp -P hostpython .install/bin/python
