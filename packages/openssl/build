@@ -1,0 +1,37 @@
+#!/bin/sh
+
+. config/options
+
+export MAKEFLAGS=-j1
+
+case $TARGET_ARCH in
+  i386)
+    TARGET=linux-elf
+    ;;
+  x86_64)
+    TARGET=linux-x86_64
+    ;;
+  powerpc)
+    TARGET=linux-ppc
+    ;;
+  powerpc64)
+    TARGET=linux-ppc64
+    ;;
+esac
+
+FEATURES="zlib-dynamic threads shared no-idea no-mdc2 no-rc5 no-krb5"
+
+cd $BUILD/$1*
+
+./Configure $FEATURES --prefix=/usr --openssldir=/etc/ssl $TARGET
+make CC=$CC LD=$LD RANLIB=$RANLIB all build-shared
+make CC=$CC LD=$LD RANLIB=$RANLIB do_linux-shared
+
+install_dir="`pwd`/.install"
+mkdir -p $install_dir
+make CC=$CC LD=$LD RANLIB=$RANLIB INSTALL_PREFIX="$install_dir" install_sw
+
+# remove static libs, we don't want them
+rm -f $install_dir/usr/lib/*.a
+
+fix_libs $install_dir
