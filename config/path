@@ -385,47 +385,29 @@ get_meta() {
   PKG_BUILD_DIR="$BUILD/${PKG_NAME}-${PKG_VERSION}"
 
   for use in $PKG_USE; do
-    if [ "$use" = uclibc -a "$TARGET_LIBC" = uClibc ]; then
-      if [ -n "$PKG_BUILD_DEPENDS" ]; then
-        PKG_BUILD_DEPENDS="$PKG_BUILD_DEPENDS $PKG_BUILD_DEPENDS_uclibc"
-      else
-        PKG_BUILD_DEPENDS="$PKG_BUILD_DEPENDS_uclibc"
-      fi
-      if [ -n "$PKG_RUN_DEPENDS" ]; then
-        PKG_RUN_DEPENDS="$PKG_RUN_DEPENDS $PKG_RUN_DEPENDS_uclibc"
-      else
-        PKG_RUN_DEPENDS="$PKG_RUN_DEPENDS_uclibc"
-      fi
-      if [ -n "$PKG_DEPENDS" ]; then
-        PKG_DEPENDS="$PKG_DEPENDS $PKG_DEPENDS_uclibc"
-      else
-        PKG_DEPENDS="$PKG_DEPENDS_uclibc"
-      fi
-    else
-      if [ "`valueof "${PKG_NAME}_${use}"`" = yes ]; then
-        tmp=`valueof "PKG_BUILD_DEPENDS_${use}"`
-        if [ -n "$tmp" ]; then
-          if [ -n "$PKG_BUILD_DEPENDS" ]; then
-            PKG_BUILD_DEPENDS="$PKG_BUILD_DEPENDS $tmp"
-          else
-            PKG_BUILD_DEPENDS="$tmp"
-          fi
+    if pkg_uses $PKG_NAME $use; then
+      tmp=`valueof "PKG_BUILD_DEPENDS_${use}"`
+      if [ -n "$tmp" ]; then
+        if [ -n "$PKG_BUILD_DEPENDS" ]; then
+          PKG_BUILD_DEPENDS="$PKG_BUILD_DEPENDS $tmp"
+        else
+          PKG_BUILD_DEPENDS="$tmp"
         fi
-        tmp=`valueof "PKG_RUN_DEPENDS_${use}"`
-        if [ -n "$tmp" ]; then
-          if [ -n "$PKG_RUN_DEPENDS" ]; then
-            PKG_RUN_DEPENDS="$PKG_RUN_DEPENDS $tmp"
-          else
-            PKG_RUN_DEPENDS="$tmp"
-          fi
+      fi
+      tmp=`valueof "PKG_RUN_DEPENDS_${use}"`
+      if [ -n "$tmp" ]; then
+        if [ -n "$PKG_RUN_DEPENDS" ]; then
+          PKG_RUN_DEPENDS="$PKG_RUN_DEPENDS $tmp"
+        else
+          PKG_RUN_DEPENDS="$tmp"
         fi
-        tmp=`valueof "PKG_DEPENDS_${use}"`
-        if [ -n "$tmp" ]; then
-          if [ -n "$PKG_DEPENDS" ]; then
-            PKG_DEPENDS="$PKG_DEPENDS $tmp"
-          else
-            PKG_DEPENDS="$tmp"
-          fi
+      fi
+      tmp=`valueof "PKG_DEPENDS_${use}"`
+      if [ -n "$tmp" ]; then
+        if [ -n "$PKG_DEPENDS" ]; then
+          PKG_DEPENDS="$PKG_DEPENDS $tmp"
+        else
+          PKG_DEPENDS="$tmp"
         fi
       fi
     fi
@@ -461,13 +443,35 @@ get_meta() {
   PKG_OPK_DEV="${PKG_NAME}_${PKG_VERSION}-${PKG_REV}dev${PKG_OPK_ARCH}_`uname -m`.opk"
 }
 
+get_use_type() {
+  local use=$1
+
+  for arch in i386 x86_64 powerpc powerpc64 arm mips; do
+    [ "$flag" = "$arch" ] && echo "ARCH"
+  done
+
+  # FIXME: there's a uclibc/uClibc mismatch to be fixed
+  for libc in uclibc eglibc glibc; do
+    [ "$flag" = "$libc" ] && echo "LIBC"
+  done
+
+  return 0
+}
+
 pkg_uses() {
   local pkg="$1"
   local flag="$2"
-  local tmp
-  local var="${pkg}_${flag}"
-  eval tmp="\$$var"
-  [ "$tmp" = yes ] && return 0 || return 1
+  local type=`get_use_type $flag`
+
+  if [ -n "$type" ]; then
+    [ "`valueof TARGET_$type`" = "$flag" ] && return 0 || return 1
+  else
+    local var="${pkg}_${flag}"
+    local tmp
+
+    eval tmp="\$$var"
+    [ "$tmp" = yes ] && return 0 || return 1
+  fi
 }
 
 kernel_path() {
