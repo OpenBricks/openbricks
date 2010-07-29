@@ -51,6 +51,9 @@ sum: iso generator dist fulldist
 get:
 	scripts/get
 
+test:
+	scripts/test
+
 clean-doc:
 	make -C DOCS clean
 
