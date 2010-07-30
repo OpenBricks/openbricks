@@ -24,8 +24,8 @@ fi
 [ "$TARGET_ARCH" = powerpc64 ] && XORG=no && TARGET_LIBC=glibc
 [ "$TARGET_ARCH" = x86_64 ] && CONSOLE=no && XORG=yes
 [ "$TARGET_ARCH" != i386 ] && INSTALLATOR=no
-[ "$VDPAU" = yes ] && NVIDIA=yes && TOOLCHAIN_CXX=yes
-[ "$NVIDIA" = yes ] && TARGET_LIBC=glibc
+[ "$VDPAU" = yes ] && XORG=yes && NVIDIA=yes && TOOLCHAIN_CXX=yes
+[ "$NVIDIA" = yes -a "$TARGET_LIBC" = uClibc ] && TARGET_LIBC=glibc
 [ "$XORG" = yes ] && TOOLCHAIN_CXX=yes
 [ "$VDR" = yes ] && TARGET_LIBC=glibc && TOOLCHAIN_CXX=yes
 [ "$UNRAR" = yes ] && TOOLCHAIN_CXX=yes
@@ -148,7 +148,8 @@ else
 fi
 
 [ "$TARGET_ARCH" = powerpc64 ] && GCC_OPTIM="$GCC_OPTIM -mcpu=$TARGET_CPU -m64"
-[ "$TARGET_ARCH" = arm ] && GCC_OPTIM="$GCC_OPTIM -mcpu=$TARGET_CPU -mfpu=neon -mfloat-abi=softfp -ffast-math"
+[ "$TARGET_ARCH" = arm ] && GCC_OPTIM="$GCC_OPTIM -mcpu=$TARGET_CPU -ffast-math"
+[ "$TARGET_ARCH" = arm -a "$NEON" = yes ] && GCC_OPTIM="$GCC_OPTIM -mfpu=neon -mfloat-abi=softfp"
 
 if [ "$TARGET_CPU" = atom ]; then
   GCC_OPTIM="$GCC_OPTIM -march=core2 -mfpmath=sse -msse3"
@@ -249,6 +250,7 @@ setup_toolchain() {
     export DVDNAV_CONFIG=$LIB_PREFIX/bin/dvdnav-config
     export XSLT_CONFIG=$LIB_PREFIX/bin/xslt-config
     export FREETYPE_CONFIG=$ROOT/$TOOLCHAIN/bin/freetype-config
+    export DIRECTFB_CONFIG=$ROOT/$TOOLCHAIN/bin/directfb-config
     export PKG_CONFIG=$ROOT/$TOOLCHAIN/bin/pkg-config
     export PKG_CONFIG_PATH=$LIB_PREFIX/lib/pkgconfig
     if [ "$OPTIMIZE" = yes ]; then
@@ -498,7 +500,7 @@ require_cxx() {
 
 strip_libs() {
   if [ "$DEBUG" = no ]; then
-    local tostrip="`find $1 -name "*.so[0-9.]*" | grep -v \".py$\"`"
+    local tostrip="`find $1 -type f -readable -writable -name "*.so[0-9.]*" | grep -v \".py$\"`"
     [ -n "$tostrip" ] && $STRIP $tostrip
   fi
 
