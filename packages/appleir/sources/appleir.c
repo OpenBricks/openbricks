@@ -253,7 +253,7 @@ appleir_probe (struct usb_interface *intf, const struct usb_device_id *id)
 
 
   appleir->data =
-    usb_buffer_alloc (dev, URB_SIZE, GFP_KERNEL, &appleir->dma_buf);
+    usb_alloc_coherent (dev, URB_SIZE, GFP_KERNEL, &appleir->dma_buf);
   if (!appleir->data)
     goto fail;
 
@@ -322,7 +322,7 @@ fail:
 
 
       if (appleir->data)
-        usb_buffer_free (dev, URB_SIZE, appleir->data, appleir->dma_buf);
+        usb_free_coherent (dev, URB_SIZE, appleir->data, appleir->dma_buf);
 
       if (appleir->timer_initted)
         del_timer_sync (&appleir->key_up_timer);
@@ -349,7 +349,7 @@ appleir_disconnect (struct usb_interface *intf)
         del_timer_sync (&appleir->key_up_timer);
       usb_kill_urb (appleir->urb);
       usb_free_urb (appleir->urb);
-      usb_buffer_free (interface_to_usbdev (intf), URB_SIZE, appleir->data,
+      usb_free_coherent (interface_to_usbdev (intf), URB_SIZE, appleir->data,
                        appleir->dma_buf);
       kfree (appleir);
     }
