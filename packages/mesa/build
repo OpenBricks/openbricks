@@ -3,13 +3,33 @@
 . config/options
 
 if [ "$TARGET_ARCH" = arm ]; then
-  EGL="--enable-egl"
   DRI_DRIVERS="--with-dri-drivers=swrast"
-  GALLIUM="--disable-gallium"
+  GALLIUM_STATE_TACKERS="egl,glx,es"
+
+  for i in intel radeon svga; do
+    GALLIUM_DRIVERS="$GALLIUM_DRIVERS --disable-gallium-$i"
+  done
 else
-  EGL="--disable-egl"
-  GALLIUM="--enable-gallium"
+  GALLIUM_STATE_TACKERS="egl,glx"
+
+  for i in intel radeon svga; do
+    GALLIUM_DRIVERS="$GALLIUM_DRIVERS --enable-gallium-$i"
+  done
 fi
+
+# Direct Rendering (DRI)
+CFG_DRI="--with-driver=dri $DRI_DRIVERS --with-dri-driverdir=$XORG_PATH_DRI"
+
+# Gallium 3D
+CFG_GALLIUM="--enable-gallium --with-state-trackers=$GALLIUM_STATE_TACKERS"
+CFG_GALLIUM="$CFG_GALLIUM --enable-gallium-swrast"
+CFG_GALLIUM="$CFG_GALLIUM --disable-gallium-nouveau"
+
+# EGL: Embedded Graphics Library (native platform graphics interface)
+CFG_EGL="--enable-egl --with-egl-driver-dir=$XORG_PATH_EGL"
+
+# X.Org
+CFG_XORG="--with-x --with-xorg-driver-dir=$XORG_PATH_DRIVERS"
 
 cd $BUILD/$1*
 
@@ -17,6 +37,7 @@ export HOST_CC=$HOST_CC
 export OPT_FLAGS="$CFLAGS"
 export HOST_OPT_FLAGS="$HOST_CFLAGS"
 export X11_INCLUDES=
+export EXTRA_LIB_PATH=
 export DRI_DRIVER_INSTALL_DIR="$XORG_PATH_DRI"
 export DRI_DRIVER_SEARCH_DIR="$XORG_PATH_DRI"
 
@@ -27,28 +48,39 @@ do_configure \
             --enable-glx-tls \
             --enable-driglx-direct \
             --enable-gl-osmesa \
-            $EGL \
             --enable-glu \
             --disable-glut \
             --disable-glw \
             --disable-motif \
-            $GALLIUM \
-            --with-driver=dri \
-            $DRI_DRIVERS \
-            --with-dri-driverdir="$XORG_PATH_DRI" \
-            --with-xorg-driver-dir="$XORG_PATH_DRIVERS" \
-            --with-x \
+            $CFG_GALLIUM \
+            $CFG_DRI \
+            $CFG_EGL \
+            $CFG_XORG \
             --without-demos \
 
+# dirty hack to build GL Shader Language compiler host tools
+make -C src/glsl CC=$HOST_CC CFLAGS="$HOST_CFLAGS" LDFLAGS="$HOST_LDFLAGS"
+make -C src/glsl/pp clean
+make -C src/glsl/cl clean
+
+# now build Mesa for target
 make
-$STRIP src/mesa/libmesa*.so*
 make_install
 
-if [ "$TARGET_ARCH" = arm ]; then
-  for i in EGL GLES GLES2; do
-    cp -PR include/$i .install/usr/include
-  done
-fi
+# copy over dynamic libs
+for i in mesa mesagallium glapi; do
+  cp -P src/mesa/lib$i.so* .install/usr/lib
+done
 
-mkdir -p .install/usr/lib/mesa
-cp -P .install/usr/lib/libGL.so* .install/usr/lib/mesa/
+# do some copy for proprietary drivers replacement
+MESA_LIB=.install/usr/lib/mesa
+
+mkdir -p $MESA_LIB
+cp -P .install/usr/lib/libGL.so*  $MESA_LIB
+cp -P .install/usr/lib/libEGL.so* $MESA_LIB
+
+[ "$TARGET_ARCH" = arm ] && \
+  cp -P .install/usr/lib/libGLES*.so* $MESA_LIB
+
+exit 0
+
