@@ -4,11 +4,11 @@ all: iso
 	scripts/kconfiginit
 
 config: .stamps/kconfiginit
-	$(MAKE) -C build/bst-kconfig* $@
+	$(MAKE) -C build.host/bst-kconfig* $@
 	scripts/kconfig2options
 
 %config: .stamps/kconfiginit
-	$(MAKE) -C build/bst-kconfig* $@
+	$(MAKE) -C build.host/bst-kconfig* $@
 	scripts/kconfig2options
 
 doc:
