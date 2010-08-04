@@ -1,0 +1,127 @@
+#!/bin/sh
+
+. config/path
+
+KCONFIG=config/Kconfig.packages
+
+# process a package and write its configuration stanza to Kconfig.packages
+do_package() {
+  package=$1
+  [ -f packages/$package/install ] || continue
+
+  get_meta $package
+
+  KCONFIG_NAME="$PKG_NAME"
+  [ -n "$PKG_SHORTDESC" ] && KCONFIG_NAME="$KCONFIG_NAME - $PKG_SHORTDESC"
+  cat >> $KCONFIG <<EOF
+config PKG_$PKG_NAME
+  tristate "$KCONFIG_NAME"
+EOF
+  if [ "$PKG_ARCH" != any -a "$PKG_ARCH" != all ]; then
+    archlist=""
+    for a in $PKG_ARCH; do
+      if [ -z "$archlist" ]; then
+        archlist="TARGET_ARCH_$a"
+      else
+        archlist="$archlist || TARGET_ARCH_$a"
+      fi
+    done
+    echo "  depends on ( $archlist )" >> $KCONFIG
+  fi
+  [ "$PKG_LICENSE" = "non-free" ] && echo "  depends on TAINT" >> $KCONFIG
+  for use in $PKG_PARENT_USE; do
+    echo "  depends on GX_`echo ${PKG_PARENT} | sed 's/-//g'`_${use}" >> $KCONFIG
+  done
+
+  for d in $PKG_RUN_DEPENDS; do
+    [ "$d" != "$PKG_PARENT" ] && echo "  select PKG_$d" >> $KCONFIG
+  done
+
+  for use in $PKG_USE; do
+    type=`get_use_type $use`
+    if [ -n "$type" ]; then
+      for p in `valueof PKG_RUN_DEPENDS_$use`; do
+        echo "  select PKG_$p if TARGET_$type_$use" >> $KCONFIG
+      done
+      for p in `valueof PKG_DEPENDS_$use`; do
+        echo "  select PKG_$p if TARGET_$type_$use" >> $KCONFIG
+      done
+    fi
+  done
+
+  [ -n "$PKG_KCONFIG_DEPENDS" ] && echo "$PKG_KCONFIG_DEPENDS" >> $KCONFIG
+  [ -n "$PKG_LONGDESC" ] && cat >> $KCONFIG <<EOF
+  help
+`echo "$PKG_LONGDESC" | fmt | sed 's/^/    /g'`
+EOF
+  echo >> $KCONFIG
+  for use in $PKG_USE; do
+    [ -n "`get_use_type $use`" ] && continue
+
+    use_name=`valueof "PKG_USE_NAME_${use}"`
+    [ -z "$use_name" ] && use_name=$use
+    use_desc=`valueof "PKG_USE_DESC_${use}"`
+    [ -z "$use_desc" ] && use_desc="Enable $use_name support"
+    use_help=`valueof "PKG_USE_HELP_${use}"`
+    [ -z "$use_help" ] && use_help="${use_desc}."
+    use_default=`valueof "PKG_USE_DEFAULT_${use}"`
+    [ "$use_default" = yes ] && use_default=y || use_default=n
+
+    # strip dashes from the package name, as they are illegal in environment
+    # variable names; cf. pkg_uses in config/path
+    name=`echo $PKG_NAME | sed 's/-//g'`
+
+    cat >> $KCONFIG <<EOF
+config GX_${name}_${use}
+  bool "$use_desc"
+  default y if USE_$use
+  default $use_default
+  depends on PKG_${PKG_NAME}
+EOF
+    for p in `valueof "PKG_RUN_DEPENDS_${use}"`; do
+      echo "  select PKG_$p" >> $KCONFIG
+    done
+    for p in `valueof "PKG_DEPENDS_${use}"`; do
+      echo "  select PKG_$p" >> $KCONFIG
+    done
+    cat >> $KCONFIG <<EOF
+  help
+    $use_help
+EOF
+    echo >> $KCONFIG
+  done
+  if [ -n "$PKG_KCONFIG_EXTRA" ]; then
+    echo "$PKG_KCONFIG_EXTRA" >> $KCONFIG
+    echo >> $KCONFIG
+  fi
+}
+
+# Kconfig.packages generation starts here
+rm -f $KCONFIG
+
+# populate SEC_$section variables with list of packages per section
+for package in packages/*; do
+  package=`echo $package | sed s:packages/::`
+  [ -f packages/$package/meta ] || continue
+  # source the package meta to populate PKG_SECTION
+  PKG_SECTION=
+  . packages/$package/meta
+  old=
+  cmd=
+  var="SEC_$PKG_SECTION"
+  old="`valueof $var`"
+  cmd="$var=\"$old $package\""
+  eval $cmd
+done
+
+# generate Kconfig menus for the various sections
+for section in admin libs misc net sound utils video x11; do
+  echo "menu \"$section\"" >> $KCONFIG
+  for package in `valueof "SEC_$section"`; do
+    do_package $package
+  done
+  echo endmenu >> $KCONFIG
+done
+
+exit 0
+
