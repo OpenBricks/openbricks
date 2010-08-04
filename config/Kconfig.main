@@ -1,0 +1,311 @@
+source "../../config/Kconfig.generated"
+
+# We use modules to mean opk packages
+config MODULES
+  bool
+  option modules
+  default y
+
+#######################################
+menu "General setup"
+#######################################
+
+# Target architecture, platform and CPU options
+source "../../config/Kconfig.arch"
+
+choice OPTIMIZATIONS
+  prompt "Optimizations"
+  default OPTIMIZATIONS_SPEED
+  help
+    Build optimizations
+
+config OPTIMIZATIONS_SPEED
+  bool "speed"
+
+config OPTIMIZATIONS_SIZE
+  bool "size"
+
+config OPTIMIZATIONS_NONE
+  bool "none"
+
+endchoice
+
+config GX_NEON
+  bool "Enable NEON optimizations"
+  depends on TARGET_ARCH_arm
+  default y
+
+config GX_TOOLCHAIN_CXX
+  bool "Support C++ in toolchain"
+  default y
+
+choice COMPRESSION_METHOD
+  prompt "Compression method"
+  default COMPRESSION_LZMA
+  help
+    LZMA decrease image size but GZIP is way faster to decompress and boot.
+
+config COMPRESSION_LZMA
+  bool "lzma"
+
+config COMPRESSION_GZIP
+  bool "gzip"
+
+config COMPRESSION_NONE
+  bool "none"
+
+endchoice
+
+choice TARGET_LIBC
+  prompt "Target libc"
+  default TARGET_LIBC_eglibc
+
+config TARGET_LIBC_eglibc
+  bool "eglibc"
+  select PKG_eglibc
+
+config TARGET_LIBC_glibc
+  bool "glibc"
+  select PKG_glibc
+
+config TARGET_LIBC_uclibc
+  bool "uclibc"
+  select PKG_uclibc
+
+endchoice
+
+config GX_LOCAL_CC
+  string "Local gcc location"
+  default ""
+  help
+    Need to point to your actual (host) gcc
+    If you have ccache installed, take care that LOCAL_CC don't point to it
+    Autodetected if left blank (default)
+
+config GX_LOCAL_CXX
+  string "Local g++ location"
+  default ""
+  help
+    Need to point to your actual (host) g++
+    If you have ccache installed, take care that LOCAL_CXX don't point to it
+    Autodetected if left blank (default)
+
+config GX_DEBUG
+  bool "Debug"
+  default n
+
+config GX_DYNAMIC_SYSROOT
+  bool "Dynamic sysroot"
+  default n
+  help
+   Rebuild the sysroot from scratch at each package compilation. Makes build
+   slower but helps to catch wrong depends between packages.
+
+config GX_VERBOSE
+  bool "Verbose"
+  default n
+
+config GX_CONCURRENCY_MAKE_LEVEL
+  int "Concurrency make level"
+  default 1
+  help
+    Concurrency make level (-j option)
+    Try value 1 (default) to 4 on single CPU computer, or more on
+    multi-processor computer (like hyperthreading SMP CPU)
+
+config INCLUDE_GEEXBOX_OPTIONS
+  bool "Overlay ~/.geexbox-options"
+  default y
+
+endmenu
+
+#######################################
+menu "Settings"
+#######################################
+
+config TIMEZONE
+  bool "Enable timezone support"
+  default n
+  select PKG_timezone-data if ( TARGET_LIBC_glibc || TARGET_LIBC_eglibc )
+
+config GX_INCLUDED_TIMEZONES
+  string "Included timezones"
+  depends on TIMEZONE && ( TARGET_LIBC_glibc || TARGET_LIBC_eglibc )
+  default ""
+  help
+    Can be empty, "all" or a list of zoneinfo names
+    e.g. "Europe/Rome GMT Africa America/Kentucky"
+
+config GX_TIMEZONE
+  string "Timezone"
+  depends on TIMEZONE
+  default ""
+  help
+    Timezone to use (empty disables timezone support)
+    if TARGET_LIBC=uclibc use a TZ environment string 
+    if TARGET_LIBC=glibc use a zoneinfo name and remember 
+    to set INCLUDED_TIMEZONES accordingly
+
+choice KEYMAP
+  prompt "Keymap"
+  default KEYMAP_QWERTY
+
+config KEYMAP_QWERTY
+  bool "qwerty"
+
+config KEYMAP_AZERTY
+  bool "azerty"
+
+config KEYMAP_QWERTZ
+  bool "qwertz"
+
+endchoice
+
+# Remote and receiver configuration options
+source "../../config/Kconfig.remote"
+
+config GX_SUB_CHARSET
+  string "Subtitles charset"
+  default "en"
+
+config LOCALE
+  bool "Enable locale support"
+  depends on ( TARGET_LIBC_glibc || TARGET_LIBC_eglibc )
+  select PKG_i18n-locales
+  default n
+
+config GX_INCLUDED_LOCALES
+  string "Included locales"
+  depends on LOCALE
+  default ""
+
+config GX_DEFAULT_LOCALE
+  string "Default locale"
+  depends on LOCALE
+  default ""
+
+endmenu
+
+#######################################
+menu "Features"
+#######################################
+
+config TAINT
+  bool "Enable non-free components"
+  default n
+  help
+    Allow the use of non-free components in build. Please note that non-free
+    stuff may have all sorts of crazy restrictions and will make the resulting
+    image/iso subject to them (and thus non-free).
+
+config GX_DEVTOOLS
+  bool "Enable development and testing tools"
+  default n
+
+config USE_devtools
+  bool
+  default y if GX_DEVTOOLS
+
+config GX_NETWORK
+  bool "Enable networking support"
+  select PKG_network
+  default y
+
+config GX_SERVICES
+  bool "Start network services by default"
+  depends on GX_NETWORK
+  default n
+
+config USE_pulseaudio
+  bool "Enable PulseAudio support"
+  select PKG_pulseaudio
+  default y
+
+config USE_xorg
+  bool "Enable Xorg support"
+  select PKG_Xorg
+  default y
+
+config USE_directfb
+  bool "Enable DirectFB support"
+  select PKG_DirectFB
+  default n
+
+config USE_sdl
+  bool "Enable SDL support"
+  select PKG_SDL
+  default n
+
+config USE_openmax
+  bool "Enable OpenMAX support"
+  depends on TARGET_ARCH_arm
+  default n
+
+config USE_vdpau
+  bool "Enable VDPAU support"
+  depends on ( TARGET_ARCH_i386 || TARGET_ARCH_x86_64 )
+  select PKG_libvdpau
+  default n
+
+config USE_lirc
+  bool "Enable LIRC support"
+  select PKG_lirc
+  default y
+
+config USE_touchscreen
+  bool "Enable touchscreen support"
+  default n
+
+endmenu
+
+#######################################
+menu "Packages"
+#######################################
+config BASE_SYSTEM
+  bool "Build the GeeXboX base system"
+  default y
+  select PKG_base-files
+  select PKG_gcc-final
+  select PKG_busybox
+  select PKG_util-linux-ng
+  select PKG_opkg
+  select PKG_linux
+  select PKG_udev
+  select PKG_pcmciautils
+  select PKG_upstart
+  select PKG_alsa
+  select PKG_debug
+  select PKG_enna
+  select PKG_automountd
+  select PKG_i18n
+
+  source "../../config/Kconfig.packages"
+endmenu
+
+#######################################
+# Autogenerated options               #
+#######################################
+
+config GX_OPTIMIZATIONS
+  string
+  default "speed" if OPTIMIZATIONS_SPEED
+  default "size" if OPTIMIZATIONS_SIZE
+  default "no" if OPTIMIZATIONS_NONE
+
+config GX_COMPRESSION_METHOD
+  string
+  default "lzma" if COMPRESSION_LZMA
+  default "gzip" if COMPRESSION_GZIP
+  default "none" if COMPRESSION_NONE
+
+config GX_TARGET_LIBC
+  string
+  default "eglibc" if TARGET_LIBC_eglibc
+  default "glibc" if TARGET_LIBC_glibc
+  default "uclibc" if TARGET_LIBC_uclibc
+
+config GX_KEYMAP
+  string
+  default "qwerty" if KEYMAP_QWERTY
+  default "azerty" if KEYMAP_AZERTY
+  default "qwertz" if KEYMAP_QWERTZ

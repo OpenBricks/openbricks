@@ -1,3 +1,22 @@
+all: iso
+
+.stamps/kconfiginit:
+	scripts/kconfiginit
+
+config: .stamps/kconfiginit
+	$(MAKE) -C build.host/bst-kconfig* $@
+	scripts/kconfig2options
+
+%config: .stamps/kconfiginit
+	$(MAKE) -C build.host/bst-kconfig* $@
+	scripts/kconfig2options
+
+doc:
+	scripts/checkdeps docs
+	make -C DOCS
+
+docs: doc
+
 iso:
 	scripts/iso
 
@@ -32,11 +51,17 @@ sum: iso generator dist fulldist
 get:
 	scripts/get
 
-clean:
+test:
+	scripts/test
+
+clean-doc:
+	make -C DOCS clean
+
+clean: clean-doc
 	scripts/clean
 
-distclean:
-	rm -rf .stamps build.* sources geexbox*
+distclean: clean-doc
+	rm -rf .stamps build* sources geexbox* config/options
 
 
-.PHONY: iso burn dist fulldist generator installator exec clean distclean
+.PHONY: iso burn dist fulldist generator installator exec clean distclean clean-doc doc docs
