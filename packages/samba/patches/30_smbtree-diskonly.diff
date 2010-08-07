@@ -1,38 +1,32 @@
-diff -Naur samba-3.0.28a/source/utils/smbtree.c samba-3.0.28a.edit/source/utils/smbtree.c
---- samba-3.0.28a/source/utils/smbtree.c	2008-04-05 16:11:02.000000000 +0200
-+++ samba-3.0.28a.edit/source/utils/smbtree.c	2008-04-05 16:10:17.000000000 +0200
-@@ -181,16 +181,18 @@
+diff -Naur samba-3.5.4.orig/source3/utils/smbtree.c samba-3.5.4/source3/utils/smbtree.c
+--- samba-3.5.4.orig/source3/utils/smbtree.c	2010-08-07 22:18:27.268989060 +0200
++++ samba-3.5.4/source3/utils/smbtree.c	2010-08-07 22:27:03.738293848 +0200
+@@ -205,13 +205,15 @@
  }
  
  
--static BOOL get_shares(char *server_name, struct user_auth_info *user_info)
-+static BOOL get_shares(char *server_name, struct in_addr *server_ip, struct user_auth_info *user_info)
+-static bool get_shares(char *server_name, struct user_auth_info *user_info)
++static bool get_shares(char *server_name, struct in_addr *server_ip, struct user_auth_info *user_info)
  {
          struct cli_state *cli;
  
          if (!(cli = get_ipc_connect(server_name, NULL, user_info)))
                  return False;
  
-+        *server_ip = cli->dest_ip;
-+        
++	*server_ip = ((struct sockaddr_in *) &cli->dest_ss)->sin_addr;
++
  	if (get_rpc_shares(cli, add_name, &shares))
  		return True;
--	
-+        
-         if (!cli_RNetShareEnum(cli, add_name, &shares))
-                 return False;
  
-@@ -200,7 +202,8 @@
- static BOOL print_tree(struct user_auth_info *user_info)
+@@ -224,6 +226,7 @@
+ static bool print_tree(struct user_auth_info *user_info)
  {
-         struct name_list *wg, *sv, *sh;
--
-+        struct in_addr server_ip;
-+        
+         struct smb_name_list *wg, *sv, *sh;
++	struct in_addr server_ip;
+ 
          /* List workgroups */
  
-         if (!get_workgroups(user_info))
-@@ -208,8 +211,6 @@
+@@ -232,8 +235,6 @@
  
          for (wg = workgroups; wg; wg = wg->next) {
  
@@ -41,7 +35,7 @@ diff -Naur samba-3.0.28a/source/utils/smbtree.c samba-3.0.28a.edit/source/utils/
                  /* List servers */
  
                  free_name_list(servers);
-@@ -221,21 +222,23 @@
+@@ -245,21 +246,23 @@
  
                  for (sv = servers; sv; sv = sv->next) {
  
@@ -63,10 +57,10 @@ diff -Naur samba-3.0.28a/source/utils/smbtree.c samba-3.0.28a.edit/source/utils/
 -				       sv->name, sh->name, sh->comment);
 +                                if (sh->server_type == STYPE_DISKTREE &&
 +                                    sh->name[strlen(sh->name)-1] != '$') {
-+                                  printf("%s/%s/%s\n",
-+                                         sv->name, inet_ntoa(server_ip),
-+                                         sh->name);
-+                                  fflush(stdout);
++					printf("%s/%s/%s\n",
++					       sv->name, inet_ntoa(server_ip),
++					       sh->name);
++					fflush(stdout);
 +                                }
                          }
                  }
