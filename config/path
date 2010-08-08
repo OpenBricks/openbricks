@@ -25,8 +25,7 @@ fi
 [ "$TARGET_ARCH" = x86_64 ] && CONSOLE=no && XORG=yes
 [ "$TARGET_ARCH" != i386 ] && INSTALLATOR=no
 [ "$VDPAU" = yes ] && XORG=yes && NVIDIA=yes && TOOLCHAIN_CXX=yes
-[ "$NVIDIA" = yes -a "$TARGET_LIBC" = uClibc ] && TARGET_LIBC=glibc
-[ "$XORG" = yes ] && TOOLCHAIN_CXX=yes
+[ "$NVIDIA" = yes -a "$TARGET_LIBC" = uclibc ] && TARGET_LIBC=glibc
 [ "$VDR" = yes ] && TARGET_LIBC=glibc && TOOLCHAIN_CXX=yes
 [ "$UNRAR" = yes ] && TOOLCHAIN_CXX=yes
 [ "$WIIMOTE" = yes ] && BLUETOOTH=yes
@@ -63,7 +62,7 @@ case $TARGET_ARCH in
 esac
 
 case $TARGET_LIBC in
-  uClibc)
+  uclibc)
     TARGET_NAME=$TARGET_FAMILY-geexbox-linux-uclibc
     ;;
 
@@ -106,9 +105,13 @@ CONFIG=config
 SCRIPTS=scripts
 PACKAGES=packages
 SOURCES=sources
-BUILD_BASE=build
-BUILD=$BUILD_BASE.$TARGET_ARCH.$TARGET_LIBC
-[ -n "$TARGET_PLATFORM" ] && BUILD=$BUILD_BASE.$TARGET_PLATFORM.$TARGET_LIBC
+BUILD_NOARCH=build.host
+if [ -z "$BUILD" ]; then
+  BUILD_BASE=build
+  BUILD=$BUILD_BASE.$TARGET_ARCH.$TARGET_LIBC
+  [ -n "$TARGET_PLATFORM" -a "$TARGET_PLATFORM" != generic ] && \
+    BUILD=$BUILD_BASE.$TARGET_PLATFORM.$TARGET_LIBC
+fi
 STAMPS_NOARCH=.stamps
 STAMPS=$BUILD/$STAMPS_NOARCH
 DOCS=DOCS
@@ -121,23 +124,21 @@ ROOTFS=$ROOT/$BUILD/rootfs
 PKGROOT=$ROOT/$BUILD/packages
 DEVPKGROOT=$ROOT/$BUILD/devpackages
 
-if [ "$XORG" = yes ]; then
-  XORG_PATH_ENCODINGS=/usr/share/fonts/X11/encodings
-  XORG_PATH_FONTS=/usr/share/X11/fonts
-  XORG_PATH_MAPS=$XORG_PATH_FONTS/util
-  XORG_PATH_DRI=/usr/lib/dri
-  XORG_PATH_EGL=/usr/lib/egl
+XORG_PATH_ENCODINGS=/usr/share/fonts/X11/encodings
+XORG_PATH_FONTS=/usr/share/X11/fonts
+XORG_PATH_MAPS=$XORG_PATH_FONTS/util
+XORG_PATH_DRI=/usr/lib/dri
+XORG_PATH_EGL=/usr/lib/egl
   XORG_PATH_VAAPI=/usr/lib/va
-  XORG_PATH_XKB=/usr/share/X11/xkb
-  XORG_PATH_XKB_OUTPUT=/var/lib/xkb
-  XORG_PATH_XKB_CACHE=/var/cache/xkb
-  XORG_PATH_RGB=/usr/lib/X11/rgb
-  XORG_PATH_MODULES=/usr/lib/xorg/modules
-  XORG_PATH_DRIVERS=/usr/lib/xorg/modules/drivers
-  XORG_PATH_ICONS=/usr/share/X11/icons
-  XORG_PATH_FDI=/usr/share/hal/fdi/policy
-  [ -z "$BOOT_DEFAULT" ] && BOOT_DEFAULT=hdtv
-fi
+XORG_PATH_XKB=/usr/share/X11/xkb
+XORG_PATH_XKB_OUTPUT=/var/lib/xkb
+XORG_PATH_XKB_CACHE=/var/cache/xkb
+XORG_PATH_RGB=/usr/lib/X11/rgb
+XORG_PATH_MODULES=/usr/lib/xorg/modules
+XORG_PATH_DRIVERS=/usr/lib/xorg/modules/drivers
+XORG_PATH_ICONS=/usr/share/X11/icons
+XORG_PATH_FDI=/usr/share/hal/fdi/policy
+[ -z "$BOOT_DEFAULT" ] && BOOT_DEFAULT=hdtv
 
 TOOLCHAIN_LANGUAGES=c
 [ "$TOOLCHAIN_CXX" = yes ] && TOOLCHAIN_LANGUAGES=${TOOLCHAIN_LANGUAGES},c++
@@ -153,7 +154,10 @@ fi
 [ "$TARGET_ARCH" = i386 -o "$TARGET_ARCH" = x86_64 ] && GCC_OPTIM="$GCC_OPTIM -fexcess-precision=fast"
 [ "$TARGET_ARCH" = powerpc64 ] && GCC_OPTIM="$GCC_OPTIM -mcpu=$TARGET_CPU -m64"
 [ "$TARGET_ARCH" = arm ] && GCC_OPTIM="$GCC_OPTIM -mcpu=$TARGET_CPU -ffast-math"
-[ "$TARGET_ARCH" = arm -a "$NEON" = yes ] && GCC_OPTIM="$GCC_OPTIM -mfpu=neon -mfloat-abi=softfp"
+[ "$TARGET_ARCH" = arm -a "$THUMB" = yes ] && GCC_OPTIM="$GCC_OPTIM -mthumb"
+[ "$TARGET_ARCH" = arm -a "$VFP" = yes ] && GCC_OPTIM="$GCC_OPTIM -mfpu=vfp -mfloat-abi=softfp"
+[ "$TARGET_ARCH" = arm -a "$VFP3" = yes ] && GCC_OPTIM="$GCC_OPTIM -mfpu=vfpv3 -mfloat-abi=softfp"
+[ "$TARGET_ARCH" = arm -a "$NEON" = yes ] && GCC_OPTIM="$GCC_OPTIM -mfpu=neon -mfloat-abi=softfp -ftree-vectorize"
 
 TARGET_CC=${TARGET_PREFIX}gcc
 TARGET_CXX=${TARGET_PREFIX}g++
@@ -196,6 +200,10 @@ else
   TARGET_CXXFLAGS="$TARGET_CXXFLAGS -s -fomit-frame-pointer"
   TARGET_LDFLAGS="$TARGET_LDFLAGS -s"
 fi
+
+# Autodetect local compiler if not set
+[ -z "$LOCAL_CC" ] && LOCAL_CC=`which gcc`
+[ -z "$LOCAL_CXX" ] && LOCAL_CXX=`which g++`
 
 HOST_AWK=gawk
 HOST_CC=$ROOT/$TOOLCHAIN/bin/host-gcc
@@ -291,7 +299,7 @@ GEEXBOX_SRCS=http://www.geexbox.org/src/$GEEXBOX_VERSION
 VERSION_SUFFIX=$TARGET_ARCH.$TARGET_LIBC
 [ -n "$TARGET_PLATFORM" ] && VERSION_SUFFIX=$TARGET_PLATFORM.$TARGET_LIBC
 
-ISO=geexbox-$GEEXBOX_VERSION-$MENU_LANG.$VERSION_SUFFIX.iso
+ISO=geexbox-$GEEXBOX_VERSION-$VERSION_SUFFIX.iso
 GENERATOR_NAME=geexbox-generator-$GEEXBOX_VERSION.$VERSION_SUFFIX
 FLAT_NAME=geexbox-flat-$GEEXBOX_VERSION.$VERSION_SUFFIX
 PXE_NAME=geexbox-pxe/GEEXBOX.$VERSION_SUFFIX
@@ -320,27 +328,41 @@ PACKAGE_URL="$PACKAGES/$1/url"
 [ -n "$TARGET_PLATFORM" -a -r "$PACKAGE_URL.$TARGET_PLATFORM" ] && \
 PACKAGE_URL="$PACKAGE_URL.$TARGET_PLATFORM"
 
+# Usage: apply_patch <package> <patch>
 apply_patch() {
   echo "## Applying patch: $2"
   cat $2 | patch -d `echo $BUILD/$1* | cut -f1 -d\ ` -p1 >&$VERBOSE_OUT
 }
 
+# Usage: value=`valueof <variable>`
+valueof() {
+  local tmp=
+  local var="$1"
+
+  eval tmp="\$$var"
+  echo "$tmp"
+}
+
+# Usage: get_meta <package>
 get_meta() {
+
+  # clear PKG_* variables
+  for var in `set | grep -E '^PKG_.*$' | cut -f1 -d=`; do
+    [ "$var" != PKG_CONFIG -a "$var" != PKG_CONFIG_PATH ] && unset $var
+  done
+
+  # set default values
   PKG_NAME=$1
-  PKG_URL=""
   PKG_VERSION="0.0invalid"
   PKG_REV=0
   PKG_ARCH=any
   PKG_LICENSE=free
-  PKG_DEPENDS=""
-  PKG_DEV_DEPENDS=""
-  PKG_BUILD_DEPENDS=""
-  PKG_RUN_DEPENDS=""
   PKG_PRIORITY=optional
   PKG_SECTION=misc
   PKG_SHORTDESC="$1 (autogenerated)"
-  PKG_LONGDESC=""
 
+  # populate variables
+  . $ROOT/$CONFIG/use
   [ -r $ROOT/$PACKAGES/$1/meta ] && . $ROOT/$PACKAGES/$1/meta
 
   case "$PKG_ARCH" in
@@ -362,6 +384,43 @@ get_meta() {
   esac
 
   PKG_BUILD_DIR="$BUILD/${PKG_NAME}-${PKG_VERSION}"
+
+  for use in $PKG_USE; do
+    if pkg_uses $PKG_NAME $use; then
+      tmp=`valueof "PKG_BUILD_DEPENDS_${use}"`
+      if [ -n "$tmp" ]; then
+        if [ -n "$PKG_BUILD_DEPENDS" ]; then
+          PKG_BUILD_DEPENDS="$PKG_BUILD_DEPENDS $tmp"
+        else
+          PKG_BUILD_DEPENDS="$tmp"
+        fi
+      fi
+      tmp=`valueof "PKG_RUN_DEPENDS_${use}"`
+      if [ -n "$tmp" ]; then
+        if [ -n "$PKG_RUN_DEPENDS" ]; then
+          PKG_RUN_DEPENDS="$PKG_RUN_DEPENDS $tmp"
+        else
+          PKG_RUN_DEPENDS="$tmp"
+        fi
+      fi
+      tmp=`valueof "PKG_DEPENDS_${use}"`
+      if [ -n "$tmp" ]; then
+        if [ -n "$PKG_DEPENDS" ]; then
+          PKG_DEPENDS="$PKG_DEPENDS $tmp"
+        else
+          PKG_DEPENDS="$tmp"
+        fi
+      fi
+    fi
+  done
+
+  if [ -n "$PKG_PARENT" ]; then
+    if [ -n "$PKG_DEPENDS" ]; then
+      PKG_DEPENDS="$PKG_DEPENDS $PKG_PARENT"
+    else
+      PKG_DEPENDS="$PKG_PARENT"
+    fi
+  fi
 
   if [ -n "$PKG_DEPENDS" ]; then
     if [ -n "$PKG_BUILD_DEPENDS" ]; then
@@ -393,14 +452,51 @@ get_meta() {
   PKG_OPK_DEV="${PKG_NAME}_${PKG_VERSION}-${PKG_REV}dev${PKG_OPK_ARCH}_`uname -m`.opk"
 }
 
+# Usage: type=`get_use_type <use_flag>`
+get_use_type() {
+  local flag=$1
+
+  for arch in i386 x86_64 powerpc powerpc64 arm mips; do
+    [ "$flag" = "$arch" ] && echo "ARCH"
+  done
+
+  for libc in uclibc eglibc glibc; do
+    [ "$flag" = "$libc" ] && echo "LIBC"
+  done
+
+  return 0
+}
+
+# Usage: pkg_uses <package> <use_flag>
+pkg_uses() {
+  local pkg="$1"
+  local flag="$2"
+  local type=`get_use_type $flag`
+
+  if [ -n "$type" ]; then
+    [ "`valueof TARGET_$type`" = "$flag" ] && return 0 || return 1
+  else
+    # strip dashes from the package name, as they are illegal in environment
+    # variable names; cf. do_package in scripts/meta2kconfig
+    local var="`echo $pkg | sed 's/-//g'`_${flag}"
+    local tmp
+
+    eval tmp="\$$var"
+    [ "$tmp" = yes ] && return 0 || return 1
+  fi
+}
+
+# Usage: path=`kernel_path`
 kernel_path() {
   ls -d $ROOT/$BUILD/linux-2*
 }
 
+# Usage: ver=`kernel_version`
 kernel_version() {
   basename $(kernel_path)/modules/lib/modules/*
 }
 
+# Usage: require_glibc <package>
 require_glibc() {
   if [ "$TARGET_LIBC" != glibc -a "$TARGET_LIBC" != eglibc ]; then
     echo "$1 requires glibc or eglibc, aborting."
@@ -408,6 +504,7 @@ require_glibc() {
   fi
 }
 
+# Usage: require_cxx <package>
 require_cxx() {
   if [ "$TOOLCHAIN_CXX" != yes ]; then
     echo "$1 requires C++ toolchain support, aborting."
@@ -415,6 +512,7 @@ require_cxx() {
   fi
 }
 
+# Usage: strip_libs <path>
 strip_libs() {
   if [ "$DEBUG" = no ]; then
     local tostrip="`find $1 -type f -readable -writable -name "*.so[0-9.]*" | grep -v \".py$\"`"
@@ -424,6 +522,7 @@ strip_libs() {
   return 0
 }
 
+# Usage: xorg_drv_configure_prepend
 xorg_drv_configure_prepend() {
   incdir=${LIB_PREFIX}/include/xorg
   for f in dri.h sarea.h dristruct.h exa.h damage.h xf86Module.h; do
@@ -435,6 +534,7 @@ xorg_drv_configure_prepend() {
   done
 }
 
+# Usage: fix_libs <path> [toolchain|sysroot|libprefix]
 fix_libs () {
   local target_dir="$1"
   local prefix="$2"
@@ -464,6 +564,7 @@ fix_libs () {
   return 0
 }
 
+# Usage: make_install [toolchain|sysroot|libprefix]
 make_install () {
   install_dir="$PWD/.install"
   local prefix="$1"
@@ -477,6 +578,7 @@ make_install () {
   return 0
 }
 
+# Usage: do_configure [host|target] [configure_options...]
 do_configure () {
   local buildfor=target
   local buildhost=$TARGET_NAME
@@ -519,6 +621,7 @@ do_configure () {
               $@
 }
 
+# Usage: do_install <target>
 do_install () {
   for file in $*; do
     [ -z "$file" ] && exit 1
@@ -529,6 +632,7 @@ do_install () {
   done
 }
 
+# Usage: do_installdev <target>
 do_installdev () {
   local file="$1"
   local target="$2"
@@ -548,5 +652,3 @@ do_installdev () {
   mkdir -p $target_dir/$dir
   cp -PR .install/$file $target_dir/$dir
 }
-
-INCLUDED_LANGS="en $MENU_LANG $INCLUDED_LANGS"
