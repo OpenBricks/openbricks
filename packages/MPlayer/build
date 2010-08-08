@@ -5,9 +5,10 @@
 setup_toolchain --optimize target
 
 set_option() {
-  OPT="$1"
-  CFG_LIST="$2"
-  [ "$OPT" = yes ] && CFG=enable || CFG=disable
+  PKG="$1"
+  OPT="$2"
+  CFG_LIST="$3"
+  pkg_uses $PKG $OPT && CFG=enable || CFG=disable
   for CFG_NAME in $CFG_LIST; do
     EXTRA_CONFIG="$EXTRA_CONFIG --$CFG-$CFG_NAME"
   done
@@ -18,23 +19,31 @@ EXTRA_LIBDIR="-L$LIB_PREFIX/lib"
 EXTRA_INCDIR="-I$LIB_PREFIX/include -I$LIB_PREFIX/include/freetype2"
 EXTRA_LIBS="-lavcodec -lavformat -lavutil -lpostproc -lfribidi -lfreetype -lass"
 
-set_option "$SDL" "sdl"
-set_option "$XORG" "xv xvmc x11 xf86keysym gl"
-set_option "$UNRAR" "unrarexec"
-set_option "$VDPAU" "vdpau"
+set_option $1 "sdl" "sdl"
+set_option $1 "xorg" "xv xvmc x11 xf86keysym gl"
+set_option $1 "unrar" "unrarexec"
+set_option $1 "vdpau" "vdpau"
+set_option $1 "bluray" "bluray"
+set_option $1 "dvb" "dvb"
 
-if [ "$LIVE555" = yes ]; then
+if pkg_uses $1 dvd; then
+  EXTRA_CONFIG="--enable-dvdread --with-dvdread-config=$DVDREAD_CONFIG --enable-dvdnav --with-dvdnav-config=$DVDNAV_CONFIG"
+else
+   EXTRA_CONFIG="--disable-dvdread --disable-dvdnav"
+fi
+
+if pkg_uses $1 live555; then
   EXTRA_LIBDIR="$EXTRA_LIBDIR -L$LIB_PREFIX/live"
   EXTRA_INCDIR="$EXTRA_INCDIR -I$LIB_PREFIX/live"
 else
   EXTRA_CONFIG="$EXTRA_CONFIG --disable-live"
 fi
 
-EXTRA_CONFIG="$EXTRA_CONFIG --enable-png --disable-lirc --enable-dvdread --with-dvdread-config=$DVDREAD_CONFIG --enable-dvdnav --with-dvdnav-config=$DVDNAV_CONFIG --disable-tv --disable-tv-v4l2 --disable-radio --disable-radio-v4l2 --disable-v4l2 --disable-menu"
+EXTRA_CONFIG="$EXTRA_CONFIG --enable-png --disable-lirc --disable-tv --disable-tv-v4l2 --disable-radio --disable-radio-v4l2 --disable-v4l2 --disable-menu"
 
 [ "$TARGET_ARCH" != arm ] && RUNTIME_CPU="--enable-runtime-cpudetection"
 
-if [ "$VDPAU" = yes ]; then
+if pkg_uses $1 vdpau; then
   EXTRA_LIBS="$EXTRA_LIBS -lvdpau"
 fi
 
@@ -138,7 +147,6 @@ cd $BUILD/$1*
             --disable-toolame \
             --disable-xmms \
             --enable-mp3lib \
-            --enable-bluray \
             --disable-liba52 \
             --disable-libmpeg2 \
             --disable-musepack \
@@ -153,7 +161,6 @@ cd $BUILD/$1*
             --disable-ggiwmh \
             --disable-directx \
             --disable-dxr2 \
-            --enable-dvb \
             --disable-mga \
             --disable-xmga \
             --disable-vm \

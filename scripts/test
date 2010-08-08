@@ -1,0 +1,80 @@
+#!/bin/sh
+
+#./scripts/test [-a <arch>] [-l <libc>] [-s "<stages_list>"] [package]
+
+archs="i386 x86_64 arm"
+libcs="eglibc"
+stages="clean get unpack build package packagedev install installdev"
+
+while getopts a:l:s: opt; do
+  case "$opt" in
+    a)   archs="$OPTARG";;
+    l)   libcs="$OPTARG";;
+    s)   stages="$OPTARG";;
+    [?]) echo "Usage: ./scripts/test [-a <arch>] [-l <libc>] [-s \"<stages_list>\"] [package...]"; exit 1 ;;
+  esac
+done
+shift $((OPTIND-1))
+
+packages="$*"
+
+if [ -z "$packages" ]; then
+  cd packages
+  packages=`ls .`
+  cd ..
+fi
+
+for arch in $archs; do
+  for libc in $libcs; do
+    BUILD="build.test.$arch.$libc"
+
+    cat > config/options <<EOF
+BUILD=$BUILD
+TARGET_ARCH="$arch"
+TARGET_PLATFORM=""
+TOOLCHAIN_CXX=yes
+LOCAL_CC=""
+LOCAL_CXX=""
+DYNAMIC_SYSROOT=yes
+DEVTOOLS=yes
+VERBOSE=yes
+CONCURRENCY_MAKE_LEVEL=16
+REMOTE="atiusb"
+RECEIVER="atiusb"
+SUB_CHARSET="en"
+NETWORK=yes
+SERVICES=yes
+OPTIMIZATIONS="speed"
+COMPRESSION_METHOD="lzma"
+TARGET_LIBC="$libc"
+KEYMAP="qwerty"
+ROOTFS_PACKAGES="$packages"
+. config/path
+EOF
+
+    mkdir -p $BUILD/test_logs
+
+    echo -n "$arch $libc toolchain : "
+    # bootstrap environment
+    scripts/build opkg-utils > $BUILD/test_logs/bootstrap.log 2>&1
+    scripts/build opkg-host >> $BUILD/test_logs/bootstrap.log 2>&1
+    scripts/installdev opkg-utils >> $BUILD/test_logs/bootstrap.log 2>&1
+    scripts/installdev opkg-host >> $BUILD/test_logs/bootstrap.log 2>&1
+    scripts/installdev toolchain >> $BUILD/test_logs/bootstrap.log 2>&1
+    echo "OK"
+
+    for package in $packages; do
+      mkdir -p $BUILD/test_logs/$package
+      for stage in $stages; do
+        echo -n "$arch $libc $package $stage : "
+        scripts/$stage $package > $BUILD/test_logs/$package/$stage.log 2>&1
+        if [ $? -eq 0 ]; then
+          echo "OK"
+        else
+          echo "FAIL"
+          break
+        fi
+      done
+    done
+  done
+done
