@@ -31,43 +31,7 @@ fi
 [ "$USE_EGLIBC" = yes ] && TARGET_LIBC=eglibc
 [ "$TARGET_ARCH" = arm ] && XORG_DRIVERS="fbdev omapfb" && WIFI=no && INSTALLATOR=no && STATS=no && PULSEAUDIO=no
 
-# determine architecture's family
-case $TARGET_ARCH in
-  i386)
-    TARGET_FAMILY=i586
-    ;;
-
-  x86_64)
-    TARGET_FAMILY=x86_64
-    ;;
-
-  powerpc)
-    TARGET_FAMILY=powerpc
-    ;;
-
-  powerpc64)
-    TARGET_FAMILY=powerpc64
-    ;;
-
-  arm)
-    TARGET_FAMILY=armv7
-    TARGET_ABI=eabi
-    ;;
-
-  mips)
-    TARGET_FAMILY=mips
-    ;;
-esac
-
-case $TARGET_LIBC in
-  uclibc)
-    TARGET_NAME=$TARGET_FAMILY-geexbox-linux-uclibc
-    ;;
-
-  glibc|eglibc)
-    TARGET_NAME=$TARGET_FAMILY-geexbox-linux-gnu$TARGET_ABI
-    ;;
-esac
+. config/toolchain
 
 GEEXBOX_VERSION=`cat VERSION`
 CONFIG=config
@@ -113,23 +77,6 @@ XORG_PATH_FDI=/usr/share/hal/fdi/policy
 TOOLCHAIN_LANGUAGES=c
 [ "$TOOLCHAIN_CXX" = yes ] && TOOLCHAIN_LANGUAGES=${TOOLCHAIN_LANGUAGES},c++
 
-if [ "$OPTIMIZATIONS" = speed ]; then
-  GCC_OPTIM="-O2"
-elif [ "$OPTIMIZATIONS" = size ]; then
-  GCC_OPTIM="-Os"
-else
-  GCC_OPTIM="-O0"
-fi
-
-[ "$TARGET_ARCH" = i386 -o "$TARGET_ARCH" = x86_64 ] && GCC_OPTIM="$GCC_OPTIM -fexcess-precision=fast"
-[ "$TARGET_ARCH" = powerpc64 ] && GCC_OPTIM="$GCC_OPTIM -mcpu=$TARGET_CPU -m64"
-[ "$TARGET_ARCH" = arm ] && GCC_OPTIM="$GCC_OPTIM -mcpu=$TARGET_CPU -ffast-math"
-[ "$THUMB" = yes ] && GCC_OPTIM="$GCC_OPTIM -mthumb"
-[ "$VFP" = yes ] && GCC_OPTIM="$GCC_OPTIM -mfpu=vfp -mfloat-abi=softfp"
-[ "$VFP3" = yes ] && GCC_OPTIM="$GCC_OPTIM -mfpu=vfpv3 -mfloat-abi=softfp"
-[ "$NEON" = yes ] && GCC_OPTIM="$GCC_OPTIM -mfpu=neon -mfloat-abi=softfp -ftree-vectorize"
-[ "$ALTIVEC" = yes ] && GCC_OPTIM="$GCC_OPTIM -maltivec -mabi=altivec"
-
 TARGET_CC=${TARGET_PREFIX}gcc
 TARGET_CXX=${TARGET_PREFIX}g++
 TARGET_LD=${TARGET_PREFIX}ld
@@ -140,8 +87,8 @@ TARGET_RANLIB=${TARGET_PREFIX}ranlib
 TARGET_OBJCOPY=${TARGET_PREFIX}objcopy
 TARGET_STRIP=${TARGET_PREFIX}strip
 TARGET_CPPFLAGS=
-TARGET_CFLAGS="$GCC_OPTIM -Wall -pipe -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -mtune=$TARGET_CPU"
-TARGET_CXXFLAGS="$TARGET_CFLAGS"
+TARGET_CFLAGS="$GCC_FLAGS"
+TARGET_CXXFLAGS="$GCC_FLAGS"
 TARGET_LDFLAGS=
 
 TARGET_INCLUDES="-I${LIB_PREFIX}/include -I${SYSROOT_PREFIX}/usr/include"
@@ -151,24 +98,9 @@ TARGET_CFLAGS="$TARGET_CFLAGS $TARGET_INCLUDES"
 TARGET_CXXFLAGS="$TARGET_CXXFLAGS $TARGET_INCLUDES"
 TARGET_LDFLAGS="$TARGET_LDFLAGS $TARGET_LIBS"
 
-case $TARGET_ARCH in
-    i386)
-     TARGET_CFLAGS="$TARGET_CFLAGS -march=$TARGET_FAMILY"
-     TARGET_CXXFLAGS="$TARGET_CXXFLAGS -march=$TARGET_FAMILY"
-     ;;
-    arm|mips|powerpc|powerpc64|x86_64)
-     TARGET_CFLAGS="$TARGET_CFLAGS -fPIC"
-     TARGET_CXXFLAGS="$TARGET_CXXFLAGS -fPIC"
-     ;;
-esac
-
 if [ "$DEBUG" = yes ]; then
-  TARGET_CFLAGS="$TARGET_CFLAGS -g3"
-  TARGET_CXXFLAGS="$TARGET_CXXFLAGS -g3"
   TARGET_STRIP=true
 else
-  TARGET_CFLAGS="$TARGET_CFLAGS -s -fomit-frame-pointer"
-  TARGET_CXXFLAGS="$TARGET_CXXFLAGS -s -fomit-frame-pointer"
   TARGET_LDFLAGS="$TARGET_LDFLAGS -s"
 fi
 
