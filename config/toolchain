@@ -122,9 +122,86 @@ if [ "$DEBUG" = yes ]; then
   GCC_FLAGS="$GCC_FLAGS -g3"
 else
   GCC_FLAGS="$GCC_FLAGS -s -fomit-frame-pointer"
+  GCC_LINK="-s"
 fi
 
 GCC_FLAGS="$GCC_FLAGS -Wall"
 GCC_FLAGS="$GCC_FLAGS -pipe"
 GCC_FLAGS="$GCC_FLAGS -D_FILE_OFFSET_BITS=64"
 GCC_FLAGS="$GCC_FLAGS -D_LARGEFILE_SOURCE"
+
+#################################
+# Dynamic build path definition #
+#################################
+
+if [ -z "$BUILD" ]; then
+  BUILD_BASE=build
+  BUILD=$BUILD_BASE.$TARGET_ARCH.$TARGET_LIBC
+  [ -n "$TARGET_PLATFORM" -a "$TARGET_PLATFORM" != generic ] && \
+    BUILD=$BUILD_BASE.$TARGET_PLATFORM.$TARGET_LIBC
+fi
+
+STAMPS=$BUILD/$STAMPS_NOARCH
+TOOLCHAIN=$BUILD/toolchain
+SYSROOT_PREFIX=$ROOT/$TOOLCHAIN/$TARGET_NAME/sysroot
+LIB_PREFIX=$SYSROOT_PREFIX/usr/local
+TARGET_PREFIX=$ROOT/$TOOLCHAIN/bin/$TARGET_NAME-
+ROOTFS=$ROOT/$BUILD/rootfs
+PKGROOT=$ROOT/$BUILD/packages
+DEVPKGROOT=$ROOT/$BUILD/devpackages
+CONFIG_PLATFORM=$ROOT/$CONFIG/platforms/$TARGET_PLATFORM
+
+##################
+# Host toolchain #
+##################
+
+HOST_AWK=gawk
+HOST_CC=$ROOT/$TOOLCHAIN/bin/host-gcc
+HOST_CXX=$ROOT/$TOOLCHAIN/bin/host-g++
+HOST_LD=ld
+HOST_AS=as
+HOST_AR=ar
+HOST_NM=nm
+HOST_RANLIB=ranlib
+HOST_OBJCOPY=objcopy
+HOST_STRIP=strip
+
+HOST_CPPFLAGS=""
+HOST_CFLAGS="-O2 -Wall -pipe"
+HOST_CXXFLAGS="-O2 -Wall -pipe"
+HOST_LDFLAGS=""
+
+####################
+# Target toolchain #
+####################
+
+TARGET_CC=${TARGET_PREFIX}gcc
+TARGET_CXX=${TARGET_PREFIX}g++
+TARGET_LD=${TARGET_PREFIX}ld
+TARGET_AS=${TARGET_PREFIX}as
+TARGET_AR=${TARGET_PREFIX}ar
+TARGET_NM=${TARGET_PREFIX}nm
+TARGET_RANLIB=${TARGET_PREFIX}ranlib
+TARGET_OBJCOPY=${TARGET_PREFIX}objcopy
+TARGET_STRIP=${TARGET_PREFIX}strip
+
+[ "$DEBUG" = yes ] && TARGET_STRIP=true
+
+TARGET_INCLUDES="$TARGET_INCLUDES -I${LIB_PREFIX}/include"
+TARGET_INCLUDES="$TARGET_INCLUDES -I${SYSROOT_PREFIX}/usr/include"
+
+TARGET_LIBS="$TARGET_LIBS -L${SYSROOT_PREFIX}/lib"
+TARGET_LIBS="$TARGET_LIBS -L${SYSROOT_PREFIX}/usr/lib"
+TARGET_LIBS="$TARGET_LIBS -L${LIB_PREFIX}/lib"
+
+TARGET_CPPFLAGS=
+TARGET_CFLAGS="$GCC_FLAGS $TARGET_INCLUDES"
+TARGET_CXXFLAGS="$GCC_FLAGS $TARGET_INCLUDES"
+TARGET_LDFLAGS="$GCC_LINK $TARGET_LIBS"
+
+########################################
+# Autodetect local compiler if not set #
+########################################
+
+[ -z "$LOCAL_CC" ] && LOCAL_CC=`which gcc`
+[ -z "$LOCAL_CXX" ] && LOCAL_CXX=`which g++`
