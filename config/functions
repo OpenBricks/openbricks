@@ -227,13 +227,20 @@ require_cxx() {
   fi
 }
 
-# Usage: do_strip <path>
+# Usage: do_strip [bin|shlib|staticlib] <path>
 do_strip() {
+  local options="--remove-section=.comment --remove-section=.note"
+  case "$1" in
+    shlib)     options="$options --strip-unneeded"; shift ;;
+    staticlib) options="$options --strip-debug"   ; shift ;;
+    bin)       shift ;;
+  esac
+
   if [ -n "$1" ]; then
     for i in $1; do
       file $i 2>&1 | grep -qv ELF && continue
       echo "Stripping $i"
-      $STRIP $i
+      $STRIP $options $i
     done
   fi
 }
@@ -260,7 +267,7 @@ strip_libs() {
   local debug_path="$2"
 
   [ -n "$debug_path" ] && extract_debug_info $debug_path $tostrip
-  do_strip "$tostrip"
+  do_strip shlib "$tostrip"
 
   return 0
 }
@@ -271,7 +278,7 @@ strip_bins() {
   local debug_path="$2"
 
   [ -n "$debug_path" ] && extract_debug_info $debug_path $tostrip
-  do_strip "$tostrip"
+  do_strip bin "$tostrip"
 
   return 0
 }
