@@ -238,17 +238,39 @@ do_strip() {
   fi
 }
 
-# Usage: strip_libs <path>
+# Usage: extract_debug_info <debug_path> <unstripped_files...>
+extract_debug_info() {
+  local debug_path="$1"
+  shift
+
+  for file in $*; do
+    echo "Extracting debugging symbols for $file"
+    basefile=`echo $file | sed 's/^.*.install//'`
+    debug_file="$debug_path/$basefile"
+    mkdir -p `dirname $debug_file`
+    $OBJCOPY --only-keep-debug $file $debug_file
+    chmod 0644 $debug_file
+    $OBJCOPY --add-gnu-debuglink="$debug_file" $file
+  done
+}
+
+# Usage: strip_libs <path> [debug_path]
 strip_libs() {
   local tostrip="`find $1 -type f -readable -writable -name "*.so[0-9.]*" | grep -v \".py$\"`"
+  local debug_path="$2"
+
+  [ -n "$debug_path" ] && extract_debug_info $debug_path $tostrip
   do_strip "$tostrip"
 
   return 0
 }
 
-# Usage: strip_bins <path>
+# Usage: strip_bins <path> [debug_path]
 strip_bins() {
   local tostrip="`find $1 -type f -readable -writable -executable`"
+  local debug_path="$2"
+
+  [ -n "$debug_path" ] && extract_debug_info $debug_path $tostrip
   do_strip "$tostrip"
 
   return 0
@@ -308,14 +330,12 @@ make_install () {
   make DESTDIR="$install_dir" INSTALL_ROOT="$install_dir" install
   fix_libs "$install_dir" $prefix
 
-  cp -PR "$install_dir" "$install_dir_debug"
-
   [ "$is_strip" = unstripped ] && return 0
 
   if [ "$prefix" != toolchain ]; then
-    strip_libs "$install_dir"
+    strip_libs "$install_dir" "$install_dir_debug/usr/lib/debug"
     for b in bin sbin usr/bin usr/sbin; do
-      [ -d "$install_dir/$b" ] && strip_bins "$install_dir/$b"
+      [ -d "$install_dir/$b" ] && strip_bins "$install_dir/$b" "$install_dir_debug/usr/lib/debug"
     done
   fi
 
