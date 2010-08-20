@@ -1,15 +1,20 @@
+META = $(shell ls packages/*/meta)
+
 all: iso
 
 .stamps/kconfiginit:
 	scripts/kconfiginit
 
-config: .stamps/kconfiginit
+config: .stamps/kconfiginit config/Kconfig.packages
 	$(MAKE) -C build.host/bst-kconfig* $@
 	scripts/kconfig2options
 
-%config: .stamps/kconfiginit
+%config: .stamps/kconfiginit config/Kconfig.packages
 	$(MAKE) -C build.host/bst-kconfig* $@
 	scripts/kconfig2options
+
+config/Kconfig.packages: $(META)
+	scripts/meta2kconfig
 
 doc:
 	scripts/checkdeps docs
