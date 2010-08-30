@@ -7,11 +7,7 @@ all: iso
 .stamps/kconfiginit:
 	scripts/kconfiginit
 
-config: .stamps/kconfiginit config/Kconfig.platform config/Kconfig.tasks config/Kconfig.packages
-	$(MAKE) -C build.host/bst-kconfig* $@
-	scripts/kconfig2options
-
-%config: .stamps/kconfiginit config/Kconfig.platform config/Kconfig.tasks config/Kconfig.packages
+config oldconfig menuconfig xconfig gconfig: .stamps/kconfiginit config/Kconfig.platform config/Kconfig.tasks config/Kconfig.packages
 	$(MAKE) -C build.host/bst-kconfig* $@
 	scripts/kconfig2options
 
@@ -77,4 +73,4 @@ distclean: clean-doc
 	rm -rf .stamps build* sources geexbox* config/options
 
 
-.PHONY: iso burn dist fulldist generator installator exec clean distclean clean-doc doc docs
+.PHONY: iso burn dist fulldist generator installator exec clean distclean clean-doc doc docs config oldconfig menuconfig xconfig gconfig
