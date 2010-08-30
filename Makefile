@@ -1,17 +1,25 @@
 META = $(shell ls packages/*/meta)
+TASKS = $(shell ls config/tasks/*/Kconfig)
+PLATFORMS = $(shell ls config/platforms/*/*/Kconfig)
 
 all: iso
 
 .stamps/kconfiginit:
 	scripts/kconfiginit
 
-config: .stamps/kconfiginit config/Kconfig.packages
+config: .stamps/kconfiginit config/Kconfig.platform config/Kconfig.tasks config/Kconfig.packages
 	$(MAKE) -C build.host/bst-kconfig* $@
 	scripts/kconfig2options
 
-%config: .stamps/kconfiginit config/Kconfig.packages
+%config: .stamps/kconfiginit config/Kconfig.platform config/Kconfig.tasks config/Kconfig.packages
 	$(MAKE) -C build.host/bst-kconfig* $@
 	scripts/kconfig2options
+
+config/Kconfig.platform: $(PLATFORMS)
+	scripts/platforms2kconfig
+
+config/Kconfig.tasks: $(TASKS)
+	cat $(TASKS) > config/Kconfig.tasks
 
 config/Kconfig.packages: $(META)
 	scripts/meta2kconfig
