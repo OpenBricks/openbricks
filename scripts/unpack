@@ -1,5 +1,14 @@
 #!/bin/sh
 
+check_timestamp () {
+  for patch in $1/*; do
+    if [ $patch -nt $STAMP ]; then
+      rm -f $STAMP
+      break
+    fi
+  done
+}
+
 . config/options
 
 if [ -z "$1" ]; then
@@ -17,12 +26,15 @@ mkdir -p $STAMPS/$1
 STAMP=$STAMPS/$1/unpack
 
 [ -f $STAMP -a -f $PACKAGES/$1/need_unpack ] && $PACKAGES/$1/need_unpack $@
-for patch in $PACKAGES/$1/patches/*; do
-  if [ $patch -nt $STAMP ]; then
-    rm -f $STAMP
-    break
-  fi
-done
+
+PTF_PATCHDIR="$CONFIG/platforms/$TARGET_ARCH/$TARGET_PLATFORM/$1/patches"
+if [ -d "$PTF_PATCHDIR" ]; then
+  PBASE=$PTF_PATCHDIR
+else
+  PBASE=$PACKAGES/$1/patches
+fi
+
+check_timestamp "$PBASE"
 [ -f $STAMP ] && exit 0
 
 # ensure we get rid of all previous package version before unpacking
@@ -60,7 +72,6 @@ fi
 
 [ -d $PACKAGES/$1/sources ] && cp -PRf $PACKAGES/$1/sources/* $PKG_BUILD_DIR
 
-PBASE=$PACKAGES/$1/patches
 PDIRS="$PBASE"
 [ -n "$TARGET_ARCH" ] && PDIRS="$PDIRS $PBASE/$TARGET_ARCH"
 [ -n "$TARGET_PLATFORM" ] && PDIRS="$PDIRS $PBASE/$TARGET_PLATFORM"
