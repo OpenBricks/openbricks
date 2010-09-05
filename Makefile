@@ -3,7 +3,7 @@ TASKS = $(shell ls config/tasks/*/Kconfig)
 PLATFORMS = $(shell ls config/platforms/*/*/Kconfig)
 REMOTES = $(shell ls packages/lirc*/config/lircd*)
 
-all: iso
+all: flat
 
 .stamps/kconfiginit:
 	scripts/kconfiginit
