@@ -16,7 +16,7 @@ config/Kconfig.platform: $(PLATFORMS)
 	scripts/platforms2kconfig
 
 config/Kconfig.tasks: $(TASKS)
-	cat $(TASKS) > config/Kconfig.tasks
+	scripts/tasks2kconfig
 
 config/Kconfig.remote: $(REMOTES)
 	scripts/remotes2kconfig
