@@ -13,19 +13,29 @@ menu "General setup"
 # Target architecture, platform and CPU options
 source "../../config/Kconfig.arch"
 
-choice OPTIMIZATIONS
-  prompt "Optimizations"
-  default OPTIMIZATIONS_SPEED
-  help
-    Build optimizations
+choice FPU_OPTIMIZATIONS
+  prompt "FPU optimizations"
+  default GX_NEON if TARGET_SUBARCH_armv7
+  default GX_VFP3  if ( TARGET_ARCH_arm && ! TARGET_SUBARCH_armv7 )
+  default FPU_OPTIMIZATIONS_NONE
 
-config OPTIMIZATIONS_SPEED
-  bool "speed"
+config GX_VFP
+  bool "VFP"
+  depends on TARGET_ARCH_arm
 
-config OPTIMIZATIONS_SIZE
-  bool "size"
+config GX_VFP3
+  bool "VFPv3"
+  depends on TARGET_ARCH_arm
 
-config OPTIMIZATIONS_NONE
+config GX_NEON
+  bool "NEON"
+  depends on TARGET_SUBARCH_armv7
+
+config GX_ALTIVEC
+  bool "AltiVec"
+  depends on ( TARGET_ARCH_powerpc || TARGET_ARCH_powerpc64)
+
+config FPU_OPTIMIZATIONS_NONE
   bool "none"
 
 endchoice
@@ -35,46 +45,7 @@ config GX_THUMB
   depends on TARGET_ARCH_arm
   default n
 
-config GX_VFP
-  bool "Enable VFP optimizations"
-  depends on ( TARGET_ARCH_arm && ! GX_NEON )
-  default y
-
-config GX_VFP3
-  bool "Enable VFPv3 optimizations"
-  depends on ( TARGET_ARCH_arm && ! GX_NEON && ! GX_VFP )
-  default n
-
-config GX_NEON
-  bool "Enable NEON optimizations"
-  depends on TARGET_SUBARCH_armv7
-  default y
-
-config GX_ALTIVEC
-  bool "Enable AltiVec optimizations"
-  depends on ( TARGET_ARCH_powerpc || TARGET_ARCH_powerpc64)
-  default n
-
-config GX_TOOLCHAIN_CXX
-  bool "Support C++ in toolchain"
-  default y
-
-choice COMPRESSION_METHOD
-  prompt "Compression method"
-  default COMPRESSION_LZMA
-  help
-    LZMA decrease image size but GZIP is way faster to decompress and boot.
-
-config COMPRESSION_LZMA
-  bool "lzma"
-
-config COMPRESSION_GZIP
-  bool "gzip"
-
-config COMPRESSION_NONE
-  bool "none"
-
-endchoice
+menu "Toolchain settings"
 
 choice TARGET_LIBC
   prompt "Target libc"
@@ -94,6 +65,10 @@ config TARGET_LIBC_uclibc
 
 endchoice
 
+config GX_TOOLCHAIN_CXX
+  bool "Support C++ in toolchain"
+  default y
+
 config GX_LOCAL_CC
   string "Local gcc location"
   default ""
@@ -110,9 +85,47 @@ config GX_LOCAL_CXX
     If you have ccache installed, take care that LOCAL_CXX don't point to it
     Autodetected if left blank (default)
 
-config GX_DEBUG
-  bool "Debug"
-  default n
+endmenu
+
+choice OPTIMIZATIONS
+  prompt "Build optimizations"
+  default OPTIMIZATIONS_SPEED
+  help
+    Build optimization settings
+
+config OPTIMIZATIONS_SPEED
+  bool "speed"
+  help
+    Build with "-O2", i.e. optimize for speed.
+
+config OPTIMIZATIONS_SIZE
+  bool "size"
+  help
+    Build with "-Os", i.e. optimize for size.
+
+config OPTIMIZATIONS_NONE
+  bool "none"
+  help
+    Build with "-O0", i.e. do not optimize.
+
+endchoice
+
+choice COMPRESSION_METHOD
+  prompt "Compression method"
+  default COMPRESSION_LZMA
+  help
+    LZMA decrease image size but GZIP is way faster to decompress and boot.
+
+config COMPRESSION_LZMA
+  bool "lzma"
+
+config COMPRESSION_GZIP
+  bool "gzip"
+
+config COMPRESSION_NONE
+  bool "none"
+
+endchoice
 
 config GX_DYNAMIC_SYSROOT
   bool "Dynamic sysroot"
@@ -122,8 +135,10 @@ config GX_DYNAMIC_SYSROOT
    slower but helps to catch wrong depends between packages.
 
 config GX_VERBOSE
-  bool "Verbose"
+  bool "Verbose build"
   default n
+  help
+    If enabled, do not silence the packages build output.
 
 config GX_CONCURRENCY_MAKE_LEVEL
   int "Concurrency make level"
@@ -132,10 +147,6 @@ config GX_CONCURRENCY_MAKE_LEVEL
     Concurrency make level (-j option)
     Try value 1 (default) to 4 on single CPU computer, or more on
     multi-processor computer (like hyperthreading SMP CPU)
-
-config INCLUDE_GEEXBOX_OPTIONS
-  bool "Overlay ~/.geexbox-options"
-  default n
 
 endmenu
 
@@ -332,6 +343,12 @@ config TAINT
 config USE_devtools
   bool "Enable development and testing tools"
   default n
+
+config GX_DEBUG
+  bool "Enable extra debugging features"
+  default n
+  help
+    This option enables extra debugging features in packages.
 
 endmenu
 
