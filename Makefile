@@ -8,7 +8,7 @@ all: flat
 .stamps/kconfiginit:
 	scripts/kconfiginit
 
-config oldconfig menuconfig xconfig gconfig: .stamps/kconfiginit config/Kconfig.platform config/Kconfig.tasks config/Kconfig.remote config/Kconfig.packages
+config oldconfig menuconfig xconfig gconfig: .stamps/kconfiginit config/Kconfig.platform config/Kconfig.tasks config/Kconfig.remote config/Kconfig.packages config/Kconfig.use
 	$(MAKE) -C build.host/bst-kconfig* $@
 	scripts/kconfig2options
 
@@ -23,6 +23,9 @@ config/Kconfig.remote: $(REMOTES)
 
 config/Kconfig.packages: $(META)
 	scripts/meta2kconfig
+
+config/Kconfig.use: config/use
+	scripts/use2kconfig
 
 doc:
 	scripts/checkdeps docs
