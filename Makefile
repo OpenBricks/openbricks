@@ -24,7 +24,7 @@ config/Kconfig.remote: $(REMOTES)
 config/Kconfig.packages: $(META)
 	scripts/meta2kconfig
 
-config/Kconfig.use: config/use
+config/Kconfig.use: config/use $(FLAVOURS)
 	scripts/use2kconfig
 
 doc:
