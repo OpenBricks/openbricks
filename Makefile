@@ -1,5 +1,5 @@
 META = $(wildcard packages/*/meta)
-FLAVOURS = $(wildcard config/flavours/*/Kconfig)
+FLAVOURS = $(wildcard config/flavours/*/meta)
 PLATFORMS = $(wildcard config/platforms/*/*/Kconfig)
 REMOTES = $(wildcard packages/lirc*/config/lircd*)
 
