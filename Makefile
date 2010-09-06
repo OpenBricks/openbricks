@@ -12,6 +12,9 @@ config oldconfig menuconfig xconfig gconfig: .stamps/kconfiginit config/Kconfig.
 	$(MAKE) -C build.host/bst-kconfig* $@
 	scripts/kconfig2options
 
+cleanconfig:
+	rm -f build.host/bst-kconfig*/.config
+
 config/Kconfig.platform: $(PLATFORMS)
 	scripts/platforms2kconfig
 
