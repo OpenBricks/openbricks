@@ -1,5 +1,5 @@
 META = $(wildcard packages/*/meta)
-TASKS = $(wildcard config/tasks/*/Kconfig)
+FLAVOURS = $(wildcard config/flavours/*/Kconfig)
 PLATFORMS = $(wildcard config/platforms/*/*/Kconfig)
 REMOTES = $(wildcard packages/lirc*/config/lircd*)
 
@@ -8,15 +8,15 @@ all: flat
 .stamps/kconfiginit:
 	scripts/kconfiginit
 
-config oldconfig menuconfig xconfig gconfig: .stamps/kconfiginit config/Kconfig.platform config/Kconfig.tasks config/Kconfig.remote config/Kconfig.packages config/Kconfig.use
+config oldconfig menuconfig xconfig gconfig: .stamps/kconfiginit config/Kconfig.platform config/Kconfig.flavours config/Kconfig.remote config/Kconfig.packages config/Kconfig.use
 	$(MAKE) -C build.host/bst-kconfig* $@
 	scripts/kconfig2options
 
 config/Kconfig.platform: $(PLATFORMS)
 	scripts/platforms2kconfig
 
-config/Kconfig.tasks: $(TASKS)
-	scripts/tasks2kconfig
+config/Kconfig.flavours: $(FLAVOURS)
+	scripts/flavours2kconfig
 
 config/Kconfig.remote: $(REMOTES)
 	scripts/remotes2kconfig
