@@ -1,7 +1,7 @@
-META = $(shell ls packages/*/meta)
-TASKS = $(shell ls config/tasks/*/Kconfig)
-PLATFORMS = $(shell ls config/platforms/*/*/Kconfig)
-REMOTES = $(shell ls packages/lirc*/config/lircd*)
+META = $(wildcard packages/*/meta)
+TASKS = $(wildcard config/tasks/*/Kconfig)
+PLATFORMS = $(wildcard config/platforms/*/*/Kconfig)
+REMOTES = $(wildcard packages/lirc*/config/lircd*)
 
 all: flat
 
