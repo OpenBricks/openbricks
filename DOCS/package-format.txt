@@ -7,12 +7,28 @@ Introduction
 GeeXboX packages live under the packages/ directory in the source tree. Every
 package is composed of several elements:
 
-* meta: package metadata information file
-* url: where the package sources can be downloaded from
-* unpack: a script which takes care of unpacking the package sources
-* build: a script which takes care of building the package from source
-* install: a script to construct the runtime package
-* installdev: a script to construct the devel package
+* 'meta': package metadata information file
+* 'url': where the package sources can be downloaded from (mostly obsoleted by
+  PKG_URL field in meta)
+* 'need_unpack': a shell script run before unpack stage, usually to check for
+  missing depends
+* 'unpack': a shell script run after unpack stage, usually to postprocess the
+  source or manually unpack packages which require special handling
+* 'build': a shell script which takes care of building the package from source
+* 'install': a shell script run to construct the runtime opkg package
+* 'installdev': a shell script run to construct the devel opkg package
+* 'config/': a directory for misc configuration files used by the package
+* 'init/': a directory for Upstart jobs
+* 'package/': a directory for custom opkg control files (e.g. prerm scripts)
+* 'patches/': a directory containing patches (in +diff -Naur+ format) to be
+  applied after unpack and before build
+* 'scripts/': a directory for misc shell scripts used by the package
+* 'sources/': a directory for package sources, which will be copied verbatim
+  to the package build directory at unpack stage
+
+Most packages only use a small subset of these elements -- runtime programs 
+usually have just 'meta', 'build' and 'install', while libraries tend to also
+use 'installdev' for includes and such.
 
 Meta File Format
 ----------------
@@ -38,6 +54,12 @@ A devel-only package (e.g. gmp, gcc-core) has three mandatory fields:
 
 A devel-only package has two optional fields:
 
+* PKG_URL
+ ** a space-separated list of URLs the package should be downloaded from
+ ** can start with the string 'GEEXBOX_SRCS' if the files are hosted on the 
+    GeeXboX server
+ ** as an alternative, the URLs can be listed in the url file in the package
+    directory
 * PKG_BUILD_DEPENDS
  ** the build time package dependencies, i.e. the packages required to be able
     to build the package
@@ -63,16 +85,26 @@ A runtime package has the same mandatory fields of a devel-only package, plus:
  ** defaults to "" (no use flags)
 * PKG_PRIORITY
  ** the package priority, i.e. how much the package is important
- ** can be (XXX to be discussed)
-  *** 'required': the system will not boot without this package (e.g. linux)
-  *** 'standard': this package is part of the GeeXboX base system
-  *** 'optional': normal priority for packages not part of GeeXboX base system
-  *** 'extra': this is a minor non-essential package
+ ** can be
+  *** _required_: the system will not boot without this package (e.g. linux)
+  *** _standard_: this package is part of the GeeXboX base system
+  *** _optional_: normal priority for packages not part of GeeXboX base system
+  *** _extra_: this is a minor non-essential package
 * PKG_SECTION
  ** the package category, used to group packages by function
  ** can be:
-  *** libs
-  *** (XXX to be discussed/defined)
+  *** _admin_: tools and program useful for system administration
+  *** _drivers_: kernel or userspace drivers for hardware
+  *** _filesystem_: filesystem support drivers and programs
+  *** _games_: leisure programs
+  *** _libs_: shared libraries used by other programs
+  *** _multimedia_: programs dealing with audio, video or image contents
+  *** _net_: network clients, servers, and generic network-related programs
+  *** _python_: Python modules
+  *** _sound_: programs dealing with audio support
+  *** _system_: essential system programs and libraries
+  *** _utils_: miscellaeous utility programs
+  *** _x11_: programs and libraries related to the Xorg windowing system
 * PKG_SHORTDESC
  ** used as the short description for the package
  ** should be one-line summary
@@ -90,23 +122,23 @@ A regular package has the same optional fields of a devel-only package, plus:
 * PKG_ARCH
  ** the target architectures supported by the package
  ** can be:
-  *** 'any': the package is supported on all the available architectures
-  *** 'all': this is an architecture-indipendent package (e.g. enna-theme)
+  *** _any_: the package is supported on all the available architectures
+  *** _all_: this is an architecture-indipendent package (e.g. enna-theme)
   *** a spaced list of architecture names
   *** defaults to "any"
 * PKG_LICENSE
  ** the upstream package license
  ** can be:
-  *** 'free': the package is distributed under a DFSG-compliant license (i.e
+  *** _free_: the package is distributed under a DFSG-compliant license (i.e
       GPL, LGPL, MIT, etc.)
-  *** 'non-free': the package license does not meet the DFSG
+  *** _non-free_: the package license does not meet the DFSG
   *** a non-free package may restrict the distribution of the entire distro
       if it is built in, and may have unreasonable/difficult to meet 
       restrictions
   *** defaults to "free"
 
 Use Flags
----------
+~~~~~~~~~
 
 In the context of a GeeXboX package, a use flag represents a conditional
 feature, which can be selected by the user at compile time and which could
@@ -142,17 +174,19 @@ the package if the flag is enabled:
 * PKG_RUN_DEPENDS_$flag
 
 Subpackages
------------
+~~~~~~~~~~~
 
 A subpackage is a special kind of runtime package, which packages an optional 
 component of another package and is created from its install tree. A subpackage
 has an additional mandatory field in meta:
+
 * PKG_PARENT
  ** the name of the parent package, i.e. the package this subpackage should be
     built from
  ** defaults to "" (empty)
 
 A subpackage has an additional optional field in meta:
+
 * PKG_PARENT_USE
  ** a list of use flags of the parent package
  ** the subpackage will be selectable in Kconfig only if all the use flags 
@@ -163,91 +197,211 @@ For clarity, it is recommended (but not required) to name a subpackage as
 "$PKG_PARENT-subpackagename".
 
 Meta Examples
--------------
+~~~~~~~~~~~~~
 
-The following examples refer to r9002.
+.A devel-only package
+[sh]
+source~~~~
+include::../packages/gmp/meta[]
+source~~~~
 
-A devel-only package
+.A standard runtime package
+[sh]
+source~~~~
+include::../packages/lsof/meta[]
+source~~~~
+Note the use of $TARGET_LIBC in PKG_DEPENDS to refer to the runtime system libc (which could be uClibc, glibc or eglibc)
 
-...................................
-PKG_NAME=gmp
-PKG_VERSION=4.3.1
-PKG_REV=1
-PKG_BUILD_DEPENDS="ccache make"
-...................................
+.A non-free package available only on selected archs
+[sh]
+source~~~~
+include::../packages/xf86-video-nvidia/meta[]
+source~~~~
 
-A standard runtime package; note the use of $TARGET_LIBC in PKG_DEPENDS
-to refer to the runtime system libc (which could be uClibc, glibc or eglibc)
+.A complex package which shows the usage of conditionals to define the depends
+[sh]
+source~~~~
+include::../packages/MPlayer/meta[]
+source~~~~
 
-...................................
-PKG_NAME=lsof
-PKG_VERSION=4.83
-PKG_REV=1
-PKG_DEPENDS="$TARGET_LIBC"
-PKG_BUILD_DEPENDS="toolchain"
-PKG_PRIORITY=optional
-PKG_SECTION=utils
-PKG_SHORTDESC="List open files"
-PKG_LONGDESC="Lsof is a Unix-specific diagnostic tool.  Its name stands for LiSt Open Files, and it does just that.  It lists information about any files that are open, by processes currently running on the system."
-...................................
+Package scripts
+---------------
+
+All the scripts in the package directory follow some conventions:
+
+* the script should be written for the Bourne shell (+#!/bin/sh+); bashisms 
+  should be avoided, checking the scripts with a modern _sh_ implementation
+  such as _dash_ is recommended
+  _dash_ is recommended
+* the script should source 'config/options' as their first action; because of
+  this, the script will have access to all the variables and functions defined
+  in 'config/options', 'config/toolchain', 'config/path' and 'config/functions'
+* scripts are expected to be called with the package name as the first argument
+  -- this means +$1+ inside the script will refer to the package name
+* the script can use +get_meta $1+ to read the package meta if necessary;
+  directly sourcing the meta file is not recommended
+
+'need_unpack' script
+~~~~~~~~~~~~~~~~~~~~
+
+The 'need_unpack' script is executed just before the package unpack stage. It
+can be used to ensure the prerequisites for the package are always satisfied.
+It is normally used only for packages that require a kernel tree to build (such
+as out-of-tree kernel drivers), to make sure they are properly rebuilt if the
+kernel tree changes (e.g. because of a kernel upgrade). This is obtained by
+removing the unpack stamp for the package if the conditions are not satisfied,
+which forces a full rebuild.
+
+'unpack' script
+~~~~~~~~~~~~~~~
+
+The 'unpack' script is executed just after the package unpack stage. It can be
+used to postprocess the package sources (e.g. fixing a broken upstream makefile
+with +sed+) or to manually unpack the package sources (e.g. for binary packages
+like xf86-video-nvidia). If necessary, the helper function +apply_patch
+<package> <patch>+ can be used to apply arbitrary patches to the package. The
+ package unpack directory can be referenced reading '$PKG_BUILD_DIR' after a 
+'get_meta' call; for most packages where the standard unpack works it is also 
+possible to use '$BUILD/$1*', though it could lead to conflicts in case of 
+multiple packages with similar names.
+
+'build' script
+~~~~~~~~~~~~~~
+
+The 'build' script is responsible for the package build, which for most packages
+entails a compilation from source. The script can be handwritten, but there are
+several helper function (+do_configure+, +make_install+, etc.) which can help
+to automate the most boring parts. The compilation results should be installed
+in '$PKG_BUILD_DIR/.install', to ease the following stages implementation.
+
+.Example
+[source,sh]
+----
+#!/bin/sh
+
+. config/options
+
+cd $BUILD/$1*
+
+do_configure
+
+make
+make_install
+----
+
+'install' script
+~~~~~~~~~~~~~~~
+
+The 'install' script gathers the files which should be copied to the target
+rootfs, which is set as '$INSTALL'. If the 'build' script has created a
+'.install' directory it can be easily written using the +do_install+ function.
+
+.Example
+[source,sh]
+----
+#!/bin/sh
+
+. config/options
+
+cd $BUILD/$1*
+
+do_install usr/bin
+do_install usr/lib/lib*.so*
+----
 
 
-A non-free package available only on selected archs
+'installdev' script
+~~~~~~~~~~~~~~~~~~
 
-...................................
-PKG_NAME=xf86-video-nvidia
-PKG_VERSION=195.36.24
-PKG_REV=1
-PKG_ARCH="i386 x86_64"
-PKG_LICENSE=non-free
-PKG_BUILD_DEPENDS="toolchain xorg-server"
-PKG_DEPENDS="$TARGET_LIBC xorg-server"
-PKG_PRIORITY=optional
-PKG_SECTION=x11
-PKG_SHORTDESC="NVIDIA binary Xorg driver"
-PKG_LONGDESC="These binary drivers provide optimized hardware acceleration of OpenGL applications via a direct-rendering X Server. AGP, PCIe, SLI, TV-out and flat panel displays are also supported. This version only supports GeForce 6xxx and higher of the Geforce GPUs plus complimentary Quadros and nforce."
-...................................
+The 'installdev' script gathers the files which should be copied to the
+toolchain directory, which is set as '$INSTALL'. If the 'build' script has created a '.install' directory it can be easily written using the +do_installdev+
+function.
 
+.Example
+[source,sh]
+----
+#!/bin/sh
 
-A complex package which shows the usage of conditionals to define the depends
+. config/options
 
-...................................
-PKG_NAME=MPlayer
-PKG_VERSION=r30437
-PKG_REV=1
-PKG_BUILD_DEPENDS="toolchain zlib ffmpeg freetype alsa-lib fribidi libcdio faad2 libpng libbluray"
-PKG_DEPENDS="$TARGET_LIBC zlib ffmpeg freetype alsa-lib fribidi libcdio libpng faad2 libbluray"
-if [ "$TARGET_LIBC" = "uClibc" ]; then
-  PKG_BUILD_DEPENDS="$PKG_BUILD_DEPENDS libiconv"
-  PKG_DEPENDS="$PKG_DEPENDS libiconv"
-fi
-if [ "$VDPAU" = yes ]; then
-  PKG_BUILD_DEPENDS="$PKG_BUILD_DEPENDS libvdpau"
-  PKG_DEPENDS="$PKG_DEPENDS libvdpau"
-fi
-if [ "$SDL" = yes ]; then
-  PKG_BUILD_DEPENDS="$PKG_BUILD_DEPENDS SDL"
-  PKG_DEPENDS="$PKG_DEPENDS SDL"
-fi
-if [ "$UNRAR" = yes ]; then
-  PKG_BUILD_DEPENDS="$PKG_BUILD_DEPENDS unrar"
-  PKG_DEPENDS="$PKG_DEPENDS unrar"
-fi
-if [ "$XORG" = yes ]; then
-  PKG_BUILD_DEPENDS="$PKG_BUILD_DEPENDS libX11 libXv libXxf86vm"
-  PKG_DEPENDS="$PKG_DEPENDS libX11 libXv libXxf86vm"
-fi
-if [ "$LIVE555" = yes ]; then
-  PKG_BUILD_DEPENDS="$PKG_BUILD_DEPENDS live"
-fi
-if [ "$TARGET_ARCH" = i386 ]; then
-  PKG_BUILD_DEPENDS="$PKG_BUILD_DEPENDS vesautils"
-  PKG_DEPENDS="$PKG_DEPENDS vesautils"
-fi
-PKG_PRIORITY=standard
-PKG_SECTION=video
-PKG_SHORTDESC="movie player for Unix-like systems"
-PKG_LONGDESC="MPlayer plays most MPEG, VOB, AVI, Ogg/OGM, VIVO, ASF/WMA/WMV, QT/MOV/MP4, FLI, RM, NuppelVideo, yuv4mpeg, FILM, RoQ, PVA files, supported by many native, XAnim, RealPlayer, and Win32 DLL codecs. It can also play VideoCD, SVCD, DVD, 3ivx, RealMedia, and DivX movies. Another big feature of MPlayer is the wide range of supported output drivers. It works with X11, Xv, DGA, OpenGL, SVGAlib, fbdev, DirectFB, but also SDL (plus all its drivers) and some low level card-specific drivers (for Matrox, 3Dfx and Radeon, Mach64 and Permedia3). Most of them support software or hardware scaling, therefore allowing fullscreen display. MPlayer is also able to use some hardware MPEG decoder boards, such as the DVB and DXR3/Hollywood+."
-...................................
+cd $BUILD/$1*
+
+do_installdev usr/include
+do_installdev usr/lib
+----
+
+Helper functions
+~~~~~~~~~~~~~~~~
+
+.setup_toolchain <target | host>
+sets several environment variables (such as $CFLAGS) to prepare for a host build (using $HOST_CC) or for a target build (using
+$TARGET_CC). +setup_toolchain target+ is automatically called before a package
+build, so it's not necessary to explicitly use for normal package builds.
+
+.get_meta <package>
+retrieves a package meta file and sources it into the environment, doing several
+safety checks, some postprocessing and setting additional variables.
+
+.pkg_uses <package> <use_flag>
+returns true if the specified use flag is currently enabled for the package, and
+false otherwise
+
+.kernel_path
+returns the path to the kernel build tree, which can be useful to build
+out-of-tree kernel modules
+
+.kernel_version
+returns the kernel version
+
+.require_glibc <package>
+aborts build if TARGET_LIBC is not a glibc variant
+
+.require_cxx <package>
+aborts build if C++ support is not enabled
+
+.do_qmake
+invokes qmake with the correct setup for a cross build
+
+.do_strip [bin | shlib | staticlib] <path>
+strips the argument, after checking that it is actually an ELF object file; the
+first optional argument, which defaults to 'bin', sets the correct strip options
+for the target
+
+.extract_debug_info <debug_path> <unstripped_files...>
+uses objdump to create detached debug symbols in 'debug_path' for the specified
+files
+
+.strip_libs <path> [debug_path]
+calls +do_strip shlib+; if debug_path is set, also calls +extract_debug_info+
+
+.strip_bins <path> [debug_path]
+calls +do_strip bin+; if debug_path is set, also calls +extract_debug_info+
+
+.xorg_drv_configure_prepend
+fixes the include files for Xorg drivers
+
+.fix_libs <path> [toolchain | sysroot | libprefix]
+rewrites the prefix path in pkgconfig and library files for the specified
+target, which defaults to +libprefix+
+
+.make_install [toolchain | sysroot | libprefix] [unstripped]
+is an automagic function to ease the installation of packages using autotools:
+runs +make install+ using '$PKG_BUILD_DIR/.install' as install prefix, calls 
++fix_libs+ to set the correct prefix paths for libraries, calls +strip_libs+
+and +strip_bins+ to strip ELF files and place detatched debug symbols in 
+'$PKG_BUILD_DIR/.install-debuginfo'
+
+.do_configure [host | target] [configure_options...]
+is an automagic function to ease the configuration of packages using autotools;
+it sets up the enviroment for a host or target build and calls './configure'
+with the correct arguments
+
+.do_install <file>
+is used in the package 'install' script to copy to '$INSTALL' the specified
+file (which can include globbing) from '$PKG_BUILD_DIR/.install'
+
+.do_installdev <file> [toolchain | sysroot | libprefix]
+is used in the package 'installdev' script to copy to the requested target the 
+specified file (which can include globbing) from '$PKG_BUILD_DIR/.install'
 
 // vim: set syntax=asciidoc:
