@@ -6,9 +6,11 @@ REMOTES = $(wildcard packages/lirc*/config/lircd*)
 all: flat
 
 .stamps/kconfiginit:
+	scripts/checkdeps kconfiginit
 	scripts/kconfiginit
 
 config oldconfig menuconfig xconfig gconfig: .stamps/kconfiginit config/Kconfig.platform config/Kconfig.flavours config/Kconfig.remote config/Kconfig.packages config/Kconfig.use
+	scripts/checkdeps $@
 	$(MAKE) -C build.host/bst-kconfig* $@
 	scripts/kconfig2options
 
