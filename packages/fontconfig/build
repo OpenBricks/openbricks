@@ -2,19 +2,39 @@
 
 . config/options
 
+fix_makefiles() {
+  for m in fc-case fc-glyphname fc-lang fc-arch; do
+    sed -i "s|LDFLAGS =.*|LDFLAGS =|" $m/Makefile
+    sed -i "s|CFLAGS =.*|CFLAGS =${HOST_CFLAGS}|" $m/Makefile
+  done
+}
+
 cd $BUILD/$1*
-do_configure \
-            --with-arch=$TARGET_ARCH \
+
+mkdir -p objdir-host
+cd objdir-host
+do_configure host \
             --with-freetype-config=$ROOT/$TOOLCHAIN/bin/freetype-config \
             --with-default-fonts=/usr/share/fonts \
             --without-add-fonts \
             --disable-dependency-tracking \
-            --disable-docs
+            --disable-docs \
 
-for m in fc-case fc-glyphname fc-lang fc-arch; do
-  sed -i "s|LDFLAGS =.*|LDFLAGS =|" $m/Makefile
-  sed -i "s|CFLAGS =.*|CFLAGS =${HOST_CFLAGS}|" $m/Makefile
-done
+fix_makefiles
+make
+make_install toolchain
+cd ..
 
+mkdir -p objdir-target
+cd objdir-target
+do_configure target \
+            --with-arch=$TARGET_ARCH \
+            --with-freetype-config=$LIB_PREFIX/bin/freetype-config \
+            --with-default-fonts=/usr/share/fonts \
+            --without-add-fonts \
+            --disable-dependency-tracking \
+            --disable-docs \
+
+fix_makefiles
 make
 make_install
