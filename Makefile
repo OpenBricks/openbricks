@@ -11,11 +11,11 @@ all: flat
 
 config oldconfig menuconfig xconfig gconfig: .stamps/kconfiginit config/Kconfig.platform config/Kconfig.flavours config/Kconfig.remote config/Kconfig.packages config/Kconfig.use
 	scripts/checkdeps $@
-	$(MAKE) -C build.host/bst-kconfig* $@
+	$(MAKE) -C build/build.host/bst-kconfig* $@
 	scripts/kconfig2options
 
 cleanconfig:
-	rm -f build.host/bst-kconfig*/.config
+	rm -f build/build.host/bst-kconfig*/.config
 
 config/Kconfig.platform: $(PLATFORMS)
 	scripts/platforms2kconfig
