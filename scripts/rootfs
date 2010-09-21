@@ -4,7 +4,6 @@
 
 export INSTALL=$ROOTFS
 
-rm -rf $INSTALL
 mkdir -p $INSTALL
 
 # bootstrap the build environment
@@ -12,6 +11,19 @@ $SCRIPTS/build opkg-utils
 $SCRIPTS/build opkg-host
 $SCRIPTS/installdev opkg-utils
 $SCRIPTS/installdev opkg-host
+
+# remove stale packages
+for f in $INSTALL/var/lib/opkg/info/*.control ; do
+  package=`basename $f .control`
+  drop_package=yes
+  for rootfs_package in $ROOTFS_PACKAGES; do
+    [ "$package" != "$rootfs_package" ] && continue
+    # the package is in $ROOTFS_PACKAGES, keep it
+    drop_package=no
+    break;
+  done
+  [ "$drop_package" = yes ] && $SCRIPTS/uninstall $package
+done
 
 for package in $ROOTFS_PACKAGES; do
   $SCRIPTS/install $package
