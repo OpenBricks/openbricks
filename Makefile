@@ -3,7 +3,7 @@ FLAVOURS = $(wildcard config/flavours/*/meta)
 PLATFORMS = $(wildcard config/platforms/*/*/Kconfig)
 REMOTES = $(wildcard packages/lirc*/config/lircd*)
 
-all: flat
+all: binaries
 
 .stamps/kconfiginit:
 	scripts/checkdeps kconfiginit
@@ -31,6 +31,12 @@ build/config/Kconfig.packages: $(META)
 
 build/config/Kconfig.use: config/use $(FLAVOURS)
 	scripts/use2kconfig
+
+binaries: rootfs
+	scripts/binaries
+
+rootfs:
+	scripts/rootfs
 
 doc:
 	scripts/checkdeps docs
