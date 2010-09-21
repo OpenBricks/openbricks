@@ -9,7 +9,7 @@ all: flat
 	scripts/checkdeps kconfiginit
 	scripts/kconfiginit
 
-config oldconfig menuconfig xconfig gconfig: .stamps/kconfiginit config/Kconfig.platform config/Kconfig.flavours config/Kconfig.remote config/Kconfig.packages config/Kconfig.use
+config oldconfig menuconfig xconfig gconfig: .stamps/kconfiginit build/config/Kconfig.platform build/config/Kconfig.flavours build/config/Kconfig.remote build/config/Kconfig.packages build/config/Kconfig.use
 	scripts/checkdeps $@
 	$(MAKE) -C build/build.host/bst-kconfig* $@
 	scripts/kconfig2options
@@ -17,19 +17,19 @@ config oldconfig menuconfig xconfig gconfig: .stamps/kconfiginit config/Kconfig.
 cleanconfig:
 	rm -f build/build.host/bst-kconfig*/.config
 
-config/Kconfig.platform: $(PLATFORMS)
+build/config/Kconfig.platform: $(PLATFORMS)
 	scripts/platforms2kconfig
 
-config/Kconfig.flavours: $(FLAVOURS)
+build/config/Kconfig.flavours: $(FLAVOURS)
 	scripts/flavours2kconfig
 
-config/Kconfig.remote: $(REMOTES)
+build/config/Kconfig.remote: $(REMOTES)
 	scripts/remotes2kconfig
 
-config/Kconfig.packages: $(META)
+build/config/Kconfig.packages: $(META)
 	scripts/meta2kconfig
 
-config/Kconfig.use: config/use $(FLAVOURS)
+build/config/Kconfig.use: config/use $(FLAVOURS)
 	scripts/use2kconfig
 
 doc:
