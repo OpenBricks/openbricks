@@ -1,0 +1,90 @@
+#!/bin/sh
+
+. config/options
+
+rootdev="$1"
+bootdisplay="$2"
+
+if [ -z "$rootdev" ]; then
+  echo "Usage: $0 <usb|mmc> [hdmi|vga|lvds]"
+  exit 1
+fi
+
+$SCRIPTS/unpack nvflash
+
+cd $BUILD/nvflash*
+
+kernelimage="$(kernel_path)/arch/arm/boot/zImage"
+
+if [ ! -f "$kernelimage" ]; then
+  echo "Cannot find kernel image '$kernelimage', aborting."
+  exit 1
+fi
+
+# set defaults for cfg/bct
+cfgfile=gnu_linux_fastboot_nand.cfg
+bctfile=harmony_a02_12Mhz_H5PS1G83EFR-S6C_333Mhz_1GB_2K8Nand_HY27UF084G2B-TP.bct
+
+# kernel cmdline
+nvidia_args="mem=384M@0M nvmem=128M@384M mem=512M@512M vmalloc=256M video=tegrafb console=ttyS0,115200n8 usbcore.old_scheme_first=1 tegraboot=nand mtdparts=tegra_nand:5120K@14080K(recovery),8192K@19712K(boot)"
+geexbox_args="init=/linuxrc lang=en keymap=qwerty remote=atiusb receiver=atiusb hdtv"
+
+# set root device
+if [ "$rootdev" = usb ]; then
+  rootdev_args="root=/dev/sda1 rw rootdelay=15"
+elif [ "$rootdev" = mmc ]; then
+  rootdev_args="root=/dev/mmcblk1p1 rw rootdelay=5"
+else
+  echo "Unsupported root device '$rootdev', aborting."
+  exit 1
+fi
+
+# set up odmdata value
+if [ "$bootdisplay" == hdmi ]; then
+    # 0x..2 for hdmi
+    odmdata=0x3b2d8011
+elif [ "$bootdisplay" == vga -o "$bootdisplay" == crt ]; then
+    # 0x..3 for vga/crt
+    odmdata=0x3b3d8011
+elif [ "$bootdisplay" == lvds -o "$bootdisplay" == internal ]; then
+    # 0x..0 for lvds/internal
+    odmdata=0x3b0d8011
+else
+  echo "Unsupported display output '$bootdisplay', aborting."
+  exit 1
+fi
+
+# start flashing procedure
+echo ">---<"
+echo "Power ON the board by pressing the power button."
+echo "Then connect the board to your host PC."
+echo "Press Enter to continue."
+read
+
+echo ">---<"
+echo "Keep the Recovery button pressed, and then press and release the"
+echo "Reset button.  Then, release the Recovery button."
+echo "Press Enter to continue."
+read
+
+echo ">---<"
+echo "Flashing the bootloader..."
+sudo LD_LIBRARY_PATH=. ./nvflash --bct $bctfile --setbct \
+    --configfile $cfgfile --create --bl fastboot.bin --odmdata $odmdata --go
+if [ $? -ne 0 ]
+then
+    echo "  !!! Failed to flash bootloader."
+    exit 2
+fi
+echo "... done."
+echo "Flashing the kernel..."
+sudo ./fastboot -i 0x955 -c "$nvidia_args $rootdev_args $geexbox_args" flash:raw boot $kernelimage
+if [ $? -ne 0 ]
+then
+    echo "  !!! Failed to flash kernel."
+    exit 2
+fi
+echo "... done."
+
+echo "Flashing completed."
+echo "Make the target filesystem available to the device and reset the board to boot."
