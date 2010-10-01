@@ -36,6 +36,7 @@ binaries: rootfs
 	scripts/binaries
 
 rootfs:
+	scripts/checkdeps build
 	scripts/rootfs
 
 doc:
