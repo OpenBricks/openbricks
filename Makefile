@@ -51,9 +51,6 @@ iso:
 flat:
 	scripts/flat
 
-burn: iso
-	scripts/burn
-
 dist:
 	scripts/dist
 
