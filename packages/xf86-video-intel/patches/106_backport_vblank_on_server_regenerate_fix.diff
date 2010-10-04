@@ -1,0 +1,112 @@
+Author: Christopher Halse Rogers <christopher.halse.rogers@canonical.com>
+Description: Backport vsync fix from the following commit:
+ .
+ commit c882f6a22a862c1664c375e05e5e6fc4bdb04edb
+ Author: Chris Wilson <chris@chris-wilson.co.uk>
+ Date:   Wed Aug 18 10:21:22 2010 +0100
+
+    Move registration of vsync fd from pre-init to screen-init
+    
+    Marty Jack reported an issue he found where the page-flipping handler
+    was being lost on server reset. This results in the swap completion
+    notification being lost, with the sporadic hang of full screen
+    applications like Compiz, flash and even glxgears!
+    
+    Fixes:
+    
+      Bug 29584 - Server in compute loop
+      https://bugs.freedesktop.org/show_bug.cgi?id=29584
+    
+    There are also several possibly related bugs with similar symptoms, i.e.
+    OpenGL applications hanging on missed swap notifications.
+    
+    Reported-by: Marty Jack <martyj19@comcast.net>
+    Signed-off-by: Chris Wilson <chris@chris-wilson.co.uk>
+    Cc: Keith Packard <keithp@keithp.com>
+
+Index: xserver-xorg-video-intel/src/drmmode_display.c
+===================================================================
+--- xserver-xorg-video-intel.orig/src/drmmode_display.c	2010-09-26 10:33:35.167165002 +1000
++++ xserver-xorg-video-intel/src/drmmode_display.c	2010-09-26 10:37:41.000000000 +1000
+@@ -1466,14 +1466,12 @@
+ 		xf86DrvMsg(scrn->scrnIndex, X_INFO,
+ 			   "Kernel page flipping support detected, but forcibly disabled.\n");
+ 		intel->use_pageflipping = FALSE;
+-		drmmode->flip_count = 0;
++		intel->can_pageflip = TRUE;
++
+ 		drmmode->event_context.version = DRM_EVENT_CONTEXT_VERSION;
+ 		drmmode->event_context.vblank_handler = drmmode_vblank_handler;
+ 		drmmode->event_context.page_flip_handler =
+ 		    drmmode_page_flip_handler;
+-		AddGeneralSocket(fd);
+-		RegisterBlockAndWakeupHandlers((BlockHandlerProcPtr)NoopDDA,
+-					       drm_wakeup_handler, drmmode);
+ 	}
+ 
+ 	scrn->canDoBGNoneRoot = TRUE;
+@@ -1481,6 +1479,31 @@
+ 	return TRUE;
+ }
+ 
++void
++drmmode_init(ScrnInfoPtr scrn)
++{
++	intel_screen_private *intel = intel_get_screen_private(scrn);
++	if (intel->can_pageflip) {
++		xf86CrtcConfigPtr xf86_config;
++		drmmode_crtc_private_ptr drmmode_crtc;
++		drmmode_ptr drmmode;
++		
++		xf86_config = XF86_CRTC_CONFIG_PTR(scrn);
++		
++		drmmode_crtc = xf86_config->crtc[0]->driver_private;
++		drmmode = drmmode_crtc->drmmode;
++
++		/* We need to re-register the mode->fd for the synchronisation
++		 * feedback on every server generation, so perform the
++		 * registration within ScreenInit and not PreInit.
++		 */
++		drmmode->flip_count = 0;
++		AddGeneralSocket(drmmode->fd);
++		RegisterBlockAndWakeupHandlers((BlockHandlerProcPtr)NoopDDA,
++					       drm_wakeup_handler, drmmode);
++	}
++}
++
+ int
+ drmmode_get_pipe_from_crtc_id(drm_intel_bufmgr *bufmgr, xf86CrtcPtr crtc)
+ {
+Index: xserver-xorg-video-intel/src/i830.h
+===================================================================
+--- xserver-xorg-video-intel.orig/src/i830.h	2010-09-26 10:33:35.127165002 +1000
++++ xserver-xorg-video-intel/src/i830.h	2010-09-26 10:38:21.000000000 +1000
+@@ -417,6 +417,7 @@
+ 	char *deviceName;
+ 
+ 	Bool use_pageflipping;
++	Bool can_pageflip;
+ 	Bool force_fallback;
+ 
+ 	/* Broken-out options. */
+@@ -442,6 +443,7 @@
+ };
+ 
+ extern Bool drmmode_pre_init(ScrnInfoPtr pScrn, int fd, int cpp);
++extern void drmmode_init(ScrnInfoPtr scrn);
+ extern int drmmode_get_pipe_from_crtc_id(drm_intel_bufmgr *bufmgr, xf86CrtcPtr crtc);
+ extern int drmmode_output_dpms_status(xf86OutputPtr output);
+ extern Bool drmmode_do_pageflip(ScreenPtr screen, dri_bo *new_front, void *data);
+Index: xserver-xorg-video-intel/src/i830_driver.c
+===================================================================
+--- xserver-xorg-video-intel.orig/src/i830_driver.c	2010-09-26 10:33:35.197165002 +1000
++++ xserver-xorg-video-intel/src/i830_driver.c	2010-09-26 10:33:35.217165002 +1000
+@@ -1244,6 +1244,8 @@
+ 	if (serverGeneration == 1)
+ 		xf86ShowUnusedOptions(scrn->scrnIndex, scrn->options);
+ 
++	drmmode_init(scrn);
++
+ 	intel->starting = FALSE;
+ 	intel->suspended = FALSE;
+ 
