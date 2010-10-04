@@ -44,7 +44,7 @@ Adapted for usage in GeeXboX by the GeeXboX team.
 #include <asm/io.h>
 
 #include "lirc.h"
-#include "lirc_dev/lirc_dev.h"
+#include "lirc_dev.h"
 #include "kcompat.h"
 
 /* allow show debug messages 
