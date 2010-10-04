@@ -1,0 +1,103 @@
+From 0e750eff9ba7987ef31acaabd3ef771bfd2e2ce5 Mon Sep 17 00:00:00 2001
+From: Chase Douglas <chase.douglas@canonical.com>
+Date: Wed, 21 Jul 2010 12:00:04 +0200
+Subject: [PATCH 1/5] Add XFixesCoordinatesToWindow request
+
+---
+ dix/events.c                   |   48 ++++++++++++++++++++++++++++++++++++++++
+ hw/xfree86/common/xf86Xinput.c |    7 +++++
+ hw/xfree86/common/xf86Xinput.h |    2 +
+ include/events.h               |    3 ++
+ 4 files changed, 60 insertions(+), 0 deletions(-)
+
+--- xorg-server-debian.orig/dix/events.c
++++ xorg-server-debian/dix/events.c
+@@ -5840,3 +5840,47 @@
+     return FALSE;
+ }
+ 
++WindowPtr
++CoordinatesToWindow(int x, int y, int screen)
++{
++    WindowPtr pWin;
++    WindowPtr ret = NullWindow;
++    BoxRec box;
++
++    pWin = screenInfo.screens[screen]->root;
++    while (pWin)
++    {
++	if ((pWin->mapped) &&
++	    (x >= pWin->drawable.x - wBorderWidth (pWin)) &&
++	    (x < pWin->drawable.x + (int)pWin->drawable.width +
++	     wBorderWidth(pWin)) &&
++	    (y >= pWin->drawable.y - wBorderWidth (pWin)) &&
++	    (y < pWin->drawable.y + (int)pWin->drawable.height +
++	     wBorderWidth (pWin))
++	    /* When a window is shaped, a further check
++	     * is made to see if the point is inside
++	     * borderSize
++	     */
++	    && (!wBoundingShape(pWin) || PointInBorderSize(pWin, x, y))
++	    && (!wInputShape(pWin) ||
++		RegionContainsPoint(wInputShape(pWin),
++				    x - pWin->drawable.x,
++				    y - pWin->drawable.y, &box))
++#ifdef ROOTLESS
++    /* In rootless mode windows may be offscreen, even when
++     * they're in X's stack. (E.g. if the native window system
++     * implements some form of virtual desktop system).
++     */
++		&& !pWin->rootlessUnhittable
++#endif
++	    )
++	{
++            ret = pWin;
++            pWin = pWin->firstChild;
++        }
++        else
++            pWin = pWin->nextSib;
++    }
++    return ret;
++}
++
+--- xorg-server-debian.orig/hw/xfree86/common/xf86Xinput.c
++++ xorg-server-debian/hw/xfree86/common/xf86Xinput.c
+@@ -1362,4 +1362,10 @@
+     EnableDevice(dev, TRUE);
+ }
+ 
++WindowPtr
++xf86CoordinatesToWindow(int x, int y, int screen)
++{
++    return CoordinatesToWindow(x, y, screen);
++}
++
+ /* end of xf86Xinput.c */
+--- xorg-server-debian.orig/hw/xfree86/common/xf86Xinput.h
++++ xorg-server-debian/hw/xfree86/common/xf86Xinput.h
+@@ -212,6 +212,8 @@
+ extern _X_EXPORT void xf86CollectInputOptions(InputInfoPtr pInfo, const char **defaultOpts,
+ 			     pointer extraOpts);
+ 
++extern _X_EXPORT WindowPtr xf86CoordinatesToWindow(int x, int y, int screen);
++
+ 
+ /* Legacy hatred */
+ #define SendCoreEvents 59
+--- xorg-server-debian.orig/include/events.h
++++ xorg-server-debian/include/events.h
+@@ -24,6 +24,7 @@
+ 
+ #ifndef EVENTS_H
+ #define EVENTS_H
++
+ typedef struct _DeviceEvent DeviceEvent;
+ typedef struct _DeviceChangedEvent DeviceChangedEvent;
+ #if XFreeXDGA
+@@ -35,4 +36,6 @@
+ #endif
+ typedef union _InternalEvent InternalEvent;
+ 
++extern WindowPtr CoordinatesToWindow(int x, int y, int screen);
++
+ #endif

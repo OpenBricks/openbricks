@@ -1,39 +1,13 @@
-diff -Naur xorg-server-1.7.1/configure xorg-server-1.7.1.patch/configure
---- xorg-server-1.7.1/configure	2009-10-23 07:06:08.000000000 +0200
-+++ xorg-server-1.7.1.patch/configure	2009-10-24 23:00:08.606362417 +0200
-@@ -2198,7 +2198,7 @@
-                           Comma separated list of font dirs
-   --with-xkb-path=PATH    Path to XKB base dir (default: ${datadir}/X11/xkb)
-   --with-xkb-output=PATH  Path to XKB output dir (default:
--                          ${datadir}/X11/xkb/compiled)
-+                          ${localstatedir}/cache/xkb)
-   --with-default-xkb-rules=RULES
-                           Keyboard ruleset (default: base/evdev)
-   --with-default-xkb-model=MODEL
-@@ -19651,7 +19651,7 @@
- if test "${with_xkb_output+set}" = set; then
-   withval=$with_xkb_output;  XKBOUTPUT="$withval"
- else
--   XKBOUTPUT="compiled"
-+   XKBOUTPUT="${localstatedir}/cache/xkb"
- fi
- 
- 
-@@ -23784,7 +23784,9 @@
- 
- XKBOUTPUT_FIRSTCHAR=`echo $XKBOUTPUT | cut -b 1`
- if [ x$XKBOUTPUT_FIRSTCHAR != x/ -a x$XKBOUTPUT_FIRSTCHAR != 'x$' ] ; then
--   XKBOUTPUT="$XKB_BASE_DIRECTORY/$XKBOUTPUT"
-+   { { $as_echo "$as_me:$LINENO: error: xkb-output must be an absolute path." >&5
-+$as_echo "$as_me: error: xkb-output must be an absolute path." >&2;}
-+   { (exit 1); exit 1; }; }
- fi
- 
- 
-diff -Naur xorg-server-1.7.1/configure.ac xorg-server-1.7.1.patch/configure.ac
---- xorg-server-1.7.1/configure.ac	2009-10-23 07:05:45.000000000 +0200
-+++ xorg-server-1.7.1.patch/configure.ac	2009-10-24 22:59:58.215363076 +0200
-@@ -502,9 +502,9 @@
+Patch from Moblin to cache xkbcomp output for faster booting
+
+Signed-off-by: Bryce Harrington <bryce@canonical.com>
+---
+
+Index: xorg-server/configure.ac
+===================================================================
+--- xorg-server.orig/configure.ac	2010-07-14 14:02:00.000000000 +1000
++++ xorg-server/configure.ac	2010-07-14 14:18:57.201453001 +1000
+@@ -540,9 +540,9 @@
  AC_ARG_WITH(xkb-path,         AS_HELP_STRING([--with-xkb-path=PATH], [Path to XKB base dir (default: ${datadir}/X11/xkb)]),
  				[ XKBPATH="$withval" ],
  				[ XKBPATH="${datadir}/X11/xkb" ])
@@ -45,7 +19,7 @@ diff -Naur xorg-server-1.7.1/configure.ac xorg-server-1.7.1.patch/configure.ac
  AC_ARG_WITH(default-xkb-rules, AS_HELP_STRING([--with-default-xkb-rules=RULES],
                                     [Keyboard ruleset (default: base/evdev)]),
                                  [ XKB_DFLT_RULES="$withval" ],
-@@ -1101,7 +1101,7 @@
+@@ -1175,7 +1175,7 @@
  dnl Make sure XKM_OUTPUT_DIR is an absolute path
  XKBOUTPUT_FIRSTCHAR=`echo $XKBOUTPUT | cut -b 1`
  if [[ x$XKBOUTPUT_FIRSTCHAR != x/ -a x$XKBOUTPUT_FIRSTCHAR != 'x$' ]] ; then
@@ -54,24 +28,43 @@ diff -Naur xorg-server-1.7.1/configure.ac xorg-server-1.7.1.patch/configure.ac
  fi
  
  dnl XKM_OUTPUT_DIR (used in code) must end in / or file names get hosed
-diff -Naur xorg-server-1.7.1/xkb/ddxLoad.c xorg-server-1.7.1.patch/xkb/ddxLoad.c
---- xorg-server-1.7.1/xkb/ddxLoad.c	2009-10-21 23:52:56.000000000 +0200
-+++ xorg-server-1.7.1.patch/xkb/ddxLoad.c	2009-10-24 22:58:50.883365035 +0200
-@@ -32,6 +32,13 @@
- #include <xkb-config.h>
- #endif
+Index: xorg-server/xkb/README.compiled
+===================================================================
+--- xorg-server.orig/xkb/README.compiled	2010-06-18 12:58:19.000000000 +1000
++++ xorg-server/xkb/README.compiled	2010-07-14 14:18:57.201453001 +1000
+@@ -4,10 +4,10 @@
+ or some other tool might destroy or replace the files in this directory,
+ so it is not a safe place to store compiled keymaps for long periods of
+ time.  The default keymap for any server is usually stored in:
+-     X<num>-default.xkm
+-where <num> is the display number of the server in question, which makes
+-it possible for several servers *on the same host* to share the same 
+-directory.
++     server-<SHA1>.xkm
++
++where <SHA1> is the SHA1 hash of keymap source, so that compiled
++keymap of different keymap sources are stored in different files.
  
-+#ifdef HAVE_SHA1_IN_LIBMD /* Use libmd for SHA1 */
-+# include <sha1.h>
+ Unless the X server is modified, sharing this directory between servers on
+ different hosts could cause problems.
+Index: xorg-server/xkb/ddxLoad.c
+===================================================================
+--- xorg-server.orig/xkb/ddxLoad.c	2010-07-14 13:21:02.000000000 +1000
++++ xorg-server/xkb/ddxLoad.c	2010-07-14 14:51:09.761453001 +1000
+@@ -30,6 +30,12 @@
+ 
+ #include <xkb-config.h>
+ 
++#ifdef HAVE_SHA1_IN_LIBGCRYPT /* Use libgcrypt for SHA1 */
++# include <gcrypt.h>
 +#else /* Use OpenSSL's libcrypto */
-+# include <stddef.h>  /* buggy openssl/sha.h wants size_t */
-+# include <openssl/sha.h>
++#warning "xkbcomp caching support disabled"
 +#endif
 +
  #include <stdio.h>
  #include <ctype.h>
  #include <X11/X.h>
-@@ -45,24 +52,13 @@
+@@ -43,24 +49,13 @@
  #define	XKBSRV_NEED_FILE_FUNCS
  #include <xkbsrv.h>
  #include <X11/extensions/XI.h>
@@ -97,36 +90,39 @@ diff -Naur xorg-server-1.7.1/xkb/ddxLoad.c xorg-server-1.7.1.patch/xkb/ddxLoad.c
  #define	PRE_ERROR_MSG "\"The XKEYBOARD keymap compiler (xkbcomp) reports:\""
  #define	ERROR_PREFIX	"\"> \""
  #define	POST_ERROR_MSG1 "\"Errors from xkbcomp are not fatal to the X server\""
-@@ -177,6 +173,45 @@
+@@ -174,6 +169,47 @@
+     }
  }
  
- static Bool
++#ifndef SHA_DIGEST_LENGTH
++#define SHA_DIGEST_LENGTH 20
++#endif
++
++static Bool
 +Sha1Asc(char sha1Asc[SHA_DIGEST_LENGTH*2+1], const char * input)
 +{
 +    int i;
 +    unsigned char sha1[SHA_DIGEST_LENGTH];
 +
-+#ifdef HAVE_SHA1_IN_LIBMD /* Use libmd for SHA1 */
-+    SHA1_CTX ctx;
++#ifdef HAVE_SHA1_IN_LIBGCRYPT /* Use libgcrypt for SHA1 */
++    static int init;
++    gcry_md_hd_t h;
++    gcry_error_t err;
 +
-+    SHA1Init (&ctx);
-+    SHA1Update (&ctx, input, strlen(input));
-+    SHA1Final (sha1, &ctx);
-+#else /* Use OpenSSL's libcrypto */
-+    SHA_CTX ctx;
-+    int success;
++    if (!init) {
++	if (!gcry_check_version(NULL))
++	    return BadAlloc;
++	gcry_control(GCRYCTL_DISABLE_SECMEM, 0);
++	gcry_control(GCRYCTL_INITIALIZATION_FINISHED, 0);
++	init = 1;
++    }
 +
-+    success = SHA1_Init (&ctx);
-+    if (! success)
++    err = gcry_md_open(&h, GCRY_MD_SHA1, 0);
++    if (err)
 +	return BadAlloc;
-+
-+    success = SHA1_Update (&ctx, input, strlen(input));
-+    if (! success)
-+	return BadAlloc;
-+
-+    success = SHA1_Final (sha1, &ctx);
-+    if (! success)
-+	return BadAlloc;
++    gcry_md_write(h, input, strlen(input));
++    memcpy(sha1, gcry_md_read(h, GCRY_MD_SHA1), 20);
++    gcry_md_close(h);
 +#endif
 +
 +    /* convert sha1 to sha1_asc */
@@ -139,11 +135,10 @@ diff -Naur xorg-server-1.7.1/xkb/ddxLoad.c xorg-server-1.7.1.patch/xkb/ddxLoad.c
 +
 +/* call xkbcomp and compile XKB keymap, return xkm file name in
 +   nameRtrn */
-+static Bool
+ static Bool
  XkbDDXCompileKeymapByNames(	XkbDescPtr		xkb,
  				XkbComponentNamesPtr	names,
- 				unsigned		want,
-@@ -185,7 +220,11 @@
+@@ -183,7 +219,11 @@
  				int			nameRtrnLen)
  {
      FILE *	out;
@@ -155,8 +150,8 @@ diff -Naur xorg-server-1.7.1/xkb/ddxLoad.c xorg-server-1.7.1.patch/xkb/ddxLoad.c
 +    int	ret, result;
  
      const char	*emptystring = "";
-     const char	*xkbbasedirflag = emptystring;
-@@ -196,15 +235,69 @@
+     char *xkbbasedirflag = NULL;
+@@ -194,14 +234,67 @@
      /* WIN32 has no popen. The input must be stored in a file which is
         used as input for xkbcomp. xkbcomp does not read from stdin. */
      char tmpname[PATH_MAX];
@@ -173,13 +168,13 @@ diff -Naur xorg-server-1.7.1/xkb/ddxLoad.c xorg-server-1.7.1.patch/xkb/ddxLoad.c
 +    out = fmemopen(xkbKeyMapBuf, sizeof(xkbKeyMapBuf), "w");
 +    if (NULL == out) {
 +        ErrorF("[xkb] Open xkbKeyMapBuf for writing failed\n");
-+        return False;
++        return FALSE;
 +    }
 +    ret = XkbWriteXKBKeymapForNames(out, names, xkb, want, need);
 +    if (fclose(out) !=0)
 +    {
 +        ErrorF("[xkb] XkbWriteXKBKeymapForNames error, perhaps xkbKeyMapBuf is too small\n");
-+        return False;
++        return FALSE;
 +    }
 +#ifdef DEBUG
 +    if (xkbDebugFlags) {
@@ -189,7 +184,7 @@ diff -Naur xorg-server-1.7.1/xkb/ddxLoad.c xorg-server-1.7.1.patch/xkb/ddxLoad.c
  #endif
 +    if (!ret) {
 +        ErrorF("[xkb] Generating XKB Keymap failed, giving up compiling keymap\n");
-+        return False;
++        return FALSE;
 +    }
  
 -    snprintf(keymap, sizeof(keymap), "server-%s", display);
@@ -204,11 +199,10 @@ diff -Naur xorg-server-1.7.1/xkb/ddxLoad.c xorg-server-1.7.1.patch/xkb/ddxLoad.c
 +    }
  
      OutputDirectory(xkm_output_dir, sizeof(xkm_output_dir));
- 
 +    /* set nameRtrn, fail if it's too small */
 +    if ((strlen(xkmfile)+1 > nameRtrnLen) && nameRtrn) {
 +        ErrorF("[xkb] nameRtrn too small to hold xkmfile name\n");
-+        return False;
++        return FALSE;
 +    }
 +    strncpy(nameRtrn, xkmfile, nameRtrnLen);
 +
@@ -217,7 +211,7 @@ diff -Naur xorg-server-1.7.1/xkb/ddxLoad.c xorg-server-1.7.1.patch/xkb/ddxLoad.c
 +    if (access(canonicalXkmFileName, R_OK) == 0) {
 +        /* yes, we can reuse the old xkm file */
 +        LogMessage(X_INFO, "XKB: reuse xkmfile %s\n", canonicalXkmFileName);
-+        result = True;
++        result = TRUE;
 +        goto _ret;
 +    }
 +    LogMessage(X_INFO, "XKB: generating xkmfile %s\n", canonicalXkmFileName);
@@ -225,18 +219,17 @@ diff -Naur xorg-server-1.7.1/xkb/ddxLoad.c xorg-server-1.7.1.patch/xkb/ddxLoad.c
 +    /* continue to call xkbcomp to compile the keymap. to avoid race
 +       condition, we compile it to a tmpfile then rename it to
 +       xkmfile */
-+
+ 
  #ifdef WIN32
      strcpy(tmpname, Win32TempDir());
-     strcat(tmpname, "\\xkb_XXXXXX");
-@@ -227,19 +320,30 @@
+@@ -225,14 +318,20 @@
  	}
      }
  
 +    if ( (tmpXkmFile = tempnam(xkm_output_dir, NULL)) == NULL ) {
-+        ErrorF("[xkb] Can't generate temp xkm file name");
-+        result = False;
-+        goto _ret;
++	ErrorF("[xkb] Can't generate temp xkm file name");
++	result = FALSE;
++	goto _ret;
 +    }
 +
      buf = Xprintf("\"%s%sxkbcomp\" -w %d %s -xkm \"%s\" "
@@ -245,14 +238,16 @@ diff -Naur xorg-server-1.7.1/xkb/ddxLoad.c xorg-server-1.7.1.patch/xkb/ddxLoad.c
  		  xkbbindir, xkbbindirsep,
  		  ( (xkbDebugFlags < 2) ? 1 :
  		    ((xkbDebugFlags > 10) ? 10 : (int)xkbDebugFlags) ),
--		  xkbbasedirflag, xkmfile,
-+		  xkbbasedirflag, xkbfile,
+-		  xkbbasedirflag ? xkbbasedirflag : "", xkmfile,
++		  xkbbasedirflag ? xkbbasedirflag : "", xkbfile,
  		  PRE_ERROR_MSG, ERROR_PREFIX, POST_ERROR_MSG1,
 -		  xkm_output_dir, keymap);
 +		  tmpXkmFile);
  
-     if (xkbbasedirflag != emptystring) {
- 	xfree(xkbbasedirflag);
+     free(xkbbasedirflag);
+ 
+@@ -241,6 +340,11 @@
+         return FALSE;
      }
      
 +    /* there's a potential race condition between calling tempnam()
@@ -263,7 +258,7 @@ diff -Naur xorg-server-1.7.1/xkb/ddxLoad.c xorg-server-1.7.1.patch/xkb/ddxLoad.c
  #ifndef WIN32
      out= Popen(buf,"w");
  #else
-@@ -247,31 +351,43 @@
+@@ -248,31 +352,42 @@
  #endif
      
      if (out!=NULL) {
@@ -271,48 +266,48 @@ diff -Naur xorg-server-1.7.1/xkb/ddxLoad.c xorg-server-1.7.1.patch/xkb/ddxLoad.c
 -    if (xkbDebugFlags) {
 -       ErrorF("[xkb] XkbDDXCompileKeymapByNames compiling keymap:\n");
 -       XkbWriteXKBKeymapForNames(stderr,names,xkb,want,need);
-+        /* write XKBKeyMapBuf to xkbcomp */
-+        if (EOF==fputs(xkbKeyMapBuf, out))
-+        {
-+            ErrorF("[xkb] Sending keymap to xkbcomp failed\n");
-+            result = False;
-+            goto _ret;
-     }
+-    }
 -#endif
 -	XkbWriteXKBKeymapForNames(out,names,xkb,want,need);
++	/* write XKBKeyMapBuf to xkbcomp */
++	if (EOF==fputs(xkbKeyMapBuf, out))
++	{
++	    ErrorF("[xkb] Sending keymap to xkbcomp failed\n");
++	    result = FALSE;
++	    goto _ret;
++	}
  #ifndef WIN32
  	if (Pclose(out)==0)
  #else
  	if (fclose(out)==0 && System(buf) >= 0)
  #endif
  	{
-+        /* xkbcomp success */
++	    /* xkbcomp success */
              if (xkbDebugFlags)
                  DebugF("[xkb] xkb executes: %s\n",buf);
 -	    if (nameRtrn) {
 -		strncpy(nameRtrn,keymap,nameRtrnLen);
 -		nameRtrn[nameRtrnLen-1]= '\0';
 +
-+            /* if canonicalXkmFileName already exists now, we simply
-+               overwrite it, this is OK */
-+            ret = rename(tmpXkmFile, canonicalXkmFileName);
-+            if (0 != ret) {
-+                ErrorF("[xkb] Can't rename %s to %s, error: %s\n",
++	    /* if canonicalXkmFileName already exists now, we simply
++	       overwrite it, this is OK */
++	    ret = rename(tmpXkmFile, canonicalXkmFileName);
++	    if (0 != ret) {
++		ErrorF("[xkb] Can't rename %s to %s, error: %s\n",
 +                       tmpXkmFile, canonicalXkmFileName,
 +                       strerror(errno));
 +
 +                /* in case of error, don't unlink tmpXkmFile, leave it
 +                   for debugging */
 +
-+                result = False;
++                result = FALSE;
 +                goto _ret;
  	    }
 -            if (buf != NULL)
--                xfree (buf);
--	    return True;
-+
-+            result = True;
-+            goto _ret;
+-                free(buf);
+-	    return TRUE;
++	    result = TRUE;
++	    goto _ret;
  	}
  	else
 -	    LogMessage(X_ERROR, "Error compiling keymap (%s)\n", keymap);
@@ -320,26 +315,28 @@ diff -Naur xorg-server-1.7.1/xkb/ddxLoad.c xorg-server-1.7.1.patch/xkb/ddxLoad.c
  #ifdef WIN32
          /* remove the temporary file */
          unlink(tmpname);
-@@ -286,9 +402,17 @@
+@@ -287,9 +402,17 @@
      }
      if (nameRtrn)
  	nameRtrn[0]= '\0';
-+    result = False;
+-    if (buf != NULL)
+-        free(buf);
+-    return FALSE;
++    result = FALSE;
 +
 +_ret:
 +    if (tmpXkmFile)
-+        free(tmpXkmFile);
++	free(tmpXkmFile);
 +    if (canonicalXkmFileName)
-+        xfree(canonicalXkmFileName);
-     if (buf != NULL)
-         xfree (buf);
--    return False;
-+
++	free(canonicalXkmFileName);
++    if (buf)
++	free(buf);
++    
 +    return result;
  }
  
  static FILE *
-@@ -372,7 +496,6 @@
+@@ -373,7 +496,6 @@
  	DebugF("Loaded XKB keymap %s, defined=0x%x\n",fileName,(*xkbRtrn)->defined);
      }
      fclose(file);
