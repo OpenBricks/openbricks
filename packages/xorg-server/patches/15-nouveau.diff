@@ -1,0 +1,76 @@
+From a685b5cf34532cef96fc9b05f735088ac0c0c7ad Mon Sep 17 00:00:00 2001
+From: Fedora X Ninjas <x@fedoraproject.org>
+Date: Tue, 16 Feb 2010 11:38:17 +1000
+Subject: [PATCH 08/17] autoconfig: select nouveau by default for NVIDIA GPUs
+
+Also, don't treat DRI setup failure as an error for nouveau.
+---
+ glx/glxdri.c                       |    7 +++++--
+ glx/glxdri2.c                      |    7 +++++--
+ hw/xfree86/common/xf86AutoConfig.c |   19 ++++++++++++++++++-
+ 3 files changed, 28 insertions(+), 5 deletions(-)
+
+Index: xorg-server/glx/glxdri.c
+===================================================================
+--- xorg-server.orig/glx/glxdri.c
++++ xorg-server/glx/glxdri.c
+@@ -981,6 +981,7 @@
+     const __DRIconfig **driConfigs;
+     const __DRIextension **extensions;
+     int i;
++    int from = X_ERROR;
+ 
+     if (!xf86LoaderCheckSymbol("DRIQueryDirectRenderingCapable") ||
+ 	!DRIQueryDirectRenderingCapable(pScreen, &isCapable) ||
+@@ -1060,7 +1061,9 @@
+ 
+     screen->driver = dlopen(filename, RTLD_LAZY | RTLD_LOCAL);
+     if (screen->driver == NULL) {
+-	LogMessage(X_ERROR, "AIGLX error: dlopen of %s failed (%s)\n",
++	if (!strcmp(driverName, "nouveau"))
++	    from = X_INFO;
++	LogMessage(from, "AIGLX error: dlopen of %s failed (%s)\n",
+ 		   filename, dlerror());
+         goto handle_error;
+     }
+@@ -1198,7 +1201,7 @@
+ 
+     free(screen);
+ 
+-    LogMessage(X_ERROR, "AIGLX: reverting to software rendering\n");
++    LogMessage(from, "AIGLX: reverting to software rendering\n");
+ 
+     return NULL;
+ }
+Index: xorg-server/glx/glxdri2.c
+===================================================================
+--- xorg-server.orig/glx/glxdri2.c
++++ xorg-server/glx/glxdri2.c
+@@ -709,6 +709,7 @@
+     const __DRIextension **extensions;
+     const __DRIconfig **driConfigs;
+     int i;
++    int from = X_ERROR;
+ 
+     screen = calloc(1, sizeof *screen);
+     if (screen == NULL)
+@@ -735,7 +736,9 @@
+ 
+     screen->driver = dlopen(filename, RTLD_LAZY | RTLD_LOCAL);
+     if (screen->driver == NULL) {
+-	LogMessage(X_ERROR, "AIGLX error: dlopen of %s failed (%s)\n",
++	if (!strcmp(driverName, "nouveau"))
++	    from = X_INFO;
++	LogMessage(from, "AIGLX error: dlopen of %s failed (%s)\n",
+ 		   filename, dlerror());
+         goto handle_error;
+     }
+@@ -829,7 +832,7 @@
+ 
+     free(screen);
+ 
+-    LogMessage(X_ERROR, "AIGLX: reverting to software rendering\n");
++    LogMessage(from, "AIGLX: reverting to software rendering\n");
+ 
+     return NULL;
+ }

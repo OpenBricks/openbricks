@@ -1,0 +1,1327 @@
+From 2b3600e55fdc8270181a1e818ad1c607c7406b16 Mon Sep 17 00:00:00 2001
+From: Chase Douglas <chase.douglas@canonical.com>
+Date: Sat, 24 Jul 2010 06:02:59 -0400
+Subject: [PATCH] Gesture Extension
+
+---
+ Makefile.am                 |    5 +
+ configure.ac                |   26 ++-
+ dix/window.c                |    7 +
+ gesture/Makefile.am         |   10 +
+ gesture/gesture.c           |  421 +++++++++++++++++++++++++++++++++++++++++++
+ gesture/gesture.h           |   77 ++++++++
+ gesture/gestureint.h        |   49 +++++
+ gesture/gestureproto.h      |  141 +++++++++++++++
+ gesture/init.c              |  282 +++++++++++++++++++++++++++++
+ include/dix-config.h.in     |    3 +
+ include/protocol-versions.h |    4 +
+ include/windowstr.h         |   10 +
+ mi/miinitext.c              |   15 ++
+ os/utils.c                  |    3 +
+ 14 files changed, 1045 insertions(+), 8 deletions(-)
+ create mode 100644 gesture/Makefile.am
+ create mode 100644 gesture/gesture.c
+ create mode 100644 gesture/gesture.h
+ create mode 100644 gesture/gestureint.h
+ create mode 100644 gesture/gestureproto.h
+ create mode 100644 gesture/init.c
+
+--- a/Makefile.am
++++ b/Makefile.am
+@@ -17,6 +17,10 @@ if RECORD
+ RECORD_DIR=record
+ endif
+ 
++if GESTURES
++GESTURE_DIR=gesture
++endif
++
+ SUBDIRS = \
+ 	doc \
+ 	include \
+@@ -37,6 +41,7 @@ SUBDIRS = \
+ 	$(COMPOSITE_DIR) \
+ 	$(GLX_DIR) \
+ 	exa \
++	$(GESTURE_DIR) \
+ 	config \
+ 	hw \
+ 	test
+--- a/configure.ac
++++ b/configure.ac
+@@ -602,6 +602,8 @@ AC_ARG_ENABLE(visibility,     AC_HELP_ST
+ AC_ARG_ENABLE(pc98,     	AC_HELP_STRING([--enable-pc98], [Enable PC98 support in Xorg (default: auto)]),
+ 				[SUPPORT_PC98=$enableval],
+ 				[SUPPORT_PC98=auto])
++AC_ARG_ENABLE(gestures,         AC_HELP_STRING([--enable-gestures], [Enable gesture support (default: disabled)]),
++				[GESTURES=$enableval])
+ 
+ dnl GLX build options
+ AC_ARG_WITH(dri-driver-path,  AS_HELP_STRING([--with-dri-driver-path=PATH], [Path to DRI drivers (default: ${libdir}/dri)]),
+@@ -1360,6 +1362,13 @@ MIEXT_SHADOW_INC='-I$(top_srcdir)/miext/
+ MIEXT_SHADOW_LIB='$(top_builddir)/miext/shadow/libshadow.la'
+ CORE_INCS='-I$(top_srcdir)/include -I$(top_builddir)/include'
+ 
++AM_CONDITIONAL(GESTURES, [test "x$GESTURES" = "xyes"])
++if test "x$GESTURES" = xyes; then
++	AC_DEFINE(GESTURES, 1, [Enable gesture support])
++	GESTURE_LIB='$(top_builddir)/gesture/libgesture.la'
++	GESTURE_INC='-I$(top_srcdir)/gesture'
++fi
++
+ # SHA1 hashing
+ AC_ARG_WITH([sha1],
+             [AS_HELP_STRING([--with-sha1=libc|libmd|libgcrypt|libcrypto|libsha1|CommonCrypto|nettle],
+@@ -1507,7 +1516,7 @@ AC_EGREP_CPP([I_AM_SVR4],[
+ AC_DEFINE([SVR4],1,[Define to 1 on systems derived from System V Release 4])
+ AC_MSG_RESULT([yes])], AC_MSG_RESULT([no]))
+ 
+-XSERVER_CFLAGS="$XSERVER_CFLAGS $CORE_INCS $XEXT_INC $COMPOSITE_INC $DAMAGE_INC $FIXES_INC $XI_INC $MI_INC $MIEXT_SHADOW_INC $MIEXT_LAYER_INC $MIEXT_DAMAGE_INC $RENDER_INC $RANDR_INC $FB_INC"
++XSERVER_CFLAGS="$XSERVER_CFLAGS $CORE_INCS $XEXT_INC $COMPOSITE_INC $DAMAGE_INC $FIXES_INC $XI_INC $MI_INC $MIEXT_SHADOW_INC $MIEXT_LAYER_INC $MIEXT_DAMAGE_INC $RENDER_INC $RANDR_INC $FB_INC $GESTURE_INC"
+ 
+ dnl ---------------------------------------------------------------------------
+ dnl DDX section.
+@@ -1520,7 +1529,7 @@ AC_MSG_RESULT([$XVFB])
+ AM_CONDITIONAL(XVFB, [test "x$XVFB" = xyes])
+ 
+ if test "x$XVFB" = xyes; then
+-	XVFB_LIBS="$FB_LIB $FIXES_LIB $XEXT_LIB $DBE_LIB $RECORD_LIB $GLX_LIBS $RANDR_LIB $RENDER_LIB $DAMAGE_LIB $MIEXT_DAMAGE_LIB $MIEXT_SHADOW_LIB $XI_LIB $XKB_LIB $XKB_STUB_LIB $COMPOSITE_LIB"
++	XVFB_LIBS="$FB_LIB $FIXES_LIB $XEXT_LIB $DBE_LIB $RECORD_LIB $GLX_LIBS $RANDR_LIB $RENDER_LIB $DAMAGE_LIB $MIEXT_DAMAGE_LIB $MIEXT_SHADOW_LIB $XI_LIB $XKB_LIB $XKB_STUB_LIB $COMPOSITE_LIB $GESTURE_LIB"
+ 	XVFB_SYS_LIBS="$XVFBMODULES_LIBS $GLX_SYS_LIBS"
+ 	AC_SUBST([XVFB_LIBS])
+ 	AC_SUBST([XVFB_SYS_LIBS])
+@@ -1541,7 +1550,7 @@ if test "x$XNEST" = xyes; then
+ 	if test "x$have_xnest" = xno; then
+ 		AC_MSG_ERROR([Xnest build explicitly requested, but required modules not found.])
+ 	fi
+-	XNEST_LIBS="$FB_LIB $FIXES_LIB $MI_LIB $XEXT_LIB $DBE_LIB $RECORD_LIB $GLX_LIBS $RANDR_LIB $RENDER_LIB $DAMAGE_LIB $MIEXT_DAMAGE_LIB $MIEXT_SHADOW_LIB $XI_LIB $XKB_LIB $XKB_STUB_LIB $COMPOSITE_LIB $DIX_LIB $MAIN_LIB $OS_LIB"
++	XNEST_LIBS="$FB_LIB $FIXES_LIB $MI_LIB $XEXT_LIB $DBE_LIB $RECORD_LIB $GLX_LIBS $RANDR_LIB $RENDER_LIB $DAMAGE_LIB $MIEXT_DAMAGE_LIB $MIEXT_SHADOW_LIB $XI_LIB $XKB_LIB $XKB_STUB_LIB $COMPOSITE_LIB $DIX_LIB $MAIN_LIB $OS_LIB $GESTURE_LIB"
+ 	XNEST_SYS_LIBS="$XNESTMODULES_LIBS $GLX_SYS_LIBS"
+ 	AC_SUBST([XNEST_LIBS])
+ 	AC_SUBST([XNEST_SYS_LIBS])
+@@ -1569,7 +1578,7 @@ if test "x$XORG" = xyes; then
+ 	XORG_OSINCS='-I$(top_srcdir)/hw/xfree86/os-support -I$(top_srcdir)/hw/xfree86/os-support/bus -I$(top_srcdir)/os'
+ 	XORG_INCS="$XORG_DDXINCS $XORG_OSINCS"
+ 	XORG_CFLAGS="$XORGSERVER_CFLAGS -DHAVE_XORG_CONFIG_H"
+-	XORG_LIBS="$COMPOSITE_LIB $FIXES_LIB $XEXTXORG_LIB $GLX_LIBS $RANDR_LIB $RENDER_LIB $DAMAGE_LIB $MIEXT_DAMAGE_LIB $MIEXT_SHADOW_LIB $XI_LIB $XKB_LIB"
++	XORG_LIBS="$COMPOSITE_LIB $FIXES_LIB $XEXTXORG_LIB $GLX_LIBS $RANDR_LIB $RENDER_LIB $DAMAGE_LIB $MIEXT_DAMAGE_LIB $MIEXT_SHADOW_LIB $XI_LIB $XKB_LIB $GESTURE_LIB"
+ 
+ 	dnl ==================================================================
+ 	dnl symbol visibility
+@@ -1905,7 +1914,7 @@ if test "x$XWIN" = xyes; then
+ 			XWIN_SYS_LIBS=-lwinsock2
+ 			;;
+ 	esac
+-	XWIN_LIBS="$FB_LIB $MI_LIB $FIXES_LIB $XEXT_LIB $RANDR_LIB $RENDER_LIB $DBE_LIB $RECORD_LIB $GLX_LIBS $XKB_LIB $XKB_STUB_LIB $COMPOSITE_LIB $DAMAGE_LIB $MIEXT_DAMAGE_LIB $MIEXT_SHADOW_LIB $XI_LIB $OS_LIB"
++	XWIN_LIBS="$FB_LIB $MI_LIB $FIXES_LIB $XEXT_LIB $RANDR_LIB $RENDER_LIB $DBE_LIB $RECORD_LIB $GLX_LIBS $XKB_LIB $XKB_STUB_LIB $COMPOSITE_LIB $DAMAGE_LIB $MIEXT_DAMAGE_LIB $MIEXT_SHADOW_LIB $XI_LIB $OS_LIB $GESTURE_LIB"
+ 	XWIN_SYS_LIBS="$XWIN_SYS_LIBS $XWINMODULES_LIBS"
+ 	AC_SUBST(XWIN_LIBS)
+ 	AC_SUBST(XWIN_SERVER_NAME)
+@@ -1935,7 +1944,7 @@ if test "x$XQUARTZ" = xyes; then
+ 	AC_DEFINE(XQUARTZ,1,[Have Quartz])
+ 	AC_DEFINE(ROOTLESS,1,[Build Rootless code])
+ 
+-	DARWIN_LIBS="$MI_LIB $OS_LIB $DIX_LIB $MAIN_LIB $FB_LIB $FIXES_LIB $XEXT_LIB $DBE_LIB $RECORD_LIB $RANDR_LIB $RENDER_LIB $DAMAGE_LIB $MIEXT_DAMAGE_LIB $MIEXT_SHADOW_LIB $XI_LIB $XKB_LIB $XKB_STUB_LIB $XPSTUBS_LIB"
++	DARWIN_LIBS="$MI_LIB $OS_LIB $DIX_LIB $MAIN_LIB $FB_LIB $FIXES_LIB $XEXT_LIB $DBE_LIB $RECORD_LIB $RANDR_LIB $RENDER_LIB $DAMAGE_LIB $MIEXT_DAMAGE_LIB $MIEXT_SHADOW_LIB $XI_LIB $XKB_LIB $XKB_STUB_LIB $XPSTUBS_LIB $GESTURE_LIB"
+ 	AC_SUBST([DARWIN_LIBS])
+ 
+ 	AC_CHECK_LIB([Xplugin],[xp_init],[:])
+@@ -1996,7 +2005,7 @@ if test "x$DMX" = xyes; then
+ 	fi
+ 	DMX_INCLUDES="$XEXT_INC $RENDER_INC $RECORD_INC"
+ 	XDMX_CFLAGS="$DMXMODULES_CFLAGS"
+-	XDMX_LIBS="$FB_LIB $MI_LIB $RENDER_LIB $RECORD_LIB $XI_LIB $XKB_LIB $XKB_STUB_LIB $MIEXT_SHADOW_LIB $MIEXT_DAMAGE_LIB $XEXT_LIB $MAIN_LIB $DIX_LIB $OS_LIB $FIXES_LIB"
++	XDMX_LIBS="$FB_LIB $MI_LIB $RENDER_LIB $RECORD_LIB $XI_LIB $XKB_LIB $XKB_STUB_LIB $MIEXT_SHADOW_LIB $MIEXT_DAMAGE_LIB $XEXT_LIB $MAIN_LIB $DIX_LIB $OS_LIB $FIXES_LIB $GESTURE_LIB"
+ 	XDMX_SYS_LIBS="$DMXMODULES_LIBS"
+ 	AC_SUBST([XDMX_CFLAGS])
+ 	AC_SUBST([XDMX_LIBS])
+@@ -2104,7 +2113,7 @@ if test "$KDRIVE" = yes; then
+     
+     KDRIVE_CFLAGS="$XSERVER_CFLAGS -DHAVE_KDRIVE_CONFIG_H $TSLIB_CFLAGS"
+ 
+-    KDRIVE_PURE_LIBS="$FB_LIB $MI_LIB $FIXES_LIB $XEXT_LIB $DBE_LIB $RECORD_LIB $GLX_LIBS $RANDR_LIB $RENDER_LIB $DAMAGE_LIB $MIEXT_DAMAGE_LIB $MIEXT_SHADOW_LIB $XI_LIB $XKB_LIB $XKB_STUB_LIB $COMPOSITE_LIB $OS_LIB"
++    KDRIVE_PURE_LIBS="$FB_LIB $MI_LIB $FIXES_LIB $XEXT_LIB $DBE_LIB $RECORD_LIB $GLX_LIBS $RANDR_LIB $RENDER_LIB $DAMAGE_LIB $MIEXT_DAMAGE_LIB $MIEXT_SHADOW_LIB $XI_LIB $XKB_LIB $XKB_STUB_LIB $COMPOSITE_LIB $OS_LIB $GESTURE_LIB"
+     KDRIVE_LIB='$(top_builddir)/hw/kdrive/src/libkdrive.la'
+     case $host_os in
+ 	*linux*)
+@@ -2215,6 +2224,7 @@ Xext/Makefile
+ Xi/Makefile
+ xfixes/Makefile
+ exa/Makefile
++gesture/Makefile
+ hw/Makefile
+ hw/xfree86/Makefile
+ hw/xfree86/common/Makefile
+--- a/dix/window.c
++++ b/dix/window.c
+@@ -397,6 +397,9 @@ CreateRootWindow(ScreenPtr pScreen)
+     pWin->optional->deviceCursors = NULL;
+     pWin->optional->colormap = pScreen->defColormap;
+     pWin->optional->visual = pScreen->rootVisual;
++#ifdef GESTURES
++    pWin->optional->gestureMasks = NULL;
++#endif
+ 
+     pWin->nextSib = NullWindow;
+ 
+@@ -3397,6 +3400,10 @@ CheckWindowOptionalNeed (WindowPtr w)
+             pNode = pNode->next;
+         }
+     }
++#ifdef GESTURES
++    if (optional->gestureMasks != NULL)
++        return;
++#endif
+ 
+     parentOptional = FindWindowWithOptional(w)->optional;
+     if (optional->visual != parentOptional->visual)
+@@ -3440,6 +3447,9 @@ MakeWindowOptional (WindowPtr pWin)
+     optional->inputShape = NULL;
+     optional->inputMasks = NULL;
+     optional->deviceCursors = NULL;
++#ifdef GESTURES
++    optional->gestureMasks = NULL;
++#endif
+ 
+     parentOptional = FindWindowWithOptional(pWin)->optional;
+     optional->visual = parentOptional->visual;
+--- /dev/null
++++ b/gesture/Makefile.am
+@@ -0,0 +1,10 @@
++noinst_LTLIBRARIES = libgesture.la
++
++AM_CFLAGS = $(DIX_CFLAGS)
++
++libgesture_la_SOURCES = 	\
++	init.c			\
++	gesture.c		\
++	gesture.h
++
++sdk_HEADERS = gesture.h
+--- /dev/null
++++ b/gesture/gesture.c
+@@ -0,0 +1,430 @@
++/*
++ * Copyright © 2010 Canonical, Ltd.
++ *
++ * Permission is hereby granted, free of charge, to any person obtaining a
++ * copy of this software and associated documentation files (the "Software"),
++ * to deal in the Software without restriction, including without limitation
++ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
++ * and/or sell copies of the Software, and to permit persons to whom the
++ * Software is furnished to do so, subject to the following conditions:
++ *
++ * The above copyright notice and this permission notice (including the next
++ * paragraph) shall be included in all copies or substantial portions of the
++ * Software.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
++ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
++ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
++ * DEALINGS IN THE SOFTWARE.
++ *
++ * Authors: Chase Douglas <chase.douglas@canonical.com>
++ *
++ */
++
++#include "windowstr.h"
++#include "gestureint.h"
++
++int
++SProcGestureQueryVersion(ClientPtr client)
++{
++    char n;
++
++    REQUEST(GestureQueryVersionReq);
++    swaps(&stuff->length, n);
++    REQUEST_AT_LEAST_SIZE(GestureQueryVersionReq);
++    swaps(&stuff->major_version, n);
++    swaps(&stuff->minor_version, n);
++    return (ProcGestureQueryVersion(client));
++}
++
++GestureExtensionVersion GestureVersion;
++/**
++ * Return the supported Gesture version.
++ *
++ * Saves the version the client claims to support as well, for future
++ * reference.
++ */
++int
++ProcGestureQueryVersion(ClientPtr client)
++{
++    GestureQueryVersionReply rep;
++    GestureClientPtr gestureClient;
++    int major, minor;
++    unsigned int sversion, cversion;
++
++    REQUEST(GestureQueryVersionReq);
++    REQUEST_SIZE_MATCH(GestureQueryVersionReq);
++
++    gestureClient = dixLookupPrivate(&client->devPrivates,
++                                     &GestureClientPrivateKeyRec);
++
++    sversion = GestureVersion.major_version * 1000 + GestureVersion.minor_version;
++    cversion = stuff->major_version * 1000 + stuff->minor_version;
++
++    if (sversion > cversion)
++    {
++        major = stuff->major_version;
++        minor = stuff->minor_version;
++    } else
++    {
++        major = GestureVersion.major_version;
++        minor = GestureVersion.minor_version;
++    }
++
++    gestureClient->major_version = major;
++    gestureClient->minor_version = minor;
++
++    memset(&rep, 0, sizeof(GestureQueryVersionReply));
++    rep.repType = X_Reply;
++    rep.RepType = X_GestureQueryVersion;
++    rep.length = 0;
++    rep.sequenceNumber = client->sequence;
++    rep.major_version = major;
++    rep.minor_version = minor;
++
++    WriteReplyToClient(client, sizeof(GestureQueryVersionReply), &rep);
++
++    return Success;
++}
++
++void
++SRepGestureQueryVersion(ClientPtr client, int size, GestureQueryVersionReply *rep)
++{
++    char n;
++    swaps(&rep->sequenceNumber, n);
++    swapl(&rep->length, n);
++    swaps(&rep->major_version, n);
++    swaps(&rep->minor_version, n);
++    WriteToClient(client, size, (char *)rep);
++}
++
++static Bool
++MakeGestureMasks(WindowPtr pWin)
++{
++    struct _GestureMasks *masks;
++
++    masks = calloc(1, sizeof(struct _GestureMasks));
++    if (!masks)
++        return FALSE;
++    pWin->optional->gestureMasks = masks;
++    return TRUE;
++}
++
++static int
++AddGestureClient(WindowPtr pWin, ClientPtr client)
++{
++    GestureClientsPtr others;
++
++    if (!pWin->optional && !MakeWindowOptional(pWin))
++        return BadAlloc;
++    others = calloc(1, sizeof(GestureClients));
++    if (!others)
++        return BadAlloc;
++    if (!pWin->optional->gestureMasks && !MakeGestureMasks(pWin))
++        return BadAlloc;
++    others->resource = FakeClientID(client->index);
++    others->next = pWin->optional->gestureMasks->clients;
++    pWin->optional->gestureMasks->clients = others;
++    if (!AddResource(others->resource, RT_GESTURECLIENT, (pointer) pWin))
++        return BadAlloc;
++    return Success;
++}
++
++/**
++ * Check the given mask (in len bytes) for invalid mask bits.
++ * Invalid mask bits are any bits above GestureLastEvent.
++ *
++ * @return BadValue if at least one invalid bit is set or Success otherwise.
++ */
++static int
++GestureCheckInvalidMaskBits(unsigned char *mask, int len)
++{
++    if (len >= GESTUREMASKSIZE)
++    {
++        int i;
++        for (i = GESTURELASTEVENT + 1; i < len * 8; i++)
++            if (BitIsOn(mask, i))
++                return BadValue;
++    }
++
++    return Success;
++}
++
++int
++SProcGestureSelectEvents(ClientPtr client)
++{
++    char n;
++    int i;
++
++    REQUEST(GestureSelectEventsReq);
++    swaps(&stuff->length, n);
++    REQUEST_AT_LEAST_SIZE(GestureSelectEventsReq);
++    swapl(&stuff->window, n);
++    swaps(&stuff->mask.device_id, n);
++    swaps(&stuff->mask.mask_len, n);
++
++    for (i = 0; i < stuff->mask.mask_len; i++)
++        swapl(((uint32_t *)(stuff + 1)) + i, n);
++
++    return (ProcGestureSelectEvents(client));
++}
++
++static void
++RecalculateGestureDeliverableEvents(WindowPtr win)
++{
++    GestureClientsPtr others;
++    int i;
++
++    if (!win->optional || !wGestureMasks(win))
++        return;
++
++    memset(&wGestureMasks(win)->mask, 0, sizeof(wGestureMasks(win)->mask));
++
++    for (others = wGestureMasks(win)->clients; others; others = others->next)
++        for (i = 0; i < sizeof(others->gestureMask) * 8; i++)
++            if (BitIsOn(&others->gestureMask, i))
++                SetBit(wGestureMasks(win)->mask, i % (GESTURELASTEVENT + 1));
++}
++
++static int
++GestureSetEventMask(DeviceIntPtr dev, WindowPtr win, ClientPtr client,
++                    unsigned int len, unsigned char* mask)
++{
++    GestureMasks *masks;
++    GestureClientsPtr others = NULL;
++
++    masks = wGestureMasks(win);
++    if (masks)
++    {
++        for (others = masks->clients; others;
++             others = others->next) {
++            if (SameClient(others, client)) {
++                memset(others->gestureMask[dev->id], 0,
++                       sizeof(others->gestureMask[dev->id]));
++                break;
++            }
++        }
++    }
++
++    len = min(len, sizeof(others->gestureMask[dev->id]));
++
++    if (len && !others)
++    {
++        if (AddGestureClient(win, client) != Success)
++            return BadAlloc;
++        masks = wGestureMasks(win);
++        others = masks->clients;
++    }
++
++    if (others)
++        memset(others->gestureMask[dev->id], 0,
++               sizeof(others->gestureMask[dev->id]));
++
++    if (len)
++        memcpy(others->gestureMask[dev->id], mask, len);
++
++    RecalculateGestureDeliverableEvents(win);
++
++    return Success;
++}
++
++int
++ProcGestureSelectEvents(ClientPtr client)
++{
++    int rc;
++    WindowPtr win;
++    DeviceIntPtr dev;
++    DeviceIntRec dummy;
++
++    REQUEST(GestureSelectEventsReq);
++    REQUEST_AT_LEAST_SIZE(GestureSelectEventsReq);
++
++    if (sizeof(GestureSelectEventsReq) + stuff->mask.mask_len * 4 >
++        stuff->length * 4)
++        return BadLength;
++
++    rc = dixLookupWindow(&win, stuff->window, client, DixReceiveAccess);
++    if (rc != Success)
++        return rc;
++
++    if (GestureCheckInvalidMaskBits((unsigned char*)(stuff + 1),
++                                    stuff->mask.mask_len * 4) != Success)
++        return BadValue;
++
++    if (stuff->mask.device_id == GestureAllDevices)
++    {
++        dummy.id = stuff->mask.device_id;
++        dev = &dummy;
++    } else {
++        rc = dixLookupDevice(&dev, stuff->mask.device_id, client, DixUseAccess);
++        if (rc != Success)
++            return rc;
++    }
++
++    if (GestureSetEventMask(dev, win, client, stuff->mask.mask_len * 4,
++                            (unsigned char*)(stuff + 1)) != Success)
++        return BadAlloc;
++
++    return Success;
++}
++
++int
++SProcGestureGetSelectedEvents(ClientPtr client)
++{
++    char n;
++
++    REQUEST(GestureGetSelectedEventsReq);
++    swaps(&stuff->length, n);
++    REQUEST_SIZE_MATCH(GestureGetSelectedEventsReq);
++    swapl(&stuff->window, n);
++
++    return (ProcGestureGetSelectedEvents(client));
++}
++
++int
++ProcGestureGetSelectedEvents(ClientPtr client)
++{
++    int rc, i;
++    WindowPtr win;
++    char n;
++    char *buffer = NULL;
++    GestureGetSelectedEventsReply reply;
++    GestureMasks *masks;
++    GestureClientsPtr others = NULL;
++    GestureEventMask *evmask = NULL;
++    DeviceIntPtr dev;
++
++    REQUEST(GestureGetSelectedEventsReq);
++    REQUEST_SIZE_MATCH(GestureGetSelectedEventsReq);
++
++    rc = dixLookupWindow(&win, stuff->window, client, DixGetAttrAccess);
++    if (rc != Success)
++        return rc;
++
++    reply.repType = X_Reply;
++    reply.RepType = X_GestureGetSelectedEvents;
++    reply.length = 0;
++    reply.sequenceNumber = client->sequence;
++    reply.num_masks = 0;
++
++    masks = wGestureMasks(win);
++    if (masks)
++    {
++        for (others = masks->clients; others; others = others->next) {
++            if (SameClient(others, client)) {
++                break;
++            }
++        }
++    }
++
++    if (!others)
++    {
++        WriteReplyToClient(client, sizeof(GestureGetSelectedEventsReply), &reply);
++        return Success;
++    }
++
++    buffer = calloc(MAXDEVICES, sizeof(GestureEventMask) + pad_to_int32(GESTUREMASKSIZE));
++    if (!buffer)
++        return BadAlloc;
++
++    evmask = (GestureEventMask*)buffer;
++    for (i = 0; i < MAXDEVICES; i++)
++    {
++        int j;
++        unsigned char *devmask = others->gestureMask[i];
++
++        if (i > 2)
++        {
++            rc = dixLookupDevice(&dev, i, client, DixGetAttrAccess);
++            if (rc != Success)
++                continue;
++        }
++
++
++        for (j = GESTUREMASKSIZE - 1; j >= 0; j--)
++        {
++            if (devmask[j] != 0)
++            {
++                int mask_len = (j + 4)/4; /* j is an index, hence + 4, not + 3 */
++                evmask->device_id = i;
++                evmask->mask_len = mask_len;
++                reply.num_masks++;
++                reply.length += sizeof(GestureEventMask)/4 + evmask->mask_len;
++
++                if (client->swapped)
++                {
++                    swaps(&evmask->device_id, n);
++                    swaps(&evmask->mask_len, n);
++                }
++
++                memcpy(&evmask[1], devmask, j + 1);
++                evmask = (GestureEventMask*)((char*)evmask +
++                           sizeof(GestureEventMask) + mask_len * 4);
++                break;
++            }
++        }
++    }
++
++    WriteReplyToClient(client, sizeof(GestureGetSelectedEventsReply), &reply);
++
++    if (reply.num_masks)
++        WriteToClient(client, reply.length * 4, buffer);
++
++    free(buffer);
++    return Success;
++}
++
++void
++SRepGestureGetSelectedEvents(ClientPtr client,
++                             int len, GestureGetSelectedEventsReply *rep)
++{
++    char n;
++
++    swaps(&rep->sequenceNumber, n);
++    swapl(&rep->length, n);
++    swaps(&rep->num_masks, n);
++    WriteToClient(client, len, (char *)rep);
++}
++
++int
++GestureClientGone(WindowPtr pWin, XID id)
++{
++    GestureClientsPtr other, prev;
++
++    if (!wGestureMasks(pWin))
++        return (Success);
++    prev = 0;
++    for (other = wGestureMasks(pWin)->clients; other;
++         other = other->next) {
++        if (other->resource == id) {
++            if (prev) {
++                prev->next = other->next;
++                free(other);
++            } else if (!(other->next)) {
++                free(wGestureMasks(pWin));
++                pWin->optional->gestureMasks = (GestureMasks *) NULL;
++                CheckWindowOptionalNeed(pWin);
++                free(other);
++            } else {
++                wGestureMasks(pWin)->clients = other->next;
++                free(other);
++            }
++            RecalculateGestureDeliverableEvents(pWin);
++            return (Success);
++        }
++        prev = other;
++    }
++    FatalError("client not on device event list");
++}
++
++void
++DeleteWindowFromGestureEvents(WindowPtr pWin)
++{
++    struct _GestureMasks *gestureMasks;
++
++    while ((gestureMasks = wGestureMasks(pWin)) != 0)
++        FreeResource(gestureMasks->clients->resource, RT_NONE);
++}
+--- /dev/null
++++ b/gesture/gesture.h
+@@ -0,0 +1,78 @@
++/*
++ * Copyright © 2010 Canonical, Ltd.
++ *
++ * Permission is hereby granted, free of charge, to any person obtaining a
++ * copy of this software and associated documentation files (the "Software"),
++ * to deal in the Software without restriction, including without limitation
++ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
++ * and/or sell copies of the Software, and to permit persons to whom the
++ * Software is furnished to do so, subject to the following conditions:
++ *
++ * The above copyright notice and this permission notice (including the next
++ * paragraph) shall be included in all copies or substantial portions of the
++ * Software.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
++ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
++ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
++ * DEALINGS IN THE SOFTWARE.
++ *
++ * Authors: Chase Douglas <chase.douglas@canonical.com>
++ *
++ */
++
++#ifndef _GESTURE_H_
++#define _GESTURE_H_
++
++#ifdef HAVE_DIX_CONFIG_H
++#include <dix-config.h>
++#endif
++
++#include "inputstr.h"
++
++/* This is the last Gesture event supported by the server. If you add
++ * events to the protocol, the server will not support these events until
++ * this number here is bumped.
++ */
++#define GESTURELASTEVENT     63
++#define GESTUREMASKSIZE      (GESTURELASTEVENT/8 + 1) /* no of bits for masks */
++
++extern _X_EXPORT int GestureReqCode;
++
++/**
++ * Attached to the devPrivates of each client. Specifies the version number as
++ * supported by the client.
++ */
++typedef struct _GestureClientRec {
++        int major_version;
++        int minor_version;
++} GestureClientRec, *GestureClientPtr;
++
++typedef struct _GestureClients *GestureClientsPtr;
++
++/**
++ * This struct stores the Gesture event mask for each client.
++ *
++ * Each window that has events selected has at least one of these masks. If
++ * multiple client selected for events on the same window, these masks are in
++ * a linked list.
++ */
++typedef struct _GestureClients {
++    GestureClientsPtr  next; /**< Pointer to the next mask */
++    XID                resource; /**< id for putting into resource manager */
++    /** Gesture event masks. One per device, each bit is a mask of (1 << type) */
++    unsigned char      gestureMask[EMASKSIZE][GESTUREMASKSIZE];
++} GestureClients;
++
++typedef struct _GestureMasks {
++    GestureClientsPtr   clients;
++    unsigned char       mask[GESTUREMASKSIZE];
++} GestureMasks;
++
++extern int GestureClientGone(WindowPtr pWin, XID id);
++extern void DeleteWindowFromGestureEvents(WindowPtr pWin);
++
++#endif /* _GESTURE_H_ */
+--- /dev/null
++++ b/gesture/gestureint.h
+@@ -0,0 +1,49 @@
++/*
++ * Copyright © 2010 Canonical, Ltd.
++ *
++ * Permission is hereby granted, free of charge, to any person obtaining a
++ * copy of this software and associated documentation files (the "Software"),
++ * to deal in the Software without restriction, including without limitation
++ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
++ * and/or sell copies of the Software, and to permit persons to whom the
++ * Software is furnished to do so, subject to the following conditions:
++ *
++ * The above copyright notice and this permission notice (including the next
++ * paragraph) shall be included in all copies or substantial portions of the
++ * Software.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
++ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
++ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
++ * DEALINGS IN THE SOFTWARE.
++ *
++ * Authors: Chase Douglas <chase.douglas@canonical.com>
++ *
++ */
++
++#ifndef _GESTUREINT_H_
++#define _GESTUREINT_H_
++
++#include "gestureproto.h"
++
++typedef struct {
++        short   major_version;
++        short   minor_version;
++} GestureExtensionVersion;
++
++extern DevPrivateKeyRec GestureClientPrivateKeyRec;
++extern int RT_GESTURECLIENT;
++
++extern int ProcGestureQueryVersion(ClientPtr client);
++extern int ProcGestureSelectEvents(ClientPtr client);
++extern int ProcGestureGetSelectedEvents(ClientPtr client);
++extern int SProcGestureQueryVersion(ClientPtr client);
++extern int SProcGestureSelectEvents(ClientPtr client);
++extern int SProcGestureGetSelectedEvents(ClientPtr client);
++extern void SRepGestureQueryVersion(ClientPtr client, int size, GestureQueryVersionReply *rep);
++extern void SRepGestureGetSelectedEvents(ClientPtr client, int len, GestureGetSelectedEventsReply *rep);
++
++#endif /* _GESTUREINT_H_ */
+--- /dev/null
++++ b/gesture/gestureproto.h
+@@ -0,0 +1,132 @@
++/*
++ * Copyright © 2010 Canonical, Ltd.
++ *
++ * Permission is hereby granted, free of charge, to any person obtaining a
++ * copy of this software and associated documentation files (the "Software"),
++ * to deal in the Software without restriction, including without limitation
++ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
++ * and/or sell copies of the Software, and to permit persons to whom the
++ * Software is furnished to do so, subject to the following conditions:
++ *
++ * The above copyright notice and this permission notice (including the next
++ * paragraph) shall be included in all copies or substantial portions of the
++ * Software.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
++ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
++ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
++ * DEALINGS IN THE SOFTWARE.
++ *
++ * Authors: Chase Douglas <chase.douglas@canonical.com>
++ *
++ */
++
++#ifndef _GESTUREPROTO_H_
++#define _GESTUREPROTO_H_
++
++#include <stdint.h>
++#include <X11/X.h>
++
++#define Window  uint32_t
++#define Time    uint32_t
++
++#define X_GestureQueryVersion                1
++#define X_GestureSelectEvents                2
++#define X_GestureGetSelectedEvents           3
++
++#define GESTUREREQUESTS (X_GestureGetSelectedEvents - X_GestureQueryVersion + 1)
++
++#define GestureAllDevices 0
++
++/**
++ * Used to select for events on a given window.
++ * Struct is followed by (mask_len * CARD8), with each bit set representing
++ * the event mask for the given type. A mask bit represents an event type if
++ * (mask == (1 << type)).
++ */
++typedef struct {
++    uint16_t    device_id;       /**< Device id to select for        */
++    uint16_t    mask_len;        /**< Length of mask in 4 byte units */
++} GestureEventMask;
++
++typedef struct {
++    uint8_t     reqType;                /**< Gesture extension major code */
++    uint8_t     ReqType;                /**< Always ::X_GestureQueryVersion */
++    uint16_t    length;                 /**< Length in 4 byte units */
++    uint16_t    major_version;
++    uint16_t    minor_version;
++} GestureQueryVersionReq;
++
++typedef struct {
++    uint8_t     repType;                /**< ::X_Reply */
++    uint8_t     RepType;                /**< Always ::X_GestureQueryVersion */
++    uint16_t    sequenceNumber;
++    uint32_t    length;
++    uint16_t    major_version;
++    uint16_t    minor_version;
++    uint32_t    pad1;
++    uint32_t    pad2;
++    uint32_t    pad3;
++    uint32_t    pad4;
++    uint32_t    pad5;
++} GestureQueryVersionReply;
++
++typedef struct {
++    uint8_t     reqType;                /**< Gesture extension major code */
++    uint8_t     ReqType;                /**< Always ::X_GestureSelectEvents */
++    uint16_t    length;                 /**< Length in 4 byte units */
++    Window      window;
++    GestureEventMask mask;
++} GestureSelectEventsReq;
++
++typedef struct {
++    uint8_t     reqType;                /**< Gesture extension major code */
++    uint8_t     ReqType;                /**< Always ::X_GestureGetSelectedEvents */
++    uint16_t    length;                 /**< Length in 4 byte units */
++    Window      window;
++} GestureGetSelectedEventsReq;
++
++typedef struct {
++    uint8_t     repType;                /**< Gesture extension major opcode */
++    uint8_t     RepType;                /**< Always ::X_GestureGetSelectedEvents */
++    uint16_t    sequenceNumber;
++    uint32_t    length;
++    uint16_t    num_masks;              /**< Number of GestureEventMask structs
++                                             trailing the reply */
++    uint16_t    pad0;
++    uint32_t    pad1;
++    uint32_t    pad2;
++    uint32_t    pad3;
++    uint32_t    pad4;
++    uint32_t    pad5;
++} GestureGetSelectedEventsReply;
++
++typedef struct
++{
++    uint8_t     type;                   /**< Always GenericEvent */
++    uint8_t     extension;              /**< Gesture extension offset */
++    uint16_t    sequenceNumber;         /**< Xevent sequence number */
++    uint32_t    length;                 /**< Length in 4 byte uints */
++    uint16_t    evtype;                 /**< X generic event type */
++    uint16_t    gesture_id;             /**< Unique ID for gesture */
++    uint16_t    gesture_type;           /**< Gesture type (zoom, rotate, etc.) */
++    uint16_t    device_id;              /**< Device that generated this gesture */
++    Time        time;                   /**< Time of gesture event */
++    Window      root;                   /**< Root window event occurred on */
++    Window      event;                  /**< Window selecting this event for a client */
++    Window      child;                  /**< Top-most window of gesture event */
++/* └──────── 32 byte boundary ────────┘ */
++    float       focus_x;                /**< Always window coords, 16.16 fixed point */
++    float       focus_y;                /**< Relative to event window */
++    uint16_t    status;                 /**< Gesture event status */
++    uint16_t    num_props;               /**< Number of properties for gesture event */
++/* └──── Gesture properties below ────┘ */
++} GestureEvent;
++
++#undef Window
++#undef Time
++
++#endif /* _GESTUREPROTO_H_ */
+--- /dev/null
++++ b/gesture/init.c
+@@ -0,0 +1,280 @@
++/************************************************************
++
++Copyright 2010 Canonical, Ltd.
++Copyright 1989, 1998  The Open Group
++
++Permission to use, copy, modify, distribute, and sell this software and its
++documentation for any purpose is hereby granted without fee, provided that
++the above copyright notice appear in all copies and that both that
++copyright notice and this permission notice appear in supporting
++documentation.
++
++The above copyright notice and this permission notice shall be included in
++all copies or substantial portions of the Software.
++
++THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
++OPEN GROUP BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
++AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
++CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
++
++Except as contained in this notice, the name of The Open Group shall not be
++used in advertising or otherwise to promote the sale, use or other dealings
++in this Software without prior written authorization from The Open Group.
++
++Copyright 1989 by Hewlett-Packard Company, Palo Alto, California.
++
++			All Rights Reserved
++
++Permission to use, copy, modify, and distribute this software and its
++documentation for any purpose and without fee is hereby granted,
++provided that the above copyright notice appear in all copies and that
++both that copyright notice and this permission notice appear in
++supporting documentation, and that the name of Hewlett-Packard not be
++used in advertising or publicity pertaining to distribution of the
++software without specific, written prior permission.
++
++HEWLETT-PACKARD DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING
++ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO EVENT SHALL
++HEWLETT-PACKARD BE LIABLE FOR ANY SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR
++ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS,
++WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
++ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS
++SOFTWARE.
++
++********************************************************/
++
++/********************************************************************
++ *
++ *  Dispatch routines and initialization routines for the X gesture extension.
++ *
++ */
++
++#define	 NUMTYPES 15
++
++#ifdef HAVE_DIX_CONFIG_H
++#include <dix-config.h>
++#endif
++
++#include "gcstruct.h"	/* pointer for extnsionst.h */
++#include "extnsionst.h"	/* extension entry   */
++#include "gesture.h"
++#include "gestureint.h"
++#include <X11/extensions/geproto.h>
++#include "geext.h" /* extension interfaces for ge */
++
++#include "swaprep.h"
++#include "privates.h"
++#include "protocol-versions.h"
++#include "dixstruct.h"
++
++#define GESTURE_NAME "GestureExtension"
++#define GESTURE_EVENTS 0
++#define GESTURE_ERRORS 0
++
++void GestureExtensionInit(void);
++
++/**
++ * Dispatch vector. Functions defined in here will be called when the matching
++ * request arrives.
++ */
++static int (*ProcGestureVector[])(ClientPtr) = {
++        NULL,                                   /*  0 */
++	ProcGestureQueryVersion,                     /*  1 */
++	ProcGestureSelectEvents,                     /*  2 */
++	ProcGestureGetSelectedEvents,                /*  3 */
++};
++
++/* For swapped clients */
++static int (*SProcGestureVector[])(ClientPtr) = {
++        NULL,                                    /*  0 */
++	SProcGestureQueryVersion,                     /*  1 */
++	SProcGestureSelectEvents,                     /*  2 */
++	SProcGestureGetSelectedEvents,                /*  3 */
++};
++
++/*****************************************************************
++ *
++ * Globals referenced elsewhere in the server.
++ *
++ */
++
++int GestureReqCode = 0;
++int GestureNotify = 0;
++
++int RT_GESTURECLIENT;
++
++/*****************************************************************
++ *
++ * Externs defined elsewhere in the X server.
++ *
++ */
++
++extern GestureExtensionVersion GestureVersion;
++
++
++/*****************************************************************
++ *
++ * Versioning support
++ *
++ */
++
++DevPrivateKeyRec GestureClientPrivateKeyRec;
++
++
++/*****************************************************************
++ *
++ * Declarations of local routines.
++ *
++ */
++
++static void
++GestureClientCallback(CallbackListPtr        *list,
++                      pointer                closure,
++                      pointer                data)
++{
++    NewClientInfoRec *clientinfo = (NewClientInfoRec*)data;
++    ClientPtr client = clientinfo->client;
++    GestureClientPtr gestureClient;
++
++    gestureClient = dixLookupPrivate(&client->devPrivates,
++                                     &GestureClientPrivateKeyRec);
++    gestureClient->major_version = 0;
++    gestureClient->minor_version = 0;
++}
++
++/*************************************************************************
++ *
++ * ProcGestureDispatch - main dispatch routine for requests to this extension.
++ * This routine is used if server and client have the same byte ordering.
++ *
++ */
++
++static int
++ProcGestureDispatch(ClientPtr client)
++{
++    REQUEST(xReq);
++    if (stuff->data > GESTUREREQUESTS || !ProcGestureVector[stuff->data])
++        return BadRequest;
++
++    return (*ProcGestureVector[stuff->data])(client);
++}
++
++/*******************************************************************************
++ *
++ * SProcXDispatch
++ *
++ * Main swapped dispatch routine for requests to this extension.
++ * This routine is used if server and client do not have the same byte ordering.
++ *
++ */
++
++static int
++SProcGestureDispatch(ClientPtr client)
++{
++    REQUEST(xReq);
++    if (stuff->data > GESTUREREQUESTS || !SProcGestureVector[stuff->data])
++        return BadRequest;
++
++    return (*SProcGestureVector[stuff->data])(client);
++}
++
++/**********************************************************************
++ *
++ * SReplyGestureDispatch
++ * Swap any replies defined in this extension.
++ *
++ */
++
++static void
++SReplyGestureDispatch(ClientPtr client, int len, GestureQueryVersionReply *rep)
++{
++    if (rep->RepType == X_GestureQueryVersion)
++        SRepGestureQueryVersion(client, len, (GestureQueryVersionReply*)rep);
++    else if (rep->RepType == X_GestureGetSelectedEvents)
++	SRepGestureGetSelectedEvents(client, len, (GestureGetSelectedEventsReply *) rep);
++    else {
++	FatalError("Gesture confused sending swapped reply");
++    }
++}
++
++static void SGestureEvent(GestureEvent *from, GestureEvent *to)
++{
++    char n;
++
++    memcpy(to, from, sizeof(xEvent) + from->length * 4);
++
++    swaps(&to->sequenceNumber, n);
++    swapl(&to->length, n);
++    swaps(&to->evtype, n);
++    swaps(&to->gesture_id, n);
++    swaps(&to->gesture_type, n);
++    swaps(&to->device_id, n);
++    swapl(&to->time, n);
++    swapl(&to->root, n);
++    swapl(&to->event, n);
++    swapl(&to->child, n);
++    swapl(&to->focus_x, n);
++    swapl(&to->focus_y, n);
++    swaps(&to->status, n);
++    swaps(&to->num_props, n);
++}
++
++static void
++GestureEventSwap(xGenericEvent *from, xGenericEvent *to)
++{
++    SGestureEvent((GestureEvent *)from, (GestureEvent *)to);
++}
++
++static void
++CloseGestureExt(ExtensionEntry *unused)
++{
++    ReplySwapVector[GestureReqCode] = ReplyNotSwappd;
++    GestureReqCode = 0;
++    GestureNotify = 0;
++}
++
++/**********************************************************************
++ *
++ * GestureExtensionInit - initialize the gesture extension.
++ *
++ * Called from InitExtensions in main() or from QueryExtension() if the
++ * extension is dynamically loaded.
++ *
++ * This extension has several events and errors.
++ */
++
++void
++GestureExtensionInit(void)
++{
++    ExtensionEntry *extEntry;
++    GestureExtensionVersion thisversion = {
++        SERVER_GESTURE_MAJOR_VERSION,
++        SERVER_GESTURE_MINOR_VERSION,
++    };
++
++    if (!dixRegisterPrivateKey(&GestureClientPrivateKeyRec, PRIVATE_CLIENT, sizeof(GestureClientRec)))
++        FatalError("Cannot request private for Gesture.\n");
++
++    if (!AddCallback(&ClientStateCallback, GestureClientCallback, 0))
++        FatalError("Failed to add callback to Gesture.\n");
++
++    extEntry = AddExtension(GESTURE_NAME, GESTURE_EVENTS, GESTURE_ERRORS,
++                            ProcGestureDispatch, SProcGestureDispatch, CloseGestureExt,
++                            StandardMinorOpcode);
++    if (extEntry) {
++	GestureReqCode = extEntry->base;
++	GestureVersion = thisversion;
++	RT_GESTURECLIENT = CreateNewResourceType((DeleteType) GestureClientGone,
++					         "GESTURECLIENT");
++	if (!RT_GESTURECLIENT)
++	    FatalError("Failed to add resource type for Gesture.\n");
++	ReplySwapVector[GestureReqCode] = (ReplySwapPtr) SReplyGestureDispatch;
++
++	GERegisterExtension(GestureReqCode, GestureEventSwap);
++    } else {
++	FatalError("GestureExtensionInit: AddExtensions failed\n");
++    }
++}
++
+--- a/include/dix-config.h.in
++++ b/include/dix-config.h.in
+@@ -30,6 +30,9 @@
+ /* Support Damage extension */
+ #undef DAMAGE
+ 
++/* Support Gesture extension */
++#undef GESTURES
++
+ /* Build for darwin with Quartz support */
+ #undef DARWIN_WITH_QUARTZ
+ 
+--- a/include/protocol-versions.h
++++ b/include/protocol-versions.h
+@@ -141,4 +141,8 @@
+ #define SERVER_XVMC_MAJOR_VERSION		1
+ #define SERVER_XVMC_MINOR_VERSION		1
+ 
++/* Gesture */
++#define SERVER_GESTURE_MAJOR_VERSION		0
++#define SERVER_GESTURE_MINOR_VERSION		5
++
+ #endif
+--- a/include/windowstr.h
++++ b/include/windowstr.h
+@@ -48,6 +48,10 @@ SOFTWARE.
+ #ifndef WINDOWSTRUCT_H
+ #define WINDOWSTRUCT_H
+ 
++#ifdef HAVE_DIX_CONFIG_H
++#include <dix-config.h>
++#endif
++
+ #include "window.h"
+ #include "pixmapstr.h"
+ #include "regionstr.h"
+@@ -60,6 +64,10 @@ SOFTWARE.
+ #include <X11/Xprotostr.h>
+ #include "opaque.h"
+ 
++#ifdef GESTURES
++#include "gesture.h"
++#endif
++
+ #define GuaranteeNothing	0
+ #define GuaranteeVisBack	1
+ 
+@@ -94,6 +102,9 @@ typedef struct _WindowOpt {
+     RegionPtr		inputShape;	   /* default: NULL */
+     struct _OtherInputMasks *inputMasks;   /* default: NULL */
+     DevCursorList       deviceCursors;     /* default: NULL */
++#ifdef GESTURES
++    struct _GestureMasks *gestureMasks;    /* default: NULL */
++#endif
+ } WindowOptRec, *WindowOptPtr;
+ 
+ #define BackgroundPixel	    2L
+@@ -199,6 +210,9 @@ extern _X_EXPORT Mask	DontPropagateMasks
+ #define wInputShape(w)          wUseDefault(w, inputShape, NULL)
+ #define wClient(w)		(clients[CLIENT_ID((w)->drawable.id)])
+ #define wBorderWidth(w)		((int) (w)->borderWidth)
++#ifdef GESTURES
++#define wGestureMasks(w)        wUseDefault(w, gestureMasks, NULL)
++#endif
+ 
+ /* true when w needs a border drawn. */
+ 
+--- a/mi/miinitext.c
++++ b/mi/miinitext.c
+@@ -152,6 +152,9 @@ extern Bool noSELinuxExtension;
+ #ifdef XV
+ extern Bool noXvExtension;
+ #endif
++#ifdef GESTURES
++extern Bool noGestureExtension;
++#endif
+ extern Bool noGEExtension;
+ 
+ #ifndef XFree86LOADER
+@@ -263,6 +266,9 @@ extern void DamageExtensionInit(INITARGS
+ extern void CompositeExtensionInit(INITARGS);
+ #endif
+ extern void GEExtensionInit(INITARGS);
++#ifdef GESTURES
++extern void GestureExtensionInit(INITARGS);
++#endif
+ 
+ /* The following is only a small first step towards run-time
+  * configurable extensions.
+@@ -334,6 +340,9 @@ static ExtensionToggle ExtensionToggleLi
+ #ifdef XV
+     { "XVideo", &noXvExtension },
+ #endif
++#ifdef GESTURES
++    { "Gesture", &noGestureExtension },
++#endif
+     { NULL, NULL }
+ };
+ 
+@@ -472,6 +481,9 @@ InitExtensions(int argc, char *argv[])
+ 	GlxPushProvider(&__glXDRISWRastProvider);
+     if (!noGlxExtension) GlxExtensionInit();
+ #endif
++#ifdef GESTURES
++    if (!noGestureExtension) GestureExtensionInit();
++#endif
+ }
+ 
+ #else /* XFree86LOADER */
+@@ -513,6 +525,9 @@ static ExtensionModule staticExtensions[
+ #ifdef DAMAGE
+     { DamageExtensionInit, "DAMAGE", &noDamageExtension, NULL },
+ #endif
++#ifdef GESTURES
++    { GestureExtensionInit, "GESTURE", &noGestureExtension, NULL },
++#endif
+     { NULL, NULL, NULL, NULL, NULL }
+ };
+     
+--- a/os/utils.c
++++ b/os/utils.c
+@@ -185,6 +185,9 @@ Bool noXvExtension = FALSE;
+ #ifdef DRI2
+ Bool noDRI2Extension = FALSE;
+ #endif
++#ifdef GESTURES
++Bool noGestureExtension = FALSE;
++#endif
+ 
+ Bool noGEExtension = FALSE;
+ 
+--- a/dix/events.c
++++ b/dix/events.c
+@@ -5471,6 +5471,9 @@ DeleteWindowFromAnyEvents(WindowPtr pWin
+ 	    FreeResource(oc->resource, RT_NONE);
+ 	while ( (passive = wPassiveGrabs(pWin)) )
+ 	    FreeResource(passive->resource, RT_NONE);
++#ifdef GESTURES
++        DeleteWindowFromGestureEvents(pWin);
++#endif
+      }
+ 
+     DeleteWindowFromAnyExtEvents(pWin, freeResources);

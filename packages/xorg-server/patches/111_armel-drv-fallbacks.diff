@@ -1,0 +1,69 @@
+---
+ hw/xfree86/common/xf86AutoConfig.c |   32 ++++++++++++++++++++++++++++++++
+ 1 file changed, 32 insertions(+)
+
+Index: xorg-server/hw/xfree86/common/xf86AutoConfig.c
+===================================================================
+--- xorg-server.orig/hw/xfree86/common/xf86AutoConfig.c	2010-08-05 11:18:59.709693301 +1000
++++ xorg-server/hw/xfree86/common/xf86AutoConfig.c	2010-08-05 11:21:21.854896555 +1000
+@@ -44,6 +44,12 @@
+ # include "xf86sbusBus.h"
+ #endif
+ 
++#if defined(__arm__) && defined(__linux__)
++# include "loaderProcs.h"
++# include <sys/types.h> /* For opendir in test_sysfs_device */
++# include <dirent.h>    /* For opendir in test_sysfs_device */
++#endif
++
+ #ifdef sun
+ # include <sys/visual_io.h>
+ # include <ctype.h>
+@@ -188,6 +194,28 @@
+     return ret == CONFIG_OK;
+ }
+ 
++#if defined(__arm__) && defined(__linux__)
++static int
++test_sysfs_device (char * device_name, char * driver_name)
++{
++    DIR* dir = opendir("/sys/devices/platform");
++    struct dirent *current_dir;
++    int len = strlen(device_name);
++
++    while (current_dir = readdir(dir)) {
++        if (strlen(current_dir->d_name) >= len && strncmp(device_name, current_dir->d_name, len) == 0)
++            break;
++    }
++    closedir(dir);
++    if(!current_dir)
++        return 0;
++
++    if (!LoadModule(driver_name, NULL, NULL, NULL, NULL, NULL, NULL, NULL))
++        return 0;
++    return 1;
++}
++#endif /* defined(__arm__) && defined(__linux__) */
++
+ static void
+ listPossibleVideoDrivers(char *matches[], int nmatches)
+ {
+@@ -272,7 +300,18 @@
+ #if !defined(__linux__) && defined(__sparc__)
+ 	matches[i++] = xnfstrdup("wsfb");
+ #else
++#if defined(__linux__) && defined(__arm__)
++        if (test_sysfs_device("mxc_gpu", "imx"))
++           matches[i++] = xnfstrdup("imx");
++        else if (test_sysfs_device("dovefb", "dovefb"))
++           matches[i++] = xnfstrdup("dovefb");
++        else if (test_sysfs_device("omapfb", "omapfb"))
++           matches[i++] = xnfstrdup("omapfb");
++        else
++	    matches[i++] = xnfstrdup("fbdev");
++#else
+ 	matches[i++] = xnfstrdup("fbdev");
++#endif /* defined(__linux__) && defined(__arm__) */
+ #endif
+     }
+ }

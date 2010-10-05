@@ -1,0 +1,96 @@
+From 7925e8945649d4af237e6c3c5593b895a461bd1e Mon Sep 17 00:00:00 2001
+From: Chase Douglas <chase.douglas@ubuntu.com>
+Date: Wed, 01 Sep 2010 04:45:34 +0000
+Subject: Fix udev population of Bluetooth input device product IDs
+
+The udev device_added function takes the vendor and model IDs of added
+devices and converts them into an attribute that can be matched for by
+an InputClass configuration using MatchUSBID. Currently, the udev
+mechanism works for USB devices, but fails to work properly for
+Bluetooth devices. The product IDs of the event node are actually the
+IDs of the Bluetooth receiver instead of the device.
+
+This patch reads the product ID from the PRODUCT property of the parent
+of the added device. This tag is set correctly for both USB and
+Bluetooth input devices. The following devices have been tested by
+specifying individual InputClass sections in xorg.conf:
+
+* Apple Keyboard (Bluetooth)
+* Apple Magic Trackpad (Bluetooth)
+* Apple Magic Mouse (Bluetooth)
+* Microsoft Bluetooth Notebook Mouse 5000 (Bluetooth)
+* Microsoft IntelliMouse Optical (USB)
+* N-Trig Touchscreen (USB)
+* Wacom Bamboo Touch (USB)
+
+Signed-off-by: Chase Douglas <chase.douglas@canonical.com>
+Reviewed-by: Peter Hutterer <peter.hutterer@who-t.net>
+Signed-off-by: Peter Hutterer <peter.hutterer@who-t.net>
+---
+diff --git a/config/udev.c b/config/udev.c
+index 9934490..b7717c9 100644
+--- a/config/udev.c
++++ b/config/udev.c
+@@ -58,7 +58,6 @@ device_added(struct udev_device *udev_device)
+     char *config_info = NULL;
+     const char *syspath;
+     const char *tags_prop;
+-    const char *usb_vendor = NULL, *usb_model = NULL;
+     const char *key, *value, *tmp;
+     InputOption *options = NULL, *tmpo;
+     InputAttributes attrs = {};
+@@ -94,6 +93,8 @@ device_added(struct udev_device *udev_device)
+     parent = udev_device_get_parent(udev_device);
+     if (parent) {
+         const char *ppath = udev_device_get_devnode(parent);
++        const char *product = udev_device_get_property_value(parent, "PRODUCT");
++        unsigned int usb_vendor, usb_model;
+ 
+         name = udev_device_get_sysattr_value(parent, "name");
+         LOG_SYSATTR(ppath, "name", name);
+@@ -104,6 +105,13 @@ device_added(struct udev_device *udev_device)
+ 
+         attrs.pnp_id = udev_device_get_sysattr_value(parent, "id");
+         LOG_SYSATTR(ppath, "id", attrs.pnp_id);
++
++        /* construct USB ID in lowercase hex - "0000:ffff" */
++        if (product && sscanf(product, "%*x/%4x/%4x/%*x", &usb_vendor, &usb_model) == 2) {
++            attrs.usb_id = Xprintf("%04x:%04x", usb_vendor, usb_model);
++            if (attrs.usb_id)
++                LOG_PROPERTY(path, "PRODUCT", product);
++        }
+     }
+     if (!name)
+         name = "(unnamed)";
+@@ -152,12 +160,6 @@ device_added(struct udev_device *udev_device)
+         } else if (!strcmp(key, "ID_VENDOR")) {
+             LOG_PROPERTY(path, key, value);
+             attrs.vendor = value;
+-        } else if (!strcmp(key, "ID_VENDOR_ID")) {
+-            LOG_PROPERTY(path, key, value);
+-            usb_vendor = value;
+-        } else if (!strcmp(key, "ID_VENDOR_MODEL")) {
+-            LOG_PROPERTY(path, key, value);
+-            usb_model = value;
+         } else if (!strcmp(key, "ID_INPUT_KEY")) {
+             LOG_PROPERTY(path, key, value);
+             attrs.flags |= ATTR_KEYBOARD;
+@@ -179,16 +181,6 @@ device_added(struct udev_device *udev_device)
+         }
+     }
+ 
+-    /* construct USB ID in lowercase hex - "0000:ffff" */
+-    if (usb_vendor && usb_model) {
+-        attrs.usb_id = Xprintf("%s:%s", usb_vendor, usb_model);
+-        if (attrs.usb_id) {
+-            char *cur;
+-            for (cur = attrs.usb_id; *cur; cur++)
+-                *cur = tolower(*cur);
+-        }
+-    }
+-
+     LogMessage(X_INFO, "config/udev: Adding input device %s (%s)\n",
+                name, path);
+     rc = NewInputDeviceRequest(options, &attrs, &dev);
+--
+cgit v0.8.3-6-g21f6
