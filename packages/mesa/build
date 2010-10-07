@@ -9,13 +9,21 @@ set_gallium_drivers () {
 }
 
 if pkg_uses $1 opengles; then
-  CFG_ES=",es"
+  CFG_GALLIUM_GLES=",es"
   CFG_GLES="--enable-gles1 --enable-gles2 --enable-gles-overlay"
 else
   CFG_GLES="--disable-gles1 --disable-gles2 --disable-gles-overlay"
 fi
 
-GALLIUM_STATE_TACKERS="egl,glx$CFG_ES"
+if pkg_uses $1 egl; then
+  # EGL: Embedded Graphics Library (native platform graphics interface)
+  CFG_GALLIUM_EGL="egl,"
+  CFG_EGL="--enable-egl --with-egl-driver-dir=$XORG_PATH_EGL"
+else
+  CFG_EGL="--disable-egl"
+fi
+
+GALLIUM_STATE_TACKERS="${CFG_GALLIUM_EGL}glx${CFG_GALLIUM_GLES}"
 if [ "$TARGET_ARCH" = i386 -o "$TARGET_ARCH" = x86_64 ]; then
   set_gallium_drivers enable
 else
@@ -32,9 +40,6 @@ CFG_GALLIUM="$CFG_GALLIUM --enable-gallium-swrast"
 CFG_GALLIUM="$CFG_GALLIUM --disable-gallium-nouveau"
 CFG_GALLIUM="$CFG_GALLIUM --disable-gallium-llvm"
 CFG_GALLIUM="$CFG_GALLIUM $GALLIUM_DRIVERS"
-
-# EGL: Embedded Graphics Library (native platform graphics interface)
-CFG_EGL="--enable-egl --with-egl-driver-dir=$XORG_PATH_EGL"
 
 # X.Org
 CFG_XORG="--with-x --with-xorg-driver-dir=$XORG_PATH_DRIVERS"
@@ -75,7 +80,9 @@ MESA_LIB=.install/usr/lib/mesa
 
 mkdir -p $MESA_LIB
 cp -P .install/usr/lib/libGL.so*  $MESA_LIB
-cp -P .install/usr/lib/libEGL.so* $MESA_LIB
+
+pkg_uses $1 egl && \
+  cp -P .install/usr/lib/libEGL.so* $MESA_LIB
 
 pkg_uses $1 opengles && \
   cp -P .install/usr/lib/libGLES*.so* $MESA_LIB
