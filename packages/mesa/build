@@ -2,19 +2,24 @@
 
 . config/options
 
-pkg_uses $1 opengles && CFG_ES=",es"
+if pkg_uses $1 opengles; then
+  CFG_ES=",es"
+  CFG_GLES="--enable-gles1 --enable-gles2 --enable-gles-overlay"
+else
+  CFG_GLES="--disable-gles1 --disable-gles2 --disable-gles-overlay"
+fi
 
 if [ "$TARGET_ARCH" = i386 -o "$TARGET_ARCH" = x86_64 ]; then
   GALLIUM_STATE_TACKERS="egl,glx$CFG_ES"
 
-  for i in intel radeon svga; do
+  for i in i915 i965 radeon r600 svga; do
     GALLIUM_DRIVERS="$GALLIUM_DRIVERS --enable-gallium-$i"
   done
 else
   DRI_DRIVERS="--with-dri-drivers=swrast"
   GALLIUM_STATE_TACKERS="egl,glx$CFG_ES"
 
-  for i in intel radeon svga; do
+  for i in i915 i965 radeon r600 svga; do
     GALLIUM_DRIVERS="$GALLIUM_DRIVERS --disable-gallium-$i"
   done
 fi
@@ -26,6 +31,7 @@ CFG_DRI="--with-driver=dri $DRI_DRIVERS --with-dri-driverdir=$XORG_PATH_DRI"
 CFG_GALLIUM="--enable-gallium --with-state-trackers=$GALLIUM_STATE_TACKERS"
 CFG_GALLIUM="$CFG_GALLIUM --enable-gallium-swrast"
 CFG_GALLIUM="$CFG_GALLIUM --disable-gallium-nouveau"
+CFG_GALLIUM="$CFG_GALLIUM --disable-gallium-llvm"
 CFG_GALLIUM="$CFG_GALLIUM $GALLIUM_DRIVERS"
 
 # EGL: Embedded Graphics Library (native platform graphics interface)
@@ -55,16 +61,11 @@ do_configure \
             --enable-glut \
             --disable-glw \
             --disable-motif \
+            $CFG_GLES \
             $CFG_GALLIUM \
             $CFG_DRI \
             $CFG_EGL \
             $CFG_XORG \
-            --without-demos \
-
-# dirty hack to build GL Shader Language compiler host tools
-make -C src/glsl CC=$HOST_CC CFLAGS="$HOST_CFLAGS" LDFLAGS="$HOST_LDFLAGS"
-make -C src/glsl/pp clean
-make -C src/glsl/cl clean
 
 # now build Mesa for target
 make
