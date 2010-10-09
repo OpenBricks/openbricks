@@ -9,10 +9,10 @@ html: $(HTML)
 
 pdf: $(PDF)
 
-$(HTML): $(DOCS)
+%.html: %.txt
 	a2x -f xhtml $(OPTS) $<
 
-$(PDF): $(DOCS)
+%.pdf: %.txt
 	a2x -f pdf $(OPTS) $<
 
 clean: clean-html clean-pdf
