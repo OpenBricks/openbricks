@@ -1,7 +1,7 @@
 DOCS=package-format.txt
 HTML=$(DOCS:.txt=.html)
 PDF=$(DOCS:.txt=.pdf)
-OPTS=-a 'author=The GeeXboX Team' -a 'email=team@geexbox.org' 
+OPTS=-a 'author=The OpenBricks Team' -a 'email=team@openbricks.org'
 
 all: html pdf
 
