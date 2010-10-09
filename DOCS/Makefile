@@ -1,4 +1,15 @@
-DOCS=openbricks-manual.txt config-format.txt package-format.txt
+DOCS += openbricks-manual.txt
+DOCS += introduction.txt
+DOCS += supported-platforms.txt
+DOCS += toolchain-overview.txt
+DOCS += build-instructions.txt
+DOCS += config-format.txt
+DOCS += package-format.txt
+DOCS += kconfig-format.txt
+DOCS += add-a-new-package.txt
+DOCS += add-a-new-platform.txt
+DOCS += add-a-new-flavour.txt
+
 HTML=$(DOCS:.txt=.html)
 PDF=$(DOCS:.txt=.pdf)
 OPTS=-a 'author=The OpenBricks Team' -a 'email=team@openbricks.org'
