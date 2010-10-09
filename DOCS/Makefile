@@ -12,7 +12,7 @@ DOCS += add-a-new-platform.txt
 DOCS += add-a-new-flavour.txt
 
 HTML=$(DOCS:.txt=.html)
-PDF=$(DOCS:.txt=.pdf)
+PDF=openbricks-manual.pdf
 OPTS=-a 'author=The OpenBricks Team' -a 'email=team@openbricks.org'
 
 all: html pdf
