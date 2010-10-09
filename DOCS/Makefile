@@ -21,7 +21,7 @@ html: $(HTML)
 pdf: $(PDF)
 
 %.html: %.txt
-	asciidoc -b xhtml11 $(OPTS) $<
+	asciidoc -b xhtml11 -a data-uri -a icons $(OPTS) $<
 
 %.pdf: %.txt
 	a2x -f pdf $(OPTS) $<
