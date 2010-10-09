@@ -244,4 +244,151 @@ MODULES is different from 'n'. The comment on the other hand is always
 visible when MODULES is visible (the (empty) dependency of MODULES is
 also part of the comment dependencies).
 
+Kconfig syntax
+--------------
+
+The configuration file describes a series of menu entries, where every
+line starts with a keyword (except help texts). The following keywords
+end a menu entry:
+* config
+* menuconfig
+* choice/endchoice
+* comment
+* menu/endmenu
+* if/endif
+* source
+The first five also start the definition of a menu entry.
+
+.config
+....
+	"config" <symbol>
+	<config options>
+....
+This defines a config symbol <symbol> and accepts any of above
+attributes as options.
+
+.menuconfig
+....
+	"menuconfig" <symbol>
+	<config options>
+....
+This is similar to the simple config entry above, but it also gives a
+hint to front ends, that all suboptions should be displayed as a
+separate list of options.
+
+.choices
+....
+	"choice"
+	<choice options>
+	<choice block>
+	"endchoice"
+....
+This defines a choice group and accepts any of the above attributes as
+options. A choice can only be of type bool or tristate, while a boolean
+choice only allows a single config entry to be selected, a tristate
+choice also allows any number of config entries to be set to 'm'. This
+can be used if multiple drivers for a single hardware exists and only a
+single driver can be compiled/loaded into the kernel, but all drivers
+can be compiled as modules.
+A choice accepts another option "optional", which allows to set the
+choice to 'n' and no entry needs to be selected.
+
+.comment
+....
+	"comment" <prompt>
+	<comment options>
+....
+This defines a comment which is displayed to the user during the
+configuration process and is also echoed to the output files. The only
+possible options are dependencies.
+
+.menu
+....
+	"menu" <prompt>
+	<menu options>
+	<menu block>
+	"endmenu"
+....
+This defines a menu block, see "Menu structure" above for more
+information. The only possible options are dependencies.
+
+.if
+....
+	"if" <expr>
+	<if block>
+	"endif"
+....
+This defines an if block. The dependency expression <expr> is appended
+to all enclosed menu entries.
+
+.source
+....
+	"source" <prompt>
+....
+This reads the specified configuration file. This file is always parsed.
+
+.mainmenu
+....
+	"mainmenu" <prompt>
+....
+This sets the config program's title bar if the config program chooses
+to use it.
+
+Kconfig hints
+-------------
+This is a collection of Kconfig tips, most of which aren't obvious at
+first glance and most of which have become idioms in several Kconfig
+files.
+
+Adding common features and make the usage configurable
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+It is a common idiom to implement a feature/functionality that are
+relevant for some architectures but not all.
+The recommended way to do so is to use a config variable named HAVE_*
+that is defined in a common Kconfig file and selected by the relevant
+architectures.
+An example is the generic IOMAP functionality.
+
+We would in lib/Kconfig see:
+....
+# Generic IOMAP is used to ...
+config HAVE_GENERIC_IOMAP
+
+config GENERIC_IOMAP
+	depends on HAVE_GENERIC_IOMAP && FOO
+....
+And in lib/Makefile we would see:
+....
+obj-$(CONFIG_GENERIC_IOMAP) += iomap.o
+....
+
+For each architecture using the generic IOMAP functionality we would see:
+....
+config X86
+	select ...
+	select HAVE_GENERIC_IOMAP
+	select ...
+....
+
+[NOTE]
+we use the existing config option and avoid creating a new
+config variable to select HAVE_GENERIC_IOMAP.
+
+[NOTE]
+the use of the internal config variable HAVE_GENERIC_IOMAP, it is
+introduced to overcome the limitation of select which will force a
+config option to 'y' no matter the dependencies.
+The dependencies are moved to the symbol GENERIC_IOMAP and we avoid the
+situation where select forces a symbol equals to 'y'.
+
+Build as module only
+~~~~~~~~~~~~~~~~~~~~
+To restrict a component build to module-only, qualify its config symbol
+with "depends on m".  E.g.:
+....
+config FOO
+	depends on BAR && m
+....
+limits FOO to module (=m) or disabled (=n).
+
 // vim: set syntax=asciidoc:
