@@ -1,4 +1,4 @@
-DOCS=config-format.txt package-format.txt
+DOCS=openbricks-manual.txt config-format.txt package-format.txt
 HTML=$(DOCS:.txt=.html)
 PDF=$(DOCS:.txt=.pdf)
 OPTS=-a 'author=The OpenBricks Team' -a 'email=team@openbricks.org'
