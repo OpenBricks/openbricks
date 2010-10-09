@@ -30,7 +30,7 @@ openbricks-manual.pdf: $(DOCS)
 	asciidoc -b xhtml11 -a data-uri -a icons $(OPTS) $<
 
 %.pdf: %.txt
-	a2x -f pdf $(OPTS) $<
+	a2x -f pdf --dblatex-opts "-P latex.output.revhistory=0" $(OPTS) $<
 
 clean: clean-html clean-pdf
 
