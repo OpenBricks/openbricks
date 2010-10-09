@@ -11,9 +11,12 @@ DOCS += add-a-new-package.txt
 DOCS += add-a-new-platform.txt
 DOCS += add-a-new-flavour.txt
 
+AUTHOR = 'author=The OpenBricks Team'
+EMAIL  = 'email=team@openbricks.org'
+
 HTML=$(DOCS:.txt=.html)
 PDF=openbricks-manual.pdf
-OPTS=-a 'author=The OpenBricks Team' -a 'email=team@openbricks.org'
+OPTS=-a $(AUTHOR) -a $(EMAIL)
 
 all: html pdf
 
