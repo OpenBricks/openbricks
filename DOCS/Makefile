@@ -1,5 +1,6 @@
 DOCS += openbricks-manual.txt
 DOCS += introduction.txt
+DOCS += features.txt
 DOCS += supported-platforms.txt
 DOCS += toolchain-overview.txt
 DOCS += build-instructions.txt
