@@ -24,6 +24,8 @@ html: $(HTML)
 
 pdf: $(PDF)
 
+openbricks-manual.pdf: $(DOCS)
+
 %.html: %.txt
 	asciidoc -b xhtml11 -a data-uri -a icons $(OPTS) $<
 
