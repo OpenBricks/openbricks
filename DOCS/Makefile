@@ -28,7 +28,7 @@ openbricks-manual.html: $(DOCS)
 openbricks-manual.pdf: $(DOCS)
 
 %.html: %.txt
-	asciidoc -b xhtml11 -a data-uri -a icons $(OPTS) $<
+	asciidoc -b xhtml11 -n -a data-uri -a icons $(OPTS) $<
 
 %.pdf: %.txt
 	a2x -f pdf --dblatex-opts "-P latex.output.revhistory=0" $(OPTS) $<
