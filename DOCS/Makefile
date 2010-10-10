@@ -24,6 +24,7 @@ html: $(HTML)
 
 pdf: $(PDF)
 
+openbricks-manual.html: $(DOCS)
 openbricks-manual.pdf: $(DOCS)
 
 %.html: %.txt
