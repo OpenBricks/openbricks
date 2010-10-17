@@ -21,7 +21,13 @@ $SCRIPTS/unpack $1
 if [ -f $STAMP -a -f $PACKAGES/$1/need_build ]; then
   $PACKAGES/$1/need_build $@
 fi
-if [ "$FORCE" = true ] || [ -f $STAMP -a $PACKAGES/$1/build -nt $STAMP ]; then
+
+# check for platform-specific package overlay
+BUILD_RULE=$PACKAGES/$1/build
+PLATFORM_BUILD="$ROOT/$CONFIG/platforms/$TARGET_ARCH/$TARGET_PLATFORM/$1/build"
+[ -r "$PLATFORM_BUILD" ] && BUILD_RULE="$PLATFORM_BUILD"
+
+if [ "$FORCE" = true ] || [ -f $STAMP -a $BUILD_RULE -nt $STAMP ]; then
   rm -f $STAMP
   $SCRIPTS/unpackage $1
   $SCRIPTS/unpackagedev $1
@@ -59,8 +65,8 @@ if [ ! -f $STAMP ]; then
     $SCRIPTS/installdev $p
   done
 
-  if [ -f $PACKAGES/$1/build ]; then
-    $PACKAGES/$1/build $@ >&$VERBOSE_OUT
+  if [ -f $BUILD_RULE ]; then
+    $BUILD_RULE $@ >&$VERBOSE_OUT
   elif [ -f "$BUILD/$1*/Makefile" ]; then
     $SCRIPTS/build toolchain
     make -C $BUILD/$1* >&$VERBOSE_OUT
