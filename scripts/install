@@ -8,7 +8,12 @@ mkdir -p $ROOTFS/var/lib/opkg/info/
 STAMP=$ROOTFS/var/lib/opkg/info/$1.control
 PACKAGE=$PKGROOT/$PKG_OPK
 
-if [ ! -f $PACKAGES/$1/install ]; then
+# check for platform-specific package overlay
+INSTALL_RULE=$PACKAGES/$1/install
+PLATFORM_INSTALL="$ROOT/$CONFIG/platforms/$TARGET_ARCH/$TARGET_PLATFORM/$1/install"
+[ -r "$PLATFORM_INSTALL" ] && INSTALL_RULE="$PLATFORM_INSTALL"
+
+if [ ! -f $INSTALL_RULE ]; then
   echo "$1 is not a runtime package, skipping..." >&$VERBOSE_OUT
   exit 0
 fi
@@ -16,7 +21,7 @@ fi
 if [ -f $STAMP ]; then
   if [ $PACKAGES/$1/unpack -nt $STAMP -o $PACKAGES/$1/patches -nt $STAMP ] || [ $PACKAGES/$1/build -nt $STAMP ]; then
     $SCRIPTS/clean $1
-  elif [ $PACKAGES/$1/install -nt $STAMP ]; then
+  elif [ $INSTALL_RULE -nt $STAMP ]; then
     $SCRIPTS/unpackage $1
   fi
 
