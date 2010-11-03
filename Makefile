@@ -39,6 +39,12 @@ rootfs:
 	scripts/checkdeps build
 	scripts/rootfs
 
+jffs2: rootfs
+	scripts/nand jffs2
+
+ubifs: rootfs
+	scripts/nand ubifs
+
 doc:
 	scripts/checkdeps docs
 	make -C DOCS
