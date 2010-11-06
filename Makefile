@@ -1,5 +1,6 @@
 META = $(wildcard packages/*/meta)
 FLAVOURS = $(wildcard config/flavours/*/meta)
+ARCHS = $(wildcard config/platforms/*/meta)
 PLATFORMS = $(wildcard config/platforms/*/*/Kconfig)
 REMOTES = $(wildcard packages/lirc*/config/lircd*)
 
@@ -9,13 +10,16 @@ all: binaries
 	scripts/checkdeps kconfiginit
 	scripts/kconfiginit
 
-config oldconfig menuconfig xconfig gconfig: .stamps/kconfiginit build/config/Kconfig.platform build/config/Kconfig.flavours build/config/Kconfig.remote build/config/Kconfig.packages build/config/Kconfig.use
+config oldconfig menuconfig xconfig gconfig: .stamps/kconfiginit build/config/Kconfig.arch build/config/Kconfig.platform build/config/Kconfig.flavours build/config/Kconfig.remote build/config/Kconfig.packages build/config/Kconfig.use
 	scripts/checkdeps $@
 	$(MAKE) -C build/build.host/bst-kconfig* $@
 	scripts/kconfig2options
 
 cleanconfig:
 	rm -f build/build.host/bst-kconfig*/.config
+
+build/config/Kconfig.arch: $(ARCHS)
+	scripts/archs2kconfig
 
 build/config/Kconfig.platform: $(PLATFORMS)
 	scripts/platforms2kconfig
