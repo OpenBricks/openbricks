@@ -11,13 +11,16 @@ all: binaries
 	scripts/checkdeps kconfiginit
 	scripts/kconfiginit
 
-config oldconfig menuconfig xconfig gconfig: .stamps/kconfiginit build/config/Kconfig.arch build/config/Kconfig.platform build/config/Kconfig.machine build/config/Kconfig.flavours build/config/Kconfig.remote build/config/Kconfig.packages build/config/Kconfig.use
+config oldconfig menuconfig xconfig gconfig: .stamps/kconfiginit build/config/Kconfig.version build/config/Kconfig.arch build/config/Kconfig.platform build/config/Kconfig.machine build/config/Kconfig.flavours build/config/Kconfig.remote build/config/Kconfig.packages build/config/Kconfig.use
 	scripts/checkdeps $@
 	$(MAKE) -C build/build.host/bst-kconfig* $@
 	scripts/kconfig2options
 
 cleanconfig:
 	rm -f build/build.host/bst-kconfig*/.config
+
+build/config/Kconfig.version: VERSION
+	scripts/version2kconfig
 
 build/config/Kconfig.arch: $(ARCHS)
 	scripts/archs2kconfig
