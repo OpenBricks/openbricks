@@ -16,15 +16,17 @@ The following table details the various generated Kconfig files:
 
 .Generated Kconfig files
 [options="header"]
-|==================================================================================================================
-|Kconfig file     |Creator script           |Source material              |Kconfig menu
-|Kconfig.generated|scripts/kconfiginit      |VERSION                      |Version header
-|Kconfig.flavours |scripts/flavours2kconfig |config/flavours/*/meta       |Flavour, Distribution name
-|Kconfig.platform |scripts/platforms2kconfig|config/platforms/\*/*/Kconfig|General setup -> Target platform
-|Kconfig.remote   |scripts/remotes2kconfig  |packages/lirc*/config/lircd* |Settings -> Remote, Settings -> Receiver
-|Kconfig.use      |scripts/use2kconfig      |config/use                   |Features
-|Kconfig.packages |scripts/meta2kconfig     |packages/*/meta              |Packages
-|==================================================================================================================
+|=====================================================================================================================
+|Kconfig file     |Creator script           |Source material                 |Kconfig menu
+|Kconfig.version  |scripts/version2kconfig  |VERSION                         |Version header
+|Kconfig.flavours |scripts/flavours2kconfig |config/flavours/*/meta          |Flavour, Distribution name
+|Kconfig.arch     |scripts/archs2kconfig    |config/platforms/*/meta         |General setup -> Target arch
+|Kconfig.platform |scripts/platforms2kconfig|config/platforms/\*/*/Kconfig   |General setup -> Target platform
+|Kconfig.machine  |scripts/machines2kconfig |config/platforms/\*/*/machines/*|General setup -> Target machine
+|Kconfig.remote   |scripts/remotes2kconfig  |packages/lirc*/config/lircd*    |Settings -> Remote, Settings -> Receiver
+|Kconfig.use      |scripts/use2kconfig      |config/use                      |Features
+|Kconfig.packages |scripts/meta2kconfig     |packages/*/meta                 |Packages
+|=====================================================================================================================
 
 After the user has completed the configuration selections, a .config file is
 created. The .config file is used by scripts/kconfig2options to create
@@ -80,6 +82,32 @@ FLAVOUR_DEPENDS_$arch (e.g. FLAVOUR_DEPENDS_arm). A flavour can
 override the default BusyBox configuration with a busybox.conf file in its 
 directory.
 
+Architectures
+~~~~~~~~~~~~~
+
+Platforms are defined in config/platforms, where every architecture has a
+subdirectory. The arch settings are defined in a meta file:
+
+* ARCH_NAME
+ ** the name of the architecture
+ ** must coincide with the arch directory name
+* ARCH_DESC
+ ** the user-visible name of the architecture
+ ** will be displayed in the Kconfig menu
+ ** defaults to ARCH_NAME
+* ARCH_HELP
+ ** the user-visible help text of the architecture
+ ** will be displayed in the Kconfig menu
+* ARCH_SUBARCHS
+ ** a space-separated list of sub-architecture names (as understood by gcc)
+ ** defaults to "" (no subarchs)
+* ARCH_CPUS
+ ** a space-separated list of CPU names (as understood by gcc)
+ ** these CPUs will be common to all the define subarchs
+
+The ARCH_DESC and ARCH_CPUS variables can also be defined for each subarch,
+using ARCH_DESC_$subarch and ARCH_CPUS_$subarch.
+
 Platforms
 ~~~~~~~~~
 
@@ -93,10 +121,46 @@ platform can override the default kernel configuration with a linux.conf file,
 and the default bootargs (for ARM systems using u-boot) with boot.cfg.
 
 A platform can override any package by creating a directory with the package
-name (i.e. config/platforms/$arch/$platform/$package/). This can be used, e.g.,
-to implement platform-specific kernels; in this case the plaform overrides the
-linux and linux-headers packages. Refer to the OMAP4 platform
+name (i.e. config/platforms/$arch/$platform/packages/$package/). This can be
+used, e.g., to implement platform-specific kernels; in this case the plaform
+overrides the linux and linux-headers packages. Refer to the OMAP4 platform
 (config/platforms/arm/omap4) for an implementation example.
+
+Machines
+~~~~~~~~
+
+Machines are defined in the machines/ subdirectory in the platform directory;
+each machine has a subdirectory. Most settings are defined in the meta file:
+
+* MACHINE_NAME
+ ** the name of the machine
+ ** must coincide with the machine directory name
+* MACHINE_DESC
+ ** the user-visible name of the machine
+ ** will be displayed in the Kconfig menu
+ ** defaults to MACHINE_NAME
+* MACHINE_CPU
+ ** the default CPU to be selected
+ ** defaults to "" (no selection"
+* MACHINE_DEPENDS
+ ** the packages the machine requires to be installed
+ ** defaults to "" (no package)
+* MACHINE_UBOOT_CONFIG
+ ** the name of the u-boot configuration to be used
+ ** defaults to "" (no configuration)
+* MACHINE_XLOADER_CONFIG
+ ** the name of the X-loader configuration to be used
+ ** defaults to "" (no configuration)
+
+In addition, a machine can declare a list of use flags in MACHINE_USE, to be
+able to specify per-useflag dependencies using MACHINE_DEPENDS_$flag. A machine
+can also override the default kernel configuration with a linux.conf file,
+and the default bootargs (for ARM systems using u-boot) with boot.cfg.
+
+A machine can override any package by creating a directory with the package
+name (i.e. config/platforms/$arch/$platform/machines/$machine/packages/$package/).
+This can be used, e.g., to implement machine-specific bootloaders (one example
+could be X-loader, which has no generic implementation and is machine-specific).
 
 Remotes
 ~~~~~~~
