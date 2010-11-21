@@ -1,0 +1,29 @@
+diff -Naur binutils-2.21.51.0.1.orig//ld/ldfile.c binutils-2.21.51.0.1/ld/ldfile.c
+--- binutils-2.21.51.0.1.orig//ld/ldfile.c	2010-11-21 13:58:46.675402003 +0100
++++ binutils-2.21.51.0.1/ld/ldfile.c	2010-11-21 14:02:28.815401988 +0100
+@@ -372,18 +372,23 @@
+      directory first.  */
+   if (! entry->is_archive)
+     {
+-      if (entry->sysrooted && IS_ABSOLUTE_PATH (entry->filename))
++      /* For absolute pathnames, try to always open the file in the
++         sysroot first. If this fails, try to open the file at the
++         given location. */
++      entry->sysrooted = is_sysrooted_pathname(entry->filename, FALSE);
++      if (IS_ABSOLUTE_PATH (entry->filename) && ld_sysroot && ! entry->sysrooted)
+ 	{
+ 	  char *name = concat (ld_sysroot, entry->filename,
+ 			       (const char *) NULL);
+ 	  if (ldfile_try_open_bfd (name, entry))
+ 	    {
+ 	      entry->filename = name;
++              entry->sysrooted = TRUE;
+ 	      return TRUE;
+ 	    }
+ 	  free (name);
+ 	}
+-      else if (ldfile_try_open_bfd (entry->filename, entry))
++      if (ldfile_try_open_bfd (entry->filename, entry))
+ 	{
+ 	  entry->sysrooted = IS_ABSOLUTE_PATH (entry->filename)
+ 	    && is_sysrooted_pathname (entry->filename, TRUE);
