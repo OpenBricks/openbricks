@@ -8,7 +8,9 @@ DOCS += config-format.txt
 DOCS += package-format.txt
 DOCS += kconfig-format.txt
 DOCS += add-a-new-package.txt
+DOCS += add-a-new-architecture.txt
 DOCS += add-a-new-platform.txt
+DOCS += add-a-new-machine.txt
 DOCS += add-a-new-flavour.txt
 
 AUTHOR = 'author=The OpenBricks Team'
