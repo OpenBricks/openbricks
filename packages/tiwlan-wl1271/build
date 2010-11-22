@@ -1,0 +1,29 @@
+#!/bin/sh
+
+. config/options
+
+$SCRIPTS/build linux
+
+export CROSS_COMPILE="$TARGET_PREFIX"
+export ARCH="$TARGET_ARCH"
+export KERNEL_HEADERS=$(kernel_path)
+export KVERSION=$(kernel_version)
+export AR=ar
+
+# build system doesn't cope well with parall make
+export MAKEFLAGS=-j1
+
+# kernel driver
+cd $BUILD/$1*/wlan
+make
+
+# userspace utilities
+cd CUDK
+make
+
+cd ../..
+moddir=.install/lib/modules/$(kernel_version)/kernel/drivers/net/wireless/tiwlan-wl1271
+mkdir -p $moddir .install/usr/bin
+cp -P wlan/*.ko $moddir
+cp -P wlan/CUDK/output/tiwlan_loader .install/usr/bin
+cp -P wlan/CUDK/output/wlan_cu .install/usr/bin
