@@ -1,5 +1,7 @@
 #!/bin/sh
 
+. config/path
+
 KCONFIG=build/config/Kconfig.platform
 
 cat > $KCONFIG <<EOF
@@ -20,10 +22,49 @@ done
 cat >> $KCONFIG <<EOF
   help
     Target platform
+
 EOF
 
 for arch in $ARCHS; do
-  cat config/platforms/$arch/*/Kconfig >> $KCONFIG
+  for i in config/platforms/$arch/*; do
+    platform=`basename $i`
+    [ -r config/platforms/$arch/$platform/meta ] || continue
+
+    # clear PLATFORM_* variables
+    for var in `set | grep -E '^PLATFORM_.*$' | cut -f1 -d=`; do
+      unset $var
+    done
+
+    . config/platforms/$arch/$platform/meta
+    [ -z "$PLATFORM_DESC" ] && PLATFORM_DESC="$PLATFORM_NAME"
+    cat >> $KCONFIG <<EOF
+config TARGET_PLATFORM_${arch}_${platform}
+  bool "$PLATFORM_DESC"
+EOF
+    if [ -n "$PLATFORM_SUBARCH" ]; then
+      echo "  depends on TARGET_SUBARCH_${PLATFORM_SUBARCH}" >> $KCONFIG
+    else
+      echo "  depends on TARGET_ARCH_${arch}" >> $KCONFIG
+    fi
+
+    [ -n "$PLATFORM_CPU" ] && \
+        echo "  select TARGET_CPU_${PLATFORM_CPU}" >> $KCONFIG
+
+    for pkg in $PLATFORM_DEPENDS; do
+      echo "  select PKG_$pkg" >> $KCONFIG
+    done
+    for flag in $PLATFORM_USE; do
+      val=`valueof PLATFORM_DEPENDS_$flag`
+      for pkg in $val; do
+        echo "  select PKG_$pkg if USE_$flag" >> $KCONFIG
+      done
+    done
+    [ -n "$PLATFORM_HELP" ] && cat >> $KCONFIG <<EOF
+  help
+    $PLATFORM_HELP
+
+EOF
+  done
 done
 
 cat >> $KCONFIG <<EOF

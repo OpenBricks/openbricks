@@ -1,7 +1,7 @@
 META = $(wildcard packages/*/meta)
 FLAVOURS = $(wildcard config/flavours/*/meta)
 ARCHS = $(wildcard config/platforms/*/meta)
-PLATFORMS = $(wildcard config/platforms/*/*/Kconfig)
+PLATFORMS = $(wildcard config/platforms/*/*/meta)
 MACHINES = $(wildcard config/platforms/*/*/machines/*/meta)
 REMOTES = $(wildcard packages/lirc*/config/lircd*)
 
