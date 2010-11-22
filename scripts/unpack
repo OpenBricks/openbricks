@@ -27,9 +27,10 @@ STAMP=$STAMPS/$1/unpack
 
 [ -f $STAMP -a -f $PACKAGES/$1/need_unpack ] && $PACKAGES/$1/need_unpack $@
 
-if [ -d "$MACHINE_PACKAGES/$1/patches" ]; then
+# if the package if overridden at machine or platform level use those patches
+if [ -r "$MACHINE_PACKAGES/$1/meta" -a -d "$MACHINE_PACKAGES/$1/patches" ]; then
   PBASE=$MACHINE_PACKAGES/$1/patches
-elif [ -d "$PLATFORM_PACKAGES/$1/patches" ]; then
+elif [ -r "$PLATFORM_PACKAGES/$1/meta" -a -d "$PLATFORM_PACKAGES/$1/patches" ]; then
   PBASE=$PLATFORM_PACKAGES/$1/patches
 else
   PBASE=$PACKAGES/$1/patches
@@ -74,6 +75,14 @@ fi
 [ -d $PACKAGES/$1/sources ] && cp -PRf $PACKAGES/$1/sources/* $PKG_BUILD_DIR
 
 PDIRS="$PBASE"
+
+# if there are patches at machine/platform level but the package is not
+# overriddern let's apply them
+[ -d "$MACHINE_PACKAGES/$1/patches" -a ! -f "$MACHINE_PACKAGES/$1/meta" ] && \
+  PDIRS="$PDIRS $MACHINE_PACKAGES/$1/patches"
+[ -d "$PLATFORM_PACKAGES/$1/patches" -a ! -f "$PLATFORM_PACKAGES/$1/meta" ] && \
+  PDIRS="$PDIRS $PLATFORM_PACKAGES/$1/patches"
+
 [ -n "$TARGET_ARCH" ] && PDIRS="$PDIRS $PBASE/$TARGET_ARCH"
 [ -n "$TARGET_PLATFORM" ] && PDIRS="$PDIRS $PBASE/$TARGET_PLATFORM"
 for d in $PBASE/\!*; do
