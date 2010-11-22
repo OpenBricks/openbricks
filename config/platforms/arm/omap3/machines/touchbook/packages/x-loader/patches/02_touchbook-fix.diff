@@ -1,0 +1,42 @@
+--- a/drivers/k9f1g08r0a.c	2010-04-10 13:25:26.000000000 -0700
++++ b/drivers/k9f1g08r0a.c	2010-04-10 13:26:06.000000000 -0700
+@@ -185,7 +185,7 @@
+ 
+ 	if (((mfr == MT29F1G_MFR || mfr == MT29F1G_MFR2) &&
+ 		(id == MT29F1G_ID || id == MT29F2G_ID || id == MT29F4G_ID)) ||
+-	     (mfr == K9F1G08R0A_MFR && (id == K9F1G08R0A_ID))) {
++	     (mfr == K9F1G08R0A_MFR && id == K9F1G08R0A_ID) || (mfr == 0 && id == 0) ) {
+ 		return 0;
+ 	} else {
+ 		printf("Unknown chip: mfr was 0x%02x, id was 0x%02x\n", mfr, id);
+--- a/board/touchbook/touchbook.c	2010-04-10 13:31:20.000000000 -0700
++++ b/board/touchbook/touchbook.c	2010-04-10 13:33:19.000000000 -0700
+@@ -264,15 +264,23 @@
+ 		__raw_writel(SDP_3430_SDRC_RFR_CTRL_200MHz, SDRC_RFR_CTRL_0);
+ 		__raw_writel(SDP_3430_SDRC_RFR_CTRL_200MHz, SDRC_RFR_CTRL_1);
+ 	} else if (is_numonyx512()) {
+-		__raw_writel(0x1, SDRC_CS_CFG);
+ 		__raw_writel(0x01C10019|B_ALL, SDRC_MCFG_0);
+-		__raw_writel(0x01C10019|B_ALL, SDRC_MCFG_1);
+ 		__raw_writel(MICRON_V_ACTIMA_165, SDRC_ACTIM_CTRLA_0);
+ 		__raw_writel(MICRON_V_ACTIMB_165, SDRC_ACTIM_CTRLB_0);
+-		__raw_writel(MICRON_V_ACTIMA_165, SDRC_ACTIM_CTRLA_1);
+-		__raw_writel(MICRON_V_ACTIMB_165, SDRC_ACTIM_CTRLB_1);
+ 		__raw_writel(SDP_3430_SDRC_RFR_CTRL_165MHz, SDRC_RFR_CTRL_0);
+-		__raw_writel(SDP_3430_SDRC_RFR_CTRL_165MHz, SDRC_RFR_CTRL_1);
++		__raw_writel(SDP_SDRC_POWER_POP, SDRC_POWER);
++		/* init sequence for mDDR/mSDR using manual commands (DDR is different) */
++		__raw_writel(CMD_NOP, SDRC_MANUAL_0);
++		delay(5000);
++		__raw_writel(CMD_PRECHARGE, SDRC_MANUAL_0);
++		__raw_writel(CMD_AUTOREFRESH, SDRC_MANUAL_0);
++		__raw_writel(CMD_AUTOREFRESH, SDRC_MANUAL_0);
++		/* set mr0 */
++		__raw_writel(SDP_SDRC_MR_0_DDR, SDRC_MR_0);
++		/* set up dll */
++		__raw_writel(SDP_SDRC_DLLAB_CTRL, SDRC_DLLA_CTRL);
++		delay(0x2000);	/* give time to lock */
++		return;
+ 	} else {
+ 		__raw_writel(0x1, SDRC_CS_CFG);
+ 		__raw_writel(SDP_SDRC_MDCFG_0_DDR, SDRC_MCFG_0);
