@@ -107,7 +107,6 @@ append_grub_conf () {
   cp /etc/grub/grub.cfg $TMP_GRUB_CONF
 
   sed -i "s/_TITLE_/$2/" $TMP_GRUB_CONF
-  sed -i "s/_HDTV_/$3/" $TMP_GRUB_CONF
   sed -i "s/_DEBUG_/$4/" $TMP_GRUB_CONF
   sed -i "s/_CONFIG_/$5/" $TMP_GRUB_CONF
 
@@ -119,24 +118,13 @@ append_grub_conf () {
 
 # Setup of GRUB config file using initial base config file ($1) and the
 # boot device UUID ($2) and boot device GRUB descriptor (ROOTDEV as $3)
-# with additional entries for Xorg if appropriate (USE_XORG as $4)
-# and an option according to the type of FS ($5).
+# and an option according to the type of FS ($4).
 setup_grub () {
   local OPT_FS_TYPE
 
-  # conditional HDTV menu entry if X.org is found
-  if [ "$4" = yes ]; then
-    append_grub_conf $1 "GeeXboX HDTV $VERSION" hdtv "" ""
-    append_grub_conf $1 "GeeXboX HDTV $VERSION (debug)" hdtv debugging ""
-    append_grub_conf $1 "GeeXboX HDTV $VERSION (reconfigure)" hdtv "" configure
-  fi
-
-  # conditionally add console mode menu
-  # whether to enable this or not is decided at install time!
-
-  #_CONSOLE_ append_grub_conf $1 "GeeXboX $VERSION " "" "" ""
-  #_CONSOLE_ append_grub_conf $1 "GeeXboX $VERSION (debug)" "" debugging ""
-  #_CONSOLE_ append_grub_conf $1 "GeeXboX $VERSION (reconfigure)" "" "" configure
+  append_grub_conf $1 "GeeXboX $VERSION " "" "" ""
+  append_grub_conf $1 "GeeXboX $VERSION (debug)" "" debugging ""
+  append_grub_conf $1 "GeeXboX $VERSION (reconfigure)" "" "" configure
 
   # put default options
   update_grub_conf_bootargs $1 lang `cmdline_default lang en`
@@ -450,8 +438,7 @@ get_uuid () {
 
 # Installs and configures the GRUB bootloader
 # $1 is DEV
-# $2 is USE_XORG
-# $3 is MKFS_TYPE
+# $2 is MKFS_TYPE
 install_grub (){
   local ROOTDEV
   local MBRDEV
@@ -461,8 +448,7 @@ install_grub (){
   local DEVICE_MAP=$GRUBDIR/device.map
   local SPLASHIMAGE="grub-splash.png"
   local LOC_DEV=$1
-  local LOC_USE_XORG=$2
-  local LOC_MKFS_TYPE=$3
+  local LOC_MKFS_TYPE=$2
   local ARCH=i386-pc
 
   TMP_DISK=`echo "$LOC_DEV" | sed -e 's%\([sh]d[a-z]\)[0-9]*$%\1%'`
@@ -483,7 +469,6 @@ install_grub (){
   ROOTDEV=$(grub-probe --target=drive --device-map=${DEVICE_MAP} $BOOTDISK_MNT)
 
   dbglg "ROOTDEV \"$ROOTDEV\" DEV \"$LOC_DEV\""
-  dbglg "XORG \"$LOC_USE_XORG\""
 
   if [ -z "$ROOTDEV" ]; then
     dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_ERROR" \
@@ -495,7 +480,7 @@ install_grub (){
   DEV_UUID=$(grub-probe --target=fs_uuid --device-map=${DEVICE_MAP} $BOOTDISK_MNT)
   BOOT_DRV="(UUID=${DEV_UUID})"
 
-  setup_grub $GRUBDIR/grub.cfg $DEV_UUID $BOOT_DRV $LOC_USE_XORG $LOC_MKFS_TYPE
+  setup_grub $GRUBDIR/grub.cfg $DEV_UUID $BOOT_DRV $LOC_MKFS_TYPE
 
   dbglg "boot drive: $BOOT_DRV"
 
@@ -647,7 +632,7 @@ EOF
   done
   IFS=$saveifs
 
-  setup_grub $GRUBDIR/grub.cfg $DEV_UUID $BOOT_DRV $LOC_USE_XORG $LOC_MKFS_TYPE
+  setup_grub $GRUBDIR/grub.cfg $DEV_UUID $BOOT_DRV $LOC_MKFS_TYPE
 
   dbglg "*** Start GRUB grub.cfg ***"
   cat $GRUBDIR/grub.cfg >> $LOGFILE
@@ -697,9 +682,6 @@ for d in /mnt/*; do rmdir $d >/dev/null 2>&1; done
 
 # Create directory for the install partition to be mounted
 mkdir -p $BOOTDISK_MNT
-
-# Configure X.Org
-[ -f /etc/init/xorg.conf ] && USE_XORG=yes || USE_XORG=no
 
 CFDISK_MSG="$MSG_CFDISK_BEGIN $MSG_DISK_PART $MSG_CFDISK_END"
 
@@ -766,7 +748,7 @@ mkdir -p $BOOTDISK_MNT/boot && cp /boot/vmlinuz $BOOTDISK_MNT/boot/
 cat /tmp/initrd.install | sed 's/^\///g' | cpio -o -H newc | gzip -9 > $BOOTDISK_MNT/boot/initrd.gz
 
 
-install_grub "$DEV" "$USE_XORG" "$MKFS_TYPE"
+install_grub "$DEV" "$MKFS_TYPE"
 
 # Softlink grub.cfg
 rm -f $BOOTDISK_MNT/GEEXBOX/etc/grub/grub.cfg
