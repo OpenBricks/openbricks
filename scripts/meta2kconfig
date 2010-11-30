@@ -70,6 +70,8 @@ EOF
     [ -z "$use_help" ] && use_help="${use_desc}."
     use_default=`valueof "PKG_USE_DEFAULT_${use}"`
     [ "$use_default" = yes ] && use_default=y || use_default=n
+    use_arch=`valueof "PKG_USE_ARCH_${use}"`
+    use_platform=`valueof "PKG_USE_PLATFORM_${use}"`
 
     # strip dashes from the package name, as they are illegal in environment
     # variable names; cf. pkg_uses in config/path
@@ -82,6 +84,22 @@ config OPT_${name}_${use}
   default $use_default
   depends on PKG_${PKG_NAME}
 EOF
+    if [ -n "$use_arch" ]; then
+      archlist=""
+      for arch in $use_arch; do
+        [ -n "$archlist" ] && archlist="$archlist || "
+        archlist="${archlist}TARGET_ARCH_${arch}"
+        if [ -n "$use_platform" ]; then
+          platformlist=""
+          for platform in $use_platform; do
+            [ -n "$platformlist" ] && platformlist="$platformlist || "
+            platformlist="${platformlist}TARGET_PLATFORM_${arch}_${platform}"
+          done
+          echo "  depends on ( $platformlist )" >> $KCONFIG
+        fi
+      done
+      echo "  depends on ( $archlist )" >> $KCONFIG
+    fi
     for p in `valueof "PKG_RUN_DEPENDS_${use}"`; do
       echo "  select PKG_$p" >> $KCONFIG
     done
