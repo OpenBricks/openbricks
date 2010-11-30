@@ -37,7 +37,7 @@ build/config/Kconfig.flavours: $(FLAVOURS)
 build/config/Kconfig.remote: $(REMOTES) $(MACHINES)
 	scripts/remotes2kconfig
 
-build/config/Kconfig.packages: $(META)
+build/config/Kconfig.packages: config/use $(META)
 	scripts/meta2kconfig
 
 build/config/Kconfig.use: config/use $(FLAVOURS)
