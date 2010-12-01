@@ -10,7 +10,7 @@
 #include <dbus/dbus-glib.h>
 #include <dbus/dbus.h>
 
-#define CONNMAN_SERVICE           "org.moblin.connman"
+#define CONNMAN_SERVICE           "net.connman"
 #define CONNMAN_MANAGER_PATH      "/"
 #define CONNMAN_MANAGER_INTERFACE CONNMAN_SERVICE ".Manager"
 
