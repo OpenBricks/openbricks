@@ -103,7 +103,7 @@ clean: clean-doc
 	scripts/clean
 
 distclean: clean-doc
-	rm -rf .stamps build* sources geexbox* config/options binaries
+	rm -rf .stamps build* sources geexbox* binaries
 
 
 .PHONY: iso burn dist fulldist generator installator exec clean distclean clean-doc doc docs config oldconfig menuconfig xconfig gconfig
