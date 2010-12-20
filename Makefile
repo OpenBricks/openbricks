@@ -4,6 +4,7 @@ ARCHS = $(wildcard config/platforms/*/meta)
 PLATFORMS = $(wildcard config/platforms/*/*/meta)
 MACHINES = $(wildcard config/platforms/*/*/machines/*/meta)
 REMOTES = $(wildcard packages/lirc*/config/lircd*)
+SCRIPTS = $(wildcard scripts/*2kconfig)
 
 all: binaries
 
@@ -19,28 +20,28 @@ config oldconfig menuconfig xconfig gconfig: .stamps/kconfiginit build/config/Kc
 cleanconfig:
 	rm -f build/build.host/bst-kconfig*/.config
 
-build/config/Kconfig.version: VERSION
+build/config/Kconfig.version: $(SCRIPTS) VERSION
 	scripts/version2kconfig
 
-build/config/Kconfig.arch: $(ARCHS)
+build/config/Kconfig.arch: $(SCRIPTS) $(ARCHS)
 	scripts/archs2kconfig
 
-build/config/Kconfig.platform: $(PLATFORMS)
+build/config/Kconfig.platform: $(SCRIPTS) $(PLATFORMS)
 	scripts/platforms2kconfig
 
-build/config/Kconfig.machine: $(MACHINES)
+build/config/Kconfig.machine: $(SCRIPTS) $(MACHINES)
 	scripts/machines2kconfig
 
-build/config/Kconfig.flavours: $(FLAVOURS)
+build/config/Kconfig.flavours: $(SCRIPTS) $(FLAVOURS)
 	scripts/flavours2kconfig
 
-build/config/Kconfig.remote: $(REMOTES) $(MACHINES)
+build/config/Kconfig.remote: $(SCRIPTS) $(REMOTES) $(MACHINES)
 	scripts/remotes2kconfig
 
-build/config/Kconfig.packages: config/use $(META)
+build/config/Kconfig.packages: $(SCRIPTS) config/use $(META)
 	scripts/meta2kconfig
 
-build/config/Kconfig.use: config/use $(FLAVOURS)
+build/config/Kconfig.use: $(SCRIPTS) config/use $(FLAVOURS)
 	scripts/use2kconfig
 
 binaries: rootfs
