@@ -103,6 +103,9 @@ clean-doc:
 clean: clean-doc
 	scripts/clean
 
+quickclean: clean-doc
+	scripts/clean --quick
+
 distclean: clean-doc
 	rm -rf .stamps build* sources geexbox* binaries
 
