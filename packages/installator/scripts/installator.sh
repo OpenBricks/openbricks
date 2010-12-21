@@ -744,7 +744,17 @@ done
 for e in $DISK_ELEMS; do
   find $e -xdev | sed 's/^\///g' | cpio -pd $BOOTDISK_MNT/GEEXBOX 2>&1 | grep -v "newer or same age file exists" >> $LOGFILE
 done
-mkdir -p $BOOTDISK_MNT/boot && cp /boot/vmlinuz $BOOTDISK_MNT/boot/
+# Fix install with cdrom
+CDROM=`grep boot=cdrom /proc/cmdline`
+if [ -n "$CDROM" ] ; then 
+ mkdir -p /mnt/cd 
+ mount /dev/cdrom /mnt/cd
+ mkdir -p $BOOTDISK_MNT/boot 
+ cp /mnt/cd/GEEXBOX/boot/vmlinuz $BOOTDISK_MNT/boot/
+ umount /mnt/cd
+else
+ mkdir -p $BOOTDISK_MNT/boot && cp /boot/vmlinuz $BOOTDISK_MNT/boot/
+fi
 cat /tmp/initrd.install | sed 's/^\///g' | cpio -o -H newc | gzip -9 > $BOOTDISK_MNT/boot/initrd.gz
 
 
