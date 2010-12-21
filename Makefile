@@ -97,6 +97,9 @@ get:
 test:
 	scripts/test
 
+savecfg:
+	scripts/savecfg
+
 clean-doc:
 	make -C DOCS clean
 
