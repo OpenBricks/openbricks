@@ -4,29 +4,17 @@
 
 cd $BUILD/$1*
 
-setup_toolchain host
-cd tools/jam/src
-sh build.sh
-cp -P bin.*/bjam $ROOT/$TOOLCHAIN/bin
-cd ../../..
+cmake \
+  -DCMAKE_FIND_ROOT_PATH=$LIB_PREFIX \
+  -DCMAKE_INSTALL_PREFIX=/usr \
+  -DENABLE_STATIC=OFF \
+  -DENABLE_DEBUG=OFF \
+  -DWITH_DOXYGEN=OFF \
+  -DWITH_MPI=OFF \
+  -DWITH_XSLTPROC=OFF \
+  .
 
-setup_toolchain target
-sh bootstrap.sh \
-  --prefix=/usr \
-  --with-bjam=$BJAM \
-
-echo "using gcc : `$TARGET_CC -v 2>&1  | tail -n 1 |awk '{print $3}'` : $TARGET_CC  ; " > tools/build/v2/user-config.jam
-
-$BJAM -d2 --toolset=gcc  \
-  link=shared \
-  --prefix=$LIB_PREFIX \
-  --layout=system \
-  --with-thread \
-  --with-iostreams \
-  --with-system \
-  --with-regex -sICU_PATH="$LIB_PREFIX" \
-  install
-
-rm -rf .install
-mkdir -p .install/usr/lib
-cp -P bin.v2/libs/*/build/*/release/*/*.so.* .install/usr/lib
+make
+make_install
+mv .install/usr/include/boost-*/boost .install/usr/include
+mv .install/usr/lib/boost-*/* .install/usr/lib
