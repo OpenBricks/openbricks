@@ -755,6 +755,12 @@ if [ -n "$CDROM" ] ; then
 else
  mkdir -p $BOOTDISK_MNT/boot && cp /boot/vmlinuz $BOOTDISK_MNT/boot/
 fi
+
+# opkg
+mkdir -p $BOOTDISK_MNT/GEEXBOX/var/lib/opkg/info
+cp /var/lib/opkg/info/* $BOOTDISK_MNT/GEEXBOX/var/lib/opkg/info
+cp /var/lib/opkg/status $BOOTDISK_MNT/GEEXBOX/var/lib/opkg/        
+
 cat /tmp/initrd.install | sed 's/^\///g' | cpio -o -H newc | gzip -9 > $BOOTDISK_MNT/boot/initrd.gz
 
 
