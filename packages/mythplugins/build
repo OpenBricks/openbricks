@@ -1,0 +1,39 @@
+#!/bin/sh
+
+. config/options
+
+set_option() {
+  PKG="$1"
+  OPT="$2"
+  CFG_LIST="$3"
+  [ -z "$CFG_LIST" ] && CFG_LIST=$OPT
+  pkg_uses $PKG $OPT && CFG=enable || CFG=disable
+  for CFG_NAME in $CFG_LIST; do
+    EXTRA_CONFIG="$EXTRA_CONFIG --$CFG-$CFG_NAME"
+  done
+  return 0
+}
+
+cd $BUILD/$1*
+
+for opt in archive browser game news video zoneminder; do
+  set_option $1 myth${opt}
+done
+
+set_option $1 mythgallery "mythgallery exif"
+set_option $1 opengl
+
+./configure \
+  --prefix=/usr/local \
+  --sysroot=$SYSROOT_PREFIX \
+  --qmake="$QMAKE" \
+  --disable-all \
+  $EXTRA_CONFIG \
+
+make
+make_install
+
+# fix install paths
+cp -PR .install/usr/local/* .install/usr
+cp -PR .install/$LIB_PREFIX/* .install/usr
+rm -rf .install/usr/local .install/$LIB_PREFIX
