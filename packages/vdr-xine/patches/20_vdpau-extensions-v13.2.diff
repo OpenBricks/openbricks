@@ -1,0 +1,405 @@
+diff --git a/xineCommon.h b/xineCommon.h
+--- a/xineCommon.h
++++ b/xineCommon.h
+@@ -17,7 +17,7 @@ using namespace std;
+ #include <xine.h>
+ #include <xine/vdr.h>
+ 
+-#define MIN_XINE_VDR_VERSION 901
++#define MIN_XINE_VDR_VERSION 1901
+ 
+ #if !defined(XINE_VDR_VERSION) || XINE_VDR_VERSION < MIN_XINE_VDR_VERSION
+ #error xine/vdr.h does not match. Please solve this issue by reading section XINE VDR VERSION MISMATCH in INSTALL!
+diff --git a/xineLib.c b/xineLib.c
+--- a/xineLib.c
++++ b/xineLib.c
+@@ -4002,6 +4002,7 @@ namespace PluginXine
+ #define PNMTOJPEG "pnmtojpeg"
+ #endif
+  
++
+   uchar *cXineLib::execFuncGrabImage(const char *FileName, int &Size, bool Jpeg, int Quality, int SizeX, int SizeY)
+   {
+     if (!isConnected())
+@@ -4010,227 +4011,200 @@ namespace PluginXine
+     DLOG("cXineLib::execFuncGrabImage");
+     cMutexLock ioLock(&m_ioMutex);
+     
+-    int videoX = -1;
+-    int videoY = -1;
+-    int videoW = -1;
+-    int videoH = -1;
+-    int zoomX = 100;
+-    int zoomY = 100;
+-    execFuncVideoSize(videoX, videoY, videoW, videoH, zoomX, zoomY);
+-      
+-    if (!isConnected())
+-      return NULL;
+-    
+     data_grab_image_t data;
+     data.header.func = func_grab_image;
+     data.header.len = sizeof (data);
++    data.width = SizeX;
++    data.height = SizeY;
++    data.jpeg = Jpeg;
++    data.quality = Quality;
++    if (sizeof (data) != xwrite(fd_control, &data, sizeof (data)))
++      return NULL;
+ 
+-    if (sizeof (data) == xwrite(fd_control, &data, sizeof (data)))
+-    {
+-      result_union_t resultUnion;
+-   
+-      off_t n = xread(fd_result, (char *)&resultUnion, sizeof (resultUnion.header));
+-      if (n != sizeof (resultUnion.header))
+-        return NULL;
++    result_union_t resultUnion;
++    off_t n = xread(fd_result, (char *)&resultUnion, sizeof (resultUnion.header));
++    if (n != sizeof (resultUnion.header))
++      return NULL;
+ 
+-      if (data.header.func != resultUnion.header.func)
+-        return NULL;
+-      
+-      result_grab_image_t *result = &resultUnion.grab_image;
+-        
+-      n = xread(fd_result, (char *)result + sizeof (result->header), sizeof (*result) - sizeof (result->header));
+-      if (n != sizeof (*result) - sizeof (result->header))
+-        return NULL;
++    if (data.header.func != resultUnion.header.func)
++      return NULL;
+ 
+-      const size_t frameSize = result->header.len - sizeof (*result);
++    result_grab_image_t *result = &resultUnion.grab_image;
++    n = xread(fd_result, (char *)result + sizeof (result->header), sizeof (*result) - sizeof (result->header));
++    if (n != sizeof (*result) - sizeof (result->header))
++      return NULL;
+ 
+-//      ::fprintf(stderr, "frameSize: %d\n", frameSize);
+-      
+-      if (frameSize <= 0)
+-        return NULL;
+-      
+-      uint8_t *img = (uint8_t *)::malloc(frameSize);
+-      if (!img)
+-        return NULL;
+-      
+-      if (frameSize != (size_t)xread(fd_result, img, frameSize))
++    const size_t frameSize = result->header.len - sizeof (*result);
++    if (frameSize <= 0)
++      return NULL;
++
++    uint8_t *img = (uint8_t *)::malloc(frameSize);
++    if (!img)
++      return NULL;
++
++    if (frameSize != (size_t)xread(fd_result, img, frameSize))
++    {
++      ::free(img);
++      return NULL;
++    }
++
++    if (XINE_IMGFMT_YUY2 == result->format)
++    {
++      uint8_t *img2 = (uint8_t *)::malloc(frameSize);
++      if (!img2)
+       {
+         ::free(img);
+         return NULL;
+       }
+ 
+-      if (XINE_IMGFMT_YUY2 == result->format)
++      ::memset(img2, 0x80, frameSize);
++
++      uint8_t *src = img;
++      uint8_t *dstY = img2;
++      uint8_t *dstU = dstY + result->height * result->width;
++      uint8_t *dstV = dstU + result->height * ((result->width + 1) / 2);
++
++      for (int y = 0; y < result->height; y++)
+       {
+-        uint8_t *img2 = (uint8_t *)::malloc(frameSize);
+-        if (!img2)
++        for (int x = 0; x < (result->width + 1) / 2; x++)
+         {
+-          ::free(img);
+-          return NULL;
++          *dstY++ = *src++;
++          *dstU++ = *src++;
++          *dstY++ = *src++;
++          *dstV++ = *src++;
+         }
++      }
+ 
+-        ::memset(img2, 0x80, frameSize);
+-        
+-        uint8_t *src = img;
+-        uint8_t *dstY = img2;
+-        uint8_t *dstU = dstY + result->height * result->width;
+-        uint8_t *dstV = dstU + result->height * ((result->width + 1) / 2);
+-        
+-        for (int y = 0; y < result->height; y++)
+-        {
+-          for (int x = 0; x < (result->width + 1) / 2; x++)
+-          {
+-            *dstY++ = *src++;
+-            *dstU++ = *src++;
+-            *dstY++ = *src++;
+-            *dstV++ = *src++;
+-          }
+-        }
++      ::free(img);
++      img = img2;
++    }
++    else if (XINE_IMGFMT_YV12 != result->format) /* xinelib already returns complete result */
++    {
++      Size = frameSize;
++      return (uchar *)img;
++    }
+ 
+-        ::free(img);
++    const char *grabName;
++    char *tempName = NULL;
++    if (FileName)
++      grabName = FileName;
++    else
++    {
++      char prefix[6];
++      ::snprintf(prefix, 6, "%d", (int)::getpid());
++      tempName = ::tempnam(NULL, prefix);
++      grabName = tempName;
++    }
+ 
+-        img = img2;
+-      }
++    int videoX = result->crop_left;
++    int videoY = result->crop_top;
++    int videoW = result->width - result->crop_left - result->crop_right;
++    int videoH = result->height - result->crop_top - result->crop_bottom;
+ 
+-      FILE *tmpFile = 0;
+-      int outfd = -1;
++    int iRn;
++    int iRd;
+ 
+-      if (FileName)
+-      {
+-        outfd = ::open(FileName, O_CREAT /* | O_EXCL */ | O_TRUNC | O_RDWR, 0644);
+-      }
+-      else
+-      {
+-        tmpFile = ::tmpfile();
+-        if (tmpFile)
+-          outfd = fileno(tmpFile);
+-      }
++    if (videoW > videoH)
++    {
++      iRn = videoH;
++      iRd = (videoW * 20000 + result->ratio) / (2 * result->ratio);
++    }
++    else
++    {
++      iRn = (videoH * 2 * result->ratio + 10000) / 20000;
++      iRd = videoW;
++    }
+ 
+-      if (-1 == outfd)
+-      {
+-        if (tmpFile)
+-          ::fclose(tmpFile); // removes file, too
+-      }
+-      else
+-      {
+-/*
+-        if (-1 == videoX || -1 == videoY || videoW <= 0 || videoH <= 0)
+-        {
+-          videoX = 0;
+-          videoY = 0;
+-          videoW = result->width;
+-          videoH = result->height;          
+-        }
+-*/
+-        videoX = result->crop_left;
+-        videoY = result->crop_top;
+-        videoW = result->width - result->crop_left - result->crop_right;
+-        videoH = result->height - result->crop_top - result->crop_bottom;
++    int oRn = SizeY * (m_noSignalStream16x9 ? 16 : 4);
++    int oRd = SizeX * (m_noSignalStream16x9 ?  9 : 3);
+ 
+-        int iRn;
+-        int iRd;
++    const char *const chromass = (XINE_IMGFMT_YV12 == result->format) ? "420_MPEG2" : "422";
++    char *cmd = NULL;
+ 
+-        if (videoW > videoH)
+-        {
+-          iRn = videoH;
+-          iRd = (videoW * 20000 + result->ratio) / (2 * result->ratio);
+-        }
+-        else
+-        {
+-          iRn = (videoH * 2 * result->ratio + 10000) / 20000;
+-          iRd = videoW;
+-        }
++    if (Jpeg)
++    {
++      ::asprintf(&cmd, Y4MSCALER " -v 0 -I chromass=%s -I active=%dx%d+%d+%d -O chromass=444 -O size=%dx%d -O sar=%d:%d "
++                  "| " Y4MTOPPM " -v 0 -L "
++                  "| " PNMTOJPEG " -quality=%d "
++                  ">%s"
++        , chromass, videoW, videoH, videoX, videoY, SizeX, SizeY, oRn, oRd
++        , Quality
++        , grabName);
++    }
++    else
++    {
++      ::asprintf(&cmd, Y4MSCALER " -v 0 -I chromass=%s -I active=%dx%d+%d+%d -O chromass=444 -O size=%dx%d -O sar=%d:%d "
++                  "| " Y4MTOPPM " -v 0 -L "
++                  ">%s"
++        , chromass, videoW, videoH, videoX, videoY, SizeX, SizeY, oRn, oRd
++        , grabName);
++    }
+ 
+-        int oRn = SizeY * (m_noSignalStream16x9 ? 16 : 4); 
+-        int oRd = SizeX * (m_noSignalStream16x9 ?  9 : 3);
++    xfprintf(stderr, "cmd: %s\n", cmd);
+ 
+-        const char *const chromass = (XINE_IMGFMT_YV12 == result->format) ? "420_MPEG2" : "422";
+-        char *cmd = 0;
+-        
+-        if (Jpeg)
+-        {              
+-          ::asprintf(&cmd, Y4MSCALER " -I chromass=%s -I active=%dx%d+%d+%d -O chromass=444 -O size=%dx%d -O sar=%d:%d "
+-                      "| " Y4MTOPPM " -L "
+-                      "| " PNMTOJPEG " -quality=%d "
+-                      ">&%d"
+-            , chromass, videoW, videoH, videoX, videoY, SizeX, SizeY, oRn, oRd
+-            , Quality
+-            , outfd);
+-        }
+-        else
+-        {              
+-          ::asprintf(&cmd, Y4MSCALER " -I chromass=%s -I active=%dx%d+%d+%d -O chromass=444 -O size=%dx%d -O sar=%d:%d "
+-                      "| " Y4MTOPPM " -L "
+-                      ">&%d"
+-            , chromass, videoW, videoH, videoX, videoY, SizeX, SizeY, oRn, oRd
+-            , outfd);
+-        }                
+-        
+-//      ::fprintf(stderr, "ratio: %d\n", result->ratio);
+-        xfprintf(stderr, "cmd: %s\n", cmd);
+-        
+-        FILE *f = ::popen(cmd, "w");
+-        if (f)
+-        {
+-          ::fprintf(f, "YUV4MPEG2 W%d H%d F%d:%d I%c A%d:%d\nFRAME\n"
+-            , result->width, result->height
+-            , 25, 1
+-            , "ptb"[result->interlaced]
+-            , iRn, iRd); 
++    FILE *f = ::popen(cmd, "w");
++    if (f)
++    {
++      ::fprintf(f, "YUV4MPEG2 W%d H%d F%d:%d I%c A%d:%d\nFRAME\n"
++        , result->width, result->height
++        , 25, 1
++        , "ptb"[result->interlaced]
++        , iRn, iRd);
++
++      if (frameSize == ::fwrite(img, 1, frameSize, f))
++      {
++        ::pclose(f); // close the pipe here
++        ::free(img);
++        img = NULL;
+ 
+-          if (frameSize == ::fwrite(img, 1, frameSize, f))
++        if (tempName) // grab the image in one go
++        {
++          int fd = ::open(tempName, O_RDONLY);
++          if (fd != -1)
+           {
+-            ::pclose(f); // close the pipe here
+-            ::free(img);
+-            img = NULL;
++            Size = (int) ::lseek (fd, 0, SEEK_END);
++            ::lseek (fd, 0, SEEK_SET);
+ 
+-            if (tmpFile) // grab the image in one go
++            if (Size != -1)
+             {
+-              Size = (int) lseek (outfd, 0, SEEK_END);
+-              lseek (outfd, 0, SEEK_SET);
+-
+-              if (Size != -1)
++              img = (uint8_t *)::malloc(Size);
++              if (img && Size != ::read(fd, img, Size))
+               {
+-                img = (uint8_t *)::malloc(Size);
+-                if (img && Size != ::read(outfd, img, Size))
+-                {
+-                  ::free(img);
+-                  img = NULL;
+-                }
++                ::free(img);
++                img = NULL;
+               }
+             }
+-            else // file is persistent so don't care about it's content
+-            {
+-              Size = -1;
+-              img = (uint8_t *)-1;
+-            }
+-          }
+-          else
+-          {
+-            ::pclose(f);
+-            ::free(img);
+-            img = NULL;
++            ::close(fd);
+           }
+         }
+-        else
++        else // file is persistent so don't care about it's content
+         {
+-          ::free(img);
+-          img = NULL;
++          Size = -1;
++          img = (uint8_t *)-1;
+         }
+-
+-        ::free(cmd);
+-
+-        if (tmpFile)
+-          ::fclose(tmpFile); // removes file, too
+-        else
+-          ::close(outfd);
+-
+-        return (uchar *)img;
+       }
+-
++      else
++      {
++        ::pclose(f);
++        ::free(img);
++        img = NULL;
++      }
++    }
++    else
++    {
+       ::free(img);
++      img = NULL;
++    }
++
++    ::free(cmd);
++
++    if (tempName)
++    {
++      ::unlink(tempName);
++      ::free(tempName);
+     }
+ 
+-    return NULL;
++    return (uchar *)img;
+   }
+  
+   bool cXineLib::execFuncGetVersion(int32_t &version)
