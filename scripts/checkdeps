@@ -4,6 +4,15 @@ deps=
 deps_pkg=
 files=
 files_pkg=
+cmds=
+cmds_pkg=
+
+# checking functions are to be named with starting check_
+check_python_libxml2()
+{
+  python -c "import libxml2" >/dev/null 2>&1
+}
+
 
 case $1 in
   get)
@@ -30,9 +39,15 @@ case $1 in
     ;;
   build)
     deps="gcc g++ sed patch touch tar bzip2 gzip perl flex bison cp gawk cpio makeinfo msgfmt cmp yacc lzma python"
-    deps_pkg="gcc g++ sed patch fileutils tar bzip2 gzip perl flex bison coreutils gawk cpio texinfo gettext diff yacc lzma python python-libxml2"
+    deps_pkg="gcc g++ sed patch fileutils tar bzip2 gzip perl flex bison coreutils gawk cpio texinfo gettext diff yacc lzma python"
     files="/usr/include/stdio.h /usr/include/readline/readline.h /usr/include/ncurses.h"
     files_pkg="libc6-dev libreadline5-dev libncurses5-dev"
+    cmds="check_python_libxml2"
+    if [ -f /etc/fedora-release ]; then
+      cmds_pkg="$cmds_pkg libxml2-python"
+    else
+      cmds_pkg="$cmds_pkg python-libxml2"
+    fi
     ;;
   iso)
     deps="mkisofs"
@@ -77,9 +92,15 @@ while file=`getarg $i $files` && [ -n "$file" ]; do
   i=$(($i+1))
 done
 
+i=0
+while cmd=`getarg $i $cmds` && [ -n "$cmd" ]; do
+  ! $cmd && need="$need $cmd" && need_pkg="$need_pkg `getarg $i $cmds_pkg`"
+  i=$(($i+1))
+done
+
 if [ -n "$need" ]; then
   echo "**** Your system lacks the following tools needed to $1 OpenBricks ****"
-  echo $need
+  echo $need | sed 's:check_::'
 
   [ -f /etc/lsb-release ] && . /etc/lsb-release
 
@@ -126,6 +147,12 @@ done
 i=0
 while file=`getarg $i $files` && [ -n "$file" ]; do
   [ ! -f $file ] && need="$need $file" && need_pkg="$need_pkg `getarg $i $files_pkg`"
+  i=$(($i+1))
+done
+
+i=0
+while cmd=`getarg $i $cmds` && [ -n "$cmd" ]; do
+  ! $cmd && need="$need $cmd" && need_pkg="$need_pkg `getarg $i $cmds_pkg`"
   i=$(($i+1))
 done
 
