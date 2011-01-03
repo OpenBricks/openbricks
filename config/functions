@@ -33,6 +33,10 @@ setup_toolchain() {
     export QMAKESPEC=$QT_MKSPECS
     export QT_PATH_INCLUDES=$LIB_PREFIX/include/qt4
     export QT_PATH_LIBS=$LIB_PREFIX/lib
+    export PERL_CMD="$ROOT/$TOOLCHAIN/bin/perl"
+    export PERL_LIB="$LIB_PREFIX/lib/perl5/5.10"
+    export PERL5LIB=$PERL_LIB
+    export PERL_SITELIB="/usr/lib/perl5/5.10"
   elif [ "$1" = host ]; then
     export AWK=$HOST_AWK
     export CC=$HOST_CC
@@ -169,11 +173,17 @@ get_meta() {
   done
 
   if [ -n "$PKG_PARENT" ]; then
-    if [ -n "$PKG_DEPENDS" ]; then
-      PKG_DEPENDS="$PKG_DEPENDS $PKG_PARENT"
+    if [ -n "$PKG_BUILD_DEPENDS" ]; then
+      PKG_BUILD_DEPENDS="$PKG_BUILD_DEPENDS $PKG_PARENT"
     else
-      PKG_DEPENDS="$PKG_PARENT"
+      PKG_BUILD_DEPENDS="$PKG_PARENT"
     fi
+
+    # ugly hack to set the package version and rev using parent
+    [ "$PKG_VERSION" = "0.0invalid" ] && \
+      PKG_VERSION=`grep '^PKG_VERSION' $ROOT/$PACKAGES/$PKG_PARENT/meta | sed 's/^PKG_VERSION=\(.*\)$/\1/'`
+    [ "$PKG_REV" = "0" ] && \
+      PKG_REV=`grep '^PKG_REV' $ROOT/$PACKAGES/$PKG_PARENT/meta | sed 's/^PKG_REV=\(.*\)$/\1/'`
   fi
 
   if [ -n "$PKG_DEPENDS" ]; then
@@ -474,4 +484,30 @@ do_installdev () {
   dir=`echo $(dirname $file) | sed 's/^usr//'`
   mkdir -p $target_dir/$dir
   cp -PR .install/$file $target_dir/$dir
+}
+
+do_perl_make () {
+  export PERL_MM_USE_DEFAULT=1
+
+  install_dir="`pwd`/.install/$PERL_SITELIB"
+  mkdir -p $install_dir
+
+  $PERL_CMD Makefile.PL \
+    $* \
+    PERL_LIB=$PERL_LIB \
+    PERL_ARCHLIB=$PERL_LIB \
+    INSTALLSITELIB=$PERL_SITELIB \
+    INSTALLSITEARCH=$PERL_SITELIB \
+    DESTDIR=$install_dir
+}
+
+do_perl_strip () {
+  find .install/$PERL_SITELIB -name \*.pod -exec rm -f '{}' \;
+  find .install/$PERL_SITELIB -name .packlist -exec rm -f '{}' \;
+  find .install/$PERL_SITELIB -name \*.pm -or -name \*.pl | \
+    xargs -r sed -i \
+      -e '/^=\(head\|pod\|item\|over\|back\)/,/^=cut/d' \
+      -e '/^=\(head\|pod\|item\|over\|back\)/,$d' \
+      -e '/^#$/d' \
+      -e '/^#[^!"'"'"']/d'
 }

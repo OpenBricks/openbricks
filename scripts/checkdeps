@@ -1,5 +1,7 @@
 #!/bin/sh
 
+. config/options
+
 deps=
 deps_pkg=
 files=
@@ -13,7 +15,6 @@ check_python_libxml2()
   python -c "import libxml2" >/dev/null 2>&1
 }
 
-
 case $1 in
   get)
     deps="wget"
@@ -21,7 +22,7 @@ case $1 in
     ;;
   kconfiginit)
     deps="wget tar bzip2 gzip cp sed patch touch gcc g++"
-    deps_pkg="wget tar bzip2 gzip coreutils sed patch gcc g++"
+    deps_pkg="wget tar bzip2 gzip coreutils sed patch coreutils gcc g++"
     files="/usr/include/stdio.h"
     files_pkg="libc6-dev"
     ;;
@@ -37,9 +38,11 @@ case $1 in
     files="/usr/include/qt3/qt.h"
     files_pkg="qt3-dev-tools"
     ;;
+  oldconfig)
+    ;;
   build)
-    deps="gcc g++ sed patch touch tar bzip2 gzip perl flex bison cp gawk cpio makeinfo msgfmt cmp yacc lzma python"
-    deps_pkg="gcc g++ sed patch fileutils tar bzip2 gzip perl flex bison coreutils gawk cpio texinfo gettext diff yacc lzma python"
+    deps="gcc g++ sed patch touch tar bzip2 gzip perl flex bison cp gawk cpio makeinfo msgfmt cmp yacc lzma python zip"
+    deps_pkg="gcc g++ sed patch coreutils tar bzip2 gzip perl flex bison coreutils gawk cpio texinfo gettext diff yacc lzma python zip"
     files="/usr/include/stdio.h /usr/include/readline/readline.h /usr/include/ncurses.h"
     files_pkg="libc6-dev libreadline5-dev libncurses5-dev"
     cmds="check_python_libxml2"
@@ -59,26 +62,62 @@ case $1 in
     ;;
   docs)
     deps="asciidoc a2x dblatex xmlto db2html source-highlight"
-    deps_pkg="asciidoc dblatex xmlto docbook-utils source-highlight"
+    deps_pkg="asciidoc asciidoc dblatex xmlto docbook-utils source-highlight"
     ;;
   vmx)
-    if [ ! `which vmplayer` ]; then
+    if [ "$2" != "review" ] && [ ! `which vmplayer` ]; then
       echo "Your system doesn't seem to have VMplayer installed"
       echo "It is mandatory to play a VMware virtual machine."
       exit 1
     fi
     ;;
   qemu)
-    if [ ! `which qemu` ]; then
+    if [ "$2" != "review" ] && [ ! `which qemu` ]; then
       echo "Your system doesn't seem to have QEMU installed"
       exit 1
     fi
     ;;
+  review)
+    for target in get kconfiginit menuconfig gconfig xconfig build iso docs vmx qemu rootfs; do
+      $SCRIPTS/checkdeps $target review
+    done
+    ;;
+  *)
+    echo "usage: $0 [get|kconfiginit|menuconfig|gconfig|xconfig|oldconfig|build|iso|docs|vmx|qemu|rootfs|review]" >&2
+    exit 1
+  ;;
 esac
 
 getarg() {
   eval echo \${$(($1+2))}
 }
+
+if [ "$2" = "review" ]; then
+  echo "## target: $1"
+  i=0
+  while dep=`getarg $i $deps` && [ -n "$dep" ]; do
+    need_pkg=$( getarg $i $deps_pkg )
+    echo -e "dep: $dep; \tdep_pkg: $need_pkg"
+    i=$(($i+1))
+  done
+
+  i=0
+  while file=`getarg $i $files` && [ -n "$file" ]; do
+    need_pkg=$( getarg $i $files_pkg )
+    echo -e "file: $file; \tfile_pkg: $need_pkg"
+    i=$(($i+1))
+  done
+
+  i=0
+  while cmd=`getarg $i $cmds` && [ -n "$cmd" ]; do
+    need_pkg=$( getarg $i $cmds_pkg )
+    echo -e "cmd: $cmd; \tcmd_pkg: $need_pkg"
+    i=$(($i+1))
+  done
+
+  exit 0
+fi
+
 
 i=0
 while dep=`getarg $i $deps` && [ -n "$dep" ]; do

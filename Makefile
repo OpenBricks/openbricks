@@ -9,7 +9,6 @@ SCRIPTS = $(wildcard scripts/*2kconfig)
 all: binaries
 
 .stamps/kconfiginit:
-	scripts/checkdeps kconfiginit
 	scripts/kconfiginit
 
 config oldconfig menuconfig xconfig gconfig: .stamps/kconfiginit build/config/Kconfig.version build/config/Kconfig.arch build/config/Kconfig.platform build/config/Kconfig.machine build/config/Kconfig.flavours build/config/Kconfig.remote build/config/Kconfig.packages build/config/Kconfig.use
@@ -48,7 +47,6 @@ binaries: rootfs
 	scripts/binaries
 
 rootfs:
-	scripts/checkdeps build
 	scripts/rootfs
 
 jffs2: rootfs
@@ -92,6 +90,7 @@ sum: iso generator dist fulldist
 	scripts/sum sha1sum
 
 get:
+	scripts/checkdeps get
 	scripts/get
 
 test:
