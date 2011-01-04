@@ -1,0 +1,97 @@
+diff -Naur xine-lib-1.2_vdpau/src/video_dec/libvdpau/nal.h xine-lib-1.2/src/video_dec/libvdpau/nal.h
+--- xine-lib-1.2_vdpau/src/video_dec/libvdpau/nal.h	2010-08-24 23:17:54.000000000 +0200
++++ xine-lib-1.2/src/video_dec/libvdpau/nal.h	2010-08-24 23:31:57.695364830 +0200
+@@ -50,7 +50,6 @@
+   DISP_TOP_BOTTOM,
+   DISP_BOTTOM_TOP,
+   DISP_TOP_BOTTOM_TOP,
+-  DISP_TOP_TOP_BOTTOM,
+   DISP_BOTTOM_TOP_BOTTOM,
+   DISP_FRAME_DOUBLING,
+   DISP_FRAME_TRIPLING
+diff -Naur xine-lib-1.2_vdpau/src/video_dec/libvdpau/vdpau_h264.c xine-lib-1.2/src/video_dec/libvdpau/vdpau_h264.c
+--- xine-lib-1.2_vdpau/src/video_dec/libvdpau/vdpau_h264.c	2010-08-24 23:29:06.000000000 +0200
++++ xine-lib-1.2/src/video_dec/libvdpau/vdpau_h264.c	2010-08-24 23:31:57.695364830 +0200
+@@ -306,16 +306,39 @@
+       continue;
+     }
+ 
++#define FIELD_OR_MBAFF_PICTURE \
++(!pic->sps_nal->sps.frame_mbs_only_flag && !pic->slc_nal->slc.field_pic_flag && pic->sps_nal->sps.mb_adaptive_frame_field_flag) \
++|| (pic->slc_nal->slc.field_pic_flag || pic->slc_nal->slc.bottom_field_flag)
++
+     if (pic->flag_mask & PIC_STRUCT_PRESENT && pic->sei_nal != NULL) {
+       uint8_t pic_struct = pic->sei_nal->sei.pic_timing.pic_struct;
+ 
+       if (pic_struct == DISP_FRAME) {
+         progressive = 1;
+         continue;
++      } else if (pic_struct == DISP_TOP ||
++          pic_struct == DISP_BOTTOM) {
++        progressive = 0;
++        break;
+       } else if (pic_struct == DISP_TOP_BOTTOM ||
+           pic_struct == DISP_BOTTOM_TOP) {
++        if (FIELD_OR_MBAFF_PICTURE) {
++          progressive = 0;
++          break;
++        } else {
++          progressive = this->progressive_cnt;
++          if (!progressive)
++            break;
++          continue;
++        }
++      } else if (pic_struct == DISP_TOP_BOTTOM_TOP ||
++          pic_struct == DISP_BOTTOM_TOP_BOTTOM) {
+         progressive = 0;
+         break;
++      } else if (pic_struct == DISP_FRAME_DOUBLING ||
++          pic_struct == DISP_FRAME_TRIPLING) {
++        progressive = 1;
++        continue;
+       }
+ 
+       /* FIXME: seems unreliable, maybe it's has to be interpreted more complex */
+@@ -324,8 +347,22 @@
+       } else if (pic->sei_nal->sei.pic_timing.ct_type == CT_PROGRESSIVE) {
+         return 1;
+       } */
++      if ((pic->sei_nal->sei.pic_timing.ct_type & 3) && pic_struct <= DISP_BOTTOM_TOP) {
++        progressive = (pic->sei_nal->sei.pic_timing.ct_type & (1<<0)) == 0;
++        if (!progressive)
++          break;
++        continue;
++      }
+     }
+-
++    else if (FIELD_OR_MBAFF_PICTURE) {
++      progressive = 0;
++      break;
++    } else {
++      progressive = 1;
++      continue;
++    }
++      
++/*
+     if (pic->slc_nal->slc.field_pic_flag && pic->pps_nal->pps.pic_order_present_flag) {
+       if(pic->slc_nal->slc.delta_pic_order_cnt_bottom == 1 ||
+           pic->slc_nal->slc.delta_pic_order_cnt_bottom == -1) {
+@@ -340,14 +377,17 @@
+       progressive = 1;
+       continue;
+     }
++*/
+   }
+-
++#undef FIELD_OR_MBAFF_PICTURE
+   if (progressive) {
+     this->progressive_cnt++;
+   } else {
+     this->progressive_cnt = 0;
+   }
+ 
++  return this->progressive_cnt > 0;
++
+   /* only switch to progressive mode if at least 5
+    * frames in order were marked as progressive */
+   return (this->progressive_cnt >= 5);
