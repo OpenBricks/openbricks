@@ -1,0 +1,42 @@
+#!/bin/sh
+
+. config/options
+
+$SCRIPTS/installdev busybox-init
+
+INITRAMFS=$ROOT/$BUILD/initramfs/initrd
+
+rm -rf $ROOT/$BUILD/initramfs
+mkdir -p $ROOT/$BUILD/initramfs
+
+# Create a CPIO InitRamfs archive
+cd $ROOT/$TOOLCHAIN/share/initramfs
+find . | cpio -o -H newc > $INITRAMFS
+cd -
+
+GZIP="`which pigz`" || GZIP="`which gzip`"
+
+if [ $TARGET_ARCH = i386 ]; then
+  if [ "$COMPRESSION_METHOD" = lzma ]; then
+    lzma -9 $INITRAMFS -S .gz
+  elif [ "$COMPRESSION_METHOD" = gzip ]; then
+    $GZIP -9 $INITRAMFS
+  else
+    mv $INITRAMFS $INITRAMFS.gz
+  fi
+elif [ $TARGET_ARCH = arm ]; then
+  $GZIP -9 $INITRAMFS
+  mkimage -A arm -O linux -T ramdisk -C gzip -n "$DISTRONAME Ramdisk" -d $INITRAMFS.gz $BUILD/initramfs/uinitrd.gz
+else
+  $GZIP -9 $INITRAMFS
+fi
+
+if [ $TARGET_ARCH = arm ]; then
+  mkdir -p $INSTALL/boot
+  cp $BUILD/initrd/uinitrd.gz $INSTALL/boot
+else
+  mkdir -p $INSTALL/isolinux
+  cp $INITRAMFS.gz $INSTALL/isolinux/initrd
+fi
+
+exit 0
