@@ -1,0 +1,40 @@
+#!/bin/sh
+
+export PATH=/sbin:/usr/sbin:/bin:/usr/bin
+
+# install busybox symlinks
+busybox --install -s
+
+# mount required filesystems
+busybox mount -t proc none /proc
+busybox mount -t sysfs none /sys
+
+# prepare /dev
+mount -t devtmpfs devtmpfs /dev
+mkdir /dev/pts /dev/shm
+mount -t devpts devpts /dev/pts
+mount -t tmpfs none /dev/shm
+echo '/bin/mdev' > /proc/sys/kernel/hotplug
+mdev -s
+
+# find value of root= and mount it on /newroot
+/bin/sh
+
+# Reset kernel hotplugging
+echo "" > /proc/sys/kernel/hotplug
+umount /sys
+umount /dev/shm
+umount /dev/pts
+umount /dev
+umount /proc
+
+INIT_ARGS=`cat /proc/cmdline`
+
+# Change to the new root partition and execute /sbin/init
+echo "Running init..."
+if ! exec switch_root /newroot /sbin/init $INIT_ARGS; then
+  echo "Failed, dropping to shell"
+  mount -t proc none /proc
+  mount -t sysfs none /sys
+  exec sh
+fi
