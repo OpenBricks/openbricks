@@ -14,23 +14,32 @@ cd $ROOT/$TOOLCHAIN/share/initramfs
 find . | cpio -o -H newc > $INITRAMFS
 cd -
 
-GZIP="`which pigz`" || GZIP="`which gzip`"
+do_gzip () {
+  GZIP="`which pigz`" || GZIP="`which gzip`"
+  $GZIP -9 $INITRAMFS
+}
 
-if [ $TARGET_ARCH = i386 ]; then
+do_lzma () {
   lzma -9 $INITRAMFS -S .gz
-elif [ $TARGET_ARCH = arm ]; then
-  $GZIP -9 $INITRAMFS
-  mkimage -A arm -O linux -T ramdisk -C gzip -n "$DISTRONAME Ramdisk" -d $INITRAMFS.gz $BUILD/initramfs/uinitrd.gz
-else
-  $GZIP -9 $INITRAMFS
-fi
+  mv $INITRAMFS.gz $INITRAMFS
+}
 
-if [ $TARGET_ARCH = arm ]; then
-  mkdir -p $INSTALL/boot
-  cp $BUILD/initrd/uinitrd.gz $INSTALL/boot
-else
-  mkdir -p $INSTALL/isolinux
-  cp $INITRAMFS.gz $INSTALL/isolinux/initrd
-fi
+case $TARGET_ARCH in
+  i386|x86_64)
+    do_lzma
+    cp -P $INITRAMFS $INSTALL/isolinux/initrd
+    ;;
+
+  arm)
+    do_gzip
+    mkimage -A arm -O linux -T ramdisk -C gzip -n "$DISTRONAME Ramdisk" \
+      -d $INITRAMFS.gz $BUILD/initramfs/uinitrd.gz
+    mkdir -p $INSTALL/boot
+    cp $BUILD/initrd/uinitrd.gz $INSTALL/boot
+  ;;
+
+  *)
+    ;;
+esac
 
 exit 0
