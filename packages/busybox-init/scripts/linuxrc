@@ -17,8 +17,43 @@ mount -t tmpfs none /dev/shm
 echo '/bin/mdev' > /proc/sys/kernel/hotplug
 mdev -s
 
-# find value of root= and mount it on /newroot
-/bin/sh
+# parse kernel cmdline
+for arg in $(cat /proc/cmdline); do
+  case $arg in
+    root=*)
+      ROOT="${arg#root=}"
+      ;;
+  esac
+done
+
+# try to mount the rootfs specified in cmdline...
+[ -n "$ROOT" ] && if mount -o ro $ROOT /mnt; then
+  if ! mount -t squashfs /mnt/isolinux/rootfs /newroot; then
+    umount /mnt
+    unset ROOT
+  fi
+else
+  unset ROOT
+fi
+
+# ...otherwise just scan the block devices for rootfs
+if [ -z "$ROOT" ]; then
+  (cd /sys/block; for dev in *; do
+    echo $dev | grep -q loop && continue
+    echo $dev | grep -q ram && continue
+    mount -o ro /dev/$dev /mnt || continue
+    if mount -t squashfs /mnt/isolinux/rootfs /newroot; then
+      break
+    else
+      umount /mnt
+    fi
+  done)
+fi
+
+if [ ! -x /newroot/sbin/init ]; then
+    echo "Cannot find a valid root filesystem, dropping to shell"
+    exec sh
+fi
 
 # Reset kernel hotplugging
 echo "" > /proc/sys/kernel/hotplug
