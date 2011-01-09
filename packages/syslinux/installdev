@@ -7,30 +7,36 @@ cp $BUILD/$1*/core/ldlinux.sys $INSTALL/share/syslinux
 cp $BUILD/$1*/core/ldlinux.bss $INSTALL/share/syslinux
 cp $BUILD/$1*/mbr/mbr.bin $INSTALL/share/syslinux
 
-mkdir -p $INSTALL/boot/pxelinux.cfg
-cp $BUILD/$1*/core/isolinux.bin $INSTALL/boot
-cp $PACKAGES/$1/config/isolinux.cfg $INSTALL/boot
+# ISOLINUX
+ISOLINUX_DIR="$BUILD/iso/isolinux"
+mkdir -p $ISOLINUX_DIR
+cp $BUILD/$1*/core/isolinux.bin $ISOLINUX_DIR
+cp $PACKAGES/$1/config/isolinux.cfg $ISOLINUX_DIR
+cp $PACKAGES/$1/config/help.msg $ISOLINUX_DIR
+cp $BUILD/$1*/com32/menu/vesamenu.c32 $ISOLINUX_DIR
+if [ -r $CONFIG_FLAVOUR/splash.png ]; then
+  cp $CONFIG_FLAVOUR/splash.png $ISOLINUX_DIR
+else
+  cp $PACKAGES/$1/config/splash.png $ISOLINUX_DIR
+fi
+
 if [ "$INSTALLATOR" = "yes" ]; then
   [ "$TARGET_ARCH" = i386 ] && INS_PARAMS="^#INS#" || INS_PARAMS="^#INS#.*"
-  sed -i s%$INS_PARAMS%% $INSTALL/boot/isolinux.cfg
+  sed -i s%$INS_PARAMS%% $ISOLINUX_DIR/isolinux.cfg
 fi
 CFG_PARAMS="^#CFG#"
-sed -i s%$CFG_PARAMS%% $INSTALL/boot/isolinux.cfg
-sed -i s%keymap=qwerty%keymap=$KEYMAP% $INSTALL/boot/isolinux.cfg
-sed -i s%lang=en%lang=$MENU_LANG% $INSTALL/boot/isolinux.cfg
-sed -i s%extra_cmdline_params%$EXTRA_CMDLINE_PARAMS% $INSTALL/boot/isolinux.cfg
-cp $PACKAGES/$1/config/help.msg $INSTALL/boot
+sed -i s%$CFG_PARAMS%% $ISOLINUX_DIR/isolinux.cfg
+sed -i s%keymap=qwerty%keymap=$KEYMAP% $ISOLINUX_DIR/isolinux.cfg
+sed -i s%lang=en%lang=$MENU_LANG% $ISOLINUX_DIR/isolinux.cfg
+sed -i s%extra_cmdline_params%$EXTRA_CMDLINE_PARAMS% $ISOLINUX_DIR/isolinux.cfg
+sed -i s%target-arch%$TARGET_ARCH% $ISOLINUX_DIR/isolinux.cfg
+sed -i s%release-nr%$DISTRO_VERSION% $ISOLINUX_DIR/isolinux.cfg
+sed -i s%#BOOT#%/$DISTRODIR/boot/%g $ISOLINUX_DIR/isolinux.cfg
+
+# PXELINUX
+mkdir -p $INSTALL/boot
 cp $BUILD/$1*/core/pxelinux.0 $INSTALL/boot
-sed -i s%target-arch%$TARGET_ARCH% $INSTALL/boot/isolinux.cfg
-sed -i s%release-nr%$DISTRO_VERSION% $INSTALL/boot/isolinux.cfg
-
-cp $INSTALL/boot/isolinux.cfg $INSTALL/boot/pxelinux.cfg/default
-
-cp $BUILD/$1*/com32/menu/vesamenu.c32 $INSTALL/boot
-if [ -r $CONFIG_FLAVOUR/splash.png ]; then
-  cp $CONFIG_FLAVOUR/splash.png $INSTALL/boot
-else
-  cp $PACKAGES/$1/config/splash.png $INSTALL/boot
-fi
+mkdir -p $INSTALL/boot/pxelinux.cfg
+cp $ISOLINUX_DIR/isolinux.cfg $INSTALL/boot/pxelinux.cfg/default
 
 exit 0
