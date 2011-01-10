@@ -23,6 +23,9 @@ for arg in $(cat /proc/cmdline); do
     root=*)
       ROOT="${arg#root=}"
       ;;
+    init=*)
+      INIT="${arg#init=}"
+      ;;
     initshell)
       echo "Dropping to shell as requested"
       exec sh
@@ -54,7 +57,9 @@ if [ -z "$ROOT" ]; then
   done)
 fi
 
-if [ ! -x /squashfs/sbin/init ]; then
+[ -z "$INIT" ] && INIT=/sbin/init
+
+if [ ! -x /squashfs/$INIT ]; then
     echo "Cannot find a valid root filesystem, dropping to shell"
     exec sh
 fi
@@ -83,7 +88,7 @@ umount /proc
 
 # Change to the new root partition and execute /sbin/init
 /bin/busybox echo "Running init..."
-if ! exec /bin/busybox switch_root /newroot /sbin/init $INIT_ARGS; then
+if ! exec /bin/busybox switch_root /newroot $INIT $INIT_ARGS; then
   echo "Failed, dropping to shell"
   /bin/busybox mount -t proc none /proc
   /bin/busybox mount -t sysfs none /sys
