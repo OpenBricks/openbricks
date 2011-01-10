@@ -32,7 +32,7 @@ done
 
 # try to mount the rootfs specified in cmdline...
 [ -n "$ROOT" ] && if mount -o ro $ROOT /mnt >/dev/null 2>&1; then
-  if ! mount -t squashfs /mnt/rootfs /newroot; then
+  if ! mount -t squashfs /mnt/rootfs /squashfs; then
     umount /mnt
     unset ROOT
   fi
@@ -46,7 +46,7 @@ if [ -z "$ROOT" ]; then
     echo $dev | grep -q loop && continue
     echo $dev | grep -q ram && continue
     mount -o ro /dev/$dev /mnt || continue
-    if mount -t squashfs /mnt/rootfs /newroot; then
+    if mount -t squashfs /mnt/rootfs /squashfs; then
       break
     else
       umount /mnt
@@ -54,10 +54,22 @@ if [ -z "$ROOT" ]; then
   done)
 fi
 
-if [ ! -x /newroot/sbin/init ]; then
+if [ ! -x /squashfs/sbin/init ]; then
     echo "Cannot find a valid root filesystem, dropping to shell"
     exec sh
 fi
+
+# setup aufs
+mount -t tmpfs none /rw
+if ! mount -t aufs -o br=/rw:/squashfs none /newroot; then
+  echo "Cannot mount aufs, dropping to shell"
+  exec sh
+fi
+
+# move backed filesystems inside newroot otherwise aufs won't work properly
+mkdir -p /newroot/rw /newroot/squashfs 
+mount --move /rw /newroot/rw
+mount --move /squashfs /newroot/squashfs
 
 INIT_ARGS=`cat /proc/cmdline`
 
