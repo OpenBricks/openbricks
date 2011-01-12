@@ -12,7 +12,7 @@ do_configure \
             --disable-libcryptsetup \
             --disable-gtk \
             --with-distro=other \
-            --with-syslog-service=syslog \
+            --with-syslog-service=syslogd.service \
             --with-dbussessionservicedir=/usr/share/dbus-1/services \
             --with-dbussystemservicedir=/usr/share/dbus-1/system-services \
             --with-dbusinterfacedir=/usr/share/dbus-1/interfaces \
@@ -23,3 +23,34 @@ do_configure \
 
 make
 make_install
+
+SYSTEMD=.install/lib/systemd
+SYSUNITS=$SYSTEMD/system
+
+# our syslogd (busybox) doesn't support socket activation, and probably
+# never will
+rm -f $SYSUNITS/syslog.socket
+rm -f $SYSUNITS/sockets.target.wants/syslog.socket
+
+# we don't care about vconsole setup (and miss loadkeys/setfont so it
+# wouldn't work anyway
+rm -f $SYSTEMD/systemd-vconsole-setup
+rm -f $SYSUNITS/systemd-vconsole-setup.service
+rm -f $SYSUNITS/sysinit.target.wants/systemd-vconsole-setup.service
+
+# we don't care about utmp (it's not even supported by our libc)
+rm -f $SYSTEMD/systemd-update-utmp runlevel
+rm -f $SYSUNITS/systemd-update-utmp-runlevel.service
+rm -f $SYSUNITS/systemd-update-utmp-shutdown.service
+rm -f $SYSUNITS/shutdown.target.wants/systemd-update-utmp-shutdown.service
+rm -f $SYSUNITS/runlevel?.target.wants/systemd-update-utmp-runlevel.service
+
+# these filesystems are useless, disable them by default
+rm -f $SYSUNITS/sysinit.target.wants/sys-kernel-debug.automount
+rm -f $SYSUNITS/sysinit.target.wants/sys-kernel-security.automount
+rm -f $SYSUNITS/sysinit.target.wants/proc-sys-fs-binfmt_misc.automount
+
+# two gettys are more than enough for us
+for i in `seq 3 6`; do
+  rm -f .install/etc/systemd/system/getty/getty@tty$i.service
+done
