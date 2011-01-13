@@ -1,0 +1,65 @@
+#!/bin/sh
+
+# ATI
+if grep 0300 < /tmp/pci | grep -q 1002; then
+  [ "$OPENGL" = yes ] && echo "" > /var/use_opengl
+  if [ "$BINARY_DRIVERS" = yes -a -f /usr/lib/fglrx/libGL.so.1 ]; then
+    ln -sf /usr/lib/fglrx/libGL.so.1 /usr/lib/libGL.so.1
+    ln -sf /usr/lib/fglrx/libglx.so \
+      /usr/lib/xorg/modules/extensions/libglx.so
+    cat > /etc/X11/xorg.conf.d/90-ati.conf <<EOF
+Section "Device"
+        Identifier  "Card0"
+        Driver      "fglrx"
+End
+EOF
+  fi
+fi
+
+# Intel
+if grep 0300 < /tmp/pci | grep -q 8086 ; then
+  [ "$OPENGL" = yes ] && echo "" > /var/use_opengl
+fi
+
+# nVidia
+if grep 0300 < /tmp/pci | grep -q 10de; then
+  [ "$OPENGL" = yes ] && echo "" > /var/use_opengl
+  if [ "$BINARY_DRIVERS" = yes -a -f /usr/lib/nvidia/libGL.so.1 ]; then
+    [ "$VDPAU" = yes ] && echo "" > /var/use_vdpau
+    ln -sf /usr/lib/nvidia/libGL.so.1 /usr/lib/libGL.so.1
+    ln -sf /usr/lib/nvidia/libglx.so \
+      /usr/lib/xorg/modules/extensions/libglx.so
+    cat > /etc/X11/xorg.conf.d/90-nvidia.conf <<EOF
+Section "Device"
+	Identifier  "Card0"
+	Driver      "nvidia"
+EndSection
+EOF
+  fi
+fi
+
+# OMAP
+if [ -f /sys/devices/omapdss/display0/enabled ] && \
+  [ "$( cat /sys/devices/omapdss/display0/enabled )" = 1 ];
+then
+  if [ "$OPENGL" = yes -a -f /usr/bin/pvrsrvinit ]; then
+    echo "" > /var/use_opengl
+    [ -r /usr/share/X11/xorg.conf.d/99-pvr.conf ] && exit 0
+  fi
+
+  # omapfb x11 driver fallback
+  [ ! -r /etc/X11/xorg.conf ] && cat >/etc/X11/xorg.conf <<EOF
+Section "Device"
+	Identifier	"fbdev Device 0"
+	Driver		"omapfb"
+	Option		"fb"	"/dev/fb0"
+EndSection
+EOF
+fi
+
+# Tegra2
+if [ -e /dev/nvrm ]; then
+  [ "$OPENGL" = yes -a -f /usr/sbin/nvrm_daemon ] && echo "" > /var/use_opengl
+fi
+
+exit 0
