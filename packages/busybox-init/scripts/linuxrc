@@ -23,6 +23,9 @@ for arg in $(cat /proc/cmdline); do
     root=*)
       ROOT="${arg#root=}"
       ;;
+    data=*)
+      DATA="${arg#data=}"
+      ;;
     init=*)
       INIT="${arg#init=}"
       ;;
@@ -65,7 +68,13 @@ if [ ! -x /squashfs/$INIT ]; then
 fi
 
 # setup aufs
-mount -t tmpfs none /rw
+if [ -n "$DATA" ]; then
+  if ! mount $DATA /rw; then
+    echo "Cannot mount data partition, using tmpfs instead"
+    unset DATA
+  fi
+fi
+[ -z "$DATA" ] && mount -t tmpfs none /rw
 if ! mount -t aufs -o br=/rw:/squashfs none /newroot; then
   echo "Cannot mount aufs, dropping to shell"
   exec sh
