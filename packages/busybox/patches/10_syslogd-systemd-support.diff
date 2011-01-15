@@ -1,0 +1,267 @@
+--- /dev/null
++++ b/include/sd-daemon.h
+@@ -0,0 +1,36 @@
++/*
++ * Copyright (C) 2011 Davide Cavalca <davide@geexbox.org>
++ *
++ * Based on http://cgit.freedesktop.org/systemd/tree/src/sd-daemon.h
++ * Copyright 2010 Lennart Poettering
++ *
++ * Permission is hereby granted, free of charge, to any person
++ * obtaining a copy of this software and associated documentation files
++ * (the "Software"), to deal in the Software without restriction,
++ * including without limitation the rights to use, copy, modify, merge,
++ * publish, distribute, sublicense, and/or sell copies of the Software,
++ * and to permit persons to whom the Software is furnished to do so,
++ * subject to the following conditions:
++ *
++ * The above copyright notice and this permission notice shall be
++ * included in all copies or substantial portions of the Software.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
++ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
++ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
++ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
++ * BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
++ * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
++ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++ * SOFTWARE.
++ */
++
++#ifndef BB_SD_DAEMON_H
++#define BB_SD_DAEMON_H
++
++#define SD_LISTEN_FDS_START 3
++
++int sd_listen_fds(void);
++int xsystemd_unix_socket(const char *path);
++
++#endif
+diff --git a/libbb/Kbuild.src b/libbb/Kbuild.src
+index 0fa1451..119e0ad 100644
+--- a/libbb/Kbuild.src
++++ b/libbb/Kbuild.src
+@@ -160,6 +160,8 @@ lib-$(CONFIG_IOSTAT) += get_cpu_count.o
+ lib-$(CONFIG_MPSTAT) += get_cpu_count.o
+ lib-$(CONFIG_POWERTOP) += get_cpu_count.o
+ 
++lib-$(CONFIG_FEATURE_SYSLOGD_SYSTEMD) += sd-daemon.o
++
+ # We shouldn't build xregcomp.c if we don't need it - this ensures we don't
+ # require regex.h to be in the include dir even if we don't need it thereby
+ # allowing us to build busybox even if uclibc regex support is disabled.
+diff --git a/libbb/sd-daemon.c b/libbb/sd-daemon.c
+new file mode 100644
+index 0000000..2237e19
+--- /dev/null
++++ b/libbb/sd-daemon.c
+@@ -0,0 +1,164 @@
++/*
++ * Copyright (C) 2011 Davide Cavalca <davide@geexbox.org>
++ *
++ * Based on http://cgit.freedesktop.org/systemd/tree/src/sd-daemon.c
++ * Copyright 2010 Lennart Poettering
++ *
++ * Permission is hereby granted, free of charge, to any person
++ * obtaining a copy of this software and associated documentation files
++ * (the "Software"), to deal in the Software without restriction,
++ * including without limitation the rights to use, copy, modify, merge,
++ * publish, distribute, sublicense, and/or sell copies of the Software,
++ * and to permit persons to whom the Software is furnished to do so,
++ * subject to the following conditions:
++ *
++ * The above copyright notice and this permission notice shall be
++ * included in all copies or substantial portions of the Software.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
++ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
++ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
++ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
++ * BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
++ * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
++ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++ * SOFTWARE.
++ */
++
++#include <sys/un.h>
++
++#include "libbb.h"
++#include "sd-daemon.h"
++
++int sd_listen_fds(void) {
++	int fd;
++	const char *e;
++	char *p = NULL;
++	unsigned long l;
++
++	if (!(e = getenv("LISTEN_PID")))
++		return 0;
++
++	errno = 0;
++	l = strtoul(e, &p, 10);
++
++	if (errno != 0)
++		return -errno;
++
++	if (!p || *p || l <= 0)
++		return -EINVAL;
++
++	/* Is this for us? */
++	if (getpid() != (pid_t) l)
++		return 0;
++
++	if (!(e = getenv("LISTEN_FDS")))
++		return 0;
++
++	errno = 0;
++	l = strtoul(e, &p, 10);
++
++	if (errno != 0)
++		return -errno;
++
++	if (!p || *p)
++		return -EINVAL;
++
++	for (fd = SD_LISTEN_FDS_START; fd < SD_LISTEN_FDS_START + (int) l; fd ++) {
++		int flags;
++
++		if ((flags = fcntl(fd, F_GETFD)) < 0)
++			return -errno;
++
++		if (flags & FD_CLOEXEC)
++			continue;
++
++		if (fcntl(fd, F_SETFD, flags | FD_CLOEXEC) < 0)
++			return -errno;
++	}
++
++	return (int) l;
++}
++
++static int sd_is_socket_internal(int fd, int type) {
++	struct stat st_fd;
++
++	if (fd < 0 || type < 0)
++		return -EINVAL;
++
++	if (fstat(fd, &st_fd) < 0)
++		return -errno;
++
++	if (!S_ISSOCK(st_fd.st_mode))
++		return 0;
++
++	if (type != 0) {
++		int other_type = 0;
++		socklen_t l = sizeof(other_type);
++
++		if (getsockopt(fd, SOL_SOCKET, SO_TYPE, &other_type, &l) < 0)
++			return -errno;
++
++		if (l != sizeof(other_type))
++			return -EINVAL;
++
++		if (other_type != type)
++			return 0;
++	}
++
++	return 1;
++}
++
++union sockaddr_union {
++        struct sockaddr sa;
++        struct sockaddr_in in4;
++        struct sockaddr_in6 in6;
++        struct sockaddr_un un;
++        struct sockaddr_storage storage;
++};
++
++static int sd_is_socket_unix(int fd, int type, const char *path) {
++	union sockaddr_union sockaddr;
++	socklen_t l;
++	int r;
++
++	if ((r = sd_is_socket_internal(fd, type)) <= 0)
++		return r;
++
++	memset(&sockaddr, 0, sizeof(sockaddr));
++	l = sizeof(sockaddr);
++
++	if (getsockname(fd, &sockaddr.sa, &l) < 0)
++		return -errno;
++
++	if (l < sizeof(sa_family_t))
++		return -EINVAL;
++
++	if (sockaddr.sa.sa_family != AF_UNIX)
++		return 0;
++
++	return (l >= offsetof(struct sockaddr_un, sun_path) + 1) &&
++		memcmp(path, sockaddr.un.sun_path, 1) == 0;
++}
++
++int xsystemd_unix_socket(const char *path) {
++	int r = sd_listen_fds();
++
++	if (r < 0)
++		bb_error_msg_and_die ("Failed to acquire systemd socket");
++	if (r > 1)
++		bb_error_msg_and_die ("Wrong number of systemd sockets passed");
++	if (r == 1) {
++		int fd = SD_LISTEN_FDS_START;
++
++		r = sd_is_socket_unix(fd, SOCK_DGRAM, path);
++		if (r < 0)
++			bb_error_msg_and_die ("Failed to verify systemd socket type");
++		if (!r)
++			bb_error_msg_and_die ("Passed systemd socket of wrong type");
++
++		return fd;
++	}
++
++	return -1;
++}
+diff --git a/sysklogd/Config.src b/sysklogd/Config.src
+index 1e59872..ef4a556 100644
+--- a/sysklogd/Config.src
++++ b/sysklogd/Config.src
+@@ -22,6 +22,14 @@ config SYSLOGD
+ 	  wrong. And something almost always will go wrong if
+ 	  you wait long enough....
+ 
++config FEATURE_SYSLOGD_SYSTEMD
++	bool "Enable systemd socket activation support"
++	default n
++	depends on SYSLOGD && PLATFORM_LINUX
++	help
++	  This makes syslogd compliant to the systemd's New-Style Daemons
++	  guidelines and implements socket-based activation.
++
+ config FEATURE_ROTATE_LOGFILE
+ 	bool "Rotate message files"
+ 	default y
+diff --git a/sysklogd/syslogd.c b/sysklogd/syslogd.c
+index fb73095..1837413 100644
+--- a/sysklogd/syslogd.c
++++ b/sysklogd/syslogd.c
+@@ -34,6 +34,9 @@
+ #include <sys/shm.h>
+ #endif
+ 
++#if ENABLE_FEATURE_SYSLOGD_SYSTEMD
++#include "sd-daemon.h"
++#endif
+ 
+ #define DEBUG 0
+ 
+@@ -512,6 +515,11 @@ static NOINLINE int create_socket(void)
+ 	int sock_fd;
+ 	char *dev_log_name;
+ 
++#if ENABLE_FEATURE_SYSLOGD_SYSTEMD
++	if ((sock_fd = xsystemd_unix_socket("/dev/log")) != -1)
++		return sock_fd;
++#endif
++	
+ 	memset(&sunx, 0, sizeof(sunx));
+ 	sunx.sun_family = AF_UNIX;
+ 
