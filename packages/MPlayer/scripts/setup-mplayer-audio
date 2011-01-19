@@ -1,0 +1,45 @@
+#!/bin/sh
+
+echo $ALSA_CARD | grep -q ".." || ALSA_CARD="0$ALSA_CARD"
+
+ALSA_DEVICE=`grep -iv Modem /proc/asound/pcm | grep -i $SOUNDCARD_MODE | sed -n "s/^$ALSA_CARD-\(..\): .*playback.*/\1/p"`
+
+if [ -n "$ALSA_DEVICE" ]; then
+  AO_DEVICE="hw=$ALSA_CARD.$ALSA_DEVICE"
+else
+  AO_DEVICE=hw
+fi
+  
+# set alsa as audio output isn't forced already.
+mp_set_option ao "alsa:device=$AO_DEVICE"
+
+# enable hardware output via S/PDIF if audio codec isn't forced already.
+if [ "$SOUNDCARD_MODE" = "digital" ]; then
+  if [ "$SOUNDCARD_PT_MODE" = ac3 ]; then
+    mp_set_option ac "hwac3,"
+  elif [ "$SOUNDCARD_PT_MODE" = dts ]; then
+    mp_set_option ac "hwdts,"
+  elif [ "$SOUNDCARD_PT_MODE" = ac3dts ]; then
+    mp_set_option afm "hwac3"
+  fi
+fi
+
+# don't use Master mixer channel when not available
+if [ -z "`amixer -c $ALSA_CARD simple | grep "'Master'"`" ]; then
+  sed -i 's/mixer-channel=Master//' /etc/mplayer/mplayer.conf
+fi
+
+# set number of playback channels if isn't forced already.
+mp_set_option channels "$CHANNELS"
+
+# set DVD default language
+#FIXME we no longer use lang=, adapt to use /etc/locale.conf
+#LANG="`sed -n 's/.*lang=\([^ ]*\).*/\1/p' /proc/cmdline | head -n 1`,en"
+#mp_set_option alang "$LANG"
+
+# set softvol for VIA 8235 rev80 and SiS SI7012 rev16 cards
+if grep -q -e '0401: 1106:3059' -e '0401: 13f6:0111' /tmp/pci; then
+  mp_set_option softvol "yes"
+fi
+
+exit 0
