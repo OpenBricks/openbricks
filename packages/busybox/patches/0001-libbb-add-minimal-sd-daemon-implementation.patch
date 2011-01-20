@@ -1,3 +1,20 @@
+>From 04a91949e46db799e67ec775d8349414abde1a34 Mon Sep 17 00:00:00 2001
+From: Davide Cavalca <davide@geexbox.org>
+Date: Sun, 16 Jan 2011 10:39:08 +0100
+Subject: [PATCH 1/4] libbb: add minimal sd-daemon implementation
+
+
+Signed-off-by: Davide Cavalca <davide@geexbox.org>
+---
+ include/sd-daemon.h |   36 +++++++++++
+ libbb/sd-daemon.c   |  164 +++++++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 200 insertions(+), 0 deletions(-)
+ create mode 100644 include/sd-daemon.h
+ create mode 100644 libbb/sd-daemon.c
+
+diff --git a/include/sd-daemon.h b/include/sd-daemon.h
+new file mode 100644
+index 0000000..f605c52
 --- /dev/null
 +++ b/include/sd-daemon.h
 @@ -0,0 +1,36 @@
@@ -37,19 +54,6 @@
 +int xsystemd_unix_socket(const char *path);
 +
 +#endif
-diff --git a/libbb/Kbuild.src b/libbb/Kbuild.src
-index 0fa1451..119e0ad 100644
---- a/libbb/Kbuild.src
-+++ b/libbb/Kbuild.src
-@@ -160,6 +160,8 @@ lib-$(CONFIG_IOSTAT) += get_cpu_count.o
- lib-$(CONFIG_MPSTAT) += get_cpu_count.o
- lib-$(CONFIG_POWERTOP) += get_cpu_count.o
- 
-+lib-$(CONFIG_FEATURE_SYSLOGD_SYSTEMD) += sd-daemon.o
-+
- # We shouldn't build xregcomp.c if we don't need it - this ensures we don't
- # require regex.h to be in the include dir even if we don't need it thereby
- # allowing us to build busybox even if uclibc regex support is disabled.
 diff --git a/libbb/sd-daemon.c b/libbb/sd-daemon.c
 new file mode 100644
 index 0000000..2237e19
@@ -220,48 +224,6 @@ index 0000000..2237e19
 +
 +	return -1;
 +}
-diff --git a/sysklogd/Config.src b/sysklogd/Config.src
-index 1e59872..ef4a556 100644
---- a/sysklogd/Config.src
-+++ b/sysklogd/Config.src
-@@ -22,6 +22,14 @@ config SYSLOGD
- 	  wrong. And something almost always will go wrong if
- 	  you wait long enough....
- 
-+config FEATURE_SYSLOGD_SYSTEMD
-+	bool "Enable systemd socket activation support"
-+	default n
-+	depends on SYSLOGD && PLATFORM_LINUX
-+	help
-+	  This makes syslogd compliant to the systemd's New-Style Daemons
-+	  guidelines and implements socket-based activation.
-+
- config FEATURE_ROTATE_LOGFILE
- 	bool "Rotate message files"
- 	default y
-diff --git a/sysklogd/syslogd.c b/sysklogd/syslogd.c
-index fb73095..1837413 100644
---- a/sysklogd/syslogd.c
-+++ b/sysklogd/syslogd.c
-@@ -34,6 +34,9 @@
- #include <sys/shm.h>
- #endif
- 
-+#if ENABLE_FEATURE_SYSLOGD_SYSTEMD
-+#include "sd-daemon.h"
-+#endif
- 
- #define DEBUG 0
- 
-@@ -512,6 +515,11 @@ static NOINLINE int create_socket(void)
- 	int sock_fd;
- 	char *dev_log_name;
- 
-+#if ENABLE_FEATURE_SYSLOGD_SYSTEMD
-+	if ((sock_fd = xsystemd_unix_socket("/dev/log")) != -1)
-+		return sock_fd;
-+#endif
-+	
- 	memset(&sunx, 0, sizeof(sunx));
- 	sunx.sun_family = AF_UNIX;
- 
+-- 
+1.7.2.3
+
