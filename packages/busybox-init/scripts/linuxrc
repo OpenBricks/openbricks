@@ -44,24 +44,25 @@ else
 fi
 
 # ...otherwise just scan the block devices for rootfs
-FOUND_ROOTFS=0
-for i in 0 1 2 3 4 5 6 7 8 9; do
-  if [ -z "$ROOT" ]; then
-    (cd /sys/block; for dev in *; do
+if [ -z "$ROOT" ]; then
+  cd /sys/block
+  for i in 0 1 2 3 4 5 6 7 8 9; do
+    for dev in *; do
       echo $dev | grep -q loop && continue
       echo $dev | grep -q ram && continue
       mount -o ro /dev/$dev /mnt >/dev/null 2>&1 || continue
       if mount -t squashfs /mnt/rootfs /squashfs >/dev/null 2>&1; then
-        FOUND_ROOTFS=1
+        FOUND_ROOTFS=yes
         break
       else
         umount /mnt
       fi
-    done)
-  fi
-  [ $FOUND_ROOTFS -eq 1 ] && break
-  sleep 1
-done
+    done
+    [ -n "$FOUND_ROOTFS" ] && break
+    sleep 1
+  done
+  cd /
+fi
 
 [ -z "$INIT" ] && INIT=/bin/systemd
 
