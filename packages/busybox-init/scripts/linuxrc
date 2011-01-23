@@ -1,5 +1,10 @@
 #!/bin/sh
 
+dbg_echo () {
+  [ "$QUIET" = yes ] || echo $*
+  return
+}
+
 export PATH=/sbin:/bin
 
 # install busybox symlinks
@@ -26,6 +31,9 @@ for arg in $(cat /proc/cmdline); do
     init=*)
       INIT="${arg#init=}"
       ;;
+    quiet)
+      QUIET=yes
+      ;;
     initshell)
       echo "Dropping to shell as requested"
       exec sh
@@ -34,27 +42,41 @@ for arg in $(cat /proc/cmdline); do
 done
 
 # try to mount the rootfs specified in cmdline...
-[ -n "$ROOT" ] && if mount -o ro $ROOT /mnt >/dev/null 2>&1; then
-  if ! mount -t squashfs /mnt/rootfs /squashfs >/dev/null 2>&1; then
-    umount /mnt
+if [ -n "$ROOT" ]; then
+  dbg_echo -n "Trying root=$ROOT as requested..."
+  if mount -o ro $ROOT /mnt >/dev/null 2>&1; then
+    if mount -t squashfs /mnt/rootfs /squashfs >/dev/null 2>&1; then
+      dbg_echo "found."
+    else
+      dbg_echo "failed, cannot mount squashfs."
+      umount /mnt
+      unset ROOT
+    fi
+  else
+    dbg_echo "failed, cannot mount device."
     unset ROOT
   fi
-else
-  unset ROOT
 fi
 
 # ...otherwise just scan the block devices for rootfs
 if [ -z "$ROOT" ]; then
+  dbg_echo "Scanning for root device:"
   cd /sys/block
   for i in 0 1 2 3 4 5 6 7 8 9; do
     for dev in *; do
       echo $dev | grep -q loop && continue
       echo $dev | grep -q ram && continue
-      mount -o ro /dev/$dev /mnt >/dev/null 2>&1 || continue
+      dbg_echo -n "[$i] Trying $dev..."
+      if ! mount -o ro /dev/$dev /mnt >/dev/null 2>&1; then
+        dbg_echo "failed, cannot mount device."
+        continue
+      fi
       if mount -t squashfs /mnt/rootfs /squashfs >/dev/null 2>&1; then
+        dbg_echo "found."
         FOUND_ROOTFS=yes
         break
       else
+        dbg_echo "failed, cannot mount squashfs."
         umount /mnt
       fi
     done
