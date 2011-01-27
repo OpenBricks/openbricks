@@ -5,8 +5,6 @@
 unset LDFLAGS
 
 cd $(kernel_path)
-rm -rf modules
-mkdir -p modules
 
 case $TARGET_ARCH in
   i386|x86_64)  IMAGE=bzImage  ;;
@@ -16,8 +14,18 @@ case $TARGET_ARCH in
 esac
 make $IMAGE
 make modules
-make INSTALL_MOD_PATH=modules DEPMOD=$ROOT/$TOOLCHAIN/bin/depmod modules_install
-rm -f modules/lib/modules/*/build
-rm -f modules/lib/modules/*/source
 
-exit 0
+install_dir="`pwd`/.install"
+debug_dir="`pwd`/.install-debuginfo/usr/lib/debug"
+rm -rf $install_dir $debug_dir
+mkdir -p $install_dir $debug_dir
+
+make modules_install \
+  INSTALL_MOD_PATH=.install \
+  DEPMOD=$ROOT/$TOOLCHAIN/bin/depmod \
+
+kmod_dir="$install_dir/lib/modules/$(kernel_version)"
+
+mv .install/lib/firmware .install/firmware
+rm -f $kmod_dir/build $kmod_dir/source $kmod_dir/modules.*
+strip_kmods "$kmod_dir" "$debug_dir"
