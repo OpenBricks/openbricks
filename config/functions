@@ -286,11 +286,11 @@ do_qmake () {
     QMAKE_MOC=$TARGET_MOC
 }
 
-# Usage: do_strip [bin|shlib|staticlib] <path>
+# Usage: do_strip [bin|shlib|staticlib|kmod] <path>
 do_strip() {
   local options="--remove-section=.comment --remove-section=.note"
   case "$1" in
-    shlib)     options="$options --strip-unneeded"; shift ;;
+    shlib|kmod) options="$options --strip-unneeded"; shift ;;
     staticlib) options="$options --strip-debug"   ; shift ;;
     bin)       shift ;;
   esac
@@ -340,6 +340,17 @@ strip_bins() {
 
   [ -n "$debug_path" ] && extract_debug_info $debug_path $tostrip
   do_strip bin "$tostrip"
+
+  return 0
+}
+
+# Usage: strip_kmods <path> [debug_path]
+strip_kmods() {
+  local tostrip="`find $1 -type f -readable -writable -name *.ko`"
+  local debug_path="$2"
+
+  [ -n "$debug_path" ] && extract_debug_info $debug_path $tostrip
+  do_strip kmod "$tostrip"
 
   return 0
 }
@@ -402,6 +413,11 @@ make_install () {
 
   if [ "$prefix" != toolchain ]; then
     strip_libs "$install_dir" "$install_dir_debug/usr/lib/debug"
+    kmod_dir="$install_dir/lib/modules/$(kernel_version)"
+    if [ -d "$kmod_dir" ]; then
+      rm -f $kmod_dir/build $kmod_dir/source $kmod_dir/modules.*
+      strip_kmods "$kmod_dir" "$install_dir_debug/usr/lib/debug"
+    fi
     for b in bin sbin usr/bin usr/sbin; do
       [ -d "$install_dir/$b" ] && strip_bins "$install_dir/$b" "$install_dir_debug/usr/lib/debug"
     done
