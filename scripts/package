@@ -14,6 +14,13 @@ add_control() {
 
 get_meta $1
 
+# check for platform-specific package overlay
+INSTALL_RULE=$PACKAGES/$1/install
+PLATFORM_INSTALL="$PLATFORM_PACKAGES/$1/install"
+[ -r "$PLATFORM_INSTALL" ] && INSTALL_RULE="$PLATFORM_INSTALL"
+MACHINE_INSTALL="$MACHINE_PACKAGES/$1/install"
+[ -r "$MACHINE_INSTALL" ] && INSTALL_RULE="$MACHINE_INSTALL"
+
 if [ "$PKG_OPK_ARCH" = unsupported ]; then
   echo "$1 is not supported on $TARGET_ARCH, aborting"
   exit 1
@@ -26,7 +33,7 @@ BUILD_STAMP=$STAMPS/$1/build
 mkdir -p $PKGROOT
 STAMP="$PKGROOT/$PKG_OPK"
 
-if [ -f $STAMP ] && [ $PACKAGES/$1/install -nt $STAMP -o $BUILD_STAMP -nt $STAMP ]; then
+if [ -f $STAMP ] && [ $INSTALL_RULE -nt $STAMP -o $BUILD_STAMP -nt $STAMP ]; then
   $SCRIPTS/uninstall $1
   rm -f $STAMP
 fi
@@ -36,7 +43,7 @@ if [ -f $STAMP ]; then
   exit 0
 fi
 
-if [ ! -f $PACKAGES/$1/install ]; then
+if [ ! -f $INSTALL_RULE ]; then
   echo "$1 is not a runtime package, skipping..." >&$VERBOSE_OUT
   exit 0
 fi
@@ -80,8 +87,7 @@ if [ -d $PACKAGES/$1/modprobe.d ]; then
   cp $PACKAGES/$1/modprobe.d/*.conf $INSTALL/etc/modprobe.d
 fi
 
-#[ -x $PACKAGES/$1/install ] && 
-$PACKAGES/$1/install $1 >&$VERBOSE_OUT
+$INSTALL_RULE $1 >&$VERBOSE_OUT
 
 # build opk package
 [ -d $PACKAGES/$1/package ] && cp -P $PACKAGES/$1/package/* $INSTALL/CONTROL
