@@ -123,6 +123,10 @@ get_meta() {
   MACHINE_META="$MACHINE_PACKAGES/$1/meta"
   [ -r "$MACHINE_META" ] && . "$MACHINE_META"
 
+  # check for flavour-specific package overlay
+  FLAVOUR_META="$FLAVOUR_PACKAGES/$1/meta"
+  [ -r "$FLAVOUR_META" ] && . "$FLAVOUR_META"
+
   case "$PKG_ARCH" in
     any) PKG_OPK_ARCH="$TARGET_SUBARCH" ;;
     all) PKG_OPK_ARCH="all" ;;
@@ -258,7 +262,7 @@ kernel_path() {
 
 # Usage: ver=`kernel_version`
 kernel_version() {
-  basename $(kernel_path)/modules/lib/modules/*
+  basename $(kernel_path)/.install/lib/modules/*
 }
 
 # Usage: require_glibc <package>
@@ -286,11 +290,11 @@ do_qmake () {
     QMAKE_MOC=$TARGET_MOC
 }
 
-# Usage: do_strip [bin|shlib|staticlib] <path>
+# Usage: do_strip [bin|shlib|staticlib|kmod] <path>
 do_strip() {
   local options="--remove-section=.comment --remove-section=.note"
   case "$1" in
-    shlib)     options="$options --strip-unneeded"; shift ;;
+    shlib|kmod) options="$options --strip-unneeded"; shift ;;
     staticlib) options="$options --strip-debug"   ; shift ;;
     bin)       shift ;;
   esac
@@ -310,8 +314,9 @@ extract_debug_info() {
   shift
 
   for f in $*; do
-    file $f 2>&1 | grep -qv ELF && continue
-    LANG=C file $f 2>&1 | grep -qv "not stripped" && continue
+    file_out=`LANG=C file $f 2>&1`
+    echo $file_out | grep -qv ELF && continue
+    echo $file_out | grep -qv "not stripped" && continue
     echo "Extracting debugging symbols for $f"
     basefile=`echo $f | sed 's/^.*.install//'`
     debug_file="$debug_path/$basefile"
@@ -340,6 +345,17 @@ strip_bins() {
 
   [ -n "$debug_path" ] && extract_debug_info $debug_path $tostrip
   do_strip bin "$tostrip"
+
+  return 0
+}
+
+# Usage: strip_kmods <path> [debug_path]
+strip_kmods() {
+  local tostrip="`find $1 -type f -readable -writable -name *.ko`"
+  local debug_path="$2"
+
+  [ -n "$debug_path" ] && extract_debug_info $debug_path $tostrip
+  do_strip kmod "$tostrip"
 
   return 0
 }
@@ -402,6 +418,11 @@ make_install () {
 
   if [ "$prefix" != toolchain ]; then
     strip_libs "$install_dir" "$install_dir_debug/usr/lib/debug"
+    kmod_dir="$install_dir/lib/modules/$(kernel_version)"
+    if [ -d "$kmod_dir" ]; then
+      rm -f $kmod_dir/build $kmod_dir/source $kmod_dir/modules.*
+      strip_kmods "$kmod_dir" "$install_dir_debug/usr/lib/debug"
+    fi
     for b in bin sbin usr/bin usr/sbin; do
       [ -d "$install_dir/$b" ] && strip_bins "$install_dir/$b" "$install_dir_debug/usr/lib/debug"
     done
@@ -510,4 +531,25 @@ do_perl_strip () {
       -e '/^=\(head\|pod\|item\|over\|back\)/,$d' \
       -e '/^#$/d' \
       -e '/^#[^!"'"'"']/d'
+}
+
+# Usage: systemctl_enable <unit> [root_dir]
+systemctl_enable () {
+  local unit_name="$1"
+  local unit="/lib/systemd/system/${unit_name}"
+  local target_dir="$2"
+
+  [ -z "$target_dir" ] && target_dir=.install
+  [ -f "$target_dir/$unit" ] || exit 1
+
+  target=`grep '^WantedBy' $target_dir/$unit | cut -f2 -d=`
+  if [ -n "$target" ]; then
+    mkdir -p ${target_dir}/etc/systemd/system/${target}.wants
+    ln -s $unit ${target_dir}/etc/systemd/system/${target}.wants/
+  fi
+}
+
+do_python_strip () {
+  find .install -name \*.py -exec rm -rf '{}' \;
+  find .install -name \*.pyo -exec rm -rf '{}' \;
 }

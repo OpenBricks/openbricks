@@ -1,44 +1,32 @@
 #!/bin/sh -l
 # use login-shell to retrieve vars from /etc/profile
 
-if [ "$1" = x11 -o "$1" = fb ]; then
-  MODE="$1"
-else
-  echo "usage: $0 [x11|fb]" >&2
-  exit 1
-fi
-
 export ELM_THEME=/usr/share/elementary/themes/default.edj
-[ -r /etc/locale ] && export LANG=`cat /etc/locale`
 
-if [ "$MODE" = x11 ]; then
-  export DISPLAY=:0.0
+export DISPLAY=:0.0
 
-  # take advantage of multi-core/cpu with Evas (threads)
-  if test $(grep -ic "^processor" /proc/cpuinfo) -gt 1; then
-    export EVAS_RENDER_MODE=non-blocking
-  fi
-
-  # get the resolution X.org has actually started
-  XRANDR_INFO=/tmp/xrandr
-  while true; do
-    xrandr -display :0.0 -q > $XRANDR_INFO
-    [ -s $XRANDR_INFO ] && break
-  done
-
-  RES=`cat $XRANDR_INFO | grep "Screen 0" | sed 's/.* current \([0-9]*\) x \([0-9]*\),.*/\1x\2/'`
-  RESX=`echo $RES | cut -f1 -dx`
-  RESY=`echo $RES | cut -f2 -dx`
-  ENNA_RES="${RESX}x${RESY}"
-elif [ -e /dev/fb0 ]; then
-  ENNA_RES=`/usr/sbin/fbset | sed -n 's/mode "\(.*\)-.*"/\1/p'`
+# take advantage of multi-core/cpu with Evas (threads)
+if test $(grep -ic "^processor" /proc/cpuinfo) -gt 1; then
+  export EVAS_RENDER_MODE=non-blocking
 fi
+
+# get the resolution X.org has actually started
+XRANDR_INFO=/tmp/xrandr
+while true; do
+  xrandr -display :0.0 -q > $XRANDR_INFO
+  [ -s $XRANDR_INFO ] && break
+done
+
+RES=`cat $XRANDR_INFO | grep "Screen 0" | sed 's/.* current \([0-9]*\) x \([0-9]*\),.*/\1x\2/'`
+RESX=`echo $RES | cut -f1 -dx`
+RESY=`echo $RES | cut -f2 -dx`
+ENNA_RES="${RESX}x${RESY}"
 
 while true; do
-  enna -g $ENNA_RES -f -c /etc/enna.cfg > /var/log/enna.log 2>&1
+  enna -g $ENNA_RES -f -c /etc/enna.cfg
   if [ "$?" = 0 ]; then
     [ -x /usr/bin/vdrshutdown ] && /usr/bin/vdrshutdown
-    initctl emit -n shutdown REBOOT=no
+    systemctl poweroff
     exit 0
   else
     # ensure no MPlayer instance is running if enna has previously crashed

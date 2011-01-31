@@ -1,0 +1,130 @@
+#!/bin/sh
+
+dbg_echo () {
+  [ "$QUIET" = yes ] || echo $*
+  return
+}
+
+export PATH=/sbin:/bin
+
+# install busybox symlinks
+busybox --install -s
+
+# mount required filesystems
+busybox mount -t proc none /proc
+busybox mount -t sysfs none /sys
+
+# prepare /dev
+mount -t devtmpfs devtmpfs /dev
+echo '/bin/mdev' > /proc/sys/kernel/hotplug
+mdev -s
+
+# parse kernel cmdline
+for arg in $(cat /proc/cmdline); do
+  case $arg in
+    root=*)
+      ROOT="${arg#root=}"
+      ;;
+    data=*)
+      DATA="${arg#data=}"
+      ;;
+    init=*)
+      INIT="${arg#init=}"
+      ;;
+    quiet)
+      QUIET=yes
+      ;;
+    initshell)
+      echo "Dropping to shell as requested"
+      exec sh
+      ;;
+  esac
+done
+
+# try to mount the rootfs specified in cmdline...
+if [ -n "$ROOT" ]; then
+  dbg_echo -n "Trying root=$ROOT as requested..."
+  if mount -o ro $ROOT /mnt >/dev/null 2>&1; then
+    if mount -t squashfs /mnt/rootfs /squashfs >/dev/null 2>&1; then
+      dbg_echo "found."
+    else
+      dbg_echo "failed, cannot mount squashfs."
+      umount /mnt
+      unset ROOT
+    fi
+  else
+    dbg_echo "failed, cannot mount device."
+    unset ROOT
+  fi
+fi
+
+# ...otherwise just scan the block devices for rootfs
+if [ -z "$ROOT" ]; then
+  dbg_echo "Scanning for root device:"
+  cd /sys/block
+  for i in 0 1 2 3 4 5 6 7 8 9; do
+    for dev in *; do
+      echo $dev | grep -q loop && continue
+      echo $dev | grep -q ram && continue
+      dbg_echo -n "[$i] Trying $dev..."
+      if ! mount -o ro /dev/$dev /mnt >/dev/null 2>&1; then
+        dbg_echo "failed, cannot mount device."
+        continue
+      fi
+      if mount -t squashfs /mnt/rootfs /squashfs >/dev/null 2>&1; then
+        dbg_echo "found."
+        FOUND_ROOTFS=yes
+        break
+      else
+        dbg_echo "failed, cannot mount squashfs."
+        umount /mnt
+      fi
+    done
+    [ -n "$FOUND_ROOTFS" ] && break
+    sleep 1
+  done
+  cd /
+fi
+
+[ -z "$INIT" ] && INIT=/bin/systemd
+
+if [ ! -x /squashfs/$INIT ]; then
+    echo "Cannot find a valid root filesystem, dropping to shell"
+    exec sh
+fi
+
+# setup aufs
+if [ -n "$DATA" ]; then
+  if ! mount $DATA /rw; then
+    echo "Cannot mount data partition, using tmpfs instead"
+    unset DATA
+  fi
+fi
+[ -z "$DATA" ] && mount -t tmpfs none /rw
+if ! mount -t aufs -o br=/rw:/squashfs none /newroot; then
+  echo "Cannot mount aufs, dropping to shell"
+  exec sh
+fi
+
+# move backed filesystems inside newroot otherwise aufs won't work properly
+mkdir -p /newroot/.data /newroot/.squashfs /newroot/.root
+mount --move /rw /newroot/.data
+mount --move /squashfs /newroot/.squashfs
+mount --move /mnt /newroot/.root
+
+INIT_ARGS=`cat /proc/cmdline`
+
+# Reset kernel hotplugging
+echo "" > /proc/sys/kernel/hotplug
+umount /sys
+umount /dev
+umount /proc
+
+# Change to the new root partition and execute /sbin/init
+/bin/busybox echo "Running init..."
+if ! exec /bin/busybox switch_root /newroot $INIT $INIT_ARGS; then
+  echo "Failed, dropping to shell"
+  /bin/busybox mount -t proc none /proc
+  /bin/busybox mount -t sysfs none /sys
+  exec sh
+fi
