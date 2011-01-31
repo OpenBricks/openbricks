@@ -1,0 +1,51 @@
+#!/bin/sh
+
+. config/options
+
+do_gzip () {
+  GZIP="`which pigz`" || GZIP="`which gzip`"
+  $GZIP -9 $INITRAMFS
+}
+
+do_lzma () {
+  lzma -9 $INITRAMFS -S .gz
+  mv $INITRAMFS.gz $INITRAMFS
+}
+
+if [ "$1" = image ]; then
+  $SCRIPTS/installdev busybox-init
+  INITRAMFS_ROOT=$ROOT/$TOOLCHAIN/share/initramfs
+  INITRAMFS_NAME=$INSTALL/initrd
+else
+  INITRAMFS_ROOT=$ROOTFS
+fi
+
+INITRAMFS=$ROOT/$BUILD/initramfs/initrd
+
+rm -rf $ROOT/$BUILD/initramfs
+mkdir -p $ROOT/$BUILD/initramfs
+
+# Create a CPIO InitRamfs archive
+cd $INITRAMFS_ROOT
+find . | cpio -o -H newc > $INITRAMFS
+cd -
+
+case $TARGET_ARCH in
+  i386|x86_64)
+    do_lzma
+    cp -P $INITRAMFS $INITRAMFS_NAME
+    ;;
+
+  arm)
+    do_gzip
+    mkimage -A arm -O linux -T ramdisk -C gzip -n "$DISTRONAME Ramdisk" \
+      -d $INITRAMFS.gz $BUILD/initramfs/uinitrd.gz
+    mkdir -p $INSTALL/boot
+    cp $BUILD/initrd/uinitrd.gz $INITRAMFS_NAME
+    ;;
+
+  *)
+    ;;
+esac
+
+exit 0

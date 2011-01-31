@@ -1,0 +1,35 @@
+#!/bin/sh
+
+. /etc/funcs
+
+mkdir -p /root/.enna
+
+if [ -f /etc/xine/config ]; then
+  sed_in_place /etc/enna.cfg 's%dvd_type=.*%dvd_type=xine%'
+  sed_in_place /etc/enna.cfg 's%tv_type=.*%tv_type=xine%'
+else
+  sed_in_place /etc/enna.cfg 's%dvd_type=.*%dvd_type=mplayer%'
+  sed_in_place /etc/enna.cfg 's%tv_type=.*%tv_type=mplayer%'    
+fi
+
+if [ -f /var/use_opengl ]; then
+  sed_in_place /etc/enna.cfg 's/engine=.*/engine=opengl_x11/'
+else
+  sed_in_place /etc/enna.cfg 's/engine=.*/engine=software_x11/'
+fi
+
+# enable media_db background scan if not in LiveCD mode
+uname -m | grep -q arm && EMBEDDED=1 || EMBEDDED=0
+if grep -qv "boot=cdrom" /proc/cmdline -a "$EMBEDDED" -eq 0; then
+  sed_in_place /etc/enna.cfg 's%path=file:///tmp%path=file:///mnt%'
+
+  # take advantage of multi-core/cpu with media_db
+  if test $(grep -ic "^processor" /proc/cpuinfo) -gt 1; then
+    sed_in_place /etc/enna.cfg 's%parser_number=.*%parser_number=2%'
+    sed_in_place /etc/enna.cfg 's%grabber_number=.*%grabber_number=4%'
+  fi
+fi
+
+[ -f /var/use_vdpau ] && sed_in_place /etc/enna.cfg 's/video_out=.*/video_out=vdpau/'
+
+exit 0
