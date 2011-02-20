@@ -1,0 +1,42 @@
+#!/bin/sh
+
+. config/options
+
+$SCRIPTS/unpack Python
+
+cd $BUILD/Python-*
+
+# Python needs itself and a "pgen" program to build itself, both being
+# provided in the Python sources. So in order to cross-compile Python,
+# we need to build a host Python first. This host Python is also
+# installed in the toolchain, as it is needed when cross-compiling
+# third-party Python modules.
+
+do_configure host \
+  --without-cxx-main \
+  --disable-sqlite3 \
+  --disable-tk \
+  --with-expat=system \
+  --disable-curses \
+  --disable-codecs-cjk \
+  --disable-nis	\
+  --disable-unicodedata \
+  --disable-dbm	\
+  --disable-gdbm \
+  --disable-bsddb \
+  --disable-test-modules \
+  --disable-bz2	\
+  --disable-zlib \
+  --disable-ssl \
+
+export PYTHON_MODULES_INCLUDE="$ROOT/$TOOLCHAIN/include"
+export PYTHON_MODULES_LIB="$ROOT/$TOOLCHAIN/lib"
+
+make
+make_install toolchain
+
+# install pgen tool
+cp -P Parser/pgen .install/usr/bin/pgen
+
+sed -i "s:#!/usr/bin/python2.7:#!$ROOT/$TOOLCHAIN/bin/python2.7:" \
+  .install/usr/bin/python2.7-config
