@@ -4,56 +4,36 @@
 
 cd $BUILD/$1*
 
-rm -rf config.cache
+# restart from scratch in case there are leftovers from a previous build
+rm -f config.cache
 [ -f Makefile ] && make distclean
+[ -d .install ] && rm -rf .install
 
-# build hostpython and hostpgen
-unset CONFIG_SITE
-export OPT="$HOST_CFLAGS" 
-
-do_configure host \
-            --without-cxx-main \
-            --with-threads \
-            --enable-unicode=ucs4 \
-
-make python Parser/pgen
-
-mv python hostpython
-mv Parser/pgen Parser/hostpgen
-make distclean
+export ac_cv_have_long_long_format=yes
+export PGEN_FOR_BUILD="$ROOT/$TOOLCHAIN/bin/pgen"
+export PYTHON_FOR_BUILD="$ROOT/$TOOLCHAIN/bin/python"
 
 # build target python
-export OPT="$CFLAGS"
+do_configure \
+  --without-cxx-main \
+  --without-doc-strings \
+  --with-system-ffi \
+  --disable-pydoc \
+  --disable-test-modules \
+  --disable-lib2to3 \
+  --disable-gdbm \
+  --disable-tk \
+  --disable-nis \
+  --disable-dbm \
+  --disable-ssl \
+  --disable-bsddb \
+  --with-expat=system \
+  --disable-curses \
+  --disable-ipv6 \
 
-do_configure target \
-            --with-threads \
-            --enable-unicode=ucs4 \
-            --disable-ipv6 \
-            --disable-profiling \
-            --without-pydebug \
-            --without-doc-strings \
-            --without-tsc \
-            --without-pymalloc \
-            --without-fpectl \
-            --without-wctype-functions \
-            --without-cxx-main \
-            --with-system-ffi \
-            --with-libs=-lexpat \
-
-sed \
-  -e "s:HOSTPYTHON=.*:HOSTPYTHON= ./hostpython:g" \
-  -e "s:HOSTPGEN=.*:HOSTPGEN= ./Parser/hostpgen:g" \
-  -i Makefile
-export CROSS_COMPILE_TARGET=yes
+export PYTHON_MODULES_INCLUDE="$LIB_PREFIX/include $SYSROOT_PREFIX/include"
+export PYTHON_MODULES_LIB="$LIB_PREFIX/lib $SYSROOT_PREFIX/lib"
 
 make
 make_install
 do_python_strip
-
-mkdir -p .install/bin
-sed \
-  -e "s:%LIB_PREFIX%:$LIB_PREFIX:g" \
-  -e "s:%TARGET_CFLAGS%:$TARGET_CFLAGS:g" \
-  $ROOT/$PACKAGES/$1/scripts/python-config > .install/bin/python2.6-config
-chmod +x .install/bin/python2.6-config
-ln -s python2.6-config .install/bin/python-config
