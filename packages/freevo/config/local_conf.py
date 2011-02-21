@@ -2,7 +2,7 @@
 # -----------------------------------------------------------------------
 # local_conf.py - System configuration
 # -----------------------------------------------------------------------
-# $Id: local_conf.py.example 11728 2010-11-12 17:54:09Z adam $
+# $Id: local_conf.py.example 11525 2009-05-17 13:25:03Z duncan $
 #
 # Notes:
 #
@@ -50,7 +50,7 @@
 #
 # -----------------------------------------------------------------------
 
-CONFIG_VERSION = 5.29
+CONFIG_VERSION = 5.27
 
 # ======================================================================
 # General freevo settings:
@@ -107,26 +107,16 @@ CONFIG_VERSION = 5.29
 #
 # Perform a whole system shutdown at SHUTDOWN! Useful for standalone boxes.
 #
-# SYS_SHUTDOWN_ENABLE = 0
+SYS_SHUTDOWN_ENABLE = 1
 #
 # Command to execute to shutdown the system
 #
-# SYS_SHUTDOWN_CMD = "sudo shutdown -h now"
-# SYS_RESTART_CMD = "sudo shutdown -r now"
-
-#
-# New Style shutdown dialog
-#
-# True for the new style dialog
-# False for the original style dialog
-
-# SHUTDOWN_NEW_STYLE_DIALOG=True
+SYS_SHUTDOWN_CMD = "systemctl poweroff"
+SYS_RESTART_CMD = "systemctl reboot"
 
 # ======================================================================
 # AUTOSHUTDOWN CONFIGURATION
 # ======================================================================
-
-# For assistance, read the help with 'freevo plugins -i autoshutdown'
 
 # replace the default shutdown plugin
 # plugin.remove('shutdown')
@@ -135,51 +125,149 @@ CONFIG_VERSION = 5.29
 # activate the timer
 # plugin.activate('autoshutdown.autoshutdowntimer')
 
+
 # -- autoshutdown menu item configuration --
+
+# SYS_SHUTDOWN_CONFIRM
+# Set to True to popup dialog boxes for confirmation.
+# this applies to menu items only.
 # AUTOSHUTDOWN_CONFIRM = True
 
+
 # -- autoshutdown timer configuration --
+
+# TIMER_TIMEOUT
+# Set the timeout in minutes after which the system
+# is shutdown. The allowed idle time and the running
+# processes (see below) are evaluated to determine if
+# a shutdown is allowed. Menu navigation in freevo will
+# reset the timer.
 # AUTOSHUTDOWN_TIMER_TIMEOUT=30
 
-# -- autoshutdown core configuration --
+
+# -- autoshutdown behaviour configuration --
+
+# PRETEND
+# Set to True to disable the actual shutdown command.
 # AUTOSHUTDOWN_PRETEND = False
-# AUTOSHUTDOWN_DEFAULT_WAKEUP_TIME = "13:00"
-# AUTOSHUTDOWN_FORCE_DEFAULT_WAKEUP = True
-# AUTOSHUTDOWN_WAKEUP_TIME_PAD = 180
-# AUTOSHUTDOWN_ALLOWED_IDLE_TIME = 45
-# AUTOSHUTDOWN_WHILE_USER_LOGGED = True
+
+# PROCESS_LIST
+# List the processes that will prevent an automatic
+# shutdown. If there are important programs that
+# should not be interrupted, then add them to this
+# list. Set to None if a shutdown is always allowed.
 # AUTOSHUTDOWN_PROCESS_LIST = [
-#    'mencoder','transcode','cdrecord',
-#    'emerge','tvgids.sh','tv_grab','sshd:'
+#    'emerge',
+#    'tvgids',
+#    'transcode',
+#    'cdrecord',
+#    'mplayer',
+#    'top'
 # ]
 
-# -- autoshutdown process check configuration --
-# AUTOSHUTDOWN_PROCESS_CHECK = '/home/user/bin/freevoshutdown_check'
+# DEFAULT_WAKEUP_TIME
+# Set the default time at which to wakeup if there
+# are no recordings scheduled. The time is specified
+# in localtime 24 hour format. Set to None to disable
+# default wakeup time.
+# AUTOSHUTDOWN_DEFAULT_WAKEUP_TIME = "13:00"
 
-# -- choice of wakeup method --
-# AUTOSHUTDOWN_METHOD = None
-# AUTOSHUTDOWN_METHOD = 'nvram'
+# FORCE_DEFAULT_WAKEUP
+# Set to True to always wakeup at the default wakeup
+# time. Set to False to only wakeup at the default
+# wakeup time when no recordings are scheduled.
+# AUTOSHUTDOWN_FORCE_DEFAULT_WAKEUP = True
+
+# ALLOWED_IDLE_TIME
+# The number of minutes that may be spent idle until
+# the next scheduled recording or default wakeup. That
+# is, if the gap between "now" and the next recording
+# or default wakeup is less than the allowed idle time
+# then a shutdown is not performed but the system is
+# left running. If the period from now to the next
+# recording or default wakeup is more than the allowed
+# idle time, then the system is shut down and a wakeup
+# is scheduled. Use this to minimize the number of
+# shutdown/boot sequences when many short programs are
+# recorded in a short period of time. Note that this
+# variable is used by both the timer and the menu.
+# AUTOSHUTDOWN_ALLOWED_IDLE_TIME = 45
+
+# WAKEUP_TIME_PAD
+# Amount of pad time (in seconds) to start system boot ahead of the next
+# wakeup event so that system will be ready.  Default is 180 (3 minutes).
+# AUTOSHUTDOWN_WAKEUP_TIME_PAD = 180
+
+# -- Choice of wakeup method
+#
+# The wakeup can be done via acpi-alarm or nvram-wakeup.
 # AUTOSHUTDOWN_METHOD = 'acpi'
+# AUTOSHUTDOWN_METHOD = 'nvram'
 
 # -- autoshutdown acpi-alarm configuration
-# AUTOSHUTDOWN_ACPI_CMD = "sudo /PATH/TO/set_acpi.sh"
+
+# This method uses the wakeup on alarm function that most BIOSs have.
+# The wakeup time is set by a simple
+#
+# "echo 2004-08-02 20:15:00 >/proc/acpi/alarm"
+#
+# On most mainbords you will have to ENABLE "Wake on Timer", "Resume on Alarm",
+# "RTC Alarm Resume" or similar things for the acpi wakeup method to work.
+# If you want to use acpi, you need to create a small script:
+#
+#    !/bin/sh
+#    echo "$1" >/proc/acpi/alarm
+#
+# You have to be root or use sudo for this to work.
+# AUTOSHUTDOWN_WAKEUP_CMD = sudo /PATH/TO/set_acpi.sh
+
 
 # -- autoshutdown nvram-wakeup configuration --
-# AUTOSHUTDOWN_NVRAM_CMD = "/usr/bin/nvram-wakeup --syslog"
+
+# The nvram-wakeup utility is used to write the
+# wakeup alarm to the RTC in bios. Read the
+# nvram-wakeup documentation about this topic,
+# a working nvram-wakeup configuration is needed.
+
+# WAKEUP_CMD / NVRAM_OPT
+# Path to nvram-wakeup and options. Options can
+# be used to specify a config file.
+# AUTOSHUTDOWN_WAKEUP_CMD = "/usr/bin/nvram-wakeup"
+# AUTOSHUTDOWN_NVRAM_OPT = "--syslog"
+
+# WAKEUP_NEEDS_REBOOT
+# Set to True if the bios needs a reboot to catch
+# up with the rtc alarm that nvram-wakeup sets. The
+# boot loader options should be set too. Read the
+# nvram-wakeup documentation about this topic.
 # AUTOSHUTDOWN_BIOS_NEEDS_REBOOT = True
 
 # -- if the bios needs a reboot --
-# AUTOSHUTDOWN_BOOT_LOADER = None
-# AUTOSHUTDOWN_BOOT_LOADER = "LILO"
+
+# BOOT_LOADER
+# Set to "GRUB" or "LILO" Only needed if bios needs
+# a reboot to initialize the RTC wakeup call.
 # AUTOSHUTDOWN_BOOT_LOADER = "GRUB"
 
-# -- autoshutdown reboot lilo configuration --
-# AUTOSHUTDOWN_LILO_CMD = "/sbin/lilo -R PowerOff"
+# REMOUNT_BOOT_CMD / REMOUNT_BOOT_OPT
+# Grub needs to write to /boot/grub/grub.conf. Set
+# the command and options to remount the /boot
+# partition writeable. Set to None if this is not
+# needed (default).
+# AUTOSHUTDOWN_REMOUNT_BOOT_CMD = "/bin/mount"
+# AUTOSHUTDOWN_REMOUNT_BOOT_OPT = "/boot -o remount,rw"
 
-# -- autoshutdown reboot grub configuration --
+# GRUB_CMD / GRUB_OPT
+# Grub-set-default command and options that will
+# reboot and poweroff the system.
 # AUTOSHUTDOWN_GRUB_CMD = "/sbin/grub-set-default 0"
-# AUTOSHUTDOWN_REMOUNT_BOOT_CMD = "/bin/mount /boot -o remount,rw"
+# AUTOSHUTDOWN_GRUB_OPT = "0"
 
+# LILO_CMD / LILO_OPT
+# Lilo command with options that will reboot and
+# poweroff the system.
+# AUTOSHUTDOWN_LILO_CMD = "/sbin/lilo"
+# AUTOSHUTDOWN_LILO_OPT = "-R PowerOff"
 
 # ======================================================================
 # Events
@@ -224,10 +312,6 @@ CONFIG_VERSION = 5.29
 #
 # Keymap to map keyboard keys to event strings. You can also add new keys
 # here, e.g. KEYMAP[key.K_x] = 'SUBTITLE'. The K_-names are defined by pygame.
-# Keys can be combined with modifiers like KEYMAP[key.K_x | M_ALT | M_CTRL]
-# When pygame doesn't recognize the key pressed it passes just scancode.
-# This use to happen to "multimedia" keys. In this case special modifier
-# can be used: KEYMAP[scancode | M_SCAN]. 
 #
 
 #
@@ -251,10 +335,6 @@ EVENT_DEVS = []
 # Set this to 0 if your computer isn't connected to a network.
 #
 # SYS_USE_NETWORK = True
-
-# Follow symlinks in media directories
-#
-# SYS_FOLLOW_SYMLINKS = False
 
 #
 # Directory to store temporary files
@@ -867,7 +947,7 @@ CACHE_IMAGES = 1
 # Font aliases
 # All names must be lowercase! All alternate fonts must be in './share/fonts/'
 #
-# OSD_FONT_ALIASES = { 'arial_bold.ttf' : 'DejaVuSans-Bold.ttf' }
+# OSD_FONT_ALIASES = { 'arial_bold.ttf' : 'VeraBd.ttf' }
 
 # For non-european character sets the OSD_FORCE_FONTNAME and
 # OSD_FORCE_FONTSIZE can be set. The size is a scaling ratio, ie 1.2.
@@ -1524,7 +1604,7 @@ CACHE_IMAGES = 1
 # ======================================================================
 # ENCODINGSERVER_UID = 0
 # ENCODINGSERVER_GID = 0
-#
+# 
 # ENCODINGSERVER_IP   = 'localhost'
 # ENCODINGSERVER_PORT = 18002
 # ENCODINGSERVER_SECRET = 'secret2'
