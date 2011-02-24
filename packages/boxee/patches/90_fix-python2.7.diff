@@ -1,0 +1,655 @@
+diff -Naur boxee-sources-0.9.23.15885.orig//config.h.in boxee-sources-0.9.23.15885/config.h.in
+--- boxee-sources-0.9.23.15885.orig//config.h.in	2011-02-24 19:26:43.271171000 +0100
++++ boxee-sources-0.9.23.15885/config.h.in	2011-02-24 20:05:20.091171006 +0100
+@@ -201,6 +201,9 @@
+ /* Define to 1 if you have the `python2.6' library (-lpython2.6). */
+ #undef HAVE_LIBPYTHON2_6
+ 
++/* Define to 1 if you have the 'python2.7' library. */
++#undef HAVE_LIBPYTHON2_7
++
+ /* Define to 1 if you have the `resolv' library (-lresolv). */
+ #undef HAVE_LIBRESOLV
+ 
+diff -Naur boxee-sources-0.9.23.15885.orig//configure boxee-sources-0.9.23.15885/configure
+--- boxee-sources-0.9.23.15885.orig//configure	2011-02-24 19:26:43.041170999 +0100
++++ boxee-sources-0.9.23.15885/configure	2011-02-24 20:06:57.781171004 +0100
+@@ -600,6 +600,7 @@
+ USE_PYTHON2_4
+ USE_PYTHON2_5
+ USE_PYTHON2_6
++USE_PYTHON2_7
+ USE_EXTERNAL_PYTHON
+ USE_EXTERNAL_LIBWAVPACK
+ USE_EXTERNAL_LIBOGG
+@@ -8692,6 +8693,42 @@
+ 
+ # External Python
+ if test "$use_external_libraries" = "yes" || test "$use_external_python" = "yes"; then
++  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lpython2.7" >&5
++$as_echo_n "checking for main in -lpython2.7... " >&6; }
++if test "${ac_cv_lib_python2_7_main+set}" = set; then :
++  $as_echo_n "(cached) " >&6
++else
++  ac_check_lib_save_LIBS=$LIBS
++LIBS="-lpython2.7  $LIBS"
++cat confdefs.h - <<_ACEOF >conftest.$ac_ext
++/* end confdefs.h.  */
++
++
++int
++main ()
++{
++return main ();
++  ;
++  return 0;
++}
++_ACEOF
++if ac_fn_c_try_link "$LINENO"; then :
++  ac_cv_lib_python2_7_main=yes
++else
++  ac_cv_lib_python2_7_main=no
++fi
++rm -f core conftest.err conftest.$ac_objext \
++    conftest$ac_exeext conftest.$ac_ext
++LIBS=$ac_check_lib_save_LIBS
++fi
++{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_python2_7_main" >&5
++$as_echo "$ac_cv_lib_python2_7_main" >&6; }
++if test "x$ac_cv_lib_python2_7_main" = x""yes; then :
++
++$as_echo "#define HAVE_LIBPYTHON2_7 1" >>confdefs.h
++
++    USE_PYTHON2_7=1
++else
+   { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lpython2.6" >&5
+ $as_echo_n "checking for main in -lpython2.6... " >&6; }
+ if test "${ac_cv_lib_python2_6_main+set}" = set; then :
+@@ -8891,7 +8928,6 @@
+ cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+ /* end confdefs.h.  */
+ 
+-
+ int
+ main ()
+ {
+@@ -8921,6 +8957,7 @@
+ 
+ fi
+ 
++fi
+ 
+   { $as_echo "$as_me:${as_lineno-$LINENO}: $external_python_enabled" >&5
+ $as_echo "$as_me: $external_python_enabled" >&6;}
+diff -Naur boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/linux/Makefile.in boxee-sources-0.9.23.15885/xbmc/lib/libPython/linux/Makefile.in
+--- boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/linux/Makefile.in	2011-02-24 19:26:36.551170998 +0100
++++ boxee-sources-0.9.23.15885/xbmc/lib/libPython/linux/Makefile.in	2011-02-24 20:07:49.331170993 +0100
+@@ -2,7 +2,10 @@
+ 
+ SHELL=/bin/bash
+ SYSDIR=../../../../system/python
+-ifeq (@USE_PYTHON2_6@,1)
++ifeq (@USE_PYTHON2_7@,1)
++    PYVERSION=python2.7
++    SO=python27-$(ARCH).so
++else ifeq (@USE_PYTHON2_6@,1)
+     PYVERSION=python2.6
+     SO=python26-$(ARCH).so
+ else ifeq (@USE_PYTHON2_5@,1)
+diff -Naur boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/action.h boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/action.h
+--- boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/action.h	2011-02-24 19:26:36.141171002 +0100
++++ boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/action.h	2011-02-24 20:05:20.101170996 +0100
+@@ -23,7 +23,9 @@
+   #include "config.h"
+ #endif
+ #if (defined USE_EXTERNAL_PYTHON)
+-  #if (defined HAVE_LIBPYTHON2_6)
++  #if (defined HAVE_LIBPYTHON2_7)
++    #include <python2.7/Python.h>
++  #elif (defined HAVE_LIBPYTHON2_6)
+     #include <python2.6/Python.h>
+   #elif (defined HAVE_LIBPYTHON2_5)
+     #include <python2.5/Python.h>
+diff -Naur boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/controlbutton.cpp boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/controlbutton.cpp
+--- boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/controlbutton.cpp	2011-02-24 19:26:36.141171002 +0100
++++ boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/controlbutton.cpp	2011-02-24 20:05:20.101170996 +0100
+@@ -24,7 +24,9 @@
+   #include "config.h"
+ #endif
+ #if (defined USE_EXTERNAL_PYTHON)
+-  #if (defined HAVE_LIBPYTHON2_6)
++  #if (defined HAVE_LIBPYTHON2_7)
++    #include <python2.7/Python.h>
++  #elif (defined HAVE_LIBPYTHON2_6)
+     #include <python2.6/Python.h>
+   #elif (defined HAVE_LIBPYTHON2_5)
+     #include <python2.5/Python.h>
+diff -Naur boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/controlcheckmark.cpp boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/controlcheckmark.cpp
+--- boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/controlcheckmark.cpp	2011-02-24 19:26:36.141171002 +0100
++++ boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/controlcheckmark.cpp	2011-02-24 20:05:20.101170996 +0100
+@@ -23,7 +23,9 @@
+   #include "config.h"
+ #endif
+ #if (defined USE_EXTERNAL_PYTHON)
+-  #if (defined HAVE_LIBPYTHON2_6)
++  #if (defined HAVE_LIBPYTHON2_7)
++    #include <python2.7/Python.h>
++  #elif (defined HAVE_LIBPYTHON2_6)
+     #include <python2.6/Python.h>
+   #elif (defined HAVE_LIBPYTHON2_5)
+     #include <python2.5/Python.h>
+diff -Naur boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/controlfadelabel.cpp boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/controlfadelabel.cpp
+--- boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/controlfadelabel.cpp	2011-02-24 19:26:36.141171002 +0100
++++ boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/controlfadelabel.cpp	2011-02-24 20:05:20.101170996 +0100
+@@ -23,7 +23,9 @@
+   #include "config.h"
+ #endif
+ #if (defined USE_EXTERNAL_PYTHON)
+-  #if (defined HAVE_LIBPYTHON2_6)
++  #if (defined HAVE_LIBPYTHON2_7)
++    #include <python2.7/Python.h>
++  #elif (defined HAVE_LIBPYTHON2_6)
+     #include <python2.6/Python.h>
+   #elif (defined HAVE_LIBPYTHON2_5)
+     #include <python2.5/Python.h>
+diff -Naur boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/controlgroup.cpp boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/controlgroup.cpp
+--- boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/controlgroup.cpp	2011-02-24 19:26:36.141171002 +0100
++++ boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/controlgroup.cpp	2011-02-24 20:05:20.101170996 +0100
+@@ -23,7 +23,9 @@
+   #include "config.h"
+ #endif
+ #if (defined USE_EXTERNAL_PYTHON)
+-  #if (defined HAVE_LIBPYTHON2_6)
++  #if (defined HAVE_LIBPYTHON2_7)
++    #include <python2.7/Python.h>
++  #elif (defined HAVE_LIBPYTHON2_6)
+     #include <python2.6/Python.h>
+   #elif (defined HAVE_LIBPYTHON2_5)
+     #include <python2.5/Python.h>
+diff -Naur boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/control.h boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/control.h
+--- boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/control.h	2011-02-24 19:26:36.141171002 +0100
++++ boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/control.h	2011-02-24 20:05:20.101170996 +0100
+@@ -23,7 +23,9 @@
+   #include "config.h"
+ #endif
+ #if (defined USE_EXTERNAL_PYTHON)
+-  #if (defined HAVE_LIBPYTHON2_6)
++  #if (defined HAVE_LIBPYTHON2_7)
++    #include <python2.7/Python.h>
++  #elif (defined HAVE_LIBPYTHON2_6)
+     #include <python2.6/Python.h>
+   #elif (defined HAVE_LIBPYTHON2_5)
+     #include <python2.5/Python.h>
+diff -Naur boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/controlimage.cpp boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/controlimage.cpp
+--- boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/controlimage.cpp	2011-02-24 19:26:36.141171002 +0100
++++ boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/controlimage.cpp	2011-02-24 20:05:20.101170996 +0100
+@@ -23,7 +23,9 @@
+   #include "config.h"
+ #endif
+ #if (defined USE_EXTERNAL_PYTHON)
+-  #if (defined HAVE_LIBPYTHON2_6)
++  #if (defined HAVE_LIBPYTHON2_7)
++    #include <python2.7/Python.h>
++  #elif (defined HAVE_LIBPYTHON2_6)
+     #include <python2.6/Python.h>
+   #elif (defined HAVE_LIBPYTHON2_5)
+     #include <python2.5/Python.h>
+diff -Naur boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/controllabel.cpp boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/controllabel.cpp
+--- boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/controllabel.cpp	2011-02-24 19:26:36.141171002 +0100
++++ boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/controllabel.cpp	2011-02-24 20:05:20.101170996 +0100
+@@ -23,7 +23,9 @@
+   #include "config.h"
+ #endif
+ #if (defined USE_EXTERNAL_PYTHON)
+-  #if (defined HAVE_LIBPYTHON2_6)
++  #if (defined HAVE_LIBPYTHON2_7)
++    #include <python2.7/Python.h>
++  #elif (defined HAVE_LIBPYTHON2_6)
+     #include <python2.6/Python.h>
+   #elif (defined HAVE_LIBPYTHON2_5)
+     #include <python2.5/Python.h>
+diff -Naur boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/controllist.cpp boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/controllist.cpp
+--- boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/controllist.cpp	2011-02-24 19:26:36.141171002 +0100
++++ boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/controllist.cpp	2011-02-24 20:05:20.101170996 +0100
+@@ -23,7 +23,9 @@
+   #include "config.h"
+ #endif
+ #if (defined USE_EXTERNAL_PYTHON)
+-  #if (defined HAVE_LIBPYTHON2_6)
++  #if (defined HAVE_LIBPYTHON2_7)
++    #include <python2.7/Python.h>
++  #elif (defined HAVE_LIBPYTHON2_6)
+     #include <python2.6/Python.h>
+   #elif (defined HAVE_LIBPYTHON2_5)
+     #include <python2.5/Python.h>
+diff -Naur boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/controlprogress.cpp boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/controlprogress.cpp
+--- boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/controlprogress.cpp	2011-02-24 19:26:36.141171002 +0100
++++ boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/controlprogress.cpp	2011-02-24 20:05:20.101170996 +0100
+@@ -23,7 +23,9 @@
+   #include "config.h"
+ #endif
+ #if (defined USE_EXTERNAL_PYTHON)
+-  #if (defined HAVE_LIBPYTHON2_6)
++  #if (defined HAVE_LIBPYTHON2_7)
++    #include <python2.7/Python.h>
++  #elif (defined HAVE_LIBPYTHON2_6)
+     #include <python2.6/Python.h>
+   #elif (defined HAVE_LIBPYTHON2_5)
+     #include <python2.5/Python.h>
+diff -Naur boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/controlradiobutton.cpp boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/controlradiobutton.cpp
+--- boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/controlradiobutton.cpp	2011-02-24 19:26:36.141171002 +0100
++++ boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/controlradiobutton.cpp	2011-02-24 20:05:20.101170996 +0100
+@@ -23,7 +23,9 @@
+   #include "config.h"
+ #endif
+ #if (defined USE_EXTERNAL_PYTHON)
+-  #if (defined HAVE_LIBPYTHON2_6)
++  #if (defined HAVE_LIBPYTHON2_7)
++    #include <python2.7/Python.h>
++  #elif (defined HAVE_LIBPYTHON2_6)
+     #include <python2.6/Python.h>
+   #elif (defined HAVE_LIBPYTHON2_5)
+     #include <python2.5/Python.h>
+diff -Naur boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/controlspin.cpp boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/controlspin.cpp
+--- boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/controlspin.cpp	2011-02-24 19:26:36.141171002 +0100
++++ boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/controlspin.cpp	2011-02-24 20:05:20.101170996 +0100
+@@ -23,7 +23,9 @@
+   #include "config.h"
+ #endif
+ #if (defined USE_EXTERNAL_PYTHON)
+-  #if (defined HAVE_LIBPYTHON2_6)
++  #if (defined HAVE_LIBPYTHON2_7)
++    #include <python2.7/Python.h>
++  #elif (defined HAVE_LIBPYTHON2_6)
+     #include <python2.6/Python.h>
+   #elif (defined HAVE_LIBPYTHON2_5)
+     #include <python2.5/Python.h>
+diff -Naur boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/controltextbox.cpp boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/controltextbox.cpp
+--- boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/controltextbox.cpp	2011-02-24 19:26:36.141171002 +0100
++++ boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/controltextbox.cpp	2011-02-24 20:05:20.101170996 +0100
+@@ -23,7 +23,9 @@
+   #include "config.h"
+ #endif
+ #if (defined USE_EXTERNAL_PYTHON)
+-  #if (defined HAVE_LIBPYTHON2_6)
++  #if (defined HAVE_LIBPYTHON2_7)
++    #include <python2.7/Python.h>
++  #elif (defined HAVE_LIBPYTHON2_6)
+     #include <python2.6/Python.h>
+   #elif (defined HAVE_LIBPYTHON2_5)
+     #include <python2.5/Python.h>
+diff -Naur boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/dialog.cpp boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/dialog.cpp
+--- boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/dialog.cpp	2011-02-24 19:26:36.141171002 +0100
++++ boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/dialog.cpp	2011-02-24 20:05:20.101170996 +0100
+@@ -24,7 +24,9 @@
+ #endif
+ #include "dialog.h"
+ #if (defined USE_EXTERNAL_PYTHON)
+-  #if (defined HAVE_LIBPYTHON2_6)
++  #if (defined HAVE_LIBPYTHON2_7)
++    #include <python2.7/Python.h>
++  #elif (defined HAVE_LIBPYTHON2_6)
+     #include <python2.6/Python.h>
+   #elif (defined HAVE_LIBPYTHON2_5)
+     #include <python2.5/Python.h>
+diff -Naur boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/dialog.h boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/dialog.h
+--- boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/dialog.h	2011-02-24 19:26:36.141171002 +0100
++++ boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/dialog.h	2011-02-24 20:05:20.101170996 +0100
+@@ -23,7 +23,9 @@
+   #include "config.h"
+ #endif
+ #if (defined USE_EXTERNAL_PYTHON)
+-  #if (defined HAVE_LIBPYTHON2_6)
++  #if (defined HAVE_LIBPYTHON2_7)
++    #include <python2.7/Python.h>
++  #elif (defined HAVE_LIBPYTHON2_6)
+     #include <python2.6/Python.h>
+   #elif (defined HAVE_LIBPYTHON2_5)
+     #include <python2.5/Python.h>
+diff -Naur boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/GUIPythonWindow.h boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/GUIPythonWindow.h
+--- boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/GUIPythonWindow.h	2011-02-24 19:26:36.141171002 +0100
++++ boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/GUIPythonWindow.h	2011-02-24 20:05:20.101170996 +0100
+@@ -26,7 +26,9 @@
+   #include "config.h"
+ #endif
+ #if (defined USE_EXTERNAL_PYTHON)
+-  #if (defined HAVE_LIBPYTHON2_6)
++  #if (defined HAVE_LIBPYTHON2_7)
++    #include <python2.7/Python.h>
++  #elif (defined HAVE_LIBPYTHON2_6)
+     #include <python2.6/Python.h>
+   #elif (defined HAVE_LIBPYTHON2_5)
+     #include <python2.5/Python.h>
+diff -Naur boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/infotagmusic.h boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/infotagmusic.h
+--- boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/infotagmusic.h	2011-02-24 19:26:36.141171002 +0100
++++ boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/infotagmusic.h	2011-02-24 20:05:20.101170996 +0100
+@@ -23,7 +23,9 @@
+   #include "config.h"
+ #endif
+ #if (defined USE_EXTERNAL_PYTHON)
+-  #if (defined HAVE_LIBPYTHON2_6)
++  #if (defined HAVE_LIBPYTHON2_7)
++    #include <python2.7/Python.h>
++  #elif (defined HAVE_LIBPYTHON2_6)
+     #include <python2.6/Python.h>
+   #elif (defined HAVE_LIBPYTHON2_5)
+     #include <python2.5/Python.h>
+diff -Naur boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/infotagvideo.h boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/infotagvideo.h
+--- boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/infotagvideo.h	2011-02-24 19:26:36.141171002 +0100
++++ boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/infotagvideo.h	2011-02-24 20:05:20.101170996 +0100
+@@ -23,7 +23,9 @@
+   #include "config.h"
+ #endif
+ #if (defined USE_EXTERNAL_PYTHON)
+-  #if (defined HAVE_LIBPYTHON2_6)
++  #if (defined HAVE_LIBPYTHON2_7)
++    #include <python2.7/Python.h>
++  #elif (defined HAVE_LIBPYTHON2_6)
+     #include <python2.6/Python.h>
+   #elif (defined HAVE_LIBPYTHON2_5)
+     #include <python2.5/Python.h>
+diff -Naur boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/keyboard.h boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/keyboard.h
+--- boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/keyboard.h	2011-02-24 19:26:36.141171002 +0100
++++ boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/keyboard.h	2011-02-24 20:05:20.101170996 +0100
+@@ -23,7 +23,9 @@
+   #include "config.h"
+ #endif
+ #if (defined USE_EXTERNAL_PYTHON)
+-  #if (defined HAVE_LIBPYTHON2_6)
++  #if (defined HAVE_LIBPYTHON2_7)
++    #include <python2.7/Python.h>
++  #elif (defined HAVE_LIBPYTHON2_6)
+     #include <python2.6/Python.h>
+   #elif (defined HAVE_LIBPYTHON2_5)
+     #include <python2.5/Python.h>
+diff -Naur boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/listitem.cpp boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/listitem.cpp
+--- boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/listitem.cpp	2011-02-24 19:26:36.141171002 +0100
++++ boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/listitem.cpp	2011-02-24 20:05:20.101170996 +0100
+@@ -23,7 +23,9 @@
+   #include "config.h"
+ #endif
+ #if (defined USE_EXTERNAL_PYTHON)
+-  #if (defined HAVE_LIBPYTHON2_6)
++  #if (defined HAVE_LIBPYTHON2_7)
++    #include <python2.7/Python.h>
++  #elif (defined HAVE_LIBPYTHON2_6)
+     #include <python2.6/Python.h>
+   #elif (defined HAVE_LIBPYTHON2_5)
+     #include <python2.5/Python.h>
+diff -Naur boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/listitem.h boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/listitem.h
+--- boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/listitem.h	2011-02-24 19:26:36.141171002 +0100
++++ boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/listitem.h	2011-02-24 20:05:20.101170996 +0100
+@@ -25,7 +25,9 @@
+   #include "config.h"
+ #endif
+ #if (defined USE_EXTERNAL_PYTHON)
+-  #if (defined HAVE_LIBPYTHON2_6)
++  #if (defined HAVE_LIBPYTHON2_7)
++    #include <python2.7/Python.h>
++  #elif (defined HAVE_LIBPYTHON2_6)
+     #include <python2.6/Python.h>
+   #elif (defined HAVE_LIBPYTHON2_5)
+     #include <python2.5/Python.h>
+diff -Naur boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/player.h boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/player.h
+--- boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/player.h	2011-02-24 19:26:36.141171002 +0100
++++ boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/player.h	2011-02-24 20:05:20.101170996 +0100
+@@ -23,7 +23,9 @@
+   #include "config.h"
+ #endif
+ #if (defined USE_EXTERNAL_PYTHON)
+-  #if (defined HAVE_LIBPYTHON2_6)
++   #if (defined HAVE_LIBPYTHON2_7)
++    #include <python2.7/Python.h>
++  #elif (defined HAVE_LIBPYTHON2_6)
+     #include <python2.6/Python.h>
+   #elif (defined HAVE_LIBPYTHON2_5)
+     #include <python2.5/Python.h>
+diff -Naur boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/pyplaylist.cpp boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/pyplaylist.cpp
+--- boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/pyplaylist.cpp	2011-02-24 19:26:36.141171002 +0100
++++ boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/pyplaylist.cpp	2011-02-24 20:05:20.101170996 +0100
+@@ -26,7 +26,9 @@
+ #include "Util.h"
+ #include "pyplaylist.h"
+ #if (defined USE_EXTERNAL_PYTHON)
+-  #if (defined HAVE_LIBPYTHON2_6)
++  #if (defined HAVE_LIBPYTHON2_7)
++    #include <python2.7/Python.h>
++  #elif (defined HAVE_LIBPYTHON2_6)
+     #include <python2.6/Python.h>
+   #elif (defined HAVE_LIBPYTHON2_5)
+     #include <python2.5/Python.h>
+diff -Naur boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/pyplaylist.h boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/pyplaylist.h
+--- boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/pyplaylist.h	2011-02-24 19:26:36.141171002 +0100
++++ boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/pyplaylist.h	2011-02-24 20:05:20.101170996 +0100
+@@ -25,7 +25,9 @@
+   #include "config.h"
+ #endif
+ #if (defined USE_EXTERNAL_PYTHON)
+-  #if (defined HAVE_LIBPYTHON2_6)
++  #if (defined HAVE_LIBPYTHON2_7)
++    #include <python2.7/Python.h>
++  #elif (defined HAVE_LIBPYTHON2_6)
+     #include <python2.6/Python.h>
+   #elif (defined HAVE_LIBPYTHON2_5)
+     #include <python2.5/Python.h>
+diff -Naur boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/PythonPlayer.h boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/PythonPlayer.h
+--- boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/PythonPlayer.h	2011-02-24 19:26:36.141171002 +0100
++++ boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/PythonPlayer.h	2011-02-24 20:05:20.101170996 +0100
+@@ -25,7 +25,9 @@
+   #include "config.h"
+ #endif
+ #if (defined USE_EXTERNAL_PYTHON)
+-  #if (defined HAVE_LIBPYTHON2_6)
++  #if (defined HAVE_LIBPYTHON2_7)
++    #include <python2.7/Python.h>
++  #elif (defined HAVE_LIBPYTHON2_6)
+     #include <python2.6/Python.h>
+   #elif (defined HAVE_LIBPYTHON2_5)
+     #include <python2.5/Python.h>
+diff -Naur boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/pyutil.h boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/pyutil.h
+--- boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/pyutil.h	2011-02-24 19:26:36.141171002 +0100
++++ boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/pyutil.h	2011-02-24 20:05:20.101170996 +0100
+@@ -25,7 +25,9 @@
+   #include "config.h"
+ #endif
+ #if (defined USE_EXTERNAL_PYTHON)
+-  #if (defined HAVE_LIBPYTHON2_6)
++  #if (defined HAVE_LIBPYTHON2_7)
++    #include <python2.7/Python.h>
++  #elif (defined HAVE_LIBPYTHON2_6)
+     #include <python2.6/Python.h>
+   #elif (defined HAVE_LIBPYTHON2_5)
+     #include <python2.5/Python.h>
+diff -Naur boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/window.h boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/window.h
+--- boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/window.h	2011-02-24 19:26:36.141171002 +0100
++++ boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/window.h	2011-02-24 20:05:20.101170996 +0100
+@@ -23,7 +23,9 @@
+   #include "config.h"
+ #endif
+ #if (defined USE_EXTERNAL_PYTHON)
+-  #if (defined HAVE_LIBPYTHON2_6)
++  #if (defined HAVE_LIBPYTHON2_7)
++    #include <python2.7/Python.h>
++  #elif (defined HAVE_LIBPYTHON2_6)
+     #include <python2.6/Python.h>
+   #elif (defined HAVE_LIBPYTHON2_5)
+     #include <python2.5/Python.h>
+diff -Naur boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/winxml.cpp boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/winxml.cpp
+--- boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/winxml.cpp	2011-02-24 19:26:36.141171002 +0100
++++ boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/winxml.cpp	2011-02-24 20:05:20.101170996 +0100
+@@ -24,7 +24,9 @@
+ #endif
+ #include "winxml.h"
+ #if (defined USE_EXTERNAL_PYTHON)
+-  #if (defined HAVE_LIBPYTHON2_6)
++  #if (defined HAVE_LIBPYTHON2_7)
++    #include <python2.7/Python.h>
++  #elif (defined HAVE_LIBPYTHON2_6)
+     #include <python2.6/Python.h>
+   #elif (defined HAVE_LIBPYTHON2_5)
+     #include <python2.5/Python.h>
+diff -Naur boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/winxmldialog.cpp boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/winxmldialog.cpp
+--- boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/winxmldialog.cpp	2011-02-24 19:26:36.141171002 +0100
++++ boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/winxmldialog.cpp	2011-02-24 20:05:20.101170996 +0100
+@@ -24,7 +24,9 @@
+ #endif
+ #include "winxml.h"
+ #if (defined USE_EXTERNAL_PYTHON)
+-  #if (defined HAVE_LIBPYTHON2_6)
++  #if (defined HAVE_LIBPYTHON2_7)
++    #include <python2.7/Python.h>
++  #elif (defined HAVE_LIBPYTHON2_6)
+     #include <python2.6/Python.h>
+   #elif (defined HAVE_LIBPYTHON2_5)
+     #include <python2.5/Python.h>
+diff -Naur boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/winxml.h boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/winxml.h
+--- boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/winxml.h	2011-02-24 19:26:36.141171002 +0100
++++ boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/winxml.h	2011-02-24 20:05:20.101170996 +0100
+@@ -23,7 +23,9 @@
+   #include "config.h"
+ #endif
+ #if (defined USE_EXTERNAL_PYTHON)
+-  #if (defined HAVE_LIBPYTHON2_6)
++  #if (defined HAVE_LIBPYTHON2_7)
++    #include <python2.7/Python.h>
++  #elif (defined HAVE_LIBPYTHON2_6)
+     #include <python2.6/Python.h>
+   #elif (defined HAVE_LIBPYTHON2_5)
+     #include <python2.5/Python.h>
+diff -Naur boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/xbmcguimodule.cpp boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/xbmcguimodule.cpp
+--- boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/xbmcguimodule.cpp	2011-02-24 19:26:36.141171002 +0100
++++ boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/xbmcguimodule.cpp	2011-02-24 20:05:20.101170996 +0100
+@@ -23,7 +23,9 @@
+   #include "config.h"
+ #endif
+ #if (defined USE_EXTERNAL_PYTHON)
+-  #if (defined HAVE_LIBPYTHON2_6)
++  #if (defined HAVE_LIBPYTHON2_7)
++    #include <python2.7/Python.h>
++  #elif (defined HAVE_LIBPYTHON2_6)
+     #include <python2.6/Python.h>
+     #include <python2.6/structmember.h>
+   #elif (defined HAVE_LIBPYTHON2_5)
+diff -Naur boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/xbmcmodule.cpp boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/xbmcmodule.cpp
+--- boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/xbmcmodule/xbmcmodule.cpp	2011-02-24 19:26:36.141171002 +0100
++++ boxee-sources-0.9.23.15885/xbmc/lib/libPython/xbmcmodule/xbmcmodule.cpp	2011-02-24 20:05:20.111170991 +0100
+@@ -23,7 +23,9 @@
+   #include "config.h"
+ #endif
+ #if (defined USE_EXTERNAL_PYTHON)
+-  #if (defined HAVE_LIBPYTHON2_6)
++  #if (defined HAVE_LIBPYTHON2_7)
++    #include <python2.7/Python.h>
++  #elif (defined HAVE_LIBPYTHON2_6)
+     #include <python2.6/Python.h>
+   #elif (defined HAVE_LIBPYTHON2_5)
+     #include <python2.5/Python.h>
+diff -Naur boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/XBPython.cpp boxee-sources-0.9.23.15885/xbmc/lib/libPython/XBPython.cpp
+--- boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/XBPython.cpp	2011-02-24 19:26:36.541171004 +0100
++++ boxee-sources-0.9.23.15885/xbmc/lib/libPython/XBPython.cpp	2011-02-24 20:13:30.121171001 +0100
+@@ -32,7 +32,9 @@
+   #include "config.h"
+ #endif
+ #if (defined USE_EXTERNAL_PYTHON)
+-  #if (defined HAVE_LIBPYTHON2_6)
++  #if (defined HAVE_LIBPYTHON2_7)
++    #include <python2.7/Python.h>
++  #elif (defined HAVE_LIBPYTHON2_6)
+     #include <python2.6/Python.h>
+   #elif (defined HAVE_LIBPYTHON2_5)
+     #include <python2.5/Python.h>
+@@ -69,7 +71,9 @@
+ #define PYTHON_DLL "special://xbmc/system/python/python24-x86-osx.so"
+ #endif
+ #elif defined(__x86_64__)
+-#if (defined HAVE_LIBPYTHON2_6)
++#if (defined HAVE_LIBPYTHON2_7)
++#define PYTHON_DLL "special://xbmc/system/python/python27-x86_64-linux.so"
++#elif (defined HAVE_LIBPYTHON2_6)
+ #define PYTHON_DLL "special://xbmc/system/python/python26-x86_64-linux.so"
+ #elif (defined HAVE_LIBPYTHON2_5)
+ #define PYTHON_DLL "special://xbmc/system/python/python25-x86_64-linux.so"
+@@ -77,7 +81,9 @@
+ #define PYTHON_DLL "special://xbmc/system/python/python24-x86_64-linux.so"
+ #endif
+ #elif defined(_POWERPC)
+-#if (defined HAVE_LIBPYTHON2_6)
++#if (defined HAVE_LIBPYTHON2_7)
++#define PYTHON_DLL "special://xbmc/system/python/python27-powerpc-linux.so"
++#elif (defined HAVE_LIBPYTHON2_6)
+ #define PYTHON_DLL "special://xbmc/system/python/python26-powerpc-linux.so"
+ #elif (defined HAVE_LIBPYTHON2_5)
+ #define PYTHON_DLL "special://xbmc/system/python/python25-powerpc-linux.so"
+@@ -85,7 +91,9 @@
+ #define PYTHON_DLL "special://xbmc/system/python/python24-powerpc-linux.so"
+ #endif
+ #elif defined(_POWERPC64)
+-#if (defined HAVE_LIBPYTHON2_6)
++#if (defined HAVE_LIBPYTHON2_7)
++#define PYTHON_DLL "special://xbmc/system/python/python27-powerpc64-linux.so"
++#elif (defined HAVE_LIBPYTHON2_6)
+ #define PYTHON_DLL "special://xbmc/system/python/python26-powerpc64-linux.so"
+ #elif (defined HAVE_LIBPYTHON2_5)
+ #define PYTHON_DLL "special://xbmc/system/python/python25-powerpc64-linux.so"
+@@ -93,7 +101,9 @@
+ #define PYTHON_DLL "special://xbmc/system/python/python24-powerpc64-linux.so"
+ #endif
+ #elif defined(__arm__)
+-#if (defined HAVE_LIBPYTHON2_6)
++#if (defined HAVE_LIBPYTHON2_7)
++#define PYTHON_DLL "special://xbmc/system/python/python27-arm.so"
++#elif (defined HAVE_LIBPYTHON2_6)
+ #define PYTHON_DLL "special://xbmc/system/python/python26-arm-none-linux.so"
+ #elif (defined HAVE_LIBPYTHON2_5)
+ #define PYTHON_DLL "special://xbmc/system/python/python25-arm-none-linux.so"
+@@ -104,7 +114,9 @@
+ #else /* !__x86_64__ && !__powerpc__ */
+ 
+ #ifdef __x86_64__
+-  #if (defined HAVE_LIBPYTHON2_6)
++  #if (defined HAVE_LIBPYTHON2_7)
++    #define PYTHON_DLL "special://xbmc/system/python/python27-x86_64-linux.so"
++  #elif (defined HAVE_LIBPYTHON2_6)
+     #define PYTHON_DLL "special://xbmc/system/python/python26-x86_64-linux.so"
+   #elif (defined HAVE_LIBPYTHON2_5)
+     #define PYTHON_DLL "special://xbmc/system/python/python25-x86_64-linux.so"
+@@ -112,7 +124,9 @@
+     #define PYTHON_DLL "special://xbmc/system/python/python24-x86_64-linux.so"
+   #endif
+ #else
+-  #if (defined HAVE_LIBPYTHON2_6)
++  #if (defined HAVE_LIBPYTHON2_7)
++    #define PYTHON_DLL "special://xbmc/system/python/python27-i486-linux.so"
++  #elif (defined HAVE_LIBPYTHON2_6)
+     #define PYTHON_DLL "special://xbmc/system/python/python26-i486-linux.so"
+   #elif (defined HAVE_LIBPYTHON2_5)
+     #define PYTHON_DLL "special://xbmc/system/python/python25-i486-linux.so"
+diff -Naur boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/XBPyThread.cpp boxee-sources-0.9.23.15885/xbmc/lib/libPython/XBPyThread.cpp
+--- boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/XBPyThread.cpp	2011-02-24 19:26:36.551170998 +0100
++++ boxee-sources-0.9.23.15885/xbmc/lib/libPython/XBPyThread.cpp	2011-02-24 20:05:20.111170991 +0100
+@@ -25,7 +25,10 @@
+   #include "config.h"
+ #endif
+ #if (defined USE_EXTERNAL_PYTHON)
+-  #if (defined HAVE_LIBPYTHON2_6)
++  #if (defined HAVE_LIBPYTHON2_7)
++    #include <python2.7/Python.h>
++    #include <python2.7/osdefs.h>
++  #elif (defined HAVE_LIBPYTHON2_6)
+     #include <python2.6/Python.h>
+     #include <python2.6/osdefs.h>
+   #elif (defined HAVE_LIBPYTHON2_5)
+diff -Naur boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/XBPyThread.h boxee-sources-0.9.23.15885/xbmc/lib/libPython/XBPyThread.h
+--- boxee-sources-0.9.23.15885.orig//xbmc/lib/libPython/XBPyThread.h	2011-02-24 19:26:36.541171004 +0100
++++ boxee-sources-0.9.23.15885/xbmc/lib/libPython/XBPyThread.h	2011-02-24 20:05:20.111170991 +0100
+@@ -26,7 +26,9 @@
+   #include "config.h"
+ #endif
+ #if (defined USE_EXTERNAL_PYTHON)
+-  #if (defined HAVE_LIBPYTHON2_6)
++  #if (defined HAVE_LIBPYTHON2_7)
++    #include <python2.7/Python.h>
++  #elif (defined HAVE_LIBPYTHON2_6)
+     #include <python2.6/Python.h>
+   #elif (defined HAVE_LIBPYTHON2_5)
+     #include <python2.5/Python.h>
