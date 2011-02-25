@@ -1,0 +1,92 @@
+Patch from
+http://aur.archlinux.org/packages/boxee-source/boxee-source/libpng.patch
+
+diff -Naur boxee-0.9.23.15885/xbmc/lib/cximage-6.0/CxImage/ximapng.cpp boxee-0.9.23.15885a/xbmc/lib/cximage-6.0/CxImage/ximapng.cpp
+--- boxee-0.9.23.15885/xbmc/lib/cximage-6.0/CxImage/ximapng.cpp	2009-09-30 14:01:59.000000000 +0200
++++ boxee-0.9.23.15885a/xbmc/lib/cximage-6.0/CxImage/ximapng.cpp	2011-02-25 16:26:51.531154158 +0100
+@@ -144,9 +144,9 @@
+ 	if (info_ptr->num_trans!=0){ //palette transparency
+ 		if (info_ptr->num_trans==1){
+ 			if (info_ptr->color_type == PNG_COLOR_TYPE_PALETTE){
+-				info.nBkgndIndex = info_ptr->trans_values.index;
++				info.nBkgndIndex = info_ptr->trans_color.index;
+ 			} else{
+-				info.nBkgndIndex = info_ptr->trans_values.gray>>nshift;
++				info.nBkgndIndex = info_ptr->trans_color.gray>>nshift;
+ 			}
+ 		}
+ 		if (info_ptr->num_trans>1){
+@@ -154,7 +154,7 @@
+ 			if (pal){
+ 				DWORD ip;
+ 				for (ip=0;ip<min(head.biClrUsed,(unsigned long)info_ptr->num_trans);ip++)
+-					pal[ip].rgbReserved=info_ptr->trans[ip];
++					pal[ip].rgbReserved=info_ptr->trans_alpha[ip];
+ 				for (ip=info_ptr->num_trans;ip<head.biClrUsed;ip++){
+ 					pal[ip].rgbReserved=255;
+ 				}
+@@ -168,9 +168,9 @@
+ 		int num_trans;
+ 		png_color_16 *image_background;
+ 		if (png_get_tRNS(png_ptr, info_ptr, &trans, &num_trans, &image_background)){
+-			info.nBkgndColor.rgbRed   = (BYTE)(info_ptr->trans_values.red>>nshift);
+-			info.nBkgndColor.rgbGreen = (BYTE)(info_ptr->trans_values.green>>nshift);
+-			info.nBkgndColor.rgbBlue  = (BYTE)(info_ptr->trans_values.blue>>nshift);
++			info.nBkgndColor.rgbRed   = (BYTE)(info_ptr->trans_color.red>>nshift);
++			info.nBkgndColor.rgbGreen = (BYTE)(info_ptr->trans_color.green>>nshift);
++			info.nBkgndColor.rgbBlue  = (BYTE)(info_ptr->trans_color.blue>>nshift);
+ 			info.nBkgndColor.rgbReserved = 0;
+ 			info.nBkgndIndex = 0;
+ 		}
+@@ -421,12 +421,12 @@
+ 	if (info.nBkgndIndex >= 0){
+ 		info_ptr->num_trans = 1;
+ 		info_ptr->valid |= PNG_INFO_tRNS;
+-		info_ptr->trans = trans;
+-		info_ptr->trans_values.index = (BYTE)info.nBkgndIndex;
+-		info_ptr->trans_values.red   = tc.rgbRed;
+-		info_ptr->trans_values.green = tc.rgbGreen;
+-		info_ptr->trans_values.blue  = tc.rgbBlue;
+-		info_ptr->trans_values.gray  = info_ptr->trans_values.index;
++		info_ptr->trans_alpha = trans;
++		info_ptr->trans_color.index = (BYTE)info.nBkgndIndex;
++		info_ptr->trans_color.red   = tc.rgbRed;
++		info_ptr->trans_color.green = tc.rgbGreen;
++		info_ptr->trans_color.blue  = tc.rgbBlue;
++		info_ptr->trans_color.gray  = info_ptr->trans_color.index;
+ 
+ 		// the transparency indexes start from 0 for non grayscale palette
+ 		if (!bGrayScale && head.biClrUsed && info.nBkgndIndex)
+@@ -447,7 +447,7 @@
+ 				trans[ip]=GetPaletteColor((BYTE)ip).rgbReserved;
+ 			info_ptr->num_trans = (WORD)nc;
+ 			info_ptr->valid |= PNG_INFO_tRNS;
+-			info_ptr->trans = trans;
++			info_ptr->trans_alpha = trans;
+ 		}
+ 
+ 		// copy the palette colors
+diff -Naur boxee-0.9.23.15885/xbmc/screensavers/rsxs-0.9/src/pngimage.cc boxee-0.9.23.15885a/xbmc/screensavers/rsxs-0.9/src/pngimage.cc
+--- boxee-0.9.23.15885/xbmc/screensavers/rsxs-0.9/src/pngimage.cc	2008-08-11 22:31:00.000000000 +0200
++++ boxee-0.9.23.15885a/xbmc/screensavers/rsxs-0.9/src/pngimage.cc	2011-02-25 16:26:51.531154158 +0100
+@@ -65,7 +65,7 @@
+ 			(png_get_color_type(png, pngInfo) == PNG_COLOR_TYPE_GRAY) &&
+ 			png_get_bit_depth(png, pngInfo) < 8
+ 		)
+-			png_set_gray_1_2_4_to_8(png);
++			png_set_expand_gray_1_2_4_to_8(png);
+ 		if (png_get_valid(png, pngInfo, PNG_INFO_tRNS))
+ 			png_set_tRNS_to_alpha(png);
+ 		if (fullColor)
+diff -Naur boxee-0.9.23.15885/xbmc/visualizations/Goom/goom2k4-0/src/pngload.c boxee-0.9.23.15885a/xbmc/visualizations/Goom/goom2k4-0/src/pngload.c
+--- boxee-0.9.23.15885/xbmc/visualizations/Goom/goom2k4-0/src/pngload.c	2008-08-05 15:59:55.000000000 +0200
++++ boxee-0.9.23.15885a/xbmc/visualizations/Goom/goom2k4-0/src/pngload.c	2011-02-25 16:26:51.531154158 +0100
+@@ -94,7 +94,7 @@
+ 		png_set_palette_to_rgb (png_ptr);
+ 
+ 	if (color_type == PNG_COLOR_TYPE_GRAY && bit_depth < 8)
+-		png_set_gray_1_2_4_to_8 (png_ptr);
++		png_set_expand_gray_1_2_4_to_8 (png_ptr);
+ 	else if (color_type == PNG_COLOR_TYPE_GRAY ||
+ 					 color_type == PNG_COLOR_TYPE_GRAY_ALPHA)
+ 			png_set_gray_to_rgb (png_ptr);
