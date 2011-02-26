@@ -56,9 +56,143 @@ do_configure \
 # leaked host includes break the Python components build
 sed -i Makefile.include -e "s:-I$ROOT/$TOOLCHAIN/include::"
 
-make externals
-make xbmc.bin
-make xbmc-xrandr
-make_install
+make
+
+# manual install based on debian/make_debian.sh script
+install_dir="$PWD/.install"
+install_dir_debug="$PWD/.install-debuginfo"
+mkdir -p "$install_dir" "$install_dir_debug/usr/lib/debug"
+
+boxee_arch=$TARGET_ARCH
+[ "$boxee_arch" = "i386" ] && boxee_arch="i486"
+
+# language
+mkdir -p $install_dir/opt/boxee/language
+cp -r language/* $install_dir/opt/boxee/language
+
+# media
+mkdir -p $install_dir/opt/boxee/media
+cp \
+  media/defaultrss.png \
+  media/downloadrss.png \
+  media/weather.rar \
+  media/icon32x32-linux.png \
+  media/icon.png \
+  $install_dir/opt/boxee/media
+chmod 644 $install_dir/opt/boxee/media/*
+mkdir -p $install_dir/opt/boxee/media/boxee_screen_saver
+cp media/boxee_screen_saver/* $install_dir/opt/boxee/media/boxee_screen_saver
+mkdir -p $install_dir/opt/boxee/media/Fonts
+cp media/Fonts/boxee* $install_dir/opt/boxee/media/Fonts
+chmod 644 $install_dir/opt/boxee/media/Fonts/*
+
+# screensavers
+mkdir -p $install_dir/opt/boxee/screensavers
+#cp \
+#  screensavers/Plasma.xbs \
+#  screensavers/Solarwinds.xbs \
+#  screensavers/Euphoria.xbs \
+#  $install_dir/opt/boxee/screensavers
+
+# scripts & Lyrics
+mkdir -p $install_dir/opt/boxee/scripts
+cp -r scripts/Lyrics $install_dir/opt/boxee/scripts
+cp -r scripts/RTorrent $install_dir/opt/boxee/scripts
+cp -r scripts/OpenSubtitles $install_dir/opt/boxee/scripts
+cp scripts/autoexec.py $install_dir/opt/boxee/scripts
+
+# plugins
+mkdir -p \
+  $install_dir/opt/boxee/plugins/music \
+  $install_dir/opt/boxee/plugins/pictures \
+  $install_dir/opt/boxee/plugins/video
+
+# skin
+mkdir -p $install_dir/opt/boxee/skin/boxee
+cp -r skin/boxee/* $install_dir/opt/boxee/skin/boxee
+rm -f $install_dir/opt/boxee/skin/boxee/media/*.png
+cp \
+  skin/boxee/media/textures.xml \
+  $install_dir/opt/boxee/skin/boxee/media
+#  skin/boxee/media/Textures.xbt \
+
+# system
+mkdir -p $install_dir/opt/boxee/system/players
+cp \
+  system/*-${boxee_arch}-linux.so \
+  system/asound.conf \
+  system/playercorefactory.xml \
+  system/settingsmap.xml \
+  $install_dir/opt/boxee/system
+
+# keymaps
+mkdir -p $install_dir/opt/boxee/system/keymaps
+cp system/keymaps/* $install_dir/opt/boxee/system/keymaps
+
+# shaders
+mkdir -p $install_dir/opt/boxee/system/shaders
+cp system/shaders/* $install_dir/opt/boxee/system/shaders
+
+# dvdplayer
+mkdir -p $install_dir/opt/boxee/system/players/dvdplayer
+cp system/players/dvdplayer/*-${boxee_arch}-linux.so \
+  $install_dir/opt/boxee/system/players/dvdplayer
+rm -f $install_dir/opt/boxee/system/players/dvdplayer/libmpeg2-${boxee_arch}-linux.so
+
+# paplayer
+mkdir -p $install_dir/opt/boxee/system/players/paplayer
+cp system/players/paplayer/*-${boxee_arch}-linux.so \
+  $install_dir/opt/boxee/system/players/paplayer
+
+# flash player
+mkdir -p $install_dir/opt/boxee/system/players/flashplayer
+cp \
+  system/players/flashplayer/bxflplayer-${boxee_arch}-linux \
+  system/players/flashplayer/FlashLib-${boxee_arch}-linux.so \
+  system/players/flashplayer/bxoverride-${boxee_arch}-linux.so \
+  $install_dir/opt/boxee/system/players/flashplayer
+chmod 755 $install_dir/opt/boxee/system/players/flashplayer/*
+cp -r system/players/flashplayer/xulrunner-${boxee_arch}-linux \
+  $install_dir/opt/boxee/system/players/flashplayer/
+
+# scrapers
+mkdir -p $install_dir/opt/boxee/system/scrapers
+cp -r system/scrapers/* $install_dir/opt/boxee/system/scrapers
+
+# userdata
+mkdir -p $install_dir/opt/boxee/UserData 
+cp system/Lircmap.xml $install_dir/opt/boxee/system
+chmod 644 $install_dir/opt/boxee/system/*.xml
+cp UserData/sources.xml.in.linux $install_dir/opt/boxee/UserData
+cp UserData/sources.xml.in.diff.linux $install_dir/opt/boxee/UserData
+cp UserData/shortcuts.xml.in.linux $install_dir/opt/boxee/UserData
+chmod 644 $install_dir/opt/boxee/UserData/*
+ln -s UserData $install_dir/opt/boxee/userdata
+
+# visualizations
+mkdir $install_dir/opt/boxee/visualisations
+cp \
+  visualisations/opengl_spectrum.vis \
+  visualisations/ProjectM.vis \
+  visualisations/Waveform.vis \
+  $install_dir/opt/boxee/visualisations
+cp -r visualisations/projectM  visualisations/projectM.presets \
+  $install_dir/opt/boxee/visualisations
+
+# rtorrent
+mkdir -p $install_dir/opt/boxee/bin
+cp bin-linux/boxee-rtorrent $install_dir/opt/boxee/bin
+cp UserData/rtorrent.rc.linux $install_dir/opt/boxee/UserData/rtorrent.rc
+
+# binary
+cp Boxee $install_dir/opt/boxee
+cp xbmc-xrandr $install_dir/opt/boxee
+
+# stripping binaries
+strip_libs "$install_dir" "$install_dir_debug/usr/lib/debug"
+for file in Boxee xbmc-xrandr bin/boxee-rtorrent system/players/flashplayer/bxflplayer-${boxee_arch}-linux; do
+  extract_debug_info "$install_dir_debug/usr/lib/debug" "$install_dir/opt/boxee/$file"
+  do_strip bin $install_dir/opt/boxee/$file
+done
 
 exit 0
