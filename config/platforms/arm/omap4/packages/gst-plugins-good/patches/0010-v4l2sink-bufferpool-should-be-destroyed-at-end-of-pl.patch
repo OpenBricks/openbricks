@@ -1,0 +1,45 @@
+From ff9fc5aefc103e1f29e1d20c58b71f5d68277f46 Mon Sep 17 00:00:00 2001
+From: Rob Clark <rob@ti.com>
+Date: Sun, 4 Apr 2010 06:31:42 -0500
+Subject: [PATCH 10/32] v4l2sink: bufferpool should be destroyed at end of playback
+
+---
+ sys/v4l2/gstv4l2sink.c |   12 +++++++-----
+ 1 files changed, 7 insertions(+), 5 deletions(-)
+
+diff --git a/sys/v4l2/gstv4l2sink.c b/sys/v4l2/gstv4l2sink.c
+index e258c23..b6b3a2d 100644
+--- a/sys/v4l2/gstv4l2sink.c
++++ b/sys/v4l2/gstv4l2sink.c
+@@ -471,12 +471,15 @@ gst_v4l2sink_change_state (GstElement * element, GstStateChange transition)
+         if (!gst_v4l2_object_stop_streaming (v4l2sink->v4l2object)) {
+           return GST_STATE_CHANGE_FAILURE;
+         }
+-        v4l2sink->state = STATE_OFF;
++        v4l2sink->state = STATE_PENDING_STREAMON;
+       }
+       break;
+     case GST_STATE_CHANGE_READY_TO_NULL:
+-      gst_v4l2_buffer_pool_destroy (v4l2sink->pool);
+-      v4l2sink->pool = NULL;
++      /* destroy the buffer pool */
++      if (v4l2sink->pool) {
++        gst_v4l2_buffer_pool_destroy (v4l2sink->pool);
++        v4l2sink->pool = NULL;
++      }
+       /* close the device */
+       if (!gst_v4l2_object_stop (v4l2sink->v4l2object))
+         return GST_STATE_CHANGE_FAILURE;
+@@ -526,8 +529,7 @@ gst_v4l2sink_get_caps (GstBaseSink * bsink)
+     if (template) {
+       GstCaps *tmp;
+ 
+-      tmp =
+-          gst_v4l2_object_probe_caps_for_format (v4l2sink->v4l2object,
++      tmp = gst_v4l2_object_probe_caps_for_format (v4l2sink->v4l2object,
+           format->pixelformat, template);
+       if (tmp)
+         gst_caps_append (ret, tmp);
+-- 
+1.7.1
+
