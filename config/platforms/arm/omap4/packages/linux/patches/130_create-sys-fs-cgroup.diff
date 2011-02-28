@@ -1,0 +1,56 @@
+From: Greg KH <gregkh@suse.de>
+Date: Thu, 5 Aug 2010 20:53:35 +0000 (-0700)
+Subject: cgroupfs: create /sys/fs/cgroup to mount cgroupfs on
+X-Git-Tag: v2.6.36-rc1~521^2~7
+X-Git-Url: http://git.kernel.org/?p=linux%2Fkernel%2Fgit%2Ftorvalds%2Flinux-2.6.git;a=commitdiff_plain;h=676db4af043014e852f67ba0349dae0071bd11f3
+
+cgroupfs: create /sys/fs/cgroup to mount cgroupfs on
+
+We really shouldn't be asking userspace to create new root filesystems.
+So follow along with all of the other in-kernel filesystems, and provide
+a mount point in sysfs.
+
+For cgroupfs, this should be in /sys/fs/cgroup/  This change provides
+that mount point when the cgroup filesystem is registered in the kernel.
+
+Acked-by: Paul Menage <menage@google.com>
+Acked-by: Dhaval Giani <dhaval.giani@gmail.com>
+Cc: Li Zefan <lizf@cn.fujitsu.com>
+Cc: Lennart Poettering <lennart@poettering.net>
+Cc: Kay Sievers <kay.sievers@vrfy.org>
+Signed-off-by: Greg Kroah-Hartman <gregkh@suse.de>
+---
+
+diff --git a/kernel/cgroup.c b/kernel/cgroup.c
+index a8ce099..d83cab0 100644
+--- a/kernel/cgroup.c
++++ b/kernel/cgroup.c
+@@ -1623,6 +1623,8 @@ static struct file_system_type cgroup_fs_type = {
+ 	.kill_sb = cgroup_kill_sb,
+ };
+ 
++static struct kobject *cgroup_kobj;
++
+ static inline struct cgroup *__d_cgrp(struct dentry *dentry)
+ {
+ 	return dentry->d_fsdata;
+@@ -3894,9 +3896,18 @@ int __init cgroup_init(void)
+ 	hhead = css_set_hash(init_css_set.subsys);
+ 	hlist_add_head(&init_css_set.hlist, hhead);
+ 	BUG_ON(!init_root_id(&rootnode));
++
++	cgroup_kobj = kobject_create_and_add("cgroup", fs_kobj);
++	if (!cgroup_kobj) {
++		err = -ENOMEM;
++		goto out;
++	}
++
+ 	err = register_filesystem(&cgroup_fs_type);
+-	if (err < 0)
++	if (err < 0) {
++		kobject_put(cgroup_kobj);
+ 		goto out;
++	}
+ 
+ 	proc_create("cgroups", 0, NULL, &proc_cgroupstats_operations);
+ 
