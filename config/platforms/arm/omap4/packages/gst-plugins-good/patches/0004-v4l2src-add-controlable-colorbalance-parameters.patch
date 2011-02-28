@@ -1,0 +1,264 @@
+From 9b55163fb414d997341a44ed44258a7d747380a3 Mon Sep 17 00:00:00 2001
+From: Stefan Kost <ensonic@users.sf.net>
+Date: Tue, 22 Jun 2010 15:48:04 +0300
+Subject: [PATCH 04/32] v4l2src: add controlable colorbalance parameters
+
+Expose colorbalance controls as object properties (like we do on xvimagesink).
+Make them controlable.
+---
+ sys/v4l2/Makefile.am     |    5 ++-
+ sys/v4l2/gstv4l2.c       |    4 ++
+ sys/v4l2/gstv4l2object.c |   78 ++++++++++++++++++++++++++++++++++++++++++++++
+ sys/v4l2/gstv4l2object.h |    7 +++-
+ sys/v4l2/gstv4l2src.c    |   20 +++++++++++-
+ sys/v4l2/gstv4l2src.h    |    2 +
+ 6 files changed, 113 insertions(+), 3 deletions(-)
+
+diff --git a/sys/v4l2/Makefile.am b/sys/v4l2/Makefile.am
+index e655bcb..8d46d43 100644
+--- a/sys/v4l2/Makefile.am
++++ b/sys/v4l2/Makefile.am
+@@ -23,6 +23,7 @@ libgstvideo4linux2_la_SOURCES = gstv4l2.c \
+ 
+ libgstvideo4linux2_la_CFLAGS =   $(GST_PLUGINS_BASE_CFLAGS) \
+ 				 $(GST_BASE_CFLAGS) \
++				 $(GST_CONTROLLER_CFLAGS) \
+ 				 $(GST_CFLAGS) \
+ 				 $(X_CFLAGS) \
+ 				 $(LIBV4L2_CFLAGS) \
+@@ -33,7 +34,9 @@ libgstvideo4linux2_la_LIBTOOLFLAGS = --tag=disable-static
+ 
+ libgstvideo4linux2_la_LIBADD =   $(GST_PLUGINS_BASE_LIBS) \
+ 				 $(GST_BASE_LIBS) \
+-				 $(GST_PLUGINS_BASE_LIBS) -lgstvideo-$(GST_MAJORMINOR) \
++				 $(GST_CONTROLLER_LIBS) \
++				 $(GST_PLUGINS_BASE_LIBS) \
++				 -lgstvideo-$(GST_MAJORMINOR) \
+ 				 -lgstinterfaces-$(GST_MAJORMINOR) \
+ 				 $(GST_LIBS) \
+ 				 $(xv_libs) \
+diff --git a/sys/v4l2/gstv4l2.c b/sys/v4l2/gstv4l2.c
+index 18ad3fd..2599f77 100644
+--- a/sys/v4l2/gstv4l2.c
++++ b/sys/v4l2/gstv4l2.c
+@@ -28,6 +28,7 @@
+ #include "gst/gst-i18n-plugin.h"
+ 
+ #include <gst/gst.h>
++#include <gst/controller/gstcontroller.h>
+ 
+ #include "gstv4l2object.h"
+ #include "gstv4l2src.h"
+@@ -46,6 +47,9 @@ plugin_init (GstPlugin * plugin)
+   GST_DEBUG_CATEGORY_INIT (v4l2_debug, "v4l2", 0, "V4L2 API calls");
+   GST_DEBUG_CATEGORY_GET (GST_CAT_PERFORMANCE, "GST_PERFORMANCE");
+ 
++  /* initialize gst controller library */
++  gst_controller_init (NULL, NULL);
++
+   if (!gst_element_register (plugin, "v4l2src", GST_RANK_PRIMARY,
+           GST_TYPE_V4L2SRC) ||
+       !gst_element_register (plugin, "v4l2sink", GST_RANK_NONE,
+diff --git a/sys/v4l2/gstv4l2object.c b/sys/v4l2/gstv4l2object.c
+index 84f2281..7184472 100644
+--- a/sys/v4l2/gstv4l2object.c
++++ b/sys/v4l2/gstv4l2object.c
+@@ -328,6 +328,27 @@ gst_v4l2_object_install_properties_helper (GObjectClass * gobject_class,
+       g_param_spec_flags ("flags", "Flags", "Device type flags",
+           GST_TYPE_V4L2_DEVICE_FLAGS, DEFAULT_PROP_FLAGS,
+           G_PARAM_READABLE | G_PARAM_STATIC_STRINGS));
++
++  g_object_class_install_property (gobject_class, PROP_BRIGHTNESS,
++      g_param_spec_int ("brightness", "Brightness",
++          "Picture brightness, or more precisely, the black level", G_MININT,
++          G_MAXINT, 0,
++          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | GST_PARAM_CONTROLLABLE));
++  g_object_class_install_property (gobject_class, PROP_CONTRAST,
++      g_param_spec_int ("contrast", "Contrast",
++          "Picture contrast or luma gain", G_MININT,
++          G_MAXINT, 0,
++          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | GST_PARAM_CONTROLLABLE));
++  g_object_class_install_property (gobject_class, PROP_SATURATION,
++      g_param_spec_int ("saturation", "Saturation",
++          "Picture color saturation or chroma gain", G_MININT,
++          G_MAXINT, 0,
++          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | GST_PARAM_CONTROLLABLE));
++  g_object_class_install_property (gobject_class, PROP_HUE,
++      g_param_spec_int ("hue", "Hue",
++          "Hue or color balance", G_MININT,
++          G_MAXINT, 0,
++          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS | GST_PARAM_CONTROLLABLE));
+ }
+ 
+ GstV4l2Object *
+@@ -405,6 +426,30 @@ gst_v4l2_object_clear_format_list (GstV4l2Object * v4l2object)
+   return TRUE;
+ }
+ 
++static gint
++gst_v4l2_object_prop_to_cid (guint prop_id)
++{
++  gint cid = -1;
++
++  switch (prop_id) {
++    case PROP_BRIGHTNESS:
++      cid = V4L2_CID_BRIGHTNESS;
++      break;
++    case PROP_CONTRAST:
++      cid = V4L2_CID_CONTRAST;
++      break;
++    case PROP_SATURATION:
++      cid = V4L2_CID_SATURATION;
++      break;
++    case PROP_HUE:
++      cid = V4L2_CID_HUE;
++      break;
++    default:
++      GST_WARNING ("unmapped property id: %d", prop_id);
++  }
++  return cid;
++}
++
+ 
+ gboolean
+ gst_v4l2_object_set_property_helper (GstV4l2Object * v4l2object,
+@@ -415,6 +460,21 @@ gst_v4l2_object_set_property_helper (GstV4l2Object * v4l2object,
+       g_free (v4l2object->videodev);
+       v4l2object->videodev = g_value_dup_string (value);
+       break;
++    case PROP_BRIGHTNESS:
++    case PROP_CONTRAST:
++    case PROP_SATURATION:
++    case PROP_HUE:
++    {
++      gint cid = gst_v4l2_object_prop_to_cid (prop_id);
++
++      if (cid != -1) {
++        if (GST_V4L2_IS_OPEN (v4l2object)) {
++          gst_v4l2_set_attribute (v4l2object, cid, g_value_get_int (value));
++        }
++      }
++      return TRUE;
++    }
++      break;
+ #if 0
+     case PROP_NORM:
+       if (GST_V4L2_IS_OPEN (v4l2object)) {
+@@ -518,6 +578,24 @@ gst_v4l2_object_get_property_helper (GstV4l2Object * v4l2object,
+       g_value_set_flags (value, flags);
+       break;
+     }
++    case PROP_BRIGHTNESS:
++    case PROP_CONTRAST:
++    case PROP_SATURATION:
++    case PROP_HUE:
++    {
++      gint cid = gst_v4l2_object_prop_to_cid (prop_id);
++
++      if (cid != -1) {
++        if (GST_V4L2_IS_OPEN (v4l2object)) {
++          gint v;
++          if (gst_v4l2_get_attribute (v4l2object, cid, &v)) {
++            g_value_set_int (value, v);
++          }
++        }
++      }
++      return TRUE;
++    }
++      break;
+     default:
+       return FALSE;
+       break;
+diff --git a/sys/v4l2/gstv4l2object.h b/sys/v4l2/gstv4l2object.h
+index 8660924..1b38672 100644
+--- a/sys/v4l2/gstv4l2object.h
++++ b/sys/v4l2/gstv4l2object.h
+@@ -49,6 +49,7 @@
+ 
+ #include <gst/gst.h>
+ #include <gst/base/gstpushsrc.h>
++#include <gst/controller/gstcontroller.h>
+ 
+ #include <gst/interfaces/propertyprobe.h>
+ 
+@@ -132,7 +133,11 @@ GType gst_v4l2_object_get_type (void);
+     PROP_DEVICE,			\
+     PROP_DEVICE_NAME,			\
+     PROP_DEVICE_FD,			\
+-    PROP_FLAGS
++    PROP_FLAGS,			\
++    PROP_BRIGHTNESS,			\
++    PROP_CONTRAST,			\
++    PROP_SATURATION,			\
++    PROP_HUE
+ 
+ /* create/destroy */
+ GstV4l2Object *	gst_v4l2_object_new 		 (GstElement * element,
+diff --git a/sys/v4l2/gstv4l2src.c b/sys/v4l2/gstv4l2src.c
+index 7f2139a..e8ba2fd 100644
+--- a/sys/v4l2/gstv4l2src.c
++++ b/sys/v4l2/gstv4l2src.c
+@@ -613,7 +613,7 @@ gst_v4l2src_set_caps (GstBaseSrc * src, GstCaps * caps)
+   /* we want our own v4l2 type of fourcc codes */
+   if (!gst_v4l2_object_get_caps_info (v4l2src->v4l2object, caps, &format, &w,
+           &h, &fps_n, &fps_d, &size)) {
+-    GST_DEBUG_OBJECT (v4l2src,
++    GST_INFO_OBJECT (v4l2src,
+         "can't get capture format from caps %" GST_PTR_FORMAT, caps);
+     return FALSE;
+   }
+@@ -710,6 +710,10 @@ gst_v4l2src_start (GstBaseSrc * src)
+ 
+   v4l2src->offset = 0;
+ 
++  /* activate settings for first frame */
++  v4l2src->ctrl_time = 0;
++  gst_object_sync_values (G_OBJECT (src), v4l2src->ctrl_time);
++
+   return TRUE;
+ }
+ 
+@@ -918,6 +922,7 @@ gst_v4l2src_create (GstPushSrc * src, GstBuffer ** buf)
+     GST_BUFFER_OFFSET_END (*buf) = v4l2src->offset;
+ 
+     /* timestamps, LOCK to get clock and base time. */
++    /* FIXME: element clock and base_time is rarely changing */
+     GST_OBJECT_LOCK (v4l2src);
+     if ((clock = GST_ELEMENT_CLOCK (v4l2src))) {
+       /* we have a clock, get base time and ref clock */
+@@ -943,6 +948,19 @@ gst_v4l2src_create (GstPushSrc * src, GstBuffer ** buf)
+       }
+     }
+ 
++    /* activate settings for next frame */
++    if (GST_CLOCK_TIME_IS_VALID (v4l2src->duration)) {
++      v4l2src->ctrl_time += v4l2src->duration;
++    } else {
++      /* this is not very good (as it should be the next timestamp),
++       * still good enough for linear fades (as long as it is not -1) 
++       */
++      v4l2src->ctrl_time = timestamp;
++    }
++    gst_object_sync_values (G_OBJECT (src), v4l2src->ctrl_time);
++    GST_INFO_OBJECT (src, "sync to %" GST_TIME_FORMAT,
++        GST_TIME_ARGS (v4l2src->ctrl_time));
++
+     /* FIXME: use the timestamp from the buffer itself! */
+     GST_BUFFER_TIMESTAMP (*buf) = timestamp;
+     GST_BUFFER_DURATION (*buf) = v4l2src->duration;
+diff --git a/sys/v4l2/gstv4l2src.h b/sys/v4l2/gstv4l2src.h
+index 13a3942..667576a 100644
+--- a/sys/v4l2/gstv4l2src.h
++++ b/sys/v4l2/gstv4l2src.h
+@@ -82,6 +82,8 @@ struct _GstV4l2Src
+   gint     fps_d, fps_n;       /* framerate if device is open */
+   GstClockTime duration;       /* duration of one frame */
+   
++  GstClockTime ctrl_time;
++
+   GstV4l2SrcGetFunc get_frame;
+ };
+ 
+-- 
+1.7.1
+

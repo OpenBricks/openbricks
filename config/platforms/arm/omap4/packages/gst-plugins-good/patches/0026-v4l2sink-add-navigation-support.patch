@@ -1,0 +1,406 @@
+From 486b13697967199200286402b993b1c410a19a84 Mon Sep 17 00:00:00 2001
+From: Rob Clark <rob@ti.com>
+Date: Sat, 2 Oct 2010 14:45:14 -0500
+Subject: [PATCH 26/32] v4l2sink: add navigation support
+
+---
+ sys/v4l2/gstv4l2sink.c     |   91 ++++++++++++++++++++++++++-
+ sys/v4l2/gstv4l2sink.h     |    2 +
+ sys/v4l2/gstv4l2xoverlay.c |  149 ++++++++++++++++++++++++++++++++++++++++---
+ sys/v4l2/gstv4l2xoverlay.h |    4 +
+ 4 files changed, 232 insertions(+), 14 deletions(-)
+
+diff --git a/sys/v4l2/gstv4l2sink.c b/sys/v4l2/gstv4l2sink.c
+index a7b4d32..21e3548 100644
+--- a/sys/v4l2/gstv4l2sink.c
++++ b/sys/v4l2/gstv4l2sink.c
+@@ -33,6 +33,18 @@
+  * |[
+  * gst-launch videotestsrc ! v4l2sink device=/dev/video1
+  * ]| This pipeline displays a test pattern on /dev/video1
++ * |[
++ * gst-launch -v videotestsrc ! navigationtest ! v4l2sink
++ * ]| A pipeline to test navigation events.
++ * While moving the mouse pointer over the test signal you will see a black box
++ * following the mouse pointer. If you press the mouse button somewhere on the
++ * video and release it somewhere else a green box will appear where you pressed
++ * the button and a red one where you released it. (The navigationtest element
++ * is part of gst-plugins-good.) You can observe here that even if the images
++ * are scaled through hardware the pointer coordinates are converted back to the
++ * original video frame geometry so that the box can be drawn to the correct
++ * position. This also handles borders correctly, limiting coordinates to the
++ * image area
+  * </refsect2>
+  */
+ 
+@@ -99,6 +111,7 @@ gst_v4l2sink_iface_supported (GstImplementsInterface * iface, GType iface_type)
+   g_assert (iface_type == GST_TYPE_TUNER ||
+ #ifdef HAVE_XVIDEO
+       iface_type == GST_TYPE_X_OVERLAY ||
++      iface_type == GST_TYPE_NAVIGATION ||
+ #endif
+       iface_type == GST_TYPE_COLOR_BALANCE ||
+       iface_type == GST_TYPE_VIDEO_ORIENTATION);
+@@ -107,8 +120,10 @@ gst_v4l2sink_iface_supported (GstImplementsInterface * iface, GType iface_type)
+     return FALSE;
+ 
+ #ifdef HAVE_XVIDEO
+-  if (iface_type == GST_TYPE_X_OVERLAY && !GST_V4L2_IS_OVERLAY (v4l2object))
+-    return FALSE;
++  if (!GST_V4L2_IS_OVERLAY (v4l2object)) {
++    if (iface_type == GST_TYPE_X_OVERLAY || iface_type == GST_TYPE_NAVIGATION)
++      return FALSE;
++  }
+ #endif
+ 
+   return TRUE;
+@@ -123,6 +138,16 @@ gst_v4l2sink_interface_init (GstImplementsInterfaceClass * klass)
+   klass->supported = gst_v4l2sink_iface_supported;
+ }
+ 
++#ifdef HAVE_XVIDEO
++static void gst_v4l2sink_navigation_send_event (GstNavigation * navigation,
++    GstStructure * structure);
++static void
++gst_v4l2sink_navigation_init (GstNavigationInterface * iface)
++{
++  iface->send_event = gst_v4l2sink_navigation_send_event;
++}
++#endif
++
+ static void
+ gst_v4l2sink_init_interfaces (GType type)
+ {
+@@ -142,6 +167,11 @@ gst_v4l2sink_init_interfaces (GType type)
+     NULL,
+     NULL,
+   };
++  static const GInterfaceInfo v4l2_navigation_info = {
++    (GInterfaceInitFunc) gst_v4l2sink_navigation_init,
++    NULL,
++    NULL,
++  };
+ #endif
+   static const GInterfaceInfo v4l2_colorbalance_info = {
+     (GInterfaceInitFunc) gst_v4l2sink_color_balance_interface_init,
+@@ -164,6 +194,8 @@ gst_v4l2sink_init_interfaces (GType type)
+   g_type_add_interface_static (type, GST_TYPE_TUNER, &v4l2_tuner_info);
+ #ifdef HAVE_XVIDEO
+   g_type_add_interface_static (type, GST_TYPE_X_OVERLAY, &v4l2_xoverlay_info);
++  g_type_add_interface_static (type,
++      GST_TYPE_NAVIGATION, &v4l2_navigation_info);
+ #endif
+   g_type_add_interface_static (type,
+       GST_TYPE_COLOR_BALANCE, &v4l2_colorbalance_info);
+@@ -202,7 +234,6 @@ static GstFlowReturn gst_v4l2sink_show_frame (GstBaseSink * bsink,
+     GstBuffer * buf);
+ static void gst_v4l2sink_set_rotation (GstV4l2Sink * v4l2sink);
+ 
+-
+ static void
+ gst_v4l2sink_base_init (gpointer g_class)
+ {
+@@ -755,6 +786,15 @@ gst_v4l2sink_set_caps (GstBaseSink * bsink, GstCaps * caps)
+     return FALSE;
+   }
+ 
++  v4l2sink->video_width = w;
++  v4l2sink->video_height = h;
++
++  /* TODO: videosink width/height should be scaled according to
++   * pixel-aspect-ratio
++   */
++  GST_VIDEO_SINK_WIDTH (v4l2sink) = w;
++  GST_VIDEO_SINK_HEIGHT (v4l2sink) = h;
++
+   /* query to find if anyone upstream using these buffers has any
+    * minimum requirements:
+    */
+@@ -1050,3 +1090,48 @@ gst_v4l2sink_show_frame (GstBaseSink * bsink, GstBuffer * buf)
+ 
+   return GST_FLOW_OK;
+ }
++
++#ifdef HAVE_XVIDEO
++static void
++gst_v4l2sink_navigation_send_event (GstNavigation * navigation,
++    GstStructure * structure)
++{
++  GstV4l2Sink *v4l2sink = GST_V4L2SINK (navigation);
++  GstV4l2Xv *xv = v4l2sink->v4l2object->xv;
++  GstPad *peer;
++
++  if (!xv)
++    return;
++
++  if ((peer = gst_pad_get_peer (GST_VIDEO_SINK_PAD (v4l2sink)))) {
++    GstVideoRectangle rect;
++    gdouble x, y, xscale = 1.0, yscale = 1.0;
++
++    gst_v4l2_xoverlay_get_render_rect (v4l2sink->v4l2object, &rect);
++
++    /* We calculate scaling using the original video frames geometry to
++     * include pixel aspect ratio scaling.
++     */
++    xscale = (gdouble) v4l2sink->video_width / rect.w;
++    yscale = (gdouble) v4l2sink->video_height / rect.h;
++
++    /* Converting pointer coordinates to the non scaled geometry */
++    if (gst_structure_get_double (structure, "pointer_x", &x)) {
++      x = MIN (x, rect.x + rect.w);
++      x = MAX (x - rect.x, 0);
++      gst_structure_set (structure, "pointer_x", G_TYPE_DOUBLE,
++          (gdouble) x * xscale, NULL);
++    }
++    if (gst_structure_get_double (structure, "pointer_y", &y)) {
++      y = MIN (y, rect.y + rect.h);
++      y = MAX (y - rect.y, 0);
++      gst_structure_set (structure, "pointer_y", G_TYPE_DOUBLE,
++          (gdouble) y * yscale, NULL);
++    }
++
++    gst_pad_send_event (peer, gst_event_new_navigation (structure));
++    gst_object_unref (peer);
++  }
++}
++#endif
++
+diff --git a/sys/v4l2/gstv4l2sink.h b/sys/v4l2/gstv4l2sink.h
+index 888ca20..3dd9968 100644
+--- a/sys/v4l2/gstv4l2sink.h
++++ b/sys/v4l2/gstv4l2sink.h
+@@ -61,6 +61,8 @@ struct _GstV4l2Sink {
+   gboolean num_buffers_can_change;
+   guint32 min_queued_bufs;
+ 
++  gint video_width, video_height;      /* original (unscaled) video w/h */
++
+   /*
+    * field to store requested overlay and crop top/left/width/height props:
+    * note, could maybe be combined with 'vwin' field in GstV4l2Object?
+diff --git a/sys/v4l2/gstv4l2xoverlay.c b/sys/v4l2/gstv4l2xoverlay.c
+index 2486ace..01b5e0c 100644
+--- a/sys/v4l2/gstv4l2xoverlay.c
++++ b/sys/v4l2/gstv4l2xoverlay.c
+@@ -33,6 +33,8 @@
+ #include <X11/extensions/Xvlib.h>
+ #include <sys/stat.h>
+ 
++#include <gst/interfaces/navigation.h>
++
+ #include "gstv4l2xoverlay.h"
+ #include "gstv4l2object.h"
+ #include "v4l2_calls.h"
+@@ -43,7 +45,7 @@ struct _GstV4l2Xv
+ {
+   Display *dpy;
+   gint port, idle_id, event_id;
+-  GMutex *mutex;
++  GMutex *mutex;                       /* to serialize calls to X11 */
+ };
+ 
+ GST_DEBUG_CATEGORY_STATIC (v4l2xv_debug);
+@@ -175,15 +177,53 @@ gst_v4l2_xoverlay_stop (GstV4l2Object * v4l2object)
+   gst_v4l2_xoverlay_close (v4l2object);
+ }
+ 
++/* should be called with mutex held */
++static gboolean
++get_render_rect (GstV4l2Object * v4l2object, GstVideoRectangle *rect)
++{
++  GstV4l2Xv *v4l2xv = v4l2object->xv;
++  if (v4l2xv && v4l2xv->dpy && v4l2object->xwindow_id) {
++    XWindowAttributes attr;
++    XGetWindowAttributes (v4l2xv->dpy, v4l2object->xwindow_id, &attr);
++    /* this is where we'd add support to maintain aspect ratio */
++    rect->x = 0;
++    rect->y = 0;
++    rect->w = attr.width;
++    rect->h = attr.height;
++    return TRUE;
++  } else {
++    return FALSE;
++  }
++}
++
++gboolean
++gst_v4l2_xoverlay_get_render_rect (GstV4l2Object *v4l2object,
++    GstVideoRectangle *rect)
++{
++  GstV4l2Xv *v4l2xv = v4l2object->xv;
++  gboolean ret = FALSE;
++  if (v4l2xv) {
++    g_mutex_lock (v4l2xv->mutex);
++    ret = get_render_rect (v4l2object, rect);
++    g_mutex_unlock (v4l2xv->mutex);
++  }
++  return ret;
++}
++
+ static void
+ update_geometry (GstV4l2Object * v4l2object)
+ {
+   GstV4l2Xv *v4l2xv = v4l2object->xv;
+-  XWindowAttributes attr;
+-  XGetWindowAttributes (v4l2xv->dpy, v4l2object->xwindow_id, &attr);
++  GstVideoRectangle rect;
++  if (!get_render_rect (v4l2object, &rect))
++    return;
++  /* note: we don't pass in valid video x/y/w/h.. currently the xserver
++   * doesn't need to know these, as they come from v4l2 by setting the
++   * crop..
++   */
+   XvPutVideo (v4l2xv->dpy, v4l2xv->port, v4l2object->xwindow_id,
+       DefaultGC (v4l2xv->dpy, DefaultScreen (v4l2xv->dpy)),
+-      0, 0, attr.width, attr.height, 0, 0, attr.width, attr.height);
++      0, 0, rect.w, rect.h, rect.x, rect.y, rect.w, rect.h);
+ }
+ 
+ static gboolean
+@@ -221,6 +261,92 @@ event_refresh (gpointer data)
+ 
+     g_mutex_lock (v4l2xv->mutex);
+ 
++    /* If the element supports navigation, collect the relavent input
++     * events and push them upstream as navigation events
++     */
++    if (GST_IS_NAVIGATION (v4l2object->element)) {
++      guint pointer_x = 0, pointer_y = 0;
++      gboolean pointer_moved = FALSE;
++
++      /* We get all pointer motion events, only the last position is
++       * interesting.
++       */
++      while (XCheckWindowEvent (v4l2xv->dpy, v4l2object->xwindow_id,
++          PointerMotionMask, &e)) {
++        switch (e.type) {
++          case MotionNotify:
++            pointer_x = e.xmotion.x;
++            pointer_y = e.xmotion.y;
++            pointer_moved = TRUE;
++            break;
++          default:
++            break;
++        }
++      }
++      if (pointer_moved) {
++        GST_DEBUG_OBJECT (v4l2object->element,
++            "pointer moved over window at %d,%d", pointer_x, pointer_y);
++        g_mutex_unlock (v4l2xv->mutex);
++        gst_navigation_send_mouse_event (GST_NAVIGATION (v4l2object->element),
++            "mouse-move", 0, e.xbutton.x, e.xbutton.y);
++        g_mutex_lock (v4l2xv->mutex);
++      }
++
++      /* We get all events on our window to throw them upstream
++       */
++      while (XCheckWindowEvent (v4l2xv->dpy, v4l2object->xwindow_id,
++              KeyPressMask | KeyReleaseMask |
++              ButtonPressMask | ButtonReleaseMask, &e)) {
++        KeySym keysym;
++        const char *key_str = NULL;
++
++        g_mutex_unlock (v4l2xv->mutex);
++
++        switch (e.type) {
++          case ButtonPress:
++            GST_DEBUG_OBJECT (v4l2object->element,
++                "button %d pressed over window at %d,%d",
++                e.xbutton.button, e.xbutton.x, e.xbutton.y);
++            gst_navigation_send_mouse_event (
++                GST_NAVIGATION (v4l2object->element),
++                "mouse-button-press", e.xbutton.button,
++                e.xbutton.x, e.xbutton.y);
++            break;
++          case ButtonRelease:
++            GST_DEBUG_OBJECT (v4l2object->element,
++                "button %d released over window at %d,%d",
++                e.xbutton.button, e.xbutton.x, e.xbutton.y);
++            gst_navigation_send_mouse_event (
++                GST_NAVIGATION (v4l2object->element),
++                "mouse-button-release", e.xbutton.button,
++                e.xbutton.x, e.xbutton.y);
++            break;
++          case KeyPress:
++          case KeyRelease:
++            g_mutex_lock (v4l2xv->mutex);
++            keysym = XKeycodeToKeysym (v4l2xv->dpy, e.xkey.keycode, 0);
++            if (keysym != NoSymbol) {
++              key_str = XKeysymToString (keysym);
++            } else {
++              key_str = "unknown";
++            }
++            g_mutex_unlock (v4l2xv->mutex);
++            GST_DEBUG_OBJECT (v4l2object->element,
++                "key %d pressed over window at %d,%d (%s)",
++                e.xkey.keycode, e.xkey.x, e.xkey.y, key_str);
++            gst_navigation_send_key_event (
++                GST_NAVIGATION (v4l2object->element),
++                e.type == KeyPress ? "key-press" : "key-release", key_str);
++            break;
++          default:
++            GST_DEBUG_OBJECT (v4l2object->element,
++                "unhandled X event (%d)", e.type);
++        }
++
++        g_mutex_lock (v4l2xv->mutex);
++      }
++    }
++
+     /* Handle ConfigureNotify */
+     while (XCheckWindowEvent (v4l2xv->dpy, v4l2object->xwindow_id,
+             StructureNotifyMask, &e)) {
+@@ -312,6 +438,7 @@ gst_v4l2_xoverlay_prepare_xwindow_id (GstV4l2Object * v4l2object,
+     GstV4l2Xv *v4l2xv;
+     Window win;
+     int width, height;
++    long event_mask;
+ 
+     if (!v4l2object->xv && GST_V4L2_IS_OPEN (v4l2object))
+       gst_v4l2_xoverlay_open (v4l2object);
+@@ -338,13 +465,13 @@ gst_v4l2_xoverlay_prepare_xwindow_id (GstV4l2Object * v4l2object,
+ 
+     GST_DEBUG_OBJECT (v4l2object->element, "win=%p", win);
+ 
+-    /* @todo add mouse events for all windows, and button events for self
+-     * created windows, and hook up to navigation interface.. note that at
+-     * least some of the events we want to handle regardless of whether it
+-     * is a self created window or not.. such as mouse/button events in
+-     * order to implement navigation interface?
+-     */
+-    XSelectInput (v4l2xv->dpy, win, ExposureMask | StructureNotifyMask);
++    event_mask = ExposureMask | StructureNotifyMask;
++    if (GST_IS_NAVIGATION (v4l2object->element)) {
++      event_mask |= PointerMotionMask |
++          KeyPressMask | KeyReleaseMask |
++          ButtonPressMask | ButtonReleaseMask;
++    }
++    XSelectInput (v4l2xv->dpy, win, event_mask);
+     v4l2xv->event_id = g_timeout_add (45, event_refresh, v4l2object);
+ 
+     XMapRaised (v4l2xv->dpy, win);
+diff --git a/sys/v4l2/gstv4l2xoverlay.h b/sys/v4l2/gstv4l2xoverlay.h
+index 6af5c22..1a09306 100644
+--- a/sys/v4l2/gstv4l2xoverlay.h
++++ b/sys/v4l2/gstv4l2xoverlay.h
+@@ -28,6 +28,8 @@
+ 
+ #include <gst/gst.h>
+ #include <gst/interfaces/xoverlay.h>
++#include <gst/interfaces/navigation.h>
++#include <gst/video/gstvideosink.h>  /* for GstVideoRectange */
+ 
+ #include "gstv4l2object.h"
+ 
+@@ -35,6 +37,8 @@ G_BEGIN_DECLS
+ 
+ void gst_v4l2_xoverlay_start (GstV4l2Object  *v4l2object);
+ void gst_v4l2_xoverlay_stop  (GstV4l2Object  *v4l2object);
++gboolean gst_v4l2_xoverlay_get_render_rect (GstV4l2Object *v4l2object,
++    GstVideoRectangle *rect);
+ 
+ void gst_v4l2_xoverlay_interface_init (GstXOverlayClass * klass);
+ void gst_v4l2_xoverlay_set_window_handle (GstV4l2Object * v4l2object,
+-- 
+1.7.1
+

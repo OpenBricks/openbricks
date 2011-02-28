@@ -1,0 +1,51 @@
+From 161ef3ea9b6bfb5bc2865360a65f4369cccd7ba6 Mon Sep 17 00:00:00 2001
+From: Rob Clark <rob@ti.com>
+Date: Wed, 1 Sep 2010 13:05:16 -0500
+Subject: [PATCH 24/32] v4l2sink: replace vstab event with crop event
+
+Basically the same, but includes width/height.  Backwards compatible, but
+this patch should be squashed into the vstab patch once all the places that
+use the vstab event are updated.
+---
+ sys/v4l2/gstv4l2sink.c |   25 +++++++++++++++++++------
+ 1 files changed, 19 insertions(+), 6 deletions(-)
+
+diff --git a/sys/v4l2/gstv4l2sink.c b/sys/v4l2/gstv4l2sink.c
+index 9f4ac56..4529f17 100644
+--- a/sys/v4l2/gstv4l2sink.c
++++ b/sys/v4l2/gstv4l2sink.c
+@@ -920,12 +920,25 @@ gst_v4l2sink_event (GstBaseSink * bsink, GstEvent * event)
+   GST_DEBUG_OBJECT (v4l2sink, "event %" GST_PTR_FORMAT, event);
+ 
+   switch (type) {
+-    case GST_EVENT_VSTAB:{
+-      gint top, left;
+-      gst_event_parse_vstab (event, &top, &left);
+-      v4l2sink->crop.top = top;
+-      v4l2sink->crop.left = left;
+-      v4l2sink->crop_fields_set |= RECT_TOP_SET | RECT_LEFT_SET;
++    case GST_EVENT_CROP:{
++      gint top, left, width, height;
++      gst_event_parse_crop (event, &top, &left, &width, &height);
++      if (top >= 0) {
++        v4l2sink->crop.top = top;
++        v4l2sink->crop_fields_set |= RECT_TOP_SET;
++      }
++      if (left >= 0) {
++        v4l2sink->crop.left = left;
++        v4l2sink->crop_fields_set |= RECT_LEFT_SET;
++      }
++      if (width >= 0) {
++        v4l2sink->crop.width = width;
++        v4l2sink->crop_fields_set |= RECT_WIDTH_SET;
++      }
++      if (height >= 0) {
++        v4l2sink->crop.height = height;
++        v4l2sink->crop_fields_set |= RECT_HEIGHT_SET;
++      }
+       gst_v4l2sink_sync_crop_fields (v4l2sink);
+       return TRUE;
+     }
+-- 
+1.7.1
+

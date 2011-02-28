@@ -1,0 +1,84 @@
+From e794524ea27d648ff91e7b9a8193cee58c2c050d Mon Sep 17 00:00:00 2001
+From: Philippe Normand <pnormand@igalia.com>
+Date: Tue, 21 Sep 2010 12:49:31 +0200
+Subject: [PATCH 02/32] v4l2: use the xoverlay APIs
+
+---
+ sys/v4l2/gstv4l2xoverlay.c |    7 ++++---
+ sys/v4l2/gstv4l2xoverlay.h |   12 ++++++------
+ 2 files changed, 10 insertions(+), 9 deletions(-)
+
+diff --git a/sys/v4l2/gstv4l2xoverlay.c b/sys/v4l2/gstv4l2xoverlay.c
+index 5ac3020..4c13e5b 100644
+--- a/sys/v4l2/gstv4l2xoverlay.c
++++ b/sys/v4l2/gstv4l2xoverlay.c
+@@ -127,7 +127,7 @@ gst_v4l2_xoverlay_open (GstV4l2Object * v4l2object)
+   v4l2object->xv = v4l2xv;
+ 
+   if (v4l2object->xwindow_id) {
+-    gst_v4l2_xoverlay_set_xwindow_id (v4l2object, v4l2object->xwindow_id);
++    gst_v4l2_xoverlay_set_window_handle (v4l2object, v4l2object->xwindow_id);
+   }
+ }
+ 
+@@ -140,7 +140,7 @@ gst_v4l2_xoverlay_close (GstV4l2Object * v4l2object)
+     return;
+ 
+   if (v4l2object->xwindow_id) {
+-    gst_v4l2_xoverlay_set_xwindow_id (v4l2object, 0);
++    gst_v4l2_xoverlay_set_window_handle (v4l2object, 0);
+   }
+ 
+   XCloseDisplay (v4l2xv->dpy);
+@@ -189,10 +189,11 @@ idle_refresh (gpointer data)
+ }
+ 
+ void
+-gst_v4l2_xoverlay_set_xwindow_id (GstV4l2Object * v4l2object, XID xwindow_id)
++gst_v4l2_xoverlay_set_window_handle (GstV4l2Object * v4l2object, guintptr id)
+ {
+   GstV4l2Xv *v4l2xv;
+   XWindowAttributes attr;
++  XID xwindow_id = id;
+   gboolean change = (v4l2object->xwindow_id != xwindow_id);
+ 
+   GST_LOG_OBJECT (v4l2object->element, "Setting XID to %lx",
+diff --git a/sys/v4l2/gstv4l2xoverlay.h b/sys/v4l2/gstv4l2xoverlay.h
+index 3d15ce9..bd77e8a 100644
+--- a/sys/v4l2/gstv4l2xoverlay.h
++++ b/sys/v4l2/gstv4l2xoverlay.h
+@@ -37,25 +37,25 @@ void gst_v4l2_xoverlay_start (GstV4l2Object  *v4l2object);
+ void gst_v4l2_xoverlay_stop  (GstV4l2Object  *v4l2object);
+ 
+ void gst_v4l2_xoverlay_interface_init (GstXOverlayClass * klass);
+-void gst_v4l2_xoverlay_set_xwindow_id (GstV4l2Object * v4l2object,
+-    XID xwindow_id);
++void gst_v4l2_xoverlay_set_window_handle (GstV4l2Object * v4l2object,
++    guintptr id);
+ 
+ 
+ #define GST_IMPLEMENT_V4L2_XOVERLAY_METHODS(Type, interface_as_function)      \
+                                                                               \
+ static void                                                                   \
+-interface_as_function ## _xoverlay_set_xwindow_id (GstXOverlay * xoverlay,    \
+-                                                   XID xwindow_id)            \
++interface_as_function ## _xoverlay_set_window_handle (GstXOverlay * xoverlay, \
++                                                   guintptr id)               \
+ {                                                                             \
+   Type *this = (Type*) xoverlay;                                              \
+-  gst_v4l2_xoverlay_set_xwindow_id (this->v4l2object, xwindow_id);            \
++  gst_v4l2_xoverlay_set_window_handle (this->v4l2object, id);                 \
+ }                                                                             \
+                                                                               \
+ static void                                                                   \
+ interface_as_function ## _xoverlay_interface_init (GstXOverlayClass * klass)  \
+ {                                                                             \
+   /* default virtual functions */                                             \
+-  klass->set_xwindow_id = interface_as_function ## _xoverlay_set_xwindow_id;  \
++  klass->set_window_handle = interface_as_function ## _xoverlay_set_window_handle;  \
+                                                                               \
+   gst_v4l2_xoverlay_interface_init(klass);                                    \
+ }                                                                             \
+-- 
+1.7.1
+

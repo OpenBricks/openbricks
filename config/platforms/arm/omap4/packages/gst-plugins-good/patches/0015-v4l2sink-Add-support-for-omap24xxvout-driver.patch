@@ -1,0 +1,59 @@
+From 49bb4a5a079d261e05c758fa644a6aa6f70c7545 Mon Sep 17 00:00:00 2001
+From: Rob Clark <rob@ti.com>
+Date: Sun, 4 Apr 2010 06:46:21 -0500
+Subject: [PATCH 15/32] v4l2sink: Add support for omap24xxvout driver
+
+---
+ sys/v4l2/gstv4l2sink.c |   22 +++++++++++++++++++++-
+ 1 files changed, 21 insertions(+), 1 deletions(-)
+
+diff --git a/sys/v4l2/gstv4l2sink.c b/sys/v4l2/gstv4l2sink.c
+index f46ddd1..f4b46a4 100644
+--- a/sys/v4l2/gstv4l2sink.c
++++ b/sys/v4l2/gstv4l2sink.c
+@@ -721,6 +721,18 @@ gst_v4l2sink_buffer_alloc (GstBaseSink * bsink, guint64 offset, guint size,
+     /* initialize the buffer pool if not initialized yet (first buffer): */
+     if (G_UNLIKELY (!v4l2sink->pool)) {
+ 
++      gboolean no_pending_streamon = FALSE;
++      char *driver = (char *) v4l2sink->v4l2object->vcap.driver;
++
++      /* the omap24xxvout driver wants us to start streaming before we
++       * queue the first buffer:
++       */
++      if (!strcmp ("omap24xxvout", driver)) {
++        GST_DEBUG_OBJECT (v4l2sink,
++            "enabling no_pending_streamon hack for omap24xxvout driver");
++        no_pending_streamon = TRUE;
++      }
++
+       /* set_caps() might not be called yet.. so just to make sure: */
+       if (!gst_v4l2sink_set_caps (bsink, caps)) {
+         return GST_FLOW_ERROR;
+@@ -744,7 +756,14 @@ gst_v4l2sink_buffer_alloc (GstBaseSink * bsink, guint64 offset, guint size,
+       }
+ #endif
+ 
+-      v4l2sink->state = STATE_PENDING_STREAMON;
++      if (no_pending_streamon) {
++        if (!gst_v4l2_object_start_streaming (v4l2sink->v4l2object)) {
++          return GST_FLOW_ERROR;
++        }
++        v4l2sink->state = STATE_STREAMING;
++      } else {
++        v4l2sink->state = STATE_PENDING_STREAMON;
++      }
+ 
+       GST_INFO_OBJECT (v4l2sink, "outputting buffers via mmap()");
+ 
+@@ -831,6 +850,7 @@ gst_v4l2sink_show_frame (GstBaseSink * bsink, GstBuffer * buf)
+   if (!gst_v4l2_buffer_pool_qbuf (v4l2sink->pool, GST_V4L2_BUFFER (buf))) {
+     return GST_FLOW_ERROR;
+   }
++
+   if (v4l2sink->state == STATE_PENDING_STREAMON) {
+     if (!gst_v4l2_object_start_streaming (v4l2sink->v4l2object)) {
+       return GST_FLOW_ERROR;
+-- 
+1.7.1
+

@@ -1,0 +1,46 @@
+From 4297032feb56518a1f3634c7c042807f311ac805 Mon Sep 17 00:00:00 2001
+From: Rob Clark <rob@ti.com>
+Date: Sun, 4 Apr 2010 06:39:52 -0500
+Subject: [PATCH 13/32] v4l2: fix race condition
+
+The size of the buffer would be zero'd out in gst_v4l2_buffer_finalize()
+after the buffer is qbuf'd or pushed onto the queue of available buffers..
+leaving a race condition where the thread waiting for the buffer could awake
+and set back a valid size before the finalizing thread zeros out the length.
+This would result that the newly allocated buffer has length of zero.
+---
+ sys/v4l2/gstv4l2bufferpool.c |    6 ++++--
+ 1 files changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/sys/v4l2/gstv4l2bufferpool.c b/sys/v4l2/gstv4l2bufferpool.c
+index 842191e..807dbd4 100644
+--- a/sys/v4l2/gstv4l2bufferpool.c
++++ b/sys/v4l2/gstv4l2bufferpool.c
+@@ -470,8 +470,10 @@ gst_v4l2_buffer_pool_get (GstV4l2BufferPool * pool, gboolean blocking)
+   }
+ 
+   if (buf) {
++    GST_V4L2_BUFFER_POOL_LOCK (pool);
+     GST_BUFFER_SIZE (buf) = buf->vbuffer.length;
+     GST_BUFFER_FLAG_UNSET (buf, 0xffffffff);
++    GST_V4L2_BUFFER_POOL_UNLOCK (pool);
+   }
+ 
+   pool->running = TRUE;
+@@ -553,11 +555,11 @@ gst_v4l2_buffer_pool_dqbuf (GstV4l2BufferPool * pool)
+     GST_DEBUG_OBJECT (pool->v4l2elem, "num_live_buffers++: %d",
+         pool->num_live_buffers);
+ 
+-    GST_V4L2_BUFFER_POOL_UNLOCK (pool);
+-
+     /* this can change at every frame, esp. with jpeg */
+     GST_BUFFER_SIZE (pool_buffer) = buffer.bytesused;
+ 
++    GST_V4L2_BUFFER_POOL_UNLOCK (pool);
++
+     return pool_buffer;
+   }
+ 
+-- 
+1.7.1
+
