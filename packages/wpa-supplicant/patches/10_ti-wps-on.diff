@@ -1,0 +1,421 @@
+From c4fc950eeb671f84076be46ed951c623e72030b7 Mon Sep 17 00:00:00 2001
+From: Panduranga Mallireddy <x0125717@ti.com>
+Date: Sat, 25 Sep 2010 02:46:44 +0530
+Subject: [PATCH] Enable WPS feature in open source wpa_supplicant
+
+Signed-off-by: Panduranga Mallireddy <x0125717@ti.com>
+---
+ src/drivers/driver_ti.h   |  160 +++++++++++++++++++++++++++++++++++++++++++++
+ src/drivers/driver_wext.c |  153 ++++++++++++++++++++++++++++++++++++++++++-
+ src/drivers/driver_wext.h |    6 ++-
+ wpa_supplicant/Makefile   |    1 +
+ 4 files changed, 318 insertions(+), 2 deletions(-)
+ create mode 100755 src/drivers/driver_ti.h
+
+Index: ti-wpa_supplicant/src/drivers/driver_ti.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ ti-wpa_supplicant/src/drivers/driver_ti.h	2010-10-10 17:24:28.000000000 +0200
+@@ -0,0 +1,160 @@
++/*
++ * driver_ti.h
++ *
++ * Copyright 2001-2010 Texas Instruments, Inc. - http://www.ti.com/
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++#ifndef DRIVER_TI_H
++#define DRIVER_TI_H
++
++#define WPA_EVENT_DRIVER_STATE "CTRL-EVENT-DRIVER-STATE "
++#define MAX_NUMBER_SEQUENTIAL_ERRORS        4
++#define DOT11_WSC_PROBE_REQ_MAX_LENGTH 80
++
++#define TI_CHECK_DRIVER(f,r)    \
++    if( !(f) ) { \
++        wpa_printf(MSG_ERROR,"TI: Driver not initialized yet"); \
++        return( r ); \
++    }
++
++/** \def SET_BIT
++ * \brief Bitmaks of bit which indicates if the Command is SET Command
++ */
++#define SET_BIT                     0x08000000
++
++/* \def GET_BIT
++ * \brief Bitmaks of bit which indicates if the Command is GET Command
++ */
++#define GET_BIT                     0x00800000
++
++/* \enum EModuleParam
++ * \brief Modules Parameters ID
++ *
++ * \par Description
++ * This Enumeration defines all available Modules numbers. \n
++ * Note that the actual number is held in the second byte (E.g. 0x0000FF00). \n
++ * According to these numbers it is decided to which Module the Command Parameter is destined
++ *
++ * \sa
++ */
++/* NOTICE! whenever you add a module, you have to increment MAX_PARAM_MODULE_NUMBER as well!!! */
++typedef enum
++{
++    DRIVER_MODULE_PARAM                 = 0x0000,   /**< Driver Module Number                           */
++    AUTH_MODULE_PARAM                   = 0x0100,   /**< Authentication Module Number                   */
++    ASSOC_MODULE_PARAM                  = 0x0200,   /**< Association Module Number                      */
++    RX_DATA_MODULE_PARAM                = 0x0300,   /**< RX Data Module Number                          */
++    TX_CTRL_MODULE_PARAM                = 0x0400,   /**< TX Control Module Number                       */
++    CTRL_DATA_MODULE_PARAM              = 0x0500,   /**< Control Data Module Number                     */
++    SITE_MGR_MODULE_PARAM               = 0x0600,   /**< Site Manager Module Number                     */
++    CONN_MODULE_PARAM                   = 0x0700,   /**< Connection Module Number                       */
++    RSN_MODULE_PARAM                    = 0x0800,   /**< Robust Security NW (RSN) Module Number         */
++    ADM_CTRL_MODULE_PARAM               = 0x0900,   /**< ADM Control Module Number                      */
++    TWD_MODULE_PARAM                    = 0x0A00,   /**< Report Module Number                           */
++    REPORT_MODULE_PARAM                 = 0x0B00,   /**< Report Module Number                           */
++    SME_MODULE_PARAM                    = 0x0C00,   /**< SME Module Number                              */
++    MLME_SM_MODULE_PARAM                = 0x0D00,   /**< 802.11 MLME State-Machine Module Number        */
++    REGULATORY_DOMAIN_MODULE_PARAM      = 0x0E00,   /**< Regulatory Domain Module Number                */
++    MEASUREMENT_MODULE_PARAM            = 0x0F00,   /**< Measurement Module Number                      */
++    XCC_MANAGER_MODULE_PARAM            = 0x1000,   /**< XCC Manager Module Number                      */
++    ROAMING_MANAGER_MODULE_PARAM        = 0x1100,   /**< Roaming Manager Module Number                  */
++    SOFT_GEMINI_PARAM                   = 0x1200,   /**< Soft Gemini Module Number                      */
++    QOS_MANAGER_PARAM                   = 0x1300,   /**< Quality Of Service (QoS) Manager Module Number */
++    POWER_MANAGER_PARAM                 = 0x1400,   /**< Power Manager Module Number                    */
++    SCAN_CNCN_PARAM                     = 0x1500,   /**< Scan Concentrator Module Number                */
++    SCAN_MNGR_PARAM                     = 0x1600,   /**< Scan Manager Module Number                     */
++    MISC_MODULE_PARAM                   = 0x1700,   /**< Misc. Module Number                            */
++    HEALTH_MONITOR_MODULE_PARAM         = 0x1800,   /**< Health Monitor Module Number                   */
++    CURR_BSS_MODULE_PARAM               = 0x1900,   /**< Current Bss Module Number                      */
++    /*
++     * Last module - DO NOT TOUCH!
++     */
++    MODULE_PARAM_LAST_MODULE                        /**< LAst Module - Dummy, mast be last              */
++
++}   EModuleParam;
++
++/***********/
++/* defines */
++/***********/
++
++/* Simple Config module */
++#define    SITE_MGR_SIMPLE_CONFIG_MODE   (SET_BIT | GET_BIT | SITE_MGR_MODULE_PARAM | 0x38)
++/**< Site Manager Simple Configuration Mode Parameter (Simple Configuration Module Set/Get Command): */
++
++/* \def PRIVATE_CMD_SET_FLAG
++ * \brief Bitmaks of bit which indicates that the Command is SET Command
++ */
++#define PRIVATE_CMD_SET_FLAG    0x00000001
++
++/* \def PRIVATE_CMD_GET_FLAG
++ * \brief Bitmaks of bit which indicates that the Command is GET Command
++ */
++#define PRIVATE_CMD_GET_FLAG    0x00000002
++
++
++/*********/
++/* types */
++/*********/
++
++/* \struct ti_private_cmd_t
++ * \brief TI Private Command
++ *
++ * \par Description
++ * This Struct defines the Parameters needed for performing TI Private Command
++ *
++ * \sa
++ */
++typedef struct
++{
++    u32   cmd;            /**< Number of command to execute - configMgr parameter name            */
++    u32   flags;          /**< Command action type (PRIVATE_CMD_SET_FLAG | PRIVATE_CMD_GET_FLAG)  */
++    void*       in_buffer;      /**< Pointer to Input Buffer                                            */
++    u32   in_buffer_len;  /**< Input buffer length                                                */
++    void*       out_buffer;     /**< Pointer to Output buffer                                           */
++    u32   out_buffer_len; /**< Output buffer length                                               */
++} ti_private_cmd_t;
++
++/* \enum TIWLN_SIMPLE_CONFIG_MODE
++ * \brief TI WLAN Simple Configuration Mode
++ *
++ * \par Description
++ * Used for indicating WiFi Simple Configuration mode
++ *
++ * \sa
++ */
++typedef enum
++{
++    TIWLN_SIMPLE_CONFIG_OFF = 0,        /**< Simple Configuration OFF           */
++    TIWLN_SIMPLE_CONFIG_PIN_METHOD,     /**< Simple Configuration PIN Method    */
++    TIWLN_SIMPLE_CONFIG_PBC_METHOD      /**< Simple Configuration PBC Method    */
++} TIWLN_SIMPLE_CONFIG_MODE;
++
++/* \struct TWscMode
++ * \brief WSC Mode
++ *
++ * \par Description
++ * This structure is used whenever the WiFi Simple Configuration Mode is modified between ON and OFF.
++ * Upon enabling the Simple Configuration, the user must fill the probeReqWSCIE fields
++ *
++ * \sa
++ */
++typedef struct
++{
++    TIWLN_SIMPLE_CONFIG_MODE  WSCMode;                      /**< WiFi Simple Configuration mode                         */
++    u32 uWscIeSize;                                   /**< Simple Config IE actual size (the part after the OUI) */
++    u8 probeReqWSCIE[DOT11_WSC_PROBE_REQ_MAX_LENGTH]; /**< Buffer which holds the parameters of ProbeReq - WSC IE */
++} TWscMode;
++
++#endif
+Index: ti-wpa_supplicant/src/drivers/driver_wext.c
+===================================================================
+--- ti-wpa_supplicant.orig/src/drivers/driver_wext.c	2010-10-10 17:24:27.000000000 +0200
++++ ti-wpa_supplicant/src/drivers/driver_wext.c	2010-10-10 17:24:28.000000000 +0200
+@@ -32,6 +32,12 @@
+ #include "ieee802_11_defs.h"
+ #include "wpa_common.h"
+ 
++#ifdef CONFIG_WPS
++#include "wpa_supplicant_i.h"
++#include "utils/wpabuf.h"
++#include "driver_ti.h"
++#include "wps/wps_defs.h"
++#endif
+ 
+ static int wpa_driver_wext_flush_pmkid(void *priv);
+ static int wpa_driver_wext_get_range(void *priv);
+@@ -952,6 +958,12 @@
+ 
+ 	drv->mlme_sock = -1;
+ 
++#ifdef CONFIG_WPS
++	drv->driver_is_loaded = TRUE;
++	/* The latest probe_req_ie for WSC */
++	drv->probe_req_ie = NULL;
++#endif
++
+ 	wpa_driver_wext_finish_drv_init(drv);
+ 
+ 	return drv;
+@@ -1054,6 +1066,12 @@
+ 	close(drv->ioctl_sock);
+ 	if (drv->mlme_sock >= 0)
+ 		close(drv->mlme_sock);
++
++#ifdef CONFIG_WPS
++	wpabuf_free(drv->probe_req_ie);
++	drv->probe_req_ie = NULL;
++#endif
++
+ 	os_free(drv->assoc_req_ies);
+ 	os_free(drv->assoc_resp_ies);
+ 	os_free(drv);
+@@ -2035,6 +2053,9 @@
+ 	switch (keymgmt) {
+ 	case KEY_MGMT_802_1X:
+ 	case KEY_MGMT_802_1X_NO_WPA:
++#ifdef CONFIG_WPS
++	case KEY_MGMT_WPS:
++#endif
+ 		return IW_AUTH_KEY_MGMT_802_1X;
+ 	case KEY_MGMT_PSK:
+ 		return IW_AUTH_KEY_MGMT_PSK;
+@@ -2128,6 +2149,12 @@
+ 		value = IW_AUTH_WPA_VERSION_DISABLED;
+ 	else if (params->wpa_ie[0] == WLAN_EID_RSN)
+ 		value = IW_AUTH_WPA_VERSION_WPA2;
++
++#ifdef CONFIG_WPS
++	else if (params->key_mgmt_suite == KEY_MGMT_WPS)
++		value = IW_AUTH_WPA_VERSION_DISABLED;
++#endif
++
+ 	else
+ 		value = IW_AUTH_WPA_VERSION_WPA;
+ 	if (wpa_driver_wext_set_auth_param(drv,
+@@ -2148,7 +2175,7 @@
+ 	value = params->key_mgmt_suite != KEY_MGMT_NONE ||
+ 		params->pairwise_suite != CIPHER_NONE ||
+ 		params->group_suite != CIPHER_NONE ||
+-		params->wpa_ie_len;
++		(params->wpa_ie_len && (params->key_mgmt_suite != KEY_MGMT_WPS));
+ 	if (wpa_driver_wext_set_auth_param(drv,
+ 					   IW_AUTH_PRIVACY_INVOKED, value) < 0)
+ 		ret = -1;
+@@ -2382,6 +2409,127 @@
+ 	return drv->we_version_compiled;
+ }
+ 
++#ifdef CONFIG_WPS
++static int wpa_driver_tista_private_send( void *priv, u32 ioctl_cmd, void *bufIn, u32 sizeIn, void *bufOut, u32 sizeOut )
++{
++    struct wpa_driver_wext_data *drv = (struct wpa_driver_wext_data *)priv;
++    ti_private_cmd_t private_cmd;
++    struct iwreq iwr;
++    s32 res;
++
++    private_cmd.cmd = ioctl_cmd;
++    if(bufOut == NULL)
++        private_cmd.flags = PRIVATE_CMD_SET_FLAG;
++    else
++        private_cmd.flags = PRIVATE_CMD_GET_FLAG;
++
++    private_cmd.in_buffer = bufIn;
++    private_cmd.in_buffer_len = sizeIn;
++    private_cmd.out_buffer = bufOut;
++    private_cmd.out_buffer_len = sizeOut;
++
++    os_memset(&iwr, 0, sizeof(iwr));
++    os_strncpy(iwr.ifr_name, drv->ifname, IFNAMSIZ);
++
++    iwr.u.data.pointer = &private_cmd;
++    iwr.u.data.length = sizeof(ti_private_cmd_t);
++    iwr.u.data.flags = 0;
++
++    res = ioctl(drv->ioctl_sock, SIOCIWFIRSTPRIV, &iwr);
++    if (0 != res)
++    {
++        wpa_printf(MSG_ERROR, "ERROR - wpa_driver_tista_private_send - error sending Wext private IOCTL to STA driver (ioctl_cmd = %x,  res = %d, errno = %d)", ioctl_cmd, res, errno);
++        drv->errors++;
++        if (drv->errors > MAX_NUMBER_SEQUENTIAL_ERRORS) {
++            drv->errors = 0;
++            wpa_msg(drv->ctx, MSG_INFO, WPA_EVENT_DRIVER_STATE "HANGED");
++        }
++        return -1;
++    }
++    drv->errors = 0;
++    wpa_printf(MSG_DEBUG, "wpa_driver_tista_private_send ioctl_cmd = %x  res = %d", ioctl_cmd, res);
++
++    return 0;
++}
++
++/*-----------------------------------------------------------------------------
++ * Routine Name: wpa_driver_wext_set_probe_req_ie
++ * Routine Description: set probe request ie for WSC mode change
++ * Arguments:
++ *    priv - pointer to private data structure
++ *       ies - probe_req_ie data
++ *          ies_len - ie data length
++ *          Return Value: actual buffer length - success, -1 - failure
++ *          -----------------------------------------------------------------------------*/
++static int wpa_driver_wext_set_probe_req_ie(void *priv, const u8* ies, size_t ies_len)
++{
++    struct wpa_driver_wext_data *drv = (struct wpa_driver_wext_data *)priv;
++    TWscMode WscModeStruct;
++
++        TI_CHECK_DRIVER( drv->driver_is_loaded, -1 );
++
++    if ((!ies || (0 == ies_len)) && (NULL == drv->probe_req_ie)) {
++        return 0;
++    }
++
++    if (ies && drv->probe_req_ie) {
++        size_t len = wpabuf_len(drv->probe_req_ie);
++        u8* data = (u8*)wpabuf_head(drv->probe_req_ie);
++        if ((ies_len == len) && (0 == os_memcmp(ies, data, ies_len))) {
++            return 0;
++        }
++    }
++
++    os_memset(&WscModeStruct, 0, sizeof(TWscMode));
++
++    if (!ies || (0 == ies_len)) {
++        WscModeStruct.WSCMode = TIWLN_SIMPLE_CONFIG_OFF;
++    } else {
++        const size_t head_len = 6; /* probeReqIe head: dd xx 00 50 f2 04 */
++        u8 *pos, *end;
++        u16 password_id = 0;
++        size_t min_len = 0;
++
++        pos = (u8*)ies + head_len; /* Find the WSC mode in probe_req_ie by password_id */
++        end = (u8*)ies + ies_len;
++        while (pos < end) {
++            if (ATTR_DEV_PASSWORD_ID == WPA_GET_BE16(pos)) {
++                password_id = WPA_GET_BE16(pos+4);
++                break;
++            }
++            pos += (4 + WPA_GET_BE16(pos+2));
++        }
++        WscModeStruct.WSCMode = (DEV_PW_PUSHBUTTON == password_id)?TIWLN_SIMPLE_CONFIG_PBC_METHOD:TIWLN_SIMPLE_CONFIG_PIN_METHOD;
++
++        pos = (u8*)ies + head_len;
++        min_len = ies_len - head_len;
++        if (min_len > sizeof(WscModeStruct.probeReqWSCIE)) {
++            min_len = sizeof(WscModeStruct.probeReqWSCIE);
++        }
++        os_memcpy(WscModeStruct.probeReqWSCIE, pos, min_len);
++    }
++
++    wpa_hexdump(MSG_DEBUG, "SetProbeReqIe:WscModeStruct", (u8*)&WscModeStruct, sizeof(TWscMode));
++    if(0 == wpa_driver_tista_private_send(priv, SITE_MGR_SIMPLE_CONFIG_MODE, (void*)&WscModeStruct, sizeof(TWscMode), NULL, 0)) {
++        /* Update the cached probe req ie */
++        wpabuf_free(drv->probe_req_ie);
++        drv->probe_req_ie = NULL;
++
++        if (ies && ies_len) {
++            drv->probe_req_ie = wpabuf_alloc(sizeof(WscModeStruct.probeReqWSCIE));
++            if (drv->probe_req_ie) {
++                wpabuf_put_data(drv->probe_req_ie, ies, ies_len);
++            }
++        }
++    } else {
++        wpa_printf(MSG_ERROR, "ERROR - Failed to set wsc mode!");
++        return -1;
++    }
++
++    return 0;
++}
++#endif
++
+ 
+ const struct wpa_driver_ops wpa_driver_wext_ops = {
+ 	.name = "wext",
+@@ -2397,6 +2545,9 @@
+ 	.deauthenticate = wpa_driver_wext_deauthenticate,
+ 	.disassociate = wpa_driver_wext_disassociate,
+ 	.set_mode = wpa_driver_wext_set_mode,
++#ifdef CONFIG_WPS
++	.set_probe_req_ie = wpa_driver_wext_set_probe_req_ie,
++#endif
+ 	.associate = wpa_driver_wext_associate,
+ 	.set_auth_alg = wpa_driver_wext_set_auth_alg,
+ 	.init = wpa_driver_wext_init,
+Index: ti-wpa_supplicant/src/drivers/driver_wext.h
+===================================================================
+--- ti-wpa_supplicant.orig/src/drivers/driver_wext.h	2010-10-10 17:24:27.000000000 +0200
++++ ti-wpa_supplicant/src/drivers/driver_wext.h	2010-10-10 17:24:28.000000000 +0200
+@@ -41,7 +41,11 @@
+ 	int operstate;
+ 
+ 	char mlmedev[IFNAMSIZ + 1];
+-
++#ifdef CONFIG_WPS
++    struct wpabuf *probe_req_ie;    /* Store the latest probe_req_ie for WSC */
++	int driver_is_loaded;           /* TRUE/FALSE flag if driver is already loaded and can be accessed */
++	int errors;         /* Number of sequential errors */
++#endif
+ 	int scan_complete_events;
+ 
+ 	int cfg80211; /* whether driver is using cfg80211 */
+Index: ti-wpa_supplicant/wpa_supplicant/Makefile
+===================================================================
+--- ti-wpa_supplicant.orig/wpa_supplicant/Makefile	2010-10-10 17:24:26.000000000 +0200
++++ ti-wpa_supplicant/wpa_supplicant/Makefile	2010-10-10 17:24:28.000000000 +0200
+@@ -14,6 +14,7 @@
+ CFLAGS += -I../src/utils
+ CFLAGS += -I../src/common
+ CFLAGS += -I../src/rsn_supp
++CFLAGS += -I./
+ 
+ ALL=wpa_supplicant wpa_passphrase wpa_cli
+ 
