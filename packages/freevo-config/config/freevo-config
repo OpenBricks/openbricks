@@ -1,0 +1,151 @@
+#!/bin/sh
+
+################################
+## Script to configure freevo ##
+################################
+
+DESTINATION="/root"
+SAVE_CONF="$DESTINATION/save"
+DEST_CONF="$DESTINATION/.freevo"
+
+mkdir -p $SAVE_CONF
+mkdir -p $DEST_CONF
+mkdir -p /root/.mplayer
+mkdir -p /root/.xine
+
+# saving freevo configuration files
+freevo setup
+echo "Saving configuration files for freevo ..."
+cp /etc/freevo/freevo.conf $SAVE_CONF/freevo.conf-origin
+cp /etc/freevo/local_conf.py $SAVE_CONF/local_conf.py-origin
+
+# change screen resolution
+echo "Changing screen resolution ..."
+read -p "Do you want to change screen resolution (y/n)? " result </dev/tty
+if [ "$result" = "y" ] ;then
+  read -p "    Do you want me to autodetect it  (y/n)? " result </dev/tty
+  if [ "$result" = "y" ] ;then
+    actual_resolution="`xrandr -d 127.0.0.1:0.0 | grep "*" | cut -d" " -f4`"
+    new_geometry=$(echo geometry = $actual_resolution)
+  else
+    read -p "    New geometry = ? (ex : 800x600) " result </dev/tty
+    new_geometry=$(echo geometry = $result)
+  fi
+  grep -v geometry $SAVE_CONF/freevo.conf-origin > $SAVE_CONF/freevo.conf
+  echo $new_geometry >>$SAVE_CONF/freevo.conf
+  cp $SAVE_CONF/freevo.conf $DEST_CONF
+else 
+  cp $SAVE_CONF/freevo.conf-origin > $SAVE_CONF/freevo.conf
+fi
+echo "dvbstreamer = /usr/bin/dvbstreamer" >> $SAVE_CONF/freevo.conf
+
+# DVB assuming playing by mplayer/xine
+read -p "Do you want to scan for channels (y/n)? " result </dev/tty
+if [ "$result" = "y" ] ;then
+  lang=`cat /etc/locale.conf | cut -d"_" -f2 | cut -d"." -f1`
+#  check_dvbt="`dmesg | grep DVB-T`"
+
+  echo "#################################################"
+  echo "## Scanning in progress, please be patient ... ##"
+  echo "##              Very Patient                   ##"
+  echo "##              about 20 min                   ##"
+  echo "#################################################"
+  w_scan -c $lang -ft -X > $SAVE_CONF/channels.conf-after-scan
+else
+  read -p "    Take path for a valid channels.conf : " result </dev/tty
+  cp $result $SAVE_CONF/channels.conf-after-scan
+fi
+NB_channels=`wc -l $SAVE_CONF/channels.conf-after-scan | cut -d" " -f1`
+
+echo "Ok, Found $NB_channels channels"
+echo "Please, look at results and change name if needed"
+echo "If you want to remove a channel, just add a '#' before name" 
+
+while read i
+do
+  echo $i
+  station_name="`echo $i | cut -d":" -f1`" 
+  echo $station_name
+  read -p "Do you want to change this name ('y' to change)?" result </dev/tty
+  if [ "$result" = "y" ] ;then 
+    read -p "      New name ?  " name </dev/tty
+#    echo ${i/$station_name/$name}   grr only on bash
+    echo $i | sed 's/'$station_name'/'$name'/g' >> $SAVE_CONF/channels.conf2
+  else echo $i>>$SAVE_CONF/channels.conf2
+  fi
+done < $SAVE_CONF/channels.conf-after-scan
+
+
+echo "Installing channels.conf for Mplayer and Xine ..."
+cp $SAVE_CONF/channels.conf2 /root/.mplayer/channels.conf
+cp $SAVE_CONF/channels.conf2 /root/.xine/channels.conf
+
+
+echo "Writing configuration to files ..."
+
+# Generating conf for TV
+cat >$SAVE_CONF/local_conf.py <<EOF
+MPLAYER_ARGS['dvb']     = '-cache 4096'
+TV_VIDEO_GROUPS = [
+    VideoGroup(vdev='0',
+               adev=None,
+               input_type='tuner',
+               input_num=1,
+               group_type = 'dvb',
+               record_group=None,
+               desc='DVB Viewer'),
+]
+
+TV_CHANNELS = [
+#   ( 'XMLTV NAME', 'FREEVO DISPLAY NAME', 'CHANNELS.CONF NAME' ),
+EOF
+
+NB_channels=`wc -l $SAVE_CONF/channels.conf2 | cut -d" " -f1`
+j=1
+while read i
+do
+  station_name="`echo $i | cut -d":" -f1`"
+  if [ "$j" != "$NB_channels" ];then
+    echo "( '$station_name', '$station_name', '$station_name')," >> $SAVE_CONF/local_conf.py
+    j=$(($j+1))
+  else 
+    echo "( '$station_name', '$station_name', '$station_name')" >> $SAVE_CONF/local_conf.py
+    echo "]" >> $SAVE_CONF/local_conf.py
+  fi
+done < $SAVE_CONF/channels.conf2
+
+# End TV conf
+
+# Config recordserver 
+echo "Enable recordserver and livepause ..."
+read -p "Size for cache in MB ?  "  result </dev/tty
+cat >>$SAVE_CONF/local_conf.py <<EOF
+VCR_CMD = CONF.mplayer + ' -dumpstream -dumpfile %(filename)s "dvb://%(channel)s"' + '& sleep %(seconds)s ; kill \$!'
+TV_RECORD_FILE_SUFFIX = '.ts'
+RECORDSERVER_IP = '127.0.0.1'
+plugin.remove('tv.generic_record')
+plugin_record = plugin.activate('tv.dvbstreamer.record')
+plugin.remove('tv.mplayer')
+plugin.activate('tv.livepause')
+LIVE_PAUSE2_BUFFER_PATH='/root/live.buf'
+LIVE_PAUSE2_PREFERRED_PLAYER='mplayer'
+EOF
+echo "LIVE_PAUSE2_BUFFER_SIZE= $result" >>$SAVE_CONF/local_conf.py
+echo "Recordserver and livepause enabled ..."
+# normally : kill $! but it's interpreted by shell
+# End config recordserver
+
+cat $SAVE_CONF/local_conf.py-origin > $DEST_CONF/local_conf.py
+cat $SAVE_CONF/local_conf.py >> $DEST_CONF/local_conf.py
+
+echo "127.0.0.1 localhost">>/etc/hosts
+
+# dvbstreamer Daemon and database init
+setupdvbstreamer -t $SAVE_CONF/channels.conf2
+dvbstreamer -a 0 -r -d -D
+
+# restart freevo
+killall python
+freevo recordserver start &
+
+echo "... Finish ...."
