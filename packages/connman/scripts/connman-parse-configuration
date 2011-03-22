@@ -6,11 +6,36 @@ profile=/var/lib/connman/default.profile
 
 mkdir -p /var/lib/connman
 
+hostname="`cat /etc/hostname`"
+echo "127.0.0.1 localhost $hostname" > /etc/hosts 
+
 [ -z "$IFACE" ] && IFACE=eth0
 [ -f /sys/class/net/$IFACE/address ] && \
   IFACE=`cat /sys/class/net/$IFACE/address`
 
-echo "[ethernet_`echo $IFACE | sed 's/://g'`_cable]" > $profile
+if [ "$NETWORK" = "WLAN" ]; then
+  SSID_HEX=`echo -n "$SSID" | od -tx1 | cut -c8-| tr -d ' \n'`
+  if [ "$SECURITY" = "WEP" -a -n "$PASSPHRASE" ]; then
+    MODE="managed_wep"
+  elif [ "$SECURITY" = "PSK" -a -n "$PASSPHRASE" ]; then
+    MODE="managed_psk"
+  else
+    MODE="managed_none"
+  fi
+  IFACE=`echo $IFACE | sed 's/://g'`
+  if [ "$HIDDEN" = "true" ]; then
+    echo "[wifi_${IFACE}_hidden_${MODE}]" > $profile
+  else
+    echo "[wifi_${IFACE}_${SSID_HEX}_${MODE}]" > $profile
+  fi
+   echo "Name=$SSID" >> $profile
+   echo "SSID=$SSID_HEX" >> $profile
+   [ -n "$PASSPHRASE" ] && echo "Passphrase=$PASSPHRASE" >> $profile
+   echo "Favorite=true" >> $profile
+   echo "AutoConnect=true" >> $profile
+else 
+  echo "[ethernet_`echo $IFACE | sed 's/://g'`_cable]" > $profile
+fi
 
 if [ -z "$ADDRESS" ]; then
   echo "IPv4.method=dhcp" >> $profile
