@@ -10,11 +10,9 @@ Also, don't treat DRI setup failure as an error for nouveau.
  hw/xfree86/common/xf86AutoConfig.c |   19 ++++++++++++++++++-
  3 files changed, 28 insertions(+), 5 deletions(-)
 
-Index: xorg-server/glx/glxdri.c
-===================================================================
---- xorg-server.orig/glx/glxdri.c
-+++ xorg-server/glx/glxdri.c
-@@ -981,6 +981,7 @@
+--- a/glx/glxdri.c
++++ b/glx/glxdri.c
+@@ -978,6 +978,7 @@ __glXDRIscreenProbe(ScreenPtr pScreen)
      const __DRIconfig **driConfigs;
      const __DRIextension **extensions;
      int i;
@@ -22,7 +20,7 @@ Index: xorg-server/glx/glxdri.c
  
      if (!xf86LoaderCheckSymbol("DRIQueryDirectRenderingCapable") ||
  	!DRIQueryDirectRenderingCapable(pScreen, &isCapable) ||
-@@ -1060,7 +1061,9 @@
+@@ -1057,7 +1058,9 @@ __glXDRIscreenProbe(ScreenPtr pScreen)
  
      screen->driver = dlopen(filename, RTLD_LAZY | RTLD_LOCAL);
      if (screen->driver == NULL) {
@@ -33,7 +31,7 @@ Index: xorg-server/glx/glxdri.c
  		   filename, dlerror());
          goto handle_error;
      }
-@@ -1198,7 +1201,7 @@
+@@ -1193,7 +1196,7 @@ __glXDRIscreenProbe(ScreenPtr pScreen)
  
      free(screen);
  
@@ -42,11 +40,9 @@ Index: xorg-server/glx/glxdri.c
  
      return NULL;
  }
-Index: xorg-server/glx/glxdri2.c
-===================================================================
---- xorg-server.orig/glx/glxdri2.c
-+++ xorg-server/glx/glxdri2.c
-@@ -709,6 +709,7 @@
+--- a/glx/glxdri2.c
++++ b/glx/glxdri2.c
+@@ -708,6 +708,7 @@ __glXDRIscreenProbe(ScreenPtr pScreen)
      const __DRIextension **extensions;
      const __DRIconfig **driConfigs;
      int i;
@@ -54,7 +50,7 @@ Index: xorg-server/glx/glxdri2.c
  
      screen = calloc(1, sizeof *screen);
      if (screen == NULL)
-@@ -735,7 +736,9 @@
+@@ -734,7 +735,9 @@ __glXDRIscreenProbe(ScreenPtr pScreen)
  
      screen->driver = dlopen(filename, RTLD_LAZY | RTLD_LOCAL);
      if (screen->driver == NULL) {
@@ -65,7 +61,7 @@ Index: xorg-server/glx/glxdri2.c
  		   filename, dlerror());
          goto handle_error;
      }
-@@ -829,7 +832,7 @@
+@@ -826,7 +829,7 @@ __glXDRIscreenProbe(ScreenPtr pScreen)
  
      free(screen);
  
@@ -74,3 +70,31 @@ Index: xorg-server/glx/glxdri2.c
  
      return NULL;
  }
+--- a/hw/xfree86/common/xf86pciBus.c
++++ b/hw/xfree86/common/xf86pciBus.c
+@@ -1123,7 +1123,24 @@ videoPtrToDriverList(struct pci_device *
+ 	    break;
+ 	case 0x102b:		    driverList[0] = "mga";	break;
+ 	case 0x10c8:		    driverList[0] = "neomagic"; break;
+-	case 0x10de: case 0x12d2:   driverList[0] = "nv";	break;
++	case 0x10de: case 0x12d2:
++	    switch (dev->device_id) {
++	    /* NV1 */
++	    case 0x0008:
++	    case 0x0009:
++		driverList[0] = "vesa";
++		break;
++	    /* NV3 */
++	    case 0x0018:
++	    case 0x0019:
++		driverList[0] = "nv";
++		break;
++	    default:
++		driverList[0] = "nouveau";
++		driverList[1] = "nv";
++		break;
++	    }
++	    break;
+ 	case 0x1106:		    driverList[0] = "openchrome"; break;
+         case 0x1b36:		    driverList[0] = "qxl"; break;
+ 	case 0x1163:		    driverList[0] = "rendition"; break;
