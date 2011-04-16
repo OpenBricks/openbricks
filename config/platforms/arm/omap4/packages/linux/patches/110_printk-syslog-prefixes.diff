@@ -1,40 +1,7 @@
-From: Kay Sievers <kay.sievers@vrfy.org>
-Date: Sun, 13 Mar 2011 02:19:51 +0000 (+0100)
-Subject: printk: do not mangle valid userspace syslog prefixes
-X-Git-Tag: v2.6.39-rc1~471^2
-X-Git-Url: http://git.kernel.org/?p=linux%2Fkernel%2Fgit%2Ftorvalds%2Flinux-2.6.git;a=commitdiff_plain;h=9d90c8d9cde929cbc575098e825d7c29d9f45054
-
-printk: do not mangle valid userspace syslog prefixes
-
-printk: do not mangle valid userspace syslog prefixes with /dev/kmsg
-
-Log messages passed to the kernel log by using /dev/kmsg or /dev/ttyprintk
-might contain a syslog prefix including the syslog facility value.
-
-This makes printk to recognize these headers properly, extract the real log
-level from it to use, and add the prefix as a proper prefix to the
-log buffer, instead of wrongly printing it as the log message text.
-
-Before:
-  $ echo '<14>text' > /dev/kmsg
-  $ dmesg -r
-  <4>[135159.594810] <14>text
-
-After:
-  $ echo '<14>text' > /dev/kmsg
-  $ dmesg -r
-  <14>[   50.750654] text
-
-Cc: Lennart Poettering <lennart@poettering.net>
-Signed-off-by: Kay Sievers <kay.sievers@vrfy.org>
-Signed-off-by: Greg Kroah-Hartman <gregkh@suse.de>
----
-
-diff --git a/kernel/printk.c b/kernel/printk.c
-index 2ddbdc7..5e3d042 100644
---- a/kernel/printk.c
-+++ b/kernel/printk.c
-@@ -499,6 +499,71 @@ static void _call_console_drivers(unsigned start,
+diff -Naur linux-2.6.38-1208.11/kernel/printk.c linux-2.6.38-1208.11a/kernel/printk.c
+--- linux-2.6.38-1208.11/kernel/printk.c	2011-04-16 09:24:17.000000000 +0200
++++ linux-2.6.38-1208.11a/kernel/printk.c	2011-04-16 09:57:45.363000850 +0200
+@@ -520,6 +520,71 @@
  }
  
  /*
@@ -106,7 +73,7 @@ index 2ddbdc7..5e3d042 100644
   * Call the console drivers, asking them to write out
   * log_buf[start] to log_buf[end - 1].
   * The console_lock must be held.
-@@ -513,13 +578,9 @@ static void call_console_drivers(unsigned start, unsigned end)
+@@ -534,13 +599,9 @@
  	cur_index = start;
  	start_print = start;
  	while (cur_index != end) {
@@ -123,7 +90,7 @@ index 2ddbdc7..5e3d042 100644
  			start_print = cur_index;
  		}
  		while (cur_index != end) {
-@@ -717,6 +778,8 @@ asmlinkage int vprintk(const char *fmt, va_list args)
+@@ -739,6 +800,8 @@
  	unsigned long flags;
  	int this_cpu;
  	char *p;
@@ -132,11 +99,8 @@ index 2ddbdc7..5e3d042 100644
  
  	boot_delay_msec();
  	printk_delay();
-@@ -757,45 +820,52 @@ asmlinkage int vprintk(const char *fmt, va_list args)
- 	printed_len += vscnprintf(printk_buf + printed_len,
- 				  sizeof(printk_buf) - printed_len, fmt, args);
+@@ -783,42 +846,50 @@
  
--
  	p = printk_buf;
  
 -	/* Do we have a loglevel in the string? */
@@ -156,6 +120,9 @@ index 2ddbdc7..5e3d042 100644
 -			case 'c': /* KERN_CONT */
 -				p += 3;
 -				break;
+-			}
+-		}
+-	}
 +	/* Read log level and handle special printk prefix */
 +	plen = log_prefix(p, &current_log_level, &special);
 +	if (plen) {
@@ -171,18 +138,16 @@ index 2ddbdc7..5e3d042 100644
 +			if (!new_text_line) {
 +				emit_log_char('\n');
 +				new_text_line = 1;
- 			}
- 		}
- 	}
++ 			}
++ 		}
++ 	}
  
  	/*
--	 * Copy the output into log_buf.  If the caller didn't provide
+ 	 * Copy the output into log_buf.  If the caller didn't provide
 -	 * appropriate log level tags, we insert them here
-+	 * Copy the output into log_buf. If the caller didn't provide
 +	 * the appropriate log prefix, we insert them here
  	 */
--	for ( ; *p; p++) {
-+	for (; *p; p++) {
+ 	for ( ; *p; p++) {
  		if (new_text_line) {
 -			/* Always output the token */
 -			emit_log_char('<');
