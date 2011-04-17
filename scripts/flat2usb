@@ -1,0 +1,146 @@
+#!/bin/sh
+
+. config/options
+
+$SCRIPTS/installdev syslinux
+$SCRIPTS/installdev gptfdisk
+
+MSG_DISK_WARNING="Warning"
+MSG_DISK_ERROR="ERROR"
+
+MSG_DISK_NOT_FOUND="No disks found on this system.\nCheck again ?"
+MSG_DISK_REFRESH="refresh list"
+
+MSG_DISK_DEVICE="Installation device"
+MSG_DISK_DEVICE_DESC="You are going to install GeexBox on an usb key. For this you will need an empty usb key. Be careful to choose the right disk! We won't take responsibility for any data loss."
+
+DEST="$ROOT/$BUILD/plat2usb"
+DEST_MNT="$DEST/mnt"
+DEST_INITRD="$DEST/make_initrd"
+LOG_F="$ROOT/$BUILD_NOARCH/plat2usb-result-$(date +%Y%M%d%H%M).txt"
+
+choose_disk () {
+  local DISK_LIST SELECTED_DISK SIZE VENDOR MODEL DISKNAME i
+  while true; do
+    DISK_LIST=""
+    for i in `cat /proc/partitions | sed -n "s/\ *[0-9][0-9]*\ *[0-9][0-9]*\ *[0-9][0-9]*\ \([a-z]*\)$/\1/p"`; do
+      SIZE=`sfdisk -s /dev/$i | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
+      VENDOR=`[ -f /sys/block/$i/device/vendor ] \
+              && cat /sys/block/$i/device/vendor`
+      MODEL=`[ -f /sys/block/$i/device/model ] \
+             && cat /sys/block/$i/device/model`
+      DISKNAME=`echo $VENDOR $MODEL ${SIZE}MB | sed 's/ /_/g'`
+      DISK_LIST="$DISK_LIST $i $DISKNAME"
+    done
+
+    if [ -z "$DISK_LIST" ]; then
+      dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_ERROR" \
+        --yesno "\n${MSG_DISK_NOT_FOUND}" 0 0 1>&2 || exit 1
+    else
+      DISK_LIST="$DISK_LIST $MSG_DISK_REFRESH"
+      SELECTED_DISK=`dialog --stdout --backtitle "$BACKTITLE" \
+                       --title "$MSG_DISK_DEVICE" \
+                       --menu "\n${MSG_DISK_DEVICE_DESC}" 0 0 0 $DISK_LIST`
+      [ -z "$SELECTED_DISK" ] && break
+      [ $SELECTED_DISK != refresh ] && break
+    fi
+  done
+
+  echo $SELECTED_DISK
+}
+
+progress () {
+    MSG_TITLE="\Z1[ INSTALLING to USB ]\Zn"
+    MSG_BACKTITLE="Install in progress ..."
+    echo $2 >> $LOG_F
+    dialog --colors --backtitle "$MSG_BACKTITLE" --title "$MSG_TITLE" --gauge "$2 ..." 6 70 $1 &
+}
+
+## Begin 
+
+echo "Begin installation" >> $LOG_F
+DISK="`choose_disk`"
+[ -z "$DISK" ] && echo "End : no disk choosen" >> $LOG_F && exit 1
+
+progress "1" "Umount all partition from choosen disk"
+for i in `cat /etc/mtab | grep $DISK | cut -d" " -f1` ; do
+  echo "Umount $i" >> $LOG_F
+  umount $i
+done
+
+progress "7" "Prepare disk"
+sgdisk --zap-all /dev/$DISK >> $LOG_F 2>&1
+
+progress "8" "Erasing $DISK and making partition"
+sgdisk --clear /dev/$DISK >> $LOG_F 2>&1
+sgdisk --largest-new=1 /dev/$DISK >> $LOG_F 2>&1
+sgdisk --change-name=1:$DISTRONAME /dev/$DISK >> $LOG_F 2>&1
+
+# mark as bios bootable
+sgdisk --attributes=1:set:2 /dev/$DISK >> $LOG_F 2>&1
+
+cat $ROOT/$TOOLCHAIN/share/syslinux/gptmbr.bin > /dev/$DISK
+partprobe /dev/$DISK >> $LOG_F 2>&1
+
+progress "10" "Creating first primary ext4 fs : ${DISK}1"
+mke2fs -t ext4 -L $DISTRONAME_UC /dev/${DISK}1 >> $LOG_F 2>&1
+
+progress "19" " Copying files to $DISK"
+mkdir -p $DEST_MNT
+mount /dev/${DISK}1 $DEST_MNT >> $LOG_F 2>&1
+
+cd $ROOT/$FLAT_NAME
+find . -not -type d > $DEST/list-file.txt
+find . -type d -empty  >$DEST/empty-directory.txt
+NB=`wc -l $DEST/list-file.txt| cut -d" " -f1`
+counter=0
+reference=20
+progress "$reference" "copying files .."
+while read i ; do 
+  cp --parent -d "${i}" $DEST_MNT
+  counter=$(($counter+1))
+  # 20 is begin, 90 is end, and 70 is delta
+  avancement=$((20+$counter*70/$NB))
+  if [ "$avancement" != "$reference" ] ;then
+    progress "$avancement" "copying files .."
+    reference="$avancement"
+  fi
+done < $DEST/list-file.txt
+
+while read i ; do
+ mkdir -p $DEST_MNT/$i
+done < $DEST/empty-directory.txt
+
+progress "92" "Finalising install"
+echo "Search for UUID" >> $LOG_F
+PARTUUID=`sgdisk --info=1 /dev/$DISK | grep 'Partition unique GUID' | cut -f2 -d: | tr -d '[:blank:]'`
+UUID=`blkid -s UUID -o value /dev/${DISK}1`
+echo "PARTUUID=$PARTUUID" >> $LOG_F
+echo "UUID=$UUID" >> $LOG_F
+
+## create small fstab
+echo "UUID=$UUID / ext4 errors=remount-ro 0" > $DEST_MNT/etc/fstab
+sync
+
+## generating extlinux
+progress "95" "Installing bootloader"
+extlinux --install $DEST_MNT/boot >> $LOG_F 2>&1
+cat > $DEST_MNT/boot/extlinux.conf <<EOF
+DEFAULT linux
+PROMPT 0
+
+LABEL linux
+  KERNEL /boot/vmlinuz
+  APPEND root=PARTUUID=$PARTUUID rootwait
+EOF
+
+# clean
+progress "97" "Cleaning ..."
+umount /dev/${DISK}1
+rm -r $DEST
+
+progress "100" "All done ;)"
+
+exit 0
+
+
