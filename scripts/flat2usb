@@ -1,9 +1,44 @@
 #!/bin/sh
 
-. config/options
+# usage : $1 : "external" or nothing
+#    if external $2 is distroname 
 
-$SCRIPTS/installdev syslinux
-$SCRIPTS/installdev gptfdisk
+if [ "$1" = "external" ] ; then
+  DISTRONAME=$2
+  path=`pwd`
+  bin="$path/bin"
+  
+#  BKLID=$bin/blkid
+  EXTLINUX="$bin/extlinux"
+  SFDISK="sfdisk"
+  SGDISK="$bin/sgdisk"
+
+  DEST=$path/build
+  DEST_MNT="$DEST/mnt"
+  FLAT="$path/flat" 
+
+  LOG_F="$path/install-$(date +%Y%M%d%H%M).txt"
+  mkdir -p  $DEST_MNT
+
+  GPTMBR_BIN="$path/bin/gptmbr.bin"
+else 
+
+  . config/options
+
+  $SCRIPTS/installdev syslinux
+  $SCRIPTS/installdev gptfdisk
+
+  EXTLINUX=extlinux
+  SFDISK=sfdisk
+  SGDISK=sgdisk
+
+  DEST="$ROOT/$BUILD/flat2usb"
+  DEST_MNT="$DEST/mnt"
+  FLAT="$ROOT/$FLAT_NAME"
+
+  LOG_F="$ROOT/$BUILD_NOARCH/flat2usb-result-$(date +%Y%M%d%H%M).txt"
+  GPTMBR_BIN="$ROOT/$TOOLCHAIN/share/syslinux/gptmbr.bin"
+fi
 
 MSG_DISK_WARNING="Warning"
 MSG_DISK_ERROR="ERROR"
@@ -14,17 +49,96 @@ MSG_DISK_REFRESH="refresh list"
 MSG_DISK_DEVICE="Installation device"
 MSG_DISK_DEVICE_DESC="You are going to install $DISTRONAME on an usb key. For this you will need an empty usb key. Be careful to choose the right disk! We won't take responsibility for any data loss."
 
-DEST="$ROOT/$BUILD/plat2usb"
-DEST_MNT="$DEST/mnt"
-DEST_INITRD="$DEST/make_initrd"
-LOG_F="$ROOT/$BUILD_NOARCH/plat2usb-result-$(date +%Y%M%d%H%M).txt"
+MSG_ANOTHER_PART_BACK="Installation of $DISTRONAME"
+MSG_ANOTHER_PART_1="Do you want to add another partition to"
+
+DIALOG=${DIALOG=dialog}
+
+NB_PART=""
+TMPDIR=/tmp
+
+progress () {
+    MSG_TITLE="\Z1[ INSTALLING to USB ]\Zn"
+    MSG_BACKTITLE="Install in progress ..."
+    echo $2 >> $LOG_F
+    dialog --colors --backtitle "$MSG_BACKTITLE" --title "$MSG_TITLE" --gauge "$2 ..." 6 70 $1 &
+}
+
+# $1 disk
+create_part_virtual () {
+  local disk
+  disk=$1
+  
+  if [ "$disk" = "$DISK" ]; then
+    nb_part=`dialog --clear --stdout --title "Add another partition than only rootfs to disk ?" \
+         --menu "How many partition(s) do you want ? (free space with rootfs is $FREE_SIZE)" 20 51 4 \
+         "1" "rootfs : no change possible" \
+         "2" "?" \
+         "3" "?" \
+         "4" "?"`
+    if [ $nb_part = "1" ] ; then 
+      SIZE_ROOTFS_1=`dialog --clear --stdout --title "No assigned free space : $FREE_SIZE" \
+         --menu "Do you want to use free space" 20 51 4 \
+         "$SIZE_ROOTFS" "The minimum for rootfs" \
+         "$SIZE" "" `
+       [ $SIZE_ROOTFS_1 != $SIZE_ROOTFS ] && SIZE_ROOTFS="max"
+    fi
+  else
+    size_disk=`$SFDISK -s /dev/$DISK | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
+    nb_part=`dialog --clear --stdout --title "Creating partition(s) for $disk ?" \
+         --menu "How many partition(s) do you want ? (free space is "$size_disk")" 20 51 4 \
+         "1" "?" \
+         "2" "?" \
+         "3" "?" \
+         "4" "?"`
+  fi
+
+  if [ -z $nb_part ] ; then 
+    dialog --aspect 15 --backtitle "Bye !" --title "Canceled by user" \
+           --yesno "\nCanceled" 0 0 1>&2 || exit 1
+  fi
+
+  i=0
+  data_disk="$nb_part"
+## test if disk contains rootfs
+  if [ "$disk" = "$DISK" ]; then
+    i=1
+    data_disk="$data_disk,1 $SIZE_ROOTFS $DISTRONAME /"
+    size_free=$FREE_SIZE
+  else
+    size_free=$size_disk
+  fi
+   
+while [ $i != $nb_part ] ; do
+  i=$(($i+1))
+  size_part=`dialog --stdout --title "Partition $i" --clear \
+        --inputbox "Choose partition size in Mb :free size is $size_free M" 16 51`
+  size_free=$(($size_free-$size_part))
+  if [ $i = $nb_part ] ; then
+    if [ "$size_free" != "0" ] ; then
+      size_part1=`dialog --clear --stdout --title "Non assigned free space : $size_free " \
+         --menu "Do you want to use free space for the last partition ?" 20 51 4 \
+         "$size_part" "you requested" \
+         "$(($size_free+$size_part))" "" `
+       [ $size_part1 != $size_part ] && size_part="max"
+    fi
+    [ "$size_free" = "0" ] && size_part="max"
+  fi
+  name_part=`dialog --stdout --title "Partition $i" --clear \
+        --inputbox "Choose name for partition :" 16 51`
+  
+    data_disk="$data_disk,$i $size_part $name_part /mnt/$name_part"
+  done
+
+  echo $data_disk
+}
 
 choose_disk () {
   local DISK_LIST SELECTED_DISK SIZE VENDOR MODEL DISKNAME i
   while true; do
     DISK_LIST=""
     for i in `cat /proc/partitions | sed -n "s/\ *[0-9][0-9]*\ *[0-9][0-9]*\ *[0-9][0-9]*\ \([a-z]*\)$/\1/p"`; do
-      SIZE=`sfdisk -s /dev/$i | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
+      SIZE=`$SFDISK -s /dev/$i | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
       VENDOR=`[ -f /sys/block/$i/device/vendor ] \
               && cat /sys/block/$i/device/vendor`
       MODEL=`[ -f /sys/block/$i/device/model ] \
@@ -49,87 +163,134 @@ choose_disk () {
   echo $SELECTED_DISK
 }
 
-progress () {
-    MSG_TITLE="\Z1[ INSTALLING to USB ]\Zn"
-    MSG_BACKTITLE="Install in progress ..."
-    echo $2 >> $LOG_F
-    dialog --colors --backtitle "$MSG_BACKTITLE" --title "$MSG_TITLE" --gauge "$2 ..." 6 70 $1 &
+# $1 part_n, $2 data_disk
+extract_part_size () {
+  echo $2 | cut -d, -f$(($1+1)) | cut -d" " -f2
 }
 
-## Begin 
+extract_part_name () {
+  echo $2 | cut -d, -f$(($1+1)) | cut -d" " -f3
+}
 
-echo "Begin installation" >> $LOG_F
-DISK="`choose_disk`"
-[ -z "$DISK" ] && echo "End : no disk choosen" >> $LOG_F && exit 1
+extract_part_mountpoint () {
+  echo $2 | cut -d, -f$(($1+1)) | cut -d" " -f4 
+}
 
-progress "1" "Umount all partition from choosen disk"
-for i in `cat /etc/mtab | grep $DISK | cut -d" " -f1` ; do
-  echo "Umount $i" >> $LOG_F
-  umount $i
-done
+install_rootfs () {
+  DISK=`choose_disk`  
+  [ -z "$DISK" ] && echo "End : no disk choosen" >> $LOG_F && exit 1
+  SIZE_ROOTFS=`du -ch $FLAT | grep total | cut -f1 | cut -dM -f1`
+  SIZE_ROOTFS=$(($SIZE_ROOTFS+150))
+  SIZE=`$SFDISK -s /dev/$DISK | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
+  FREE_SIZE=$(($SIZE-$SIZE_ROOTFS))
+  data=`create_part_virtual "$DISK"`
+  NB_PART=`echo $data | cut -d, -f1`
+  echo "data : $data" >> $LOG_F
+  progress "1" "Umount all partition from choosen disk"
+  for i in `cat /etc/mtab | grep $DISK | cut -d" " -f1` ; do
+    echo "Umount $i" >> $LOG_F
+    umount $i
+  done
 
-progress "7" "Prepare disk"
-sgdisk --zap-all /dev/$DISK >> $LOG_F 2>&1
+  progress "7" "Prepare disk"
+  $SGDISK --zap-all /dev/$DISK >> $LOG_F 2>&1
 
-progress "8" "Erasing $DISK and making partition"
-sgdisk --clear /dev/$DISK >> $LOG_F 2>&1
-sgdisk --largest-new=1 /dev/$DISK >> $LOG_F 2>&1
-sgdisk --change-name=1:$DISTRONAME /dev/$DISK >> $LOG_F 2>&1
+  progress "8" "Erasing $DISK and making partition"
+  $SGDISK --clear /dev/$DISK >> $LOG_F 2>&1
 
-# mark as bios bootable
-sgdisk --attributes=1:set:2 /dev/$DISK >> $LOG_F 2>&1
+  i=0
+  echo "nombre de partition $NB_PART" >>$LOG_F 2>&1
+  while [ "$i" != "$NB_PART" ] ; do
+    i=$(($i+1))
+    j=`extract_part_size "$i" "$data"`
+    k=`extract_part_name "$i" "$data"`
+    echo "$i $j $k" >>$LOG_F 2>&1
+    startsector=`$SGDISK -f /dev/$DISK`    
 
-# mark the EFI GPT protective partition entry in the MBR as active/bootable
-# fixes boot issues on some Intel systems
-/bin/echo -e "a\n1\nw\n" | fdisk /dev/$DISK >> $LOG_F 2>&1
+    if [ "$j" = "max" ] ; then
+      echo "sgdisk --largest-new=$i /dev/$DISK" >> $LOG_F 2>&1
+      $SGDISK --largest-new=$i /dev/$DISK >> $LOG_F 2>&1
+      $SGDISK --change-name=${i}:$k /dev/$DISK >> $LOG_F 2>&1
+      echo "sgdisk --change-name=${i}:$k /dev/$DISK" >> $LOG_F 2>&1
+    else
+      echo "sgdisk --new=${i}:${startsector}:${j}M /dev/$DISK" >> $LOG_F 2>&1
+      $SGDISK --new=${i}:${startsector}:${j}M /dev/$DISK >> $LOG_F 2>&1
+      echo "sgdisk --change-name=${i}:$k /dev/$DISK" >> $LOG_F 2>&1
+      $SGDISK --change-name=${i}:$k /dev/$DISK >> $LOG_F 2>&1
+    fi
+  done
 
-cat $ROOT/$TOOLCHAIN/share/syslinux/gptmbr.bin > /dev/$DISK
-partprobe /dev/$DISK >> $LOG_F 2>&1
+  # mark as bios bootable
+  $SGDISK --attributes=1:set:2 /dev/$DISK >> $LOG_F 2>&1
 
-progress "10" "Creating first primary ext4 fs : ${DISK}1"
-mke2fs -t ext4 -L $DISTRONAME_UC /dev/${DISK}1 >> $LOG_F 2>&1
+  # mark the EFI GPT protective partition entry in the MBR as active/bootable
+  # fixes boot issues on some Intel systems
+  /bin/echo -e "a\n1\nw\n" | fdisk /dev/$DISK >> $LOG_F 2>&1
 
-progress "19" " Copying files to $DISK"
-mkdir -p $DEST_MNT
-mount /dev/${DISK}1 $DEST_MNT >> $LOG_F 2>&1
+  cat $GPTMBR_BIN > /dev/$DISK
+  partprobe /dev/$DISK >> $LOG_F 2>&1
 
-cd $ROOT/$FLAT_NAME
-find . -not -type d > $DEST/list-file.txt
-find . -type d -empty  >$DEST/empty-directory.txt
-NB=`wc -l $DEST/list-file.txt| cut -d" " -f1`
-counter=0
-reference=20
-progress "$reference" "copying files .."
-while read i ; do 
-  cp --parent -d "${i}" $DEST_MNT
-  counter=$(($counter+1))
-  # 20 is begin, 90 is end, and 70 is delta
-  avancement=$((20+$counter*70/$NB))
-  if [ "$avancement" != "$reference" ] ;then
-    progress "$avancement" "copying files .."
-    reference="$avancement"
-  fi
-done < $DEST/list-file.txt
+  i=0
+  while [ $i != $NB_PART ] ; do
+    i=$(($i+1))
+    j=`extract_part_name "$i" "$data"`
+    progress "$(($i+10))" "Creating primary ext4 fs : ${DISK}${i}"
+    mke2fs -t ext4 -L $j /dev/${DISK}${i} >> $LOG_F 2>&1
+  done
 
-while read i ; do
- mkdir -p $DEST_MNT/$i
-done < $DEST/empty-directory.txt
+  progress "19" " Copying files to $DISK"
+  mkdir -p $DEST_MNT
+  mount /dev/${DISK}1 $DEST_MNT >> $LOG_F 2>&1
 
-progress "92" "Finalising install"
-echo "Search for UUID" >> $LOG_F
-PARTUUID=`sgdisk --info=1 /dev/$DISK | grep 'Partition unique GUID' | cut -f2 -d: | tr -d '[:blank:]'`
-UUID=`blkid -s UUID -o value /dev/${DISK}1`
-echo "PARTUUID=$PARTUUID" >> $LOG_F
-echo "UUID=$UUID" >> $LOG_F
+  cd $FLAT
+  find . -not -type d > $DEST/list-file.txt
+  find . -type d -empty  >$DEST/empty-directory.txt
+  NB=`wc -l $DEST/list-file.txt| cut -d" " -f1`
+  counter=0
+  reference=20
+  progress "$reference" "copying files .."
+  while read i ; do 
+    cp --parent -d "${i}" $DEST_MNT
+    counter=$(($counter+1))
+    # 20 is begin, 90 is end, and 70 is delta
+    avancement=$((20+$counter*70/$NB))
+    if [ "$avancement" != "$reference" ] ;then
+      progress "$avancement" "copying files .."
+      reference="$avancement"
+    fi
+  done < $DEST/list-file.txt
 
-## create small fstab
-echo "UUID=$UUID / ext4 errors=remount-ro 0" > $DEST_MNT/etc/fstab
-sync
+  while read i ; do
+    mkdir -p $DEST_MNT/$i
+  done < $DEST/empty-directory.txt
 
-## generating extlinux
-progress "95" "Installing bootloader"
-extlinux --install $DEST_MNT/boot >> $LOG_F 2>&1
-cat > $DEST_MNT/boot/extlinux.conf <<EOF
+  i=1
+  while [ $i != $NB_PART ] ; do
+    i=$(($i+1))
+    j=`extract_part_size "$i" "$data"`
+    mkdir $DEST_MNT/mnt/$j
+  done
+
+  progress "92" "Finalising install"
+  echo "Search for UUID" >> $LOG_F
+  PARTUUID=`$SGDISK --info=1 /dev/$DISK | grep 'Partition unique GUID' | cut -f2 -d: | tr -d '[:blank:]'`
+  echo "PARTUUID=$PARTUUID" >> $LOG_F
+  
+  i=0
+  while [ $i != $NB_PART ] ; do
+    i=$(($i+1))
+    j=`extract_part_mountpoint "$i" "$data"`
+    UUID=`blkid -s UUID -o value /dev/${DISK}${i}`
+    echo "UUID=$UUID for ${DISK}${i}" >> $LOG_F
+    ## create small fstab
+    echo "UUID=$UUID $j ext4 errors=remount-ro 0" >> $DEST_MNT/etc/fstab
+    sync
+  done
+  
+  ## generating extlinux
+  progress "95" "Installing bootloader"
+  $EXTLINUX --install $DEST_MNT/boot >> $LOG_F 2>&1
+  cat > $DEST_MNT/boot/extlinux.conf <<EOF
 DEFAULT linux
 PROMPT 0
 
@@ -138,13 +299,52 @@ LABEL linux
   APPEND root=PARTUUID=$PARTUUID rootwait
 EOF
 
-# clean
-progress "97" "Cleaning ..."
-umount /dev/${DISK}1
-rm -r $DEST
+  # clean
+  progress "97" "Cleaning ..."
+  umount /dev/${DISK}1
+  rm -r $DEST
 
-progress "100" "All done ;)"
+  progress "100" "All done ;)"
+  sleep 1
+}
+
+setup () {
+echo "todo"
+}
+
+menu () {
+  MSG_TITLE="\Z4[ MENU ]\Zn"
+  MSG_MENU="\n\ZbInstall:\Zn do an installation on an specific device \
+\Z1\Zb(Erase all data on this device)\Zn \
+\n\ZbSetup:\Zn change some settings to run $DISTRONAME \
+\nPlease select:"
+  MSG_CANCEL="Exit"
+
+  dialog --colors --backtitle "$BACKTITLE" --cancel-label "$MSG_CANCEL" \
+      --title "$MSG_TITLE" --menu "$MSG_MENU" 20 70 5 \
+        1 "Install of $DISTRONAME" \
+        2 "Setup $DISTRONAME" 2> $TMPDIR/mainmenu
+
+  case $? in
+      0)
+        ITEM_MAINMENU=$(cat "$TMPDIR/mainmenu" )
+        case $ITEM_MAINMENU in
+          1) install_rootfs; break;;
+          2) setup; break;;
+        esac
+        ;;
+      1)
+        exit 0
+        ;;
+      255)
+        exit 0
+        ;;
+    esac
+}
+
+## menu
+while true; do
+menu
+done
 
 exit 0
-
-
