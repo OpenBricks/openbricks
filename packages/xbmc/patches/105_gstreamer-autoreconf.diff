@@ -1,0 +1,419 @@
+diff -Naur xbmc-10.1/config.h.in xbmc-10.1a/config.h.in
+--- xbmc-10.1/config.h.in	2011-04-25 18:00:25.394624988 +0200
++++ xbmc-10.1a/config.h.in	2011-04-25 18:00:57.470116537 +0200
+@@ -189,6 +189,12 @@
+ /* Define to 1 if you have the `GLU' library (-lGLU). */
+ #undef HAVE_LIBGLU
+ 
++/* Define to 1 if you have the `gstapp-0.10' library (-lgstapp-0.10). */
++#undef HAVE_LIBGSTAPP_0_10
++
++/* Define to 1 if you have the 'GStreamer' library. */
++#undef HAVE_LIBGSTREAMER
++
+ /* Define to 1 if you have the `iconv' library (-liconv). */
+ #undef HAVE_LIBICONV
+ 
+diff -Naur xbmc-10.1/configure xbmc-10.1a/configure
+--- xbmc-10.1/configure	2011-04-25 18:00:25.398614186 +0200
++++ xbmc-10.1a/configure	2011-04-25 18:00:54.778238670 +0200
+@@ -637,6 +636,14 @@
+ HAVE_GPERF
+ HAVE_CMAKE
+ HAVE_GAWK
++GSTREAMER_PLUGINS_BASE_LIBS
++GSTREAMER_PLUGINS_BASE_CFLAGS
++GSTREAMER_BASE_LIBS
++GSTREAMER_BASE_CFLAGS
++GSTREAMER_LIBS
++GSTREAMER_CFLAGS
++gstreamer_plugins_base_req
++gstreamer_req
+ CRYSTALHD_SONAME
+ FFMPEG_LIBS
+ FFMPEG_CFLAGS
+@@ -829,6 +836,7 @@
+ enable_crystalhd
+ enable_vdadecoder
+ enable_openmax
++enable_gstreamer
+ enable_tegra
+ enable_profiling
+ enable_joystick
+@@ -930,7 +938,13 @@
+ HAL_STORAGE_CFLAGS
+ HAL_STORAGE_LIBS
+ FFMPEG_CFLAGS
+-FFMPEG_LIBS'
++FFMPEG_LIBS
++GSTREAMER_CFLAGS
++GSTREAMER_LIBS
++GSTREAMER_BASE_CFLAGS
++GSTREAMER_BASE_LIBS
++GSTREAMER_PLUGINS_BASE_CFLAGS
++GSTREAMER_PLUGINS_BASE_LIBS'
+ 
+ 
+ # Initialize some variables set by options.
+@@ -1560,6 +1574,7 @@
+   --enable-crystalhd      enable CrystalHD decoding (default is auto)
+   --enable-vdadecoder     enable VDADecoder decoding (default is auto)
+   --enable-openmax        enable OpenMax decoding (default is yes)
++  --enable-gstreamer      enable GStreamer support (default is auto)
+   --enable-tegra          enable Tegra2 arm (default is no)
+   --enable-profiling      enable gprof profiling (default is no)
+   --enable-joystick       enable SDL joystick support (default is yes)
+@@ -1711,6 +1726,19 @@
+   FFMPEG_CFLAGS
+               C compiler flags for FFMPEG, overriding pkg-config
+   FFMPEG_LIBS linker flags for FFMPEG, overriding pkg-config
++  GSTREAMER_CFLAGS
++              C compiler flags for GSTREAMER, overriding pkg-config
++  GSTREAMER_LIBS
++              linker flags for GSTREAMER, overriding pkg-config
++  GSTREAMER_BASE_CFLAGS
++              C compiler flags for GSTREAMER_BASE, overriding pkg-config
++  GSTREAMER_BASE_LIBS
++              linker flags for GSTREAMER_BASE, overriding pkg-config
++  GSTREAMER_PLUGINS_BASE_CFLAGS
++              C compiler flags for GSTREAMER_PLUGINS_BASE, overriding
++              pkg-config
++  GSTREAMER_PLUGINS_BASE_LIBS
++              linker flags for GSTREAMER_PLUGINS_BASE, overriding pkg-config
+ 
+ Use these variables to override the choices made by `configure' or to help
+ it to find libraries and programs with nonstandard names/locations.
+@@ -3753,6 +3781,8 @@
+ ssh_not_found="== Could not find libssh. SSH FTP VFS support disabled. =="
+ librtmp_not_found="== Could not find libRTMP. RTMP support disabled. =="
+ librtmp_disabled="== RTMP support disabled. =="
++gstreamer_not_found="== GStreamer libraries not found. GStreamer support disabled. =="
++gstreamer_disabled="== GStreamer support manually disabled. =="
+ 
+ # External library message strings
+ external_libraries_enabled="== Use of all supported external libraries enabled. =="
+@@ -3861,6 +3891,14 @@
+ fi
+ 
+ 
++# Check whether --enable-gstreamer was given.
++if test "${enable_gstreamer+set}" = set; then :
++  enableval=$enable_gstreamer; use_gstreamer=$enableval
++else
++  use_gstreamer=auto
++fi
++
++
+ # Check whether --enable-tegra was given.
+ if test "${enable_tegra+set}" = set; then :
+   enableval=$enable_tegra; use_tegra=$enableval
+@@ -13421,6 +13506,296 @@
+   fi
+ fi
+ 
++# GSTREAMER
++if test "x$use_gstreamer" != "xno"; then
++  if test "$host_vendor" = "apple" ; then
++    if test "x$use_gstreamer" = "xyes"; then
++      as_fn_error $? "GStreamer not supported on this platform" "$LINENO" 5
++    else
++      use_gstreamer="no"
++      { $as_echo "$as_me:${as_lineno-$LINENO}: $gstreamer_disabled" >&5
++$as_echo "$as_me: $gstreamer_disabled" >&6;}
++    fi
++    USE_GSTREAMER=0
++  else
++    gstreamer_req=0.10.0
++
++    gstreamer_plugins_base_req=0.10.0
++
++
++pkg_failed=no
++{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for GSTREAMER" >&5
++$as_echo_n "checking for GSTREAMER... " >&6; }
++
++if test -n "$GSTREAMER_CFLAGS"; then
++    pkg_cv_GSTREAMER_CFLAGS="$GSTREAMER_CFLAGS"
++ elif test -n "$PKG_CONFIG"; then
++    if test -n "$PKG_CONFIG" && \
++    { { $as_echo "$as_me:${as_lineno-$LINENO}: \$PKG_CONFIG --exists --print-errors \"gstreamer-0.10 >= \$gstreamer_req\""; } >&5
++  ($PKG_CONFIG --exists --print-errors "gstreamer-0.10 >= $gstreamer_req") 2>&5
++  ac_status=$?
++  $as_echo "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
++  test $ac_status = 0; }; then
++  pkg_cv_GSTREAMER_CFLAGS=`$PKG_CONFIG --cflags "gstreamer-0.10 >= $gstreamer_req" 2>/dev/null`
++else
++  pkg_failed=yes
++fi
++ else
++    pkg_failed=untried
++fi
++if test -n "$GSTREAMER_LIBS"; then
++    pkg_cv_GSTREAMER_LIBS="$GSTREAMER_LIBS"
++ elif test -n "$PKG_CONFIG"; then
++    if test -n "$PKG_CONFIG" && \
++    { { $as_echo "$as_me:${as_lineno-$LINENO}: \$PKG_CONFIG --exists --print-errors \"gstreamer-0.10 >= \$gstreamer_req\""; } >&5
++  ($PKG_CONFIG --exists --print-errors "gstreamer-0.10 >= $gstreamer_req") 2>&5
++  ac_status=$?
++  $as_echo "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
++  test $ac_status = 0; }; then
++  pkg_cv_GSTREAMER_LIBS=`$PKG_CONFIG --libs "gstreamer-0.10 >= $gstreamer_req" 2>/dev/null`
++else
++  pkg_failed=yes
++fi
++ else
++    pkg_failed=untried
++fi
++
++
++
++if test $pkg_failed = yes; then
++   	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
++$as_echo "no" >&6; }
++
++if $PKG_CONFIG --atleast-pkgconfig-version 0.20; then
++        _pkg_short_errors_supported=yes
++else
++        _pkg_short_errors_supported=no
++fi
++        if test $_pkg_short_errors_supported = yes; then
++	        GSTREAMER_PKG_ERRORS=`$PKG_CONFIG --short-errors --print-errors "gstreamer-0.10 >= $gstreamer_req" 2>&1`
++        else
++	        GSTREAMER_PKG_ERRORS=`$PKG_CONFIG --print-errors "gstreamer-0.10 >= $gstreamer_req" 2>&1`
++        fi
++	# Put the nasty error message in config.log where it belongs
++	echo "$GSTREAMER_PKG_ERRORS" >&5
++
++	HAVE_GSTREAMER=0
++elif test $pkg_failed = untried; then
++     	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
++$as_echo "no" >&6; }
++	HAVE_GSTREAMER=0
++else
++	GSTREAMER_CFLAGS=$pkg_cv_GSTREAMER_CFLAGS
++	GSTREAMER_LIBS=$pkg_cv_GSTREAMER_LIBS
++        { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
++$as_echo "yes" >&6; }
++	HAVE_GSTREAMER=1
++fi
++
++pkg_failed=no
++{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for GSTREAMER_BASE" >&5
++$as_echo_n "checking for GSTREAMER_BASE... " >&6; }
++
++if test -n "$GSTREAMER_BASE_CFLAGS"; then
++    pkg_cv_GSTREAMER_BASE_CFLAGS="$GSTREAMER_BASE_CFLAGS"
++ elif test -n "$PKG_CONFIG"; then
++    if test -n "$PKG_CONFIG" && \
++    { { $as_echo "$as_me:${as_lineno-$LINENO}: \$PKG_CONFIG --exists --print-errors \"gstreamer-base-0.10 >= \$gstreamer_req\""; } >&5
++  ($PKG_CONFIG --exists --print-errors "gstreamer-base-0.10 >= $gstreamer_req") 2>&5
++  ac_status=$?
++  $as_echo "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
++  test $ac_status = 0; }; then
++  pkg_cv_GSTREAMER_BASE_CFLAGS=`$PKG_CONFIG --cflags "gstreamer-base-0.10 >= $gstreamer_req" 2>/dev/null`
++else
++  pkg_failed=yes
++fi
++ else
++    pkg_failed=untried
++fi
++if test -n "$GSTREAMER_BASE_LIBS"; then
++    pkg_cv_GSTREAMER_BASE_LIBS="$GSTREAMER_BASE_LIBS"
++ elif test -n "$PKG_CONFIG"; then
++    if test -n "$PKG_CONFIG" && \
++    { { $as_echo "$as_me:${as_lineno-$LINENO}: \$PKG_CONFIG --exists --print-errors \"gstreamer-base-0.10 >= \$gstreamer_req\""; } >&5
++  ($PKG_CONFIG --exists --print-errors "gstreamer-base-0.10 >= $gstreamer_req") 2>&5
++  ac_status=$?
++  $as_echo "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
++  test $ac_status = 0; }; then
++  pkg_cv_GSTREAMER_BASE_LIBS=`$PKG_CONFIG --libs "gstreamer-base-0.10 >= $gstreamer_req" 2>/dev/null`
++else
++  pkg_failed=yes
++fi
++ else
++    pkg_failed=untried
++fi
++
++
++
++if test $pkg_failed = yes; then
++   	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
++$as_echo "no" >&6; }
++
++if $PKG_CONFIG --atleast-pkgconfig-version 0.20; then
++        _pkg_short_errors_supported=yes
++else
++        _pkg_short_errors_supported=no
++fi
++        if test $_pkg_short_errors_supported = yes; then
++	        GSTREAMER_BASE_PKG_ERRORS=`$PKG_CONFIG --short-errors --print-errors "gstreamer-base-0.10 >= $gstreamer_req" 2>&1`
++        else
++	        GSTREAMER_BASE_PKG_ERRORS=`$PKG_CONFIG --print-errors "gstreamer-base-0.10 >= $gstreamer_req" 2>&1`
++        fi
++	# Put the nasty error message in config.log where it belongs
++	echo "$GSTREAMER_BASE_PKG_ERRORS" >&5
++
++	HAVE_GSTREAMER_BASE=0
++elif test $pkg_failed = untried; then
++     	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
++$as_echo "no" >&6; }
++	HAVE_GSTREAMER_BASE=0
++else
++	GSTREAMER_BASE_CFLAGS=$pkg_cv_GSTREAMER_BASE_CFLAGS
++	GSTREAMER_BASE_LIBS=$pkg_cv_GSTREAMER_BASE_LIBS
++        { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
++$as_echo "yes" >&6; }
++	HAVE_GSTREAMER_BASE=1
++fi
++
++pkg_failed=no
++{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for GSTREAMER_PLUGINS_BASE" >&5
++$as_echo_n "checking for GSTREAMER_PLUGINS_BASE... " >&6; }
++
++if test -n "$GSTREAMER_PLUGINS_BASE_CFLAGS"; then
++    pkg_cv_GSTREAMER_PLUGINS_BASE_CFLAGS="$GSTREAMER_PLUGINS_BASE_CFLAGS"
++ elif test -n "$PKG_CONFIG"; then
++    if test -n "$PKG_CONFIG" && \
++    { { $as_echo "$as_me:${as_lineno-$LINENO}: \$PKG_CONFIG --exists --print-errors \"gstreamer-plugins-base-0.10 >= \$gstreamer_plugins_base_req\""; } >&5
++  ($PKG_CONFIG --exists --print-errors "gstreamer-plugins-base-0.10 >= $gstreamer_plugins_base_req") 2>&5
++  ac_status=$?
++  $as_echo "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
++  test $ac_status = 0; }; then
++  pkg_cv_GSTREAMER_PLUGINS_BASE_CFLAGS=`$PKG_CONFIG --cflags "gstreamer-plugins-base-0.10 >= $gstreamer_plugins_base_req" 2>/dev/null`
++else
++  pkg_failed=yes
++fi
++ else
++    pkg_failed=untried
++fi
++if test -n "$GSTREAMER_PLUGINS_BASE_LIBS"; then
++    pkg_cv_GSTREAMER_PLUGINS_BASE_LIBS="$GSTREAMER_PLUGINS_BASE_LIBS"
++ elif test -n "$PKG_CONFIG"; then
++    if test -n "$PKG_CONFIG" && \
++    { { $as_echo "$as_me:${as_lineno-$LINENO}: \$PKG_CONFIG --exists --print-errors \"gstreamer-plugins-base-0.10 >= \$gstreamer_plugins_base_req\""; } >&5
++  ($PKG_CONFIG --exists --print-errors "gstreamer-plugins-base-0.10 >= $gstreamer_plugins_base_req") 2>&5
++  ac_status=$?
++  $as_echo "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
++  test $ac_status = 0; }; then
++  pkg_cv_GSTREAMER_PLUGINS_BASE_LIBS=`$PKG_CONFIG --libs "gstreamer-plugins-base-0.10 >= $gstreamer_plugins_base_req" 2>/dev/null`
++else
++  pkg_failed=yes
++fi
++ else
++    pkg_failed=untried
++fi
++
++
++
++if test $pkg_failed = yes; then
++   	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
++$as_echo "no" >&6; }
++
++if $PKG_CONFIG --atleast-pkgconfig-version 0.20; then
++        _pkg_short_errors_supported=yes
++else
++        _pkg_short_errors_supported=no
++fi
++        if test $_pkg_short_errors_supported = yes; then
++	        GSTREAMER_PLUGINS_BASE_PKG_ERRORS=`$PKG_CONFIG --short-errors --print-errors "gstreamer-plugins-base-0.10 >= $gstreamer_plugins_base_req" 2>&1`
++        else
++	        GSTREAMER_PLUGINS_BASE_PKG_ERRORS=`$PKG_CONFIG --print-errors "gstreamer-plugins-base-0.10 >= $gstreamer_plugins_base_req" 2>&1`
++        fi
++	# Put the nasty error message in config.log where it belongs
++	echo "$GSTREAMER_PLUGINS_BASE_PKG_ERRORS" >&5
++
++	HAVE_GSTREAMER_PLUGINS_BASE=0
++elif test $pkg_failed = untried; then
++     	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
++$as_echo "no" >&6; }
++	HAVE_GSTREAMER_PLUGINS_BASE=0
++else
++	GSTREAMER_PLUGINS_BASE_CFLAGS=$pkg_cv_GSTREAMER_PLUGINS_BASE_CFLAGS
++	GSTREAMER_PLUGINS_BASE_LIBS=$pkg_cv_GSTREAMER_PLUGINS_BASE_LIBS
++        { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
++$as_echo "yes" >&6; }
++	HAVE_GSTREAMER_PLUGINS_BASE=1
++fi
++    HAVE_GSTREAMER_APP=1
++    { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lgstapp-0.10" >&5
++$as_echo_n "checking for main in -lgstapp-0.10... " >&6; }
++if test "${ac_cv_lib_gstapp_0_10_main+set}" = set; then :
++  $as_echo_n "(cached) " >&6
++else
++  ac_check_lib_save_LIBS=$LIBS
++LIBS="-lgstapp-0.10  $LIBS"
++cat confdefs.h - <<_ACEOF >conftest.$ac_ext
++/* end confdefs.h.  */
++
++
++int
++main ()
++{
++return main ();
++  ;
++  return 0;
++}
++_ACEOF
++if ac_fn_c_try_link "$LINENO"; then :
++  ac_cv_lib_gstapp_0_10_main=yes
++else
++  ac_cv_lib_gstapp_0_10_main=no
++fi
++rm -f core conftest.err conftest.$ac_objext \
++    conftest$ac_exeext conftest.$ac_ext
++LIBS=$ac_check_lib_save_LIBS
++fi
++{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_gstapp_0_10_main" >&5
++$as_echo "$ac_cv_lib_gstapp_0_10_main" >&6; }
++if test "x$ac_cv_lib_gstapp_0_10_main" = x""yes; then :
++  cat >>confdefs.h <<_ACEOF
++#define HAVE_LIBGSTAPP_0_10 1
++_ACEOF
++
++  LIBS="-lgstapp-0.10 $LIBS"
++
++else
++  HAVE_GSTREAMER_APP=0
++fi
++
++
++    if test $HAVE_GSTREAMER -eq 1 -a $HAVE_GSTREAMER_BASE -eq 1 -a $HAVE_GSTREAMER_PLUGINS_BASE -eq 1 -a $HAVE_GSTREAMER_APP -eq 1; then
++      INCLUDES="$INCLUDES $GSTREAMER_CFLAGS $GSTREAMER_BASE_CFLAGS $GSTREAMER_PLUGINS_BASE_CFLAGS"
++      LIBS="$LIBS $GSTREAMER_LIBS $GSTREAMER_BASE_LIBS $GSTREAMER_PLUGINS_BASE_LIBS"
++      USE_GSTREAMER=1
++
++$as_echo "#define HAVE_LIBGSTREAMER 1" >>confdefs.h
++
++    else
++      if test "x$use_gstreamer" = "xyes"; then
++        as_fn_error $? "$gstreamer_not_found" "$LINENO" 5
++      else
++        use_gstreamer="no"
++        USE_GSTREAMER=0
++        { $as_echo "$as_me:${as_lineno-$LINENO}: result: $gstreamer_not_found" >&5
++$as_echo "$gstreamer_not_found" >&6; }
++      fi
++    fi
++  fi
++else
++  USE_GSTREAMER=0
++  { $as_echo "$as_me:${as_lineno-$LINENO}: $gstreamer_disabled" >&5
++$as_echo "$as_me: $gstreamer_disabled" >&6;}
++fi
++
+ # platform specific bin utilities
+ if test "$host_vendor" != "apple" ; then
+   # Extract the first word of "gawk", so it can be a program name with args.
+@@ -14931,6 +15306,12 @@
+   final_message="$final_message\n  OpenMax:\tNo"
+ fi
+ 
++if test "$use_gstreamer" != "no"; then
++  final_message="$final_message\n  GStreamer:\tYes"
++else
++  final_message="$final_message\n  GStreamer:\tNo"
++fi
++
+ if test "$use_joystick" = "yes"; then
+   final_message="$final_message\n  Joystick:\tYes"
+   SDL_DEFINES="$SDL_DEFINES -DHAS_SDL_JOYSTICK"
