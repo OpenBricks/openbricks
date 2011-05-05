@@ -80,19 +80,31 @@ if [ "$DL" = yes ]; then
 
   for i in $URLS; do
     NBWGET=1
+
     PACKAGE_BASENAME=`basename $i`
 
-    # check for packages mirror usage
-    [ "$MIRROR" = yes -a -n "$MIRROR_URL" ] \
-      && i="$MIRROR_URL/$PACKAGE_BASENAME"
+    echo $PACKAGES/$1/$i
+    pwd
+    if [ -f $PACKAGES/$1/$i ]; then
+      # file is already here, just copy
+      echo -e "\nJust copying $i for $1 sources..."
+      cp $PACKAGES/$1/$i $SOURCES/$1
+    else
+      # have to download
 
-    until [ -f $STAMPS_NOARCH/$1/$PACKAGE_BASENAME.ok ] || wget --no-check-certificate --passive-ftp -c $WGET_OPT -P $SOURCES/$1 $i; do
-      NBWGET=$(($NBWGET+1))
-      if [ $NBWGET -gt 10 ]; then
-        echo -e "\nCan't get $1 sources : $i\n Try later !!"
-        exit 1
-      fi
-    done
+      # check for packages mirror usage
+      [ "$MIRROR" = yes -a -n "$MIRROR_URL" ] \
+        && i="$MIRROR_URL/$PACKAGE_BASENAME"
+
+      until [ -f $STAMPS_NOARCH/$1/$PACKAGE_BASENAME.ok ] || wget --no-check-certificate --passive-ftp -c $WGET_OPT -P $SOURCES/$1 $i; do
+        NBWGET=$(($NBWGET+1))
+        if [ $NBWGET -gt 10 ]; then
+          echo -e "\nCan't get $1 sources : $i\n Try later !!"
+          exit 1
+        fi
+      done
+    fi
+
     do_md5sum    "$SOURCES/$1/$PACKAGE_BASENAME"
     do_sha256sum "$SOURCES/$1/$PACKAGE_BASENAME"
     touch $STAMPS_NOARCH/$1/$PACKAGE_BASENAME.ok
