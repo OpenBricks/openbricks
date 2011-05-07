@@ -7,81 +7,169 @@
 DESTINATION="/root"
 SAVE_CONF="$DESTINATION/save"
 DEST_CONF="$DESTINATION/.freevo"
+TMP="$DESTINATION/tmp"
+LOG_F="$DESTINATION/freevo-config-$(date +%Y%m%d%H%M).txt"
 
 mkdir -p $SAVE_CONF
 mkdir -p $DEST_CONF
+mkdir -p $TMP
 mkdir -p /root/.mplayer
 mkdir -p /root/.xine
 
 # saving freevo configuration files
-freevo setup
-echo "Saving configuration files for freevo ..."
+freevo setup 1>>$LOG_F
 cp /etc/freevo/freevo.conf $SAVE_CONF/freevo.conf-origin
 cp /etc/freevo/local_conf.py $SAVE_CONF/local_conf.py-origin
 
+# functions
+
+search_resolution () {
+  local list
+  list=""
+  for i in `xrandr 2>/dev/null`; do
+  list="$list `echo $i | grep "....x....\|....x...\|...x..." | grep -v + `"
+  done
+  echo $list
+}
+
+gen_e () {
+ local e
+ local count
+ e="" 
+ count=1
+ for i in $1 ; do
+   l="$l $count $i"
+   count=$(($count+1))
+ done
+ echo $l
+}
+
+update_names_in_f () {
+  local name 
+  local new_name
+  local f
+  name=$1
+  new_name=$2
+  f=$3
+  catv "$f" | sed -e "s/$name/$new_name/" >$TMP/fich-temp
+  cp $TMP/fich-temp $f
+}
 # change screen resolution
-echo "Changing screen resolution ..."
-read -p "Do you want to change screen resolution (y/n)? " result </dev/tty
-if [ "$result" = "y" ] ;then
-  read -p "    Do you want me to autodetect it  (y/n)? " result </dev/tty
-  if [ "$result" = "y" ] ;then
-    actual_resolution="`xrandr -d 127.0.0.1:0.0 | grep "*" | cut -d" " -f4`"
-    new_geometry=$(echo geometry = $actual_resolution)
-  else
-    read -p "    New geometry = ? (ex : 800x600) " result </dev/tty
-    new_geometry=$(echo geometry = $result)
-  fi
-  grep -v geometry $SAVE_CONF/freevo.conf-origin > $SAVE_CONF/freevo.conf
-  echo $new_geometry >>$SAVE_CONF/freevo.conf
-  cp $SAVE_CONF/freevo.conf $DEST_CONF
-else 
-  cp $SAVE_CONF/freevo.conf-origin > $SAVE_CONF/freevo.conf
-fi
+possible_resolution=`search_resolution`
+e=`gen_e "$possible_resolution"`
+dialog --title "Choose your resolution" \
+       --menu "You have choice between :" 20 70 5 \
+        $e 2> $TMP/choosen-resolution
+
+  case $? in
+      0)
+        pos=$(cat "$TMP/choosen-resolution" )
+        resolution="`echo $possible_resolution | cut -d" " -f$pos`"
+        new_geometry=$(echo geometry = $resolution)
+        grep -v geometry $SAVE_CONF/freevo.conf-origin > $SAVE_CONF/freevo.conf
+        echo $new_geometry >>$SAVE_CONF/freevo.conf
+        echo $new_geometry >>$LOG_F
+        cp $SAVE_CONF/freevo.conf $DEST_CONF
+        ;;
+      1)
+        exit 0
+        ;;
+      255)
+        exit 0
+        ;;
+  esac
+
+# ensure that dvbstreamer is present in conf
 echo "dvbstreamer = /usr/bin/dvbstreamer" >> $SAVE_CONF/freevo.conf
 
-# DVB assuming playing by mplayer/xine
-read -p "Do you want to scan for channels (y/n)? " result </dev/tty
-if [ "$result" = "y" ] ;then
-  lang=`cat /etc/locale.conf | cut -d"_" -f2 | cut -d"." -f1`
-#  check_dvbt="`dmesg | grep DVB-T`"
+# config of DVB : assuming playing by mplayer/xine
 
-  echo "#################################################"
-  echo "## Scanning in progress, please be patient ... ##"
-  echo "##              Very Patient                   ##"
-  echo "##              about 20 min                   ##"
-  echo "#################################################"
-  w_scan -c $lang -ft -X > $SAVE_CONF/channels.conf-after-scan
+dialog --title " DVB configuration" --clear \
+       --yesno "Do you want to scan for channels ?" 10 30
+
+  case $? in
+      0)
+        lang=`cat /etc/locale.conf | cut -d"_" -f2 | cut -d"." -f1`      
+        dialog --infobox "Please wait while scanning \
+                          \n Be patient \
+                          \n (20 min, take a coffee ;) )" 15 30 ;
+        w_scan -c $lang -ft -X > $SAVE_CONF/channels.conf-after-scan 2>>$LOG_F
+        ;;
+      1)
+        dialog --title "Select a valid channel.conf" --fselect $DESTINATION/ 14 48 2>$TMP/f_select
+        case $? in
+            0)
+              cp `cat $TMP/f_select` $SAVE_CONF/channels.conf-after-scan
+              ;;
+            1)
+              echo "Cancel by user" >>$LOG_F
+              exit 0
+              ;;
+            255)
+              echo "Cancel by user" >>$LOG_F
+              exit 0
+              ;;
+        esac
+        ;;
+      255)
+        echo "Cancel by user" >>$LOG_F
+        exit 0
+        ;;
+  esac
+
+# replace space ( and ) by _ and name a special caracter :; after first :
+sed 's/ /_/g' $SAVE_CONF/channels.conf-after-scan | sed 's/(/_/' | sed 's/)/_/' >$SAVE_CONF/channels.conf-after-scan2
+NB_channels=`wc -l $SAVE_CONF/channels.conf-after-scan2 | cut -d" " -f1`
+
+if [ "$NB_channels" != "0" ] ; then 
+  dialog --infobox "Ok, Found $NB_channels channels" 10 30 ; sleep 1
 else
-  read -p "    Take path for a valid channels.conf : " result </dev/tty
-  cp $result $SAVE_CONF/channels.conf-after-scan
-fi
-NB_channels=`wc -l $SAVE_CONF/channels.conf-after-scan | cut -d" " -f1`
+  dialog --infobox "??, No channel found, Exiting" 10 30 ; sleep 2 && exit 1
+fi 
 
-echo "Ok, Found $NB_channels channels"
-echo "Please, look at results and change name if needed"
-echo "If you want to remove a channel, just add a '#' before name" 
+# Tweaking channels.conf
 
-while read i
-do
-  echo $i
-  station_name="`echo $i | cut -d":" -f1`" 
-  echo $station_name
-  read -p "Do you want to change this name ('y' to change)?" result </dev/tty
-  if [ "$result" = "y" ] ;then 
-    read -p "      New name ?  " name </dev/tty
-#    echo ${i/$station_name/$name}   grr only on bash
-    echo $i | sed 's/'$station_name'/'$name'/g' >> $SAVE_CONF/channels.conf2
-  else echo $i>>$SAVE_CONF/channels.conf2
-  fi
-done < $SAVE_CONF/channels.conf-after-scan
+list_names_e=`catv $SAVE_CONF/channels.conf-after-scan2 | awk -F ":" '{print $1 " "$1}'`
+
+boucle=0
+while [ "$boucle" = "0" ] ; do
+
+value="$(dialog --stdout --clear --ok-label "apply" \
+       --inputmenu "You can change name's stations. If you want to unactivate one, \
+                    just add a # before the name" 30 60 20 $list_names_e )"
+
+  case $? in
+      3)
+        echo "$value" >> /root/test.txt
+        name=`echo $value | cut -d" " -f2`
+        new_name=`echo $value | cut -d" " -f3`
+        update_names_in_f "$name" "$new_name" "$SAVE_CONF/channels.conf-after-scan2"
+        list_names_e=`catv $SAVE_CONF/channels.conf-after-scan2 | awk -F ":" '{print $1 " "$1}'`
+        boucle=0
+        ;;
+      0)
+        boucle=1
+        ;;
+      1)
+        boucle=1
+        ;;
+      255)
+        exit 1
+        ;;
+  esac
+
+done
+
+cp $SAVE_CONF/channels.conf-after-scan2 $SAVE_CONF/channels.conf2
 
 
-echo "Installing channels.conf for Mplayer and Xine ..."
+# Installing channels.conf for Mplayer and Xine ...
+dialog --infobox "Installing channels.conf for Mplayer and Xine ..." 10 30 ;
 cp $SAVE_CONF/channels.conf2 /root/.mplayer/channels.conf
 cp $SAVE_CONF/channels.conf2 /root/.xine/channels.conf
+cat $SAVE_CONF/channels.conf2 >> $LOG_F
 
-
-echo "Writing configuration to files ..."
+dialog --infobox "Writing configuration to files ..." 10 30 ;
 
 # Generating conf for TV
 cat >$SAVE_CONF/local_conf.py <<EOF
@@ -116,10 +204,17 @@ done < $SAVE_CONF/channels.conf2
 
 # End TV conf
 
-# Config recordserver 
-echo "Enable recordserver and livepause ..."
-read -p "Size for cache in MB ?  "  result </dev/tty
-cat >>$SAVE_CONF/local_conf.py <<EOF
+# Config recordserver
+dialog --title "Config for recordserver" --clear \
+       --yesno "Do you want to enable recordserver ?" 10 30
+
+  case $? in
+      0)
+        dialog --title "size for cache ?" --clear --inputbox "Choose the size in Mb for livepause buffer :" 10 30 "512" 2>$TMP/result
+          case $? in
+              0)
+                result=`cat $TMP/result`
+                cat >>$SAVE_CONF/local_conf.py <<EOF
 VCR_CMD = CONF.mplayer + ' -dumpstream -dumpfile %(filename)s "dvb://%(channel)s"' + '& sleep %(seconds)s ; kill \$!'
 TV_RECORD_FILE_SUFFIX = '.ts'
 RECORDSERVER_IP = '127.0.0.1'
@@ -131,21 +226,37 @@ LIVE_PAUSE2_BUFFER_PATH='/root/live.buf'
 LIVE_PAUSE2_PREFERRED_PLAYER='mplayer'
 EOF
 echo "LIVE_PAUSE2_BUFFER_SIZE= $result" >>$SAVE_CONF/local_conf.py
-echo "Recordserver and livepause enabled ..."
-# normally : kill $! but it's interpreted by shell
+                 dialog --infobox "Recordserver and livepause enabled ..." 10 30 ;
+                 sleep 1
+                ;;
+              1)
+                exit 0
+                ;;
+              255)
+                exit 1
+                ;;
+          esac
+        ;;
+      1)
+        exit 0
+        ;;
+      255)
+        exit 1
+        ;;
+  esac 
+
 # End config recordserver
 
 cat $SAVE_CONF/local_conf.py-origin > $DEST_CONF/local_conf.py
 cat $SAVE_CONF/local_conf.py >> $DEST_CONF/local_conf.py
 
-echo "127.0.0.1 localhost">>/etc/hosts
 
-# dvbstreamer Daemon and database init
+# dvbstreamer : database init
+dialog --infobox "dvbstreamer Daemon and database init ..." 10 30 ;
+sleep 1
 setupdvbstreamer -t $SAVE_CONF/channels.conf2
-dvbstreamer -a 0 -r -d -D
 
-# restart freevo
-killall python
-freevo recordserver start &
-
-echo "... Finish ...."
+# end
+dialog --infobox "All done ..." 10 30 ;
+sleep 1
+exit 0
