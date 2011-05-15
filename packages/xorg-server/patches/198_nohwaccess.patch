@@ -1,0 +1,55 @@
+Two chunks of jbarne's nohwaccess patch got taken upstream; this patch
+contains just the remainder, which implements a -nohwaccess option.
+
+Index: xorg-server/hw/xfree86/os-support/linux/lnx_init.c
+===================================================================
+--- xorg-server.orig/hw/xfree86/os-support/linux/lnx_init.c	2011-04-09 10:38:10.000000000 +0300
++++ xorg-server/hw/xfree86/os-support/linux/lnx_init.c	2011-04-09 10:38:10.000000000 +0300
+@@ -41,6 +41,7 @@
+ static Bool KeepTty = FALSE;
+ static Bool VTSwitch = TRUE;
+ static Bool ShareVTs = FALSE;
++Bool NoHwAccess = FALSE;
+ static int activeVT = -1;
+ 
+ static char vtname[11];
+@@ -321,6 +322,11 @@
+                 ShareVTs = TRUE;
+                 return 1;
+         }
++	if (!strcmp(argv[i], "-nohwaccess"))
++	{
++		NoHwAccess = TRUE;
++		return(1);
++	}
+ 	if ((argv[i][0] == 'v') && (argv[i][1] == 't'))
+ 	{
+ 		if (sscanf(argv[i], "vt%2d", &xf86Info.vtno) == 0)
+@@ -342,4 +348,5 @@
+ 	ErrorF("don't detach controlling tty (for debugging only)\n");
+ 	ErrorF("-novtswitch            don't immediately switch to new VT\n");
+ 	ErrorF("-sharevts              share VTs with another X server\n");
++	ErrorF("-nohwaccess            don't access hardware ports directly\n");
+ }
+Index: xorg-server/hw/xfree86/os-support/linux/lnx_video.c
+===================================================================
+--- xorg-server.orig/hw/xfree86/os-support/linux/lnx_video.c	2011-04-09 10:36:56.000000000 +0300
++++ xorg-server/hw/xfree86/os-support/linux/lnx_video.c	2011-04-09 10:38:10.000000000 +0300
+@@ -50,6 +50,7 @@
+ #define MAP_FAILED ((void *)-1)
+ #endif
+ 
++extern Bool NoHwAccess;
+ static Bool ExtendedEnabled = FALSE;
+ 
+ #ifdef __ia64__
+@@ -497,6 +498,9 @@
+ 	int fd;
+ 	unsigned int ioBase_phys;
+ #endif
++	/* Fake it... */
++	if (NoHwAccess)
++		return TRUE;
+ 
+ 	if (ExtendedEnabled)
+ 		return TRUE;
