@@ -1,0 +1,46 @@
+Description: Report physical DPI when EDID data exists.
+ .
+ This reverts git commit fff00df94d7ebd18a8e24537ec96073717375a3f, which 
+ made X report 96DPI via the core protocol.
+ .
+ We want to make this policy decision higher up the stack than the X server,
+ so revert this and make X report the physical DPI when the EDID contains
+ physical size data.
+Author: Christopher James Halse Rogers <christopher.halse.rogers@canonical.com>
+
+Index: xorg-server/hw/xfree86/modes/xf86RandR12.c
+===================================================================
+--- xorg-server.orig/hw/xfree86/modes/xf86RandR12.c	2010-08-03 15:59:57.750272356 +1000
++++ xorg-server/hw/xfree86/modes/xf86RandR12.c	2010-08-03 16:00:00.750380508 +1000
+@@ -805,6 +805,7 @@
+ 	else
+ 	{
+ 	    xf86OutputPtr   output = xf86CompatOutput(pScrn);
++	    rrScrPriv(pScreen);
+ 
+ 	    if (output &&
+ 		output->conf_monitor &&
+@@ -817,6 +818,23 @@
+ 		mmWidth = output->conf_monitor->mon_width;
+ 		mmHeight = output->conf_monitor->mon_height;
+ 	    }
++	    else if (pScrPriv && pScrPriv->primaryOutput)
++	    {
++		/* Calculate DPI based on primary display size, not the entire display size */
++		mmWidth = pScrPriv->primaryOutput->mmWidth * width / pScrPriv->primaryOutput->crtc->mode->mode.width;
++		mmHeight = pScrPriv->primaryOutput->mmHeight * height / pScrPriv->primaryOutput->crtc->mode->mode.height;
++	    }
++	    else if (output && output->crtc && output->crtc->mode.HDisplay &&
++		     output->mm_width && output->mm_height)
++	    {
++		/*
++		 * If the output has a mode and a declared size, use that
++		 * to scale the screen size
++		 */
++		DisplayModePtr	mode = &output->crtc->mode;
++		mmWidth = output->mm_width * width / mode->HDisplay;
++		mmHeight = output->mm_height * height / mode->VDisplay;
++	    }
+ 	    else
+ 	    {
+ 		/*

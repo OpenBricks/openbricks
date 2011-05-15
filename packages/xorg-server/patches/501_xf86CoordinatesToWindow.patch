@@ -1,0 +1,97 @@
+Index: xorg-server/dix/events.c
+===================================================================
+--- xorg-server.orig/dix/events.c	2011-04-09 10:42:15.000000000 +0300
++++ xorg-server/dix/events.c	2011-04-09 10:42:43.000000000 +0300
+@@ -6168,3 +6168,47 @@
+     return FALSE;
+ }
+ 
++WindowPtr
++CoordinatesToWindow(int x, int y, int screen)
++{
++    WindowPtr pWin;
++    WindowPtr ret = NullWindow;
++    BoxRec box;
++
++    pWin = screenInfo.screens[screen]->root;
++    while (pWin)
++    {
++	if ((pWin->mapped) &&
++	    (x >= pWin->drawable.x - wBorderWidth (pWin)) &&
++	    (x < pWin->drawable.x + (int)pWin->drawable.width +
++	     wBorderWidth(pWin)) &&
++	    (y >= pWin->drawable.y - wBorderWidth (pWin)) &&
++	    (y < pWin->drawable.y + (int)pWin->drawable.height +
++	     wBorderWidth (pWin))
++	    /* When a window is shaped, a further check
++	     * is made to see if the point is inside
++	     * borderSize
++	     */
++	    && (!wBoundingShape(pWin) || PointInBorderSize(pWin, x, y))
++	    && (!wInputShape(pWin) ||
++		RegionContainsPoint(wInputShape(pWin),
++				    x - pWin->drawable.x,
++				    y - pWin->drawable.y, &box))
++#ifdef ROOTLESS
++    /* In rootless mode windows may be offscreen, even when
++     * they're in X's stack. (E.g. if the native window system
++     * implements some form of virtual desktop system).
++     */
++		&& !pWin->rootlessUnhittable
++#endif
++	    )
++	{
++            ret = pWin;
++            pWin = pWin->firstChild;
++        }
++        else
++            pWin = pWin->nextSib;
++    }
++    return ret;
++}
++
+Index: xorg-server/hw/xfree86/common/xf86Xinput.c
+===================================================================
+--- xorg-server.orig/hw/xfree86/common/xf86Xinput.c	2011-04-09 10:42:15.000000000 +0300
++++ xorg-server/hw/xfree86/common/xf86Xinput.c	2011-04-09 10:42:43.000000000 +0300
+@@ -1464,4 +1464,10 @@
+         mieqEnqueue(dev, (InternalEvent *)((xf86Events + i)->event));
+ }
+ 
++WindowPtr
++xf86CoordinatesToWindow(int x, int y, int screen)
++{
++    return CoordinatesToWindow(x, y, screen);
++}
++
+ /* end of xf86Xinput.c */
+Index: xorg-server/hw/xfree86/common/xf86Xinput.h
+===================================================================
+--- xorg-server.orig/hw/xfree86/common/xf86Xinput.h	2011-04-09 10:42:15.000000000 +0300
++++ xorg-server/hw/xfree86/common/xf86Xinput.h	2011-04-09 10:42:15.000000000 +0300
+@@ -184,4 +184,6 @@
+ /* xf86Option.c */
+ extern _X_EXPORT void xf86CollectInputOptions(InputInfoPtr pInfo, const char **defaultOpts);
+ 
++extern _X_EXPORT WindowPtr xf86CoordinatesToWindow(int x, int y, int screen);
++
+ #endif /* _xf86Xinput_h */
+Index: xorg-server/include/events.h
+===================================================================
+--- xorg-server.orig/include/events.h	2011-04-09 10:42:15.000000000 +0300
++++ xorg-server/include/events.h	2011-04-09 10:42:15.000000000 +0300
+@@ -24,6 +24,7 @@
+ 
+ #ifndef EVENTS_H
+ #define EVENTS_H
++
+ typedef struct _DeviceEvent DeviceEvent;
+ typedef struct _DeviceChangedEvent DeviceChangedEvent;
+ typedef struct _TouchOwnershipEvent TouchOwnershipEvent;
+@@ -36,4 +37,6 @@
+ #endif
+ typedef union _InternalEvent InternalEvent;
+ 
++extern WindowPtr CoordinatesToWindow(int x, int y, int screen);
++
+ #endif
