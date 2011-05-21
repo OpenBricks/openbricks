@@ -1,5 +1,11 @@
 #!/bin/sh
 
+DIALOG=`which dialog`
+if [ "$DIALOG" = "" ]; then
+  echo "You need 'dialog' tool to be installed."
+  exit 1
+fi
+
 # usage : $1 : "external" or nothing
 #    if external $2 is distroname 
 
@@ -56,7 +62,7 @@ progress () {
     MSG_TITLE="\Z1[ INSTALLING to USB ]\Zn"
     MSG_BACKTITLE="Install in progress ..."
     echo $2 >> $LOG_F
-    dialog --colors --backtitle "$MSG_BACKTITLE" --title "$MSG_TITLE" --gauge "$2 ..." 6 70 $1 &
+    $DIALOG --colors --backtitle "$MSG_BACKTITLE" --title "$MSG_TITLE" --gauge "$2 ..." 6 70 $1 &
 }
 
 # $1 disk
@@ -65,14 +71,14 @@ create_part_virtual () {
   disk=$1
   
   if [ "$disk" = "$DISK" ]; then
-    nb_part=`dialog --clear --stdout --title "Add another partition than only rootfs to disk ?" \
+    nb_part=`$DIALOG --clear --stdout --title "Add another partition than only rootfs to disk ?" \
          --menu "How many partition(s) do you want ? (free space with rootfs is $FREE_SIZE)" 20 51 4 \
          "1" "rootfs : no change possible" \
          "2" "?" \
          "3" "?" \
          "4" "?"`
     if [ $nb_part = "1" ] ; then 
-      SIZE_ROOTFS_1=`dialog --clear --stdout --title "No assigned free space : $FREE_SIZE" \
+      SIZE_ROOTFS_1=`$DIALOG --clear --stdout --title "No assigned free space : $FREE_SIZE" \
          --menu "Do you want to use free space" 20 51 4 \
          "$SIZE_ROOTFS" "The minimum for rootfs" \
          "$SIZE" "" `
@@ -80,7 +86,7 @@ create_part_virtual () {
     fi
   else
     size_disk=`$SFDISK -s /dev/$DISK | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
-    nb_part=`dialog --clear --stdout --title "Creating partition(s) for $disk ?" \
+    nb_part=`$DIALOG --clear --stdout --title "Creating partition(s) for $disk ?" \
          --menu "How many partition(s) do you want ? (free space is "$size_disk")" 20 51 4 \
          "1" "?" \
          "2" "?" \
@@ -89,7 +95,7 @@ create_part_virtual () {
   fi
 
   if [ -z $nb_part ] ; then 
-    dialog --aspect 15 --backtitle "Bye !" --title "Canceled by user" \
+    $DIALOG --aspect 15 --backtitle "Bye !" --title "Canceled by user" \
            --yesno "\nCanceled" 0 0 1>&2 || exit 1
   fi
 
@@ -106,12 +112,12 @@ create_part_virtual () {
    
 while [ $i != $nb_part ] ; do
   i=$(($i+1))
-  size_part=`dialog --stdout --title "Partition $i" --clear \
+  size_part=`$DIALOG --stdout --title "Partition $i" --clear \
         --inputbox "Choose partition size in Mb :free size is $size_free M" 16 51`
   size_free=$(($size_free-$size_part))
   if [ $i = $nb_part ] ; then
     if [ "$size_free" != "0" ] ; then
-      size_part1=`dialog --clear --stdout --title "Non assigned free space : $size_free " \
+      size_part1=`$DIALOG --clear --stdout --title "Non assigned free space : $size_free " \
          --menu "Do you want to use free space for the last partition ?" 20 51 4 \
          "$size_part" "you requested" \
          "$(($size_free+$size_part))" "" `
@@ -119,7 +125,7 @@ while [ $i != $nb_part ] ; do
     fi
     [ "$size_free" = "0" ] && size_part="max"
   fi
-  name_part=`dialog --stdout --title "Partition $i" --clear \
+  name_part=`$DIALOG --stdout --title "Partition $i" --clear \
         --inputbox "Choose name for partition :" 16 51`
   
     data_disk="$data_disk,$i $size_part $name_part /mnt/$name_part"
@@ -143,11 +149,11 @@ choose_disk () {
     done
 
     if [ -z "$DISK_LIST" ]; then
-      dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_ERROR" \
+      $DIALOG --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_ERROR" \
         --yesno "\n${MSG_DISK_NOT_FOUND}" 0 0 1>&2 || exit 1
     else
       DISK_LIST="$DISK_LIST $MSG_DISK_REFRESH"
-      SELECTED_DISK=`dialog --stdout --backtitle "$BACKTITLE" \
+      SELECTED_DISK=`$DIALOG --stdout --backtitle "$BACKTITLE" \
                        --title "$MSG_DISK_DEVICE" \
                        --menu "\n${MSG_DISK_DEVICE_DESC}" 0 0 0 $DISK_LIST`
       [ -z "$SELECTED_DISK" ] && break
@@ -315,7 +321,7 @@ menu () {
 \nPlease select:"
   MSG_CANCEL="Exit"
 
-  dialog --colors --backtitle "$BACKTITLE" --cancel-label "$MSG_CANCEL" \
+  $DIALOG --colors --backtitle "$BACKTITLE" --cancel-label "$MSG_CANCEL" \
       --title "$MSG_TITLE" --menu "$MSG_MENU" 20 70 5 \
         1 "Install of $DISTRONAME" \
         2 "Setup $DISTRONAME" 2> $TMPDIR/mainmenu
