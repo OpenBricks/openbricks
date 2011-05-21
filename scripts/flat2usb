@@ -7,13 +7,13 @@ if [ "$DIALOG" = "" ]; then
 fi
 
 # usage : $1 : "external" or nothing
-#    if external $2 is distroname 
+#    if external $2 is distroname
 
 if [ "$1" = "external" ] ; then
   DISTRONAME=$2
   path=`pwd`
   bin="$path/bin"
-  
+
 #  BKLID=$bin/blkid
   EXTLINUX="$bin/extlinux"
   SFDISK="sfdisk"
@@ -21,13 +21,13 @@ if [ "$1" = "external" ] ; then
 
   DEST=$path/build
   DEST_MNT="$DEST/mnt"
-  FLAT="$path/flat" 
+  FLAT="$path/flat"
 
   LOG_F="$path/install-$(date +%Y%m%d%H%M).txt"
   mkdir -p  $DEST_MNT
 
   GPTMBR_BIN="$path/bin/gptmbr.bin"
-else 
+else
 
   . config/options
 
@@ -69,7 +69,7 @@ progress () {
 create_part_virtual () {
   local disk
   disk=$1
-  
+
   if [ "$disk" = "$DISK" ]; then
     nb_part=`$DIALOG --clear --stdout --title "Add another partition than only rootfs to disk ?" \
          --menu "How many partition(s) do you want ? (free space with rootfs is $FREE_SIZE)" 20 51 4 \
@@ -77,7 +77,7 @@ create_part_virtual () {
          "2" "?" \
          "3" "?" \
          "4" "?"`
-    if [ $nb_part = "1" ] ; then 
+    if [ $nb_part = "1" ] ; then
       SIZE_ROOTFS_1=`$DIALOG --clear --stdout --title "No assigned free space : $FREE_SIZE" \
          --menu "Do you want to use free space" 20 51 4 \
          "$SIZE_ROOTFS" "The minimum for rootfs" \
@@ -94,7 +94,7 @@ create_part_virtual () {
          "4" "?"`
   fi
 
-  if [ -z $nb_part ] ; then 
+  if [ -z $nb_part ] ; then
     $DIALOG --aspect 15 --backtitle "Bye !" --title "Canceled by user" \
            --yesno "\nCanceled" 0 0 1>&2 || exit 1
   fi
@@ -109,7 +109,7 @@ create_part_virtual () {
   else
     size_free=$size_disk
   fi
-   
+
 while [ $i != $nb_part ] ; do
   i=$(($i+1))
   size_part=`$DIALOG --stdout --title "Partition $i" --clear \
@@ -127,7 +127,7 @@ while [ $i != $nb_part ] ; do
   fi
   name_part=`$DIALOG --stdout --title "Partition $i" --clear \
         --inputbox "Choose name for partition :" 16 51`
-  
+
     data_disk="$data_disk,$i $size_part $name_part /mnt/$name_part"
   done
 
@@ -174,11 +174,11 @@ extract_part_name () {
 }
 
 extract_part_mountpoint () {
-  echo $2 | cut -d, -f$(($1+1)) | cut -d" " -f4 
+  echo $2 | cut -d, -f$(($1+1)) | cut -d" " -f4
 }
 
 install_rootfs () {
-  DISK=`choose_disk`  
+  DISK=`choose_disk`
   [ -z "$DISK" ] && echo "End : no disk choosen" >> $LOG_F && exit 1
   SIZE_ROOTFS=`du -ch $FLAT | grep total | cut -f1 | cut -dM -f1`
   SIZE_ROOTFS=$(($SIZE_ROOTFS+150))
@@ -206,7 +206,7 @@ install_rootfs () {
     j=`extract_part_size "$i" "$data"`
     k=`extract_part_name "$i" "$data"`
     echo "$i $j $k" >>$LOG_F 2>&1
-    startsector=`$SGDISK -f /dev/$DISK`    
+    startsector=`$SGDISK -f /dev/$DISK`
 
     if [ "$j" = "max" ] ; then
       echo "sgdisk --largest-new=$i /dev/$DISK" >> $LOG_F 2>&1
@@ -250,7 +250,7 @@ install_rootfs () {
   counter=0
   reference=20
   progress "$reference" "copying files .."
-  while read i ; do 
+  while read i ; do
     cp --parent -d "${i}" $DEST_MNT
     counter=$(($counter+1))
     # 20 is begin, 90 is end, and 70 is delta
@@ -276,7 +276,7 @@ install_rootfs () {
   echo "Search for UUID" >> $LOG_F
   PARTUUID=`$SGDISK --info=1 /dev/$DISK | grep 'Partition unique GUID' | cut -f2 -d: | tr -d '[:blank:]'`
   echo "PARTUUID=$PARTUUID" >> $LOG_F
-  
+
   i=0
   while [ $i != $NB_PART ] ; do
     i=$(($i+1))
@@ -287,7 +287,7 @@ install_rootfs () {
     echo "UUID=$UUID $j ext4 errors=remount-ro 0" >> $DEST_MNT/etc/fstab
     sync
   done
-  
+
   ## generating extlinux
   progress "95" "Installing bootloader"
   $EXTLINUX --install $DEST_MNT/boot >> $LOG_F 2>&1
