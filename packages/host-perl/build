@@ -1,0 +1,63 @@
+#!/bin/sh
+
+. config/options
+
+# parallel builds usually work, but sometimes they also fail randomly
+# better stay on the safe side
+export MAKEFLAGS=-j1
+
+cd $BUILD/$1*
+
+get_meta $1
+setup_toolchain host
+
+./Configure \
+		-Dcc="${HOST_CC}" \
+		-Dcflags="${HOST_CFLAGS}" \
+		-Dldflags="${HOST_LDFLAGS}" \
+		-Dprefix=/usr \
+		-Dvendorprefix=/usr \
+		-Dvendorprefix=/usr \
+		-Dsiteprefix=/usr \
+                \
+		-Dprivlib=${ROOT}/${TOOLCHAIN}/lib/perl/${PKG_VERSION} \
+		-Darchlib=${ROOT}/${TOOLCHAIN}/lib/perl/${PKG_VERSION} \
+		-Dvendorlib=${ROOT}/${TOOLCHAIN}/lib/perl/${PKG_VERSION} \
+		-Dvendorarch=${ROOT}/${TOOLCHAIN}/lib/perl/${PKG_VERSION} \
+		-Dsitelib=${ROOT}/${TOOLCHAIN}/lib/perl/${PKG_VERSION} \
+		-Dsitearch=${ROOT}/${TOOLCHAIN}/lib/perl/${PKG_VERSION} \
+		\
+		-Duseshrplib \
+		-Dusethreads \
+		-Duseithreads \
+		-Duselargefiles \
+		-Dnoextensions=ODBM_File \
+		-Ud_dosuid \
+		-Ui_db \
+		-Ui_ndbm \
+		-Ui_gdbm \
+		-Di_shadow \
+		-Di_syslog \
+		-Duseperlio \
+		-Dman3ext=3pm \
+		-Uafs \
+		-Ud_csh \
+		-Uusesfio \
+		-Uusenm -des
+
+make
+make_install
+
+mv .install/${ROOT}/${TOOLCHAIN}/lib .install/usr/lib
+ln -sf perl${PKG_VERSION} .install/usr/bin/hostperl
+ln -sf perl .install/usr/lib/perl5
+cp config.sh .install/usr/lib/perl
+
+# create wrappers
+for i in perl perl${PKG_VERSION} ; do
+  echo "Generating wrapper script for ${i}"
+  mv .install/usr/bin/${i} .install/usr/bin/${i}.real
+  echo "#!/bin/sh" > .install/usr/bin/${i}
+  echo "exec env PERL5LIB=$PERL5LIB:${ROOT}/${TOOLCHAIN}/lib/perl/${PKG_VERSION}:${ROOT}/${TOOLCHAIN}/lib/perl/ ${ROOT}/${TOOLCHAIN}/bin/${i}.real \"\$@\"" >>.install/usr/bin/${i}
+  chmod +x .install/usr/bin/${i}
+done
