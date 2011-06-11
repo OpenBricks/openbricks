@@ -1,0 +1,201 @@
+#!/bin/sh
+
+. config/options
+
+# parallel builds usually work, but sometimes they also fail randomly
+# better stay on the safe side
+export MAKEFLAGS=-j1
+
+cd $BUILD/$1*
+
+here=`pwd`
+get_meta $1
+setup_toolchain target
+
+do_nolargefile() {
+	sed -i -e "s,\(uselargefiles=\)'define',\1'undef',g" \
+		-e "s,\(d_readdir64_r=\)'define',\1'undef',g" \
+		-e "s,\(readdir64_r_proto=\)'\w+',\1'0',g" \
+		-e "/ccflags_uselargefiles/d" \
+		-e "s/-Duselargefiles//" \
+		-e "s/-D_FILE_OFFSET_BITS=64//" \
+		-e "s/-D_LARGEFILE_SOURCE//" \
+		${here}/Cross/config.sh-${TARGET_ARCH}-${TARGET_LIBC}
+}
+
+# Make hostperl in build directory be the native perl
+HOSTPERL="${ROOT}/${TOOLCHAIN}/bin/hostperl"
+ln -sf ${HOSTPERL} hostperl
+
+# Where to find .so files - use the -native versions not those from the target build
+
+export PERLHOSTLIB="${ROOT}/${TOOLCHAIN}/lib/perl/${PKG_VERSION}/"
+export LDDLFLAGS="${LDFLAGS} -shared"
+export CFLAGS="${CFLAGS} -DDEBIAN"
+
+# Do our work in the cross subdir
+cd Cross
+
+# Generate configuration
+rm -f config.sh-${TARGET_ARCH}-${TARGET_OS}
+
+if [ "$TOOLCHAIN_TYPE" = codesourcery ]; then
+  ARCH_T=$TARGET_ARCH
+  OS_T="none-linux-gnu${TARGET_ABI}"
+  arch_BITS=`cat $ROOT/$PACKAGES/$PKG_NAME/config/target_info | grep "${TARGET_ARCH}-linux-gnu${TARGET_ABI} " | cut -d" " -f3 | cut -d- -f2`
+  arch_ENDIAN=`cat $ROOT/$PACKAGES/$PKG_NAME/config/target_info | grep "${TARGET_ARCH}-linux-gnu${TARGET_ABI} " | cut -d" " -f2 | cut -d- -f2`
+  if [ ${arch_ENDIAN}=="little" ] ; then
+    arch_ENDIAN=le
+  else
+    arch_ENDIAN=be
+  fi
+else
+  case $TARGET_LIBC in
+    uclibc)
+      ARCH_T=$TARGET_SUBARCH-openbricks-linux-uclibc
+      OS_T="openbricks-linux-uclibc"
+      arch_BITS=`cat $ROOT/$PACKAGES/$PKG_NAME/config/target_info | grep "${TARGET_SUBARCH}-linux-uclibc " | cut -d" " -f3 | cut -d- -f2`
+      arch_ENDIAN=`cat $ROOT/$PACKAGES/$PKG_NAME/config/target_info | grep "${TARGET_SUBARCH}-linux-uclibc " | cut -d" " -f2 | cut -d- -f2`
+      if [ ${arch_ENDIAN}=="little" ] ; then
+        arch_ENDIAN=le
+      else
+       arch_ENDIAN=be
+      fi
+      ;;
+
+    glibc|eglibc)
+      ARCH_T=$TARGET_SUBARCH
+      OS_T="openbricks-linux-gnu${TARGET_ABI}"
+      arch_BITS=`cat $ROOT/$PACKAGES/$PKG_NAME/config/target_info | grep "${TARGET_SUBARCH}-linux " | cut -d" " -f3 | cut -d- -f2`
+      echo $arch_BITS
+      arch_ENDIAN=`cat $ROOT/$PACKAGES/$PKG_NAME/config/target_info | grep "${TARGET_SUBARCH}-linux " | cut -d" " -f2 | cut -d- -f2`
+      if [ ${arch_ENDIAN}=="little" ] ; then
+        arch_ENDIAN=le
+      else
+       arch_ENDIAN=be
+      fi
+      echo $arch_ENDIAN
+      ;;
+  esac
+fi
+
+for i in $ROOT/$PACKAGES/$PKG_NAME/config/config.sh \
+         $ROOT/$PACKAGES/$PKG_NAME/config/config.sh-${arch_BITS} \
+         $ROOT/$PACKAGES/$PKG_NAME/config/config.sh-${arch_BITS}-${arch_ENDIAN}; do
+  cat $i >> config.sh-${TARGET_ARCH}-${TARGET_LIBC}
+done
+
+# Fixups for uclibc
+if [ "${TARGET_LIBC}" = "uclibc" -o "${TARGET_LIBC}" = "uclibceabi" ]; then
+  sed -i -e "s,\(d_crypt_r=\)'define',\1'undef',g" \
+         -e "s,\(d_futimes=\)'define',\1'undef',g" \
+         -e "s,\(crypt_r_proto=\)'\w+',\1'0',g" \
+         -e "s,\(d_getnetbyname_r=\)'define',\1'undef',g" \
+         -e "s,\(getnetbyname_r_proto=\)'\w+',\1'0',g" \
+         -e "s,\(d_getnetbyaddr_r=\)'define',\1'undef',g" \
+         -e "s,\(getnetbyaddr_r_proto=\)'\w+',\1'0',g" \
+         -e "s,\(d_getnetent_r=\)'define',\1'undef',g" \
+         -e "s,\(getnetent_r_proto=\)'\w+',\1'0',g" \
+         -e "s,\(d_sockatmark=\)'define',\1'undef',g" \
+         -e "s,\(d_sockatmarkproto=\)'\w+',\1'0',g" \
+         -e "s,\(d_eaccess=\)'define',\1'undef',g" \
+         -e "s,\(d_stdio_ptr_lval=\)'define',\1'undef',g" \
+         -e "s,\(d_stdio_ptr_lval_sets_cnt=\)'define',\1'undef',g" \
+         -e "s,\(d_stdiobase=\)'define',\1'undef',g" \
+         -e "s,\(d_stdstdio=\)'define',\1'undef',g" \
+         -e "s,-fstack-protector,-fno-stack-protector,g" \
+            config.sh-${TARGET_ARCH}-${TARGET_LIBC}
+fi
+
+if [ "${TARGET_ARCH}" = "i386" ]; then
+  sed -i -e "s,-fstack-protector,-fno-stack-protector,g" \
+            config.sh-${TARGET_ARCH}-${TARGET_LIBC}
+fi
+
+do_nolargefile
+
+# Update some paths in the configuration
+
+sed -i -e 's,@DESTDIR@,/usr,g' \
+       -e 's,@ARCH@-thread-multi,,g' \
+       -e "s,@ARCH@,${TARGET_ARCH}-${TARGET_LIBC},g" \
+       -e "s,/usr/include,${SYSROOT_PREFIX}/include,g" \
+       -e 's,/site_perl,,g' \
+       -e 's,/vendor_perl,,g' \
+       -e 's,/perl5,/perl,g' \
+          config.sh-${TARGET_ARCH}-${TARGET_LIBC}
+
+case "${TARGET_ARCH}" in
+	x86_64 | i386 | powerpc | s390)
+		sed -i -e "s,\(need_va_copy=\)'undef',\1'define',g" \
+			config.sh-${TARGET_ARCH}-${TARGET_LIBC}
+		;;
+	arm)
+		sed -i -e "s,\(d_u32align=\)'undef',\1'define',g" \
+			config.sh-${TARGET_ARCH}-${TARGET_LIBC}
+		;;
+esac
+
+# These are strewn all over the source tree
+for foo in `grep -I -m1 \/usr\/include\/.*\\.h ${here}/* -r | cut -f 1 -d ":"` ; do
+  echo Fixing: $foo
+  sed -e "s,/usr/include,${SYSROOT_PREFIX}/include,g" -i $foo
+done
+
+rm -f config
+
+echo "ARCH = ${ARCH_T}" > config
+echo "OS = ${OS_T}" >> config
+ln -s config.sh-${TARGET_ARCH}-${TARGET_LIBC} config.sh-${ARCH_T}-${OS_T}
+cd ..
+sed -i -e 's|/usr/include|${SYSROOT_PREFIX}/include|g' ext/Errno/Errno_pm.PL
+sed -i -e 's|/usr/include|${SYSROOT_PREFIX}/include|g' cpan/Compress-Raw-Zlib/config.in
+sed -i -e 's|/usr/lib|${SYSROOT_PREFIX}/lib|g' cpan/Compress-Raw-Zlib/config.in
+
+export BUILD_CC=$TARGET_CC
+cd Cross
+make perl LD="${TARGET_CC}"
+cd ..
+make_install
+
+
+# Add perl pointing at current version
+ln -sf perl${PKG_VERSION} .install/usr/bin/perl
+ln -sf perl .install/usr/lib/perl5
+
+# Remove unwanted file
+rm -f .install/usr/lib/perl/${PKG_VERSION}/.packlist
+
+# Fix up shared library
+cp .install/usr/lib/perl/${PKG_VERSION}/CORE/libperl.so .install/usr/lib/libperl.so.${PKG_VERSION}
+cp .install/usr/lib/perl/${PKG_VERSION}/CORE/libperl.so .install/usr/lib/libperl.so.5
+
+# target config, used by cpan.bbclass to extract version information
+cp config.sh .install/usr/lib/perl
+
+ln -s Config_heavy.pl .install/usr/lib/perl/${PKG_VERSION}/Config_heavy-target.pl
+
+# Fix up installed configuration
+#sed -i -e "s,$here,,g" \
+#       -e "s,-isystem${STAGING_INCDIR} ,,g" \
+#               -e "s,${STAGING_LIBDIR},/usr/lib,g" \
+#               -e "s,${STAGING_BINDIR},/usr/bin,g" \
+#               -e "s,${SYSROOT_PREFIX}/include,/usr/include,g" \
+#               -e "s,${STAGING_BINDIR_NATIVE}/,,g" \
+sed -i -e "s,${SYSROOT_PREFIX}/include,/usr/include,g" \
+       -e "s,-isystem${SYSROOT_PREFIX}/include,,g" \
+       -e "s,${SYSROOT_PREFIX}/lib,/usr/lib,g" \
+       -e "s,${SYSROOT_PREFIX}/bin,/usr/bin,g" \
+       -e "s,${SYSROOT_PREFIX}/include,/usr/include,g" \
+       -e "s,${ROOT}/${TOOLCHAIN}/bin/,,g" \
+            $here/.install/usr/bin/h2xs \
+            $here/.install/usr/bin/h2ph \
+            $here/.install/usr/lib/perl/${PKG_VERSION}/pod/*.pod \
+            $here/.install/usr/lib/perl/${PKG_VERSION}/cacheout.pl \
+            $here/.install/usr/lib/perl/${PKG_VERSION}/FileCache.pm \
+            $here/.install/usr/lib/perl/config.sh \
+            $here/.install/usr/lib/perl/${PKG_VERSION}/Config.pm \
+            $here/.install/usr/lib/perl/${PKG_VERSION}/Config_heavy.pl \
+            $here/.install/usr/lib/perl/${PKG_VERSION}/CORE/perl.h \
+            $here/.install/usr/lib/perl/${PKG_VERSION}/CORE/pp.h
+
