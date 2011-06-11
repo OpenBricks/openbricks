@@ -34,9 +34,9 @@ setup_toolchain() {
     export QT_PATH_INCLUDES=$LIB_PREFIX/include/qt4
     export QT_PATH_LIBS=$LIB_PREFIX/lib
     export PERL_CMD="$ROOT/$TOOLCHAIN/bin/perl"
-    export PERL_LIB="$LIB_PREFIX/lib/perl5/5.10"
+    export PERL_LIB="$LIB_PREFIX/lib/perl5/5.12.3"
     export PERL5LIB=$PERL_LIB
-    export PERL_SITELIB="/usr/lib/perl5/5.10"
+    export PERL_SITELIB="usr/lib/perl5/5.12.3"
   elif [ "$1" = host ]; then
     export AWK=$HOST_AWK
     export CC=$HOST_CC
@@ -510,18 +510,52 @@ do_installdev () {
 }
 
 do_perl_make () {
-  export PERL_MM_USE_DEFAULT=1
+  if [ "$1" = host ]; then
+    echo "****** Creating module for host perl ******"
+    setup_toolchain host
+    export PERL_INC="${ROOT}/${TOOLCHAIN}/lib/perl/5.12.3/CORE"
+    export PERL_LIB=${ROOT}/${TOOLCHAIN}/lib/perl/5.12.3
+    export PERL_ARCHLIB=${ROOT}/${TOOLCHAIN}/lib/perl/5.12.3
+    export PERLHOSTLIB=$ROOT/$TOOLCHAIN/lib/5.12.3
+    export PERL5LIB="${PERL_ARCHLIB}"
+    export PERLCONFIGTARGET="no"
+    shift
+    hostperl Makefile.PL $*
+  else
+    setup_toolchain target
+    export PERL_MM_USE_DEFAULT=1
+    export PERLCONFIGTARGET="yes"
+    export PERL_INC=$LIB_PREFIX/lib/perl5/5.12.3/CORE
+    export PERL_LIB=$LIB_PREFIX/lib/perl5/5.12.3
+    export PERL_ARCHLIB=$LIB_PREFIX/lib/perl5/5.12.3
+    export PERLHOSTLIB=$ROOT/$TOOLCHAIN/lib/
+    export PERL5LIB="${PERL_ARCHLIB}"
 
-  install_dir="`pwd`/.install/$PERL_SITELIB"
-  mkdir -p $install_dir
+    install_dir="`pwd`/.install/$PERL_SITELIB/"
+    mkdir -p $install_dir
+    if [ -e ./Makefile.PL ]; then
+      MAKEFILEPL=Makefile.PL
+    elif [ -e ./Build.PL ]; then
+      MAKEFILEPL=Build.PL
+    else
+      echo "Cannot find PL script, aborting."
+      exit 1
+    fi
 
-  $PERL_CMD Makefile.PL \
-    $* \
+    $PERL_CMD $MAKEFILEPL $* \
     PERL_LIB=$PERL_LIB \
     PERL_ARCHLIB=$PERL_LIB \
-    INSTALLSITELIB=$PERL_SITELIB \
-    INSTALLSITEARCH=$PERL_SITELIB \
+    INSTALLSITELIB=/$PERL_SITELIB \
+    INSTALLSITEARCH=/$PERL_SITELIB \
+    INSTALLPRIVLIB=/$PERL_SITELIB \
     DESTDIR=$install_dir
+    . $LIB_PREFIX/lib/perl/config.sh
+    for f in `find -name Makefile.PL`; do
+      f2=`echo $f | sed -e 's/.PL//'`
+      sed -i -e "s:\(PERL_ARCHLIB = \).*:\1${PERL_ARCHLIB}:" \
+              $f2
+    done
+  fi
 }
 
 do_perl_strip () {
