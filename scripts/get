@@ -78,35 +78,101 @@ if [ "$DL" = yes ]; then
   [ -n "$PKG_URL" ] && \
     URLS="$URLS `echo $PKG_URL`"
 
-  for i in $URLS; do
-    NBWGET=1
-
-    PACKAGE_BASENAME=`basename $i`
-
-    if [ -f $PACKAGES/$1/$i ]; then
-      # file is already here, just copy
-      echo -e "\nJust copying $i for $1 sources..."
-      cp $PACKAGES/$1/$i $SOURCES/$1
-    else
-      # have to download
-
-      # check for packages mirror usage
-      [ "$MIRROR" = yes -a -n "$MIRROR_URL" ] \
-        && i="$MIRROR_URL/$PACKAGE_BASENAME"
-
-      until [ -f $STAMPS_NOARCH/$1/$PACKAGE_BASENAME.ok ] || wget --no-check-certificate --passive-ftp -c $WGET_OPT -P $SOURCES/$1 $i; do
-        NBWGET=$(($NBWGET+1))
-        if [ $NBWGET -gt 10 ]; then
-          echo -e "\nCan't get $1 sources : $i\n Try later !!"
-          exit 1
-        fi
-      done
+  if [ -n "$PKG_URL_PROTO" ]; then
+    # count number of URLs we have
+    NURLS=0
+    for i in $URLS; do
+      NURLS=$(($NURLS+1))
+    done
+    if [ $NURLS != 1 ]; then
+      echo "Must have exactly one URL for fancy repository download, exit."
+      exit 1
     fi
 
-    do_md5sum    "$SOURCES/$1/$PACKAGE_BASENAME"
-    do_sha256sum "$SOURCES/$1/$PACKAGE_BASENAME"
-    touch $STAMPS_NOARCH/$1/$PACKAGE_BASENAME.ok
-  done
+    REPO_BASENAME=$PKG_NAME-$PKG_VERSION
+    REPO_ARCHIVE=$REPO_BASENAME.tar.bz2
+
+    rm -Rf $SOURCES/$1/$REPO_BASENAME
+    rm -f $SOURCES/$1/$REPO_ARCHIVE
+
+    case $PKG_URL_PROTO in
+      svn)
+        [ -n "$PKG_URL_REV" ] && SVNREV="-r $PKG_URL_REV"
+        svn export $SVNREV $PKG_URL/trunk $SOURCES/$1/$REPO_BASENAME
+        tar cpjf $SOURCES/$1/$REPO_ARCHIVE -C $SOURCES/$1 $REPO_BASENAME
+        ;;
+      git)
+        GITREV=HEAD
+        [ -n "$PKG_URL_REV" ] && GITREV="$PKG_URL_REV"
+        git clone $PKG_URL $SOURCES/$1/$REPO_BASENAME
+        git --git-dir=$SOURCES/$1/$REPO_BASENAME/.git --work-tree=$SOURCES/$1/$REPO_BASENAME checkout $GITREV
+        git --git-dir=$SOURCES/$1/$REPO_BASENAME/.git --work-tree=$SOURCES/$1/$REPO_BASENAME archive --prefix=$REPO_BASENAME/ $GITREV | bzip2 > $SOURCES/$1/$REPO_ARCHIVE
+        ;;
+      hg)
+        [ -n "$PKG_URL_REV" ] && HGREV="-u $PKG_URL_REV"
+        hg clone $HGREV $PKG_URL $SOURCES/$1/$REPO_BASENAME
+        hg -R $SOURCES/$1/$REPO_BASENAME archive --prefix=$REPO_BASENAME/ $SOURCES/$1/$REPO_ARCHIVE
+        ;;
+      cvs)
+        CVSREV="-r HEAD"
+        [ -n "$PKG_URL_REV" ] && CVSREV="-r $PKG_URL_REV"
+        cvs -d$PKG_URL export $CVSREV -d $SOURCES/$1/$REPO_BASENAME $PKG_NAME 
+        tar cpjf $SOURCES/$1/$REPO_ARCHIVE -C $SOURCES/$1 $REPO_BASENAME
+        ;;
+      *)
+        echo "Unsupported PKG_URL_PROTO '$PKG_URL_PROTO', exit."
+        exit 1
+        ;;
+    esac
+
+    rm -Rf $SOURCES/$1/$REPO_BASENAME
+    # do we need checksums on repositories?
+    # do_md5sum    "$SOURCES/$1/$REPO_BASENAME"
+    # do_sha256sum "$SOURCES/$1/$REPO_BASENAME"
+    touch $STAMPS_NOARCH/$1/$REPO_BASENAME.ok
+  else
+    for i in $URLS; do
+      NBWGET=1
+
+      PACKAGE_BASENAME=`basename $i`
+
+      if [ -f $MACHINE_PACKAGES/$1/$i ]; then
+        # machine-specific file is already here, just copy
+        echo "\nJust copying machine $i for $1 sources..."
+        cp $MACHINE_PACKAGES/$1/$i $SOURCES/$1
+      elif [ -f $PLATFORM_PACKAGES/$1/$i ]; then
+        # platform-specific file is already here, just copy
+        echo "\nJust copying platform $i for $1 sources..."
+        cp $PLATFORM_PACKAGES/$1/$i $SOURCES/$1
+      elif [ -f $FLAVOUR_PACKAGES/$1/$i ]; then
+        # flavour-specific file is already here, just copy
+        echo "\nJust copying flavour $i for $1 sources..."
+        cp $FLAVOUR_PACKAGES/$1/$i $SOURCES/$1
+      elif [ -f $PACKAGES/$1/$i ]; then
+        # file is already here, just copy
+        echo "\nJust copying $i for $1 sources..."
+        cp $PACKAGES/$1/$i $SOURCES/$1
+      else
+        # have to download
+
+        # check for packages mirror usage
+        [ "$MIRROR" = yes -a -n "$MIRROR_URL" ] \
+          && i="$MIRROR_URL/$PACKAGE_BASENAME"
+
+        until [ -f $STAMPS_NOARCH/$1/$PACKAGE_BASENAME.ok ] || wget --no-check-certificate --passive-ftp -c $WGET_OPT -P $SOURCES/$1 $i; do
+          NBWGET=$(($NBWGET+1))
+          if [ $NBWGET -gt 10 ]; then
+            echo "\nCan't get $1 sources : $i\n Try later !!"
+            exit 1
+          fi
+        done
+      fi
+
+      do_md5sum    "$SOURCES/$1/$PACKAGE_BASENAME"
+      do_sha256sum "$SOURCES/$1/$PACKAGE_BASENAME"
+      touch $STAMPS_NOARCH/$1/$PACKAGE_BASENAME.ok
+    done
+  fi
 
   [ -f $PACKAGE_URL ] && \
     cp -p $PACKAGE_URL $STAMP
