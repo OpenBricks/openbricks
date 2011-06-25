@@ -4,30 +4,48 @@
 
 get_meta $1
 
+get_fw () {
+  while read line; do
+    echo $line | grep -q -v file && continue
+    echo $line | grep -q "file=$2/" && continue
+    fw=$(echo $line | sed "s%file=\(.*\)%\1%")
+    echo Need to download: $DISTRO_FW/$2/$fw
+    test ! -f $PKG_BUILD_DIR/$DISTRO_FW/$2/$fw && \
+    wget --no-check-certificate --passive-ftp \
+      -P $PKG_BUILD_DIR $DISTRO_FW/$2/$fw
+  done < $PACKAGES/$1/config/packages.ini.$3
+}
+
 mkdir -p $PKG_BUILD_DIR
-$SCRIPTS/extract $1 "*" $PKG_BUILD_DIR
+pkg_uses $1 bluetooth && get_fw $1 Bluetooth bt
+pkg_uses $1 dvb       && get_fw $1 DVB dvb
+pkg_uses $1 gfx       && get_fw $1 Graphics gfx
+pkg_uses $1 wifi      && get_fw $1 WiFi wifi
 
-# Rename firmwares that need to be
-mv $PKG_BUILD_DIR/p54pci_1.0.4.3.arm.bz2 $PKG_BUILD_DIR/isl3890.bz2
-mv $PKG_BUILD_DIR/p54u_2.5.6.0.arm.bz2 $PKG_BUILD_DIR/isl3890usb.bz2
-mv $PKG_BUILD_DIR/p54pci_1.1.0.0.arm.bz2 $PKG_BUILD_DIR/isl3877.bz2
-mv $PKG_BUILD_DIR/p54u_3887_2.5.8.0.arm.bz2 $PKG_BUILD_DIR/isl3887usb_bare.bz2
+if [ `pkg_uses $1 wifi` ]; then
+  # Rename firmwares that need to be
+  mv $PKG_BUILD_DIR/p54pci_1.0.4.3.arm.bz2 $PKG_BUILD_DIR/isl3890.bz2
+  mv $PKG_BUILD_DIR/p54u_2.5.6.0.arm.bz2 $PKG_BUILD_DIR/isl3890usb.bz2
+  mv $PKG_BUILD_DIR/p54pci_1.1.0.0.arm.bz2 $PKG_BUILD_DIR/isl3877.bz2
+  mv $PKG_BUILD_DIR/p54u_3887_2.5.8.0.arm.bz2 $PKG_BUILD_DIR/isl3887usb_bare.bz2
 
-# Move firmwares to their belonging path
-mkdir -p $PKG_BUILD_DIR/acx/default
-mv $PKG_BUILD_DIR/tiacx* $PKG_BUILD_DIR/acx/default/
-mkdir -p $PKG_BUILD_DIR/radeon && \
-  mv $PKG_BUILD_DIR/R[0-9][0-9][0-9]_rlc.bin* $PKG_BUILD_DIR/radeon/
-mkdir -p $PKG_BUILD_DIR/ti-connectivity && \
-  mv $PKG_BUILD_DIR/wl1271-*.bin* $PKG_BUILD_DIR/ti-connectivity/
+  # Move firmwares to their belonging path
+  mkdir -p $PKG_BUILD_DIR/acx/default
+  mv $PKG_BUILD_DIR/tiacx* $PKG_BUILD_DIR/acx/default/
+  mkdir -p $PKG_BUILD_DIR/radeon && \
+    mv $PKG_BUILD_DIR/R[0-9][0-9][0-9]_rlc.bin* $PKG_BUILD_DIR/radeon/
+  mkdir -p $PKG_BUILD_DIR/ti-connectivity && \
+    mv $PKG_BUILD_DIR/wl1271-*.bin* $PKG_BUILD_DIR/ti-connectivity/
 
-# Extract firmware archives that need to be
-[ -f $PKG_BUILD_DIR/b43.tar ] && tar xvf $PKG_BUILD_DIR/b43.tar
-[ -f $PKG_BUILD_DIR/b43legacy.tar ] && tar xvf $PKG_BUILD_DIR/b43legacy.tar
+  # Extract firmware archives that need to be
+  [ -f $PKG_BUILD_DIR/b43.tar ] && tar xvf $PKG_BUILD_DIR/b43.tar -C $PKG_BUILD_DIR
+  [ -f $PKG_BUILD_DIR/b43legacy.tar ] && tar xvf $PKG_BUILD_DIR/b43legacy.tar -C $PKG_BUILD_DIR
 
-# Uncompress firmwares
-bunzip2 -f $PKG_BUILD_DIR/*.bz2
-bunzip2 -f $PKG_BUILD_DIR/radeon/*.bz2
-bunzip2 -f $PKG_BUILD_DIR/b43/*.bz2
-bunzip2 -f $PKG_BUILD_DIR/b43legacy/*.bz2
-bunzip2 -f $PKG_BUILD_DIR/ti-connectivity/*.bz2
+  # Uncompress firmwares
+  bunzip2 -f $PKG_BUILD_DIR/*.bz2
+  bunzip2 -f $PKG_BUILD_DIR/b43/*.bz2
+  bunzip2 -f $PKG_BUILD_DIR/b43legacy/*.bz2
+  bunzip2 -f $PKG_BUILD_DIR/ti-connectivity/*.bz2
+fi
+
+pkg_uses $1 gfx && bunzip2 -f $PKG_BUILD_DIR/radeon/*.bz2
