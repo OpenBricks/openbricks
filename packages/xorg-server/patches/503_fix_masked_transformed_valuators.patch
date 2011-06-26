@@ -1,0 +1,102 @@
+We must store two sets of the X and Y valuator values in the server: both the
+last untransformed and the last transformed values. We need the last
+untransformed values so we can correctly transform new values, and we need the
+last transformed values to know when to set the valuator in the event mask. This
+patch ensures the correct handling of valuator values when an input coordinate
+transformation matrix with rotation is applied.
+
+--- a/dix/getevents.c
++++ b/dix/getevents.c
+@@ -1177,15 +1177,29 @@ GetPointerEvents(EventList *events, Devi
+             }
+         }
+ 
+-        x = (valuator_mask_isset(&mask, 0) ? valuator_mask_get(&mask, 0) :
+-             pDev->last.valuators[0]);
+-        y = (valuator_mask_isset(&mask, 1) ? valuator_mask_get(&mask, 1) :
+-             pDev->last.valuators[1]);
+-        transformAbsolute(pDev, &mask, &x, &y);
+         if (valuator_mask_isset(&mask, 0))
+-            valuator_mask_set(&mask, 0, x);
++        {
++            x = valuator_mask_get(&mask, 0);
++            pDev->last.untransformed_x = x;
++        } else
++            x = pDev->last.untransformed_x;
+         if (valuator_mask_isset(&mask, 1))
++        {
++            y = valuator_mask_get(&mask, 1);
++            pDev->last.untransformed_y = y;
++        } else
++            y = pDev->last.untransformed_y;
++
++        transformAbsolute(pDev, &mask, &x, &y);
++
++        if (x != pDev->last.valuators[0])
++            valuator_mask_set(&mask, 0, x);
++        else
++            valuator_mask_unset(&mask, 0);
++        if (y != pDev->last.valuators[1])
+             valuator_mask_set(&mask, 1, y);
++        else
++            valuator_mask_unset(&mask, 1);
+ 
+         moveAbsolute(pDev, &x, &y, &mask);
+     } else {
+@@ -1392,22 +1406,27 @@ GetTouchEvents(EventList *events, Device
+      * Relative. */
+     if (t->mode == XIDirectTouch) {
+         if (valuator_mask_isset(&mask, t->x_axis))
++        {
+             x = valuator_mask_get(&mask, t->x_axis);
+-        else
+-            x = ti->valuators[t->x_axis];
+-        x = rescaleValuatorAxis(x, 0.0, &x_frac,
+-                                (AxisInfoPtr)(t->axes + t->x_axis),
+-                                NULL, scr->width);
++            ti->untransformed_x = x;
++        } else
++            x = ti->untransformed_x;
+ 
+         if (valuator_mask_isset(&mask, t->y_axis))
++        {
+             y = valuator_mask_get(&mask, t->y_axis);
+-        else
+-            y = ti->valuators[t->y_axis];
++            ti->untransformed_y = y;
++        } else
++            y = ti->untransformed_y;
++
++        transformAbsolute(pDev, &mask, &x, &y);
++
++        x = rescaleValuatorAxis(x, 0.0, &x_frac,
++                                (AxisInfoPtr)(t->axes + t->x_axis),
++                                NULL, scr->width);
+         y = rescaleValuatorAxis(y, 0.0, &y_frac,
+                                 (AxisInfoPtr)(t->axes + t->y_axis),
+                                 NULL, scr->height);
+-
+-        transformAbsolute(pDev, &mask, &x, &y);
+     }
+     else {
+         x = pDev->spriteInfo->sprite->hotPhys.x;
+--- a/include/inputstr.h
++++ b/include/inputstr.h
+@@ -335,6 +335,8 @@ typedef struct _TouchPointInfo {
+     unsigned int history_size;      /* Size of history ring buffer */
+     InternalEvent *first_history;   /* Pointer to first event in history */
+     InternalEvent *next_history;    /* Pointer to next available event */
++    int         untransformed_x;
++    int         untransformed_y;
+ } TouchPointInfoRec;
+ 
+ typedef struct _TouchAxisInfo {
+@@ -623,6 +625,8 @@ typedef struct _DeviceIntRec {
+         float           remainder[MAX_VALUATORS];
+         int             numValuators;
+         DeviceIntPtr    slave;
++        int             untransformed_x;
++        int             untransformed_y;
+     } last;
+ 
+     /* Input device property handling. */
