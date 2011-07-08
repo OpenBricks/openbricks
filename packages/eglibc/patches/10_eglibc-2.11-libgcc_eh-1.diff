@@ -1,6 +1,32 @@
-diff -Naur eglibc-2.11-r9324/config.make.in eglibc-2.11-r9324a/config.make.in
---- eglibc-2.11-r9324/config.make.in	2009-11-22 11:31:26.000000000 +0100
-+++ eglibc-2.11-r9324a/config.make.in	2009-11-22 11:38:09.000000000 +0100
+diff -Naur glibc-2.11.orig/Makeconfig glibc-2.11/Makeconfig
+--- glibc-2.11.orig/Makeconfig	2009-10-30 13:17:08.000000000 -0400
++++ glibc-2.11/Makeconfig	2009-11-13 12:14:18.000000000 -0500
+@@ -538,12 +538,20 @@
+   libunwind = -lunwind
+ endif
+ ifneq ($(have-as-needed),yes)
+- libgcc_eh := -lgcc_eh $(libunwind)
++ ifneq ($(have-cc-with-libgcc_eh),yes)
++  libgcc_eh := $(libunwind)
++ else
++  libgcc_eh := -lgcc_eh $(libunwind)
++ endif
+ else
+  libgcc_eh := -Wl,--as-needed -lgcc_s$(libgcc_s_suffix) $(libunwind) -Wl,--no-as-needed
+ endif
+ gnulib := -lgcc $(libgcc_eh)
+-static-gnulib := -lgcc -lgcc_eh $(libunwind)
++ifneq ($(have-cc-with-libgcc_eh),yes)
++ static-gnulib := -lgcc $(libunwind)
++else
++ static-gnulib := -lgcc -lgcc_eh $(libunwind)
++endif
+ libc.so-gnulib := -lgcc
+ endif
+ ifeq ($(elf),yes)
+diff -Naur glibc-2.11.orig/config.make.in glibc-2.11/config.make.in
+--- glibc-2.11.orig/config.make.in	2009-10-30 13:17:08.000000000 -0400
++++ glibc-2.11/config.make.in	2009-11-13 12:14:18.000000000 -0500
 @@ -64,6 +64,7 @@
  have-libaudit = @have_libaudit@
  have-libcap = @have_libcap@
@@ -9,55 +35,10 @@ diff -Naur eglibc-2.11-r9324/config.make.in eglibc-2.11-r9324a/config.make.in
  fno-unit-at-a-time = @fno_unit_at_a_time@
  bind-now = @bindnow@
  have-hash-style = @libc_cv_hashstyle@
-diff -Naur eglibc-2.11-r9324/configure eglibc-2.11-r9324a/configure
---- eglibc-2.11-r9324/configure	2009-11-22 11:31:26.000000000 +0100
-+++ eglibc-2.11-r9324a/configure	2009-11-22 11:42:41.000000000 +0100
-@@ -693,6 +693,7 @@
- libc_cv_libgcc_s_suffix
- libc_cv_Bgroup
- libc_cv_cc_with_libunwind
-+libc_cv_cc_with_libgcc_eh
- VERSIONING
- BISON
- INSTALL_INFO
-@@ -6520,6 +6521,33 @@
- 
-   fi
- 
-+  { $as_echo "$as_me:$LINENO: checking whether to link against libgcc_eh" >&5
-+$as_echo_n "checking whether to link against libgcc_eh... " >&6; }
-+if test "${libc_cv_cc_with_libgcc_eh+set}" = set; then
-+   $as_echo_n "(cached) " >&6
-+else
-+ 
-+     cat > conftest.c <<EOF
-+int main (void) { return 0; }
-+EOF
-+    if ${CC-cc} $CFLAGS $CPPFLAGS $LDFLAGS -static -o conftest \
-+       conftest.c -v 2>&1 >/dev/null | grep -q " -lgcc_eh "; then
-+      libc_cv_cc_with_libgcc_eh=yes
-+    else
-+      libc_cv_cc_with_libgcc_eh=no
-+    fi
-+    rm -f conftest*
-+fi
-+$as_echo "$as_me:$LINENO: result: $libc_cv_cc_with_libgcc_eh" >&5
-+$as_echo "$libc_cv_cc_with_libgcc_eh" >&6;
-+ 
-+  if test $libc_cv_cc_with_libgcc_eh = yes; then
-+    cat >>confdefs.h <<\_ACEOF
-+#define HAVE_CC_WITH_LIBGCC_EH 1
-+_ACEOF
-+ 
-+  fi
-+
-   { $as_echo "$as_me:$LINENO: checking for -z nodelete option" >&5
- $as_echo_n "checking for -z nodelete option... " >&6; }
- if test "${libc_cv_z_nodelete+set}" = set; then
-diff -Naur eglibc-2.11-r9324/configure.in eglibc-2.11-r9324a/configure.in
---- eglibc-2.11-r9324/configure.in	2009-11-22 11:31:26.000000000 +0100
-+++ eglibc-2.11-r9324a/configure.in	2009-11-22 11:38:09.000000000 +0100
-@@ -1516,6 +1516,23 @@
+diff -Naur glibc-2.11.orig/configure.in glibc-2.11/configure.in
+--- glibc-2.11.orig/configure.in	2009-10-30 13:17:08.000000000 -0400
++++ glibc-2.11/configure.in	2009-11-13 12:14:18.000000000 -0500
+@@ -1505,6 +1505,23 @@
      AC_DEFINE(HAVE_CC_WITH_LIBUNWIND)
    fi
  
@@ -81,28 +62,3 @@ diff -Naur eglibc-2.11-r9324/configure.in eglibc-2.11-r9324a/configure.in
    AC_CACHE_CHECK(for -z nodelete option,
  		 libc_cv_z_nodelete, [dnl
    cat > conftest.c <<EOF
-diff -Naur eglibc-2.11-r9324/Makeconfig eglibc-2.11-r9324a/Makeconfig
---- eglibc-2.11-r9324/Makeconfig	2009-11-22 11:31:26.000000000 +0100
-+++ eglibc-2.11-r9324a/Makeconfig	2009-11-22 11:38:09.000000000 +0100
-@@ -538,12 +538,20 @@
-   libunwind = -lunwind
- endif
- ifneq ($(have-as-needed),yes)
-+ifneq ($(have-cc-with-libgcc_eh),yes)
-+ libgcc_eh := $(libunwind)
-+else
-  libgcc_eh := -lgcc_eh $(libunwind)
-+endif
- else
-  libgcc_eh := -Wl,--as-needed -lgcc_s$(libgcc_s_suffix) $(libunwind) -Wl,--no-as-needed
- endif
- gnulib := -lgcc $(libgcc_eh)
--static-gnulib := -lgcc -lgcc_eh $(libunwind)
-+ifneq ($(have-cc-with-libgcc_eh),yes)
-+ static-gnulib := -lgcc $(libunwind)
-+else
-+ static-gnulib := -lgcc -lgcc_eh $(libunwind)
-+endif
- libc.so-gnulib := -lgcc
- endif
- ifeq ($(elf),yes)
