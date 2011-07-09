@@ -1,0 +1,63 @@
+#!/bin/sh
+
+. config/options
+
+MSG_DISK_WARNING="Warning"
+MSG_DISK_ERROR="ERROR"
+
+MSG_DISK_NOT_FOUND="No disks found on this system.\nCheck again ?"
+MSG_DISK_REFRESH="refresh list"
+
+MSG_DISK_DEVICE="Installation device"
+MSG_DISK_DEVICE_DESC="You are going to install an iso on an usb key. For this you will need an empty usb key. Be careful to choose the right disk! We won't take responsibility for any data loss."
+
+MSG_F_ISO_SELECT="Choose an iso file"
+MSG_F_ISO_COPY1="Copy in progress ..."
+MSG_F_ISO_COPY1="Be patient ..."
+
+choose_disk () {
+  local DISK_LIST SELECTED_DISK SIZE VENDOR MODEL DISKNAME i
+  while true; do
+    DISK_LIST=""
+    for i in `cat /proc/partitions | sed -n "s/\ *[0-9][0-9]*\ *[0-9][0-9]*\ *[0-9][0-9]*\ \([a-z]*\)$/\1/p"`; do
+      SIZE=`sfdisk -s /dev/$i | sed 's/\([0-9]*\)[0-9]\{3\}/\1/'`
+      VENDOR=`[ -f /sys/block/$i/device/vendor ] \
+              && cat /sys/block/$i/device/vendor`
+      MODEL=`[ -f /sys/block/$i/device/model ] \
+             && cat /sys/block/$i/device/model`
+      DISKNAME=`echo $VENDOR $MODEL ${SIZE}MB | sed 's/ /_/g'`
+      DISK_LIST="$DISK_LIST $i $DISKNAME"
+    done
+
+    if [ -z "$DISK_LIST" ]; then
+      dialog --aspect 15 --backtitle "$BACKTITLE" --title "$MSG_DISK_ERROR" \
+        --yesno "\n${MSG_DISK_NOT_FOUND}" 0 0 1>&2 || exit 1
+    else
+      DISK_LIST="$DISK_LIST $MSG_DISK_REFRESH"
+      SELECTED_DISK=`dialog --stdout --backtitle "$BACKTITLE" \
+                       --title "$MSG_DISK_DEVICE" \
+                       --menu "\n${MSG_DISK_DEVICE_DESC}" 0 0 0 $DISK_LIST`
+      [ -z "$SELECTED_DISK" ] && break
+      [ $SELECTED_DISK != refresh ] && break
+    fi
+  done
+
+  echo $SELECTED_DISK
+}
+
+DISK="`choose_disk`"
+[ -z "$DISK" ] && exit 1
+
+F_ISO=$(dialog --stdout --title "$MSG_F_ISO_SELECT" --fselect $ROOT/$BINARIES/ 10 80 )
+[ -z "$F_ISO" ] && exit 1
+
+## Copy iso to disk
+copied=0
+size=`ls -al $F_ISO | awk '{print int(($5/512)+(($5%512)?1:0))}'`
+chunk_size=$(($size/100))
+(while [ $copied -lt $size ]; do
+  dd if=$F_ISO of=/dev/$DISK bs=512 count=$chunk_size skip=$copied seek=$copied >/dev/null 2>&1
+  copied=$(($copied+$chunk_size))
+  echo $(((100*$copied)/$size))
+  done) | dialog --backtitle "$MSG_F_ISO_COPY1" --title "$MSG_F_ISO_COPY2" --gauge "$F_ISO > /dev/$DISK " 10 60 0
+
