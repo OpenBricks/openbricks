@@ -1,0 +1,24 @@
+#!/bin/sh
+
+. config/options
+
+cd $BUILD/$1*
+
+DIET_LOGO="$ROOT/$CONFIG/flavours/$FLAVOUR/dietsplash_logo.ppm"
+[ -f "$DIET_LOGO" ] && cp -P "$DIET_LOGO" data/default_background.ppm
+
+mkdir -p objdir-host
+cd objdir-host
+do_configure host
+make
+cd ..
+
+export local_cflags="-static"
+do_configure target
+
+sed -i Makefile \
+  -e 's|src/background.h: $(background) src/genstaticlogo|src/background.h: $(background)|' \
+  -e 's|$(AM_V_GEN)src/genstaticlogo|$(AM_V_GEN)objdir-host/src/genstaticlogo|' \
+
+make
+make_install
