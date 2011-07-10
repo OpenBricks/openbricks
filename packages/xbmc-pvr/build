@@ -1,0 +1,87 @@
+#!/bin/sh
+
+. config/options
+
+xbmc_set_option() {
+  PKG="$1"
+  OPT="$2"
+  CFG_LIST="$3"
+  pkg_uses $PKG $OPT && CFG=enable || CFG=disable
+  for CFG_NAME in $CFG_LIST; do
+    EXTRA_CONFIG="$EXTRA_CONFIG --$CFG-$CFG_NAME"
+  done
+  return 0
+}
+
+xbmc_set_option $1 "opengl"     "gl"
+xbmc_set_option $1 "opengles"   "gles"
+xbmc_set_option $1 "openmax"    "openmax"
+xbmc_set_option $1 "joystick"   "joystick"
+xbmc_set_option $1 "faac"       "faac"
+xbmc_set_option $1 "zeroconf"   "avahi"
+xbmc_set_option $1 "webserver"  "webserver"
+xbmc_set_option $1 "vdpau"      "vdpau"
+xbmc_set_option $1 "vaapi"      "vaapi"
+xbmc_set_option $1 "crystalhd"  "crystalhd"
+xbmc_set_option $1 "pulse"      "pulse"
+xbmc_set_option $1 "dvdcss"     "dvdcss"
+xbmc_set_option $1 "bluray"     "libbluray"
+xbmc_set_option $1 "rtmp"       "rtmp"
+xbmc_set_option $1 "nonfree"    "non-free"
+
+# check for nVidia ARM Tegra2 optimizations
+CFG_TEGRA="--disable-tegra"
+[ "$TARGET_PLATFORM" = tegra2 ] && CFG_TEGRA="--enable-tegra"
+
+export LIBS="$LIBS -lstdc++"
+export LIB_P=$LIB_PREFIX
+
+export PYTHON_VERSION=2.7
+export PYTHON_CPPFLAGS=-I$LIB_PREFIX/include/python2.7
+export PYTHON_LDFLAGS="-L$LIB_PREFIX/lib/python2.7 -lpython2.7"
+export PYTHON_SITE_PKG=$LIB_PREFIX/lib/python2.7/site-packages
+export PYTHON_EXTRA_LIBS="-lpthread -ldl -lutil"
+export PYTHON_EXTRA_LDFLAGS="-Xlinker -export-dynamic"
+
+cd $BUILD/$1*
+touch .dummy.in
+do_configure \
+  --with-arch=$TARGET_ARCH \
+  --with-cpu=$TARGET_CPU \
+  --disable-debug \
+  --enable-optimizations \
+  --disable-vdadecoder \
+  --disable-profiling \
+  --enable-xrandr \
+  --disable-goom \
+  --disable-ccache \
+  --disable-mid \
+  --disable-hal \
+  --disable-asap-codec \
+  --disable-libdts \
+  --disable-liba52 \
+  --enable-external-ffmpeg \
+  --disable-external-liba52 \
+  --disable-external-libdts \
+  --enable-external-python \
+  $CFG_TEGRA \
+  $EXTRA_CONFIG \
+
+# leaked host includes break the Python components build
+sed -i Makefile.include -e "s:-I$ROOT/$TOOLCHAIN/include::"
+
+make externals
+make xbmc.bin
+make xbmc-xrandr
+make_install
+
+if [ "$TARGET_ARCH" = arm ]; then
+  # workaround to make the addons run
+  ln -sf /usr/lib/xbmc/system/python/python27-arm.so \
+    .install/usr/share/xbmc/system/python/python27-arm.so
+fi
+
+cp -P $ROOT/$PACKAGES/$1/scripts/xbmc-default-settings.sh \
+  .install/usr/lib/xbmc/
+
+exit 0
