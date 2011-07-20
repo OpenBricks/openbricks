@@ -1,36 +1,18 @@
-From: Chris Wilson <chris@chris-wilson.co.uk>
-Subject: [PATCH] glx: Refcnt the GLXDrawable to avoid use after free with
- multiple FreeResource
-
-Although there may be more than one resource handles pointing to the
-Drawable, we only want to destroy it once and only reference the
-resource which may have just been deleted on the first instance.
-
-v2: Apply fixes and combine with another bug fix from Michel Dänzer,
-    https://bugs.freedesktop.org/show_bug.cgi?id=28181
-
-Signed-off-by: Chris Wilson <chris@chris-wilson.co.uk>
-Cc: Kristian Høgsberg <krh@bitplanet.net>
-Cc: Michel Dänzer <daenzer@vmware.com>
----
- glx/glxcmds.c     |   23 +++++++++++++++--------
- glx/glxdrawable.h |    3 +++
- glx/glxext.c      |   15 ++++++++++-----
- 3 files changed, 28 insertions(+), 13 deletions(-)
-
-Index: xorg-server/glx/glxcmds.c
-===================================================================
---- xorg-server.orig/glx/glxcmds.c	2011-04-06 18:25:24.000000000 +0300
-+++ xorg-server/glx/glxcmds.c	2011-04-09 10:39:42.000000000 +0300
-@@ -541,6 +541,7 @@
- 	*error = BadAlloc;
- 	return NULL;
-     }
-+    pGlxDraw->refcnt++;
+diff -Naur xorg-server-1.10.3.orig//glx/glxcmds.c xorg-server-1.10.3/glx/glxcmds.c
+--- xorg-server-1.10.3.orig//glx/glxcmds.c	2011-07-20 13:56:31.905565524 +0200
++++ xorg-server-1.10.3/glx/glxcmds.c	2011-07-20 13:59:17.655565616 +0200
+@@ -453,8 +453,9 @@
+ 	    *error = BadMatch;
+ 	    return NULL;
+ 	}
++	pGlxDraw->refcnt++;
  
-     return pGlxDraw;
- }
-@@ -1145,8 +1146,10 @@
+-	return pGlxDraw;
++        return pGlxDraw;
+     }
+ 
+     /* No active context and an unknown drawable, bail. */
+@@ -1095,8 +1096,10 @@
      drawable->pDraw = pDraw;
      drawable->type = type;
      drawable->drawId = drawId;
@@ -41,36 +23,36 @@ Index: xorg-server/glx/glxcmds.c
  
      return GL_TRUE;
  }
-@@ -1176,14 +1179,18 @@
+@@ -1126,15 +1129,22 @@
  	pGlxDraw->destroy (pGlxDraw);
  	return BadAlloc;
      }
 +    pGlxDraw->refcnt++;
  
--    /* Add the glx drawable under the XID of the underlying X drawable
--     * too.  That way we'll get a callback in DrawableGone and can
--     * clean up properly when the drawable is destroyed. */
--    if (drawableId != glxDrawableId &&
+     /*
+      * Windows aren't refcounted, so track both the X and the GLX window
+      * so we get called regardless of destruction order.
+      */
+-    if (drawableId != glxDrawableId && type == GLX_DRAWABLE_WINDOW &&
 -	!AddResource(pDraw->id, __glXDrawableRes, pGlxDraw)) {
 -	pGlxDraw->destroy (pGlxDraw);
 -	return BadAlloc;
 +    if (drawableId != glxDrawableId) {
-+	/* Add the glx drawable under the XID of the underlying X drawable
-+	 * too.  That way we'll get a callback in DrawableGone and can
-+	 * clean up properly when the drawable is destroyed. */
-+	if (!AddResource(drawableId, __glXDrawableRes, pGlxDraw)) {
-+	    pGlxDraw->destroy (pGlxDraw);
-+	    return BadAlloc;
-+	}
-+	pGlxDraw->refcnt++;
-+	pGlxDraw->otherId = drawableId;
++       /* Add the glx drawable under the XID of the underlying X drawable
++        * too.  That way we'll get a callback in DrawableGone and can
++        * clean up properly when the drawable is destroyed. */
++       if (!AddResource(drawableId, __glXDrawableRes, pGlxDraw)) {
++           pGlxDraw->destroy (pGlxDraw);
++           return BadAlloc;
++       }
++       pGlxDraw->refcnt++;
++       pGlxDraw->otherId = drawableId;
      }
  
      return Success;
-Index: xorg-server/glx/glxdrawable.h
-===================================================================
---- xorg-server.orig/glx/glxdrawable.h	2011-04-06 18:25:24.000000000 +0300
-+++ xorg-server/glx/glxdrawable.h	2011-04-09 10:39:42.000000000 +0300
+diff -Naur xorg-server-1.10.3.orig//glx/glxdrawable.h xorg-server-1.10.3/glx/glxdrawable.h
+--- xorg-server-1.10.3.orig//glx/glxdrawable.h	2011-07-20 13:56:31.905565524 +0200
++++ xorg-server-1.10.3/glx/glxdrawable.h	2011-07-20 13:59:56.655565638 +0200
 @@ -51,8 +51,11 @@
      void      (*waitX)(__GLXdrawable *);
      void      (*waitGL)(__GLXdrawable *);
@@ -83,31 +65,32 @@ Index: xorg-server/glx/glxdrawable.h
  
      /*
      ** Either GLX_DRAWABLE_PIXMAP, GLX_DRAWABLE_WINDOW or
-Index: xorg-server/glx/glxext.c
-===================================================================
---- xorg-server.orig/glx/glxext.c	2011-04-06 18:25:24.000000000 +0300
-+++ xorg-server/glx/glxext.c	2011-04-09 10:39:42.000000000 +0300
-@@ -128,13 +128,18 @@
-      * constructors, we added it as a glx drawable resource under both
-      * its glx drawable ID and it X drawable ID.  Remove the other
-      * resource now so we don't a callback for freed memory. */
--    if (glxPriv->drawId != glxPriv->pDraw->id) {
--	if (xid == glxPriv->drawId)
--	    FreeResourceByType(glxPriv->pDraw->id, __glXDrawableRes, TRUE);
--	else
--	    FreeResourceByType(glxPriv->drawId, __glXDrawableRes, TRUE);
+diff -Naur xorg-server-1.10.3.orig//glx/glxext.c xorg-server-1.10.3/glx/glxext.c
+--- xorg-server-1.10.3.orig//glx/glxext.c	2011-07-20 13:56:31.905565524 +0200
++++ xorg-server-1.10.3/glx/glxext.c	2011-07-20 14:01:58.995565706 +0200
+@@ -126,13 +126,18 @@
+ 
+     if (glxPriv->type == GLX_DRAWABLE_WINDOW) {
+         /* If this was created by glXCreateWindow, free the matching resource */
+-        if (glxPriv->drawId != glxPriv->pDraw->id) {
+-            if (xid == glxPriv->drawId)
+-                FreeResourceByType(glxPriv->pDraw->id, __glXDrawableRes, TRUE);
+-            else
+-                FreeResourceByType(glxPriv->drawId, __glXDrawableRes, TRUE);
+-        }
+-        /* otherwise this window was implicitly created by MakeCurrent */
 +    if (glxPriv->otherId) {
-+	    XID other = glxPriv->otherId;
-+	    glxPriv->otherId = 0;
-+	    if (xid == other)
-+		    FreeResourceByType(glxPriv->drawId, __glXDrawableRes, TRUE);
-+	    else
-+		    FreeResourceByType(other, __glXDrawableRes, TRUE);
++           XID other = glxPriv->otherId;
++           glxPriv->otherId = 0;
++           if (xid == other)
++                   FreeResourceByType(glxPriv->drawId, __glXDrawableRes, TRUE);
++           else
++                   FreeResourceByType(other, __glXDrawableRes, TRUE);
++    }
++
++    if (--glxPriv->refcnt)
++           return True;
++           /* otherwise this window was implicitly created by MakeCurrent */
      }
  
-+    if (--glxPriv->refcnt)
-+	    return True;
-+
      for (c = glxAllContexts; c; c = next) {
- 	next = c->next;
- 	if (c->isCurrent && (c->drawPriv == glxPriv || c->readPriv == glxPriv)) {
