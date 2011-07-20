@@ -71,8 +71,17 @@ if [ -z "$ROOT" ]; then
       echo $dev | grep -q ram && continue
       dbg_echo -n "[$i] Trying $dev..."
       if ! mount -o ro /dev/$dev /mnt >/dev/null 2>&1; then
-        dbg_echo "failed, cannot mount device."
-        continue
+        # check for removable devices not built with isohybrid support
+        if [ $(cat /sys/block/$dev/removable) = 1 ]; then
+          dbg_echo -n "[$i] Trying ${dev}1..."
+          if ! mount -o ro /dev/${dev}1 /mnt >/dev/null 2>&1; then
+            dbg_echo "failed, cannot mount device."
+            continue
+          fi
+        else
+          dbg_echo "failed, cannot mount device."
+          continue
+        fi
       fi
       if mount -t squashfs /mnt/rootfs /squashfs >/dev/null 2>&1; then
         dbg_echo "found."
