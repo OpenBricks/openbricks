@@ -26,9 +26,15 @@ pkg_uses $1 mach64    && DRI_DRIVERS="${DRI_DRIVERS}mach64,"
 DRI_DRIVERS="${DRI_DRIVERS}swrast"
 
 # Gallium 3D
-pkg_uses $1 radeon  && GALLIUM_DRIVERS="${GALLIUM_DRIVERS}r600,"
-pkg_uses $1 nouveau && GALLIUM_DRIVERS="${GALLIUM_DRIVERS}nouveau,"
-GALLIUM_DRIVERS="${GALLIUM_DRIVERS}swrast"
+GALLIUM_EGL="--disable-gallium-egl"
+GALLIUM_OVG="--disable-openvg"
+if pkg_uses $1 gallium3d; then
+  pkg_uses $1 radeon  && GALLIUM_DRIVERS="${GALLIUM_DRIVERS}r600,"
+  pkg_uses $1 nouveau && GALLIUM_DRIVERS="${GALLIUM_DRIVERS}nouveau,"
+  GALLIUM_DRIVERS="${GALLIUM_DRIVERS}swrast"
+  GALLIUM_EGL="--enable-gallium-egl"
+  GALLIUM_OVG="--enable-openvg"
+fi
 
 # EGL: Embedded Graphics Library (native platform graphics interface)
 EGL_DISPLAYS="x11,drm"
@@ -48,12 +54,12 @@ do_configure \
   --with-gallium-drivers="$GALLIUM_DRIVERS" \
   --with-state-trackers=egl,glx,dri,vega \
   --disable-gallium-llvm \
-  --enable-gallium-egl \
+  $GALLIUM_EGL \
   --enable-opengl \
   --enable-gles-overlay \
   --enable-gles1 \
   --enable-gles2 \
-  --enable-openvg \
+  $GALLIUM_OVG \
   --enable-shared-glapi \
   --enable-shared-dricore \
   --enable-driglx-direct \
@@ -74,7 +80,8 @@ mkdir -p $MESA_LIB
 cp -P .install/usr/lib/libGL.so*      $MESA_LIB
 cp -P .install/usr/lib/libEGL.so*     $MESA_LIB
 cp -P .install/usr/lib/libGLES*.so*   $MESA_LIB
-cp -P .install/usr/lib/libOpenVG*.so* $MESA_LIB
+[ -f .install/usr/lib/libOpenVG*.so ] && \
+  cp -P .install/usr/lib/libOpenVG*.so* $MESA_LIB
 
 exit 0
 
