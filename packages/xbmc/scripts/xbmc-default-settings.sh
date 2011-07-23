@@ -58,5 +58,5 @@ EOF
 }
 
 mkdir -p "$USERDATA"
-set_default_advanced_settings
+# set_default_advanced_settings
 set_default_sources
