@@ -1,66 +1,10 @@
 #!/bin/sh
 
-# ATI
-if grep 0300 < /tmp/pci | grep -q 1002; then
-  if [ "$BINARY_DRIVERS" = yes -a -f /usr/lib/fglrx/libGL.so.1 ]; then
-    ln -sf /usr/lib/fglrx/libGL.so.1 /usr/lib/libGL.so.1
-    ln -sf /usr/lib/fglrx/libglx.so \
-      /usr/lib/xorg/modules/extensions/libglx.so
-    cat > /etc/X11/xorg.conf.d/90-ati.conf <<EOF
-Section "Device"
-        Identifier  "Card0"
-        Driver      "fglrx"
-End
-
-Section "Extensions"
-        Option      "Composite"             "Disable"
-EndSection
-EOF
-  fi
-fi
-
-# nVidia
-if grep 0300 < /tmp/pci | grep -q 10de; then
-  if [ "$BINARY_DRIVERS" = yes -a -f /usr/lib/nvidia/libGL.so.1 ]; then
-    [ "$VDPAU" = yes ] && echo "" > /var/use_vdpau
-    ln -sf /usr/lib/nvidia/libGL.so.1 /usr/lib/libGL.so.1
-    ln -sf /usr/lib/nvidia/libglx.so \
-      /usr/lib/xorg/modules/extensions/libglx.so
-    cat > /etc/X11/xorg.conf.d/90-nvidia.conf <<EOF
-Section "Device"
-	Identifier  "Card0"
-	Driver      "nvidia"
-EndSection
-
-Section "Extensions"
-        Option      "Composite"             "Disable"
-EndSection
-
-EOF
-  fi
-fi
-
-# OMAP
-check_omap_display () {
-  SYS_FB="/sys/devices/omapdss/display$1/enabled"
-  [ -f $SYS_FB ] && [ "$(cat $SYS_FB)" = 1 ] && OMAP_DISPLAY=1
-}
-
-OMAP_DISPLAY=0
-check_omap_display 0
-check_omap_display 1
-
-if [ "$OMAP_DISPLAY" = 1 ]; then
-  [ -r /usr/share/X11/xorg.conf.d/99-pvr.conf ] && exit 0
-
-  # omapfb x11 driver fallback
-  [ ! -r /etc/X11/xorg.conf ] && cat >/etc/X11/xorg.conf <<EOF
-Section "Device"
-	Identifier	"fbdev Device 0"
-	Driver		"omapfb"
-	Option		"fb"	"/dev/fb0"
-EndSection
-EOF
+# check for each manufacturer GPU and apply appropiate Xorg policy
+if [ -d /usr/lib/xorg/gpu ]; then
+  for gpu in /usr/lib/xorg/gpu/*.sh; do
+    [ -r $i ] && /bin/sh $gpu
+  done
 fi
 
 exit 0
