@@ -12,11 +12,9 @@ SOURCES="$USERDATA/sources.xml"
 set_default_advanced_settings () {
   [ -f "$ADV_SETTINGS" ] && return
 
-
   cat > "$ADV_SETTINGS" << EOF
 <advancedsettings>
   <useddsfanart>true</useddsfanart>
-  <cputempcommand>sed -e 's/\([0-9]*\)[0-9]\{3\}.*/\1 C/' /sys/class/thermal/thermal_zone0/temp</cputempcommand>
   <samba>
     <clienttimeout>10</clienttimeout>
   </samba>
@@ -58,5 +56,5 @@ EOF
 }
 
 mkdir -p "$USERDATA"
-# set_default_advanced_settings
+set_default_advanced_settings
 set_default_sources
