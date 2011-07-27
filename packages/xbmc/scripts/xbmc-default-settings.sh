@@ -6,6 +6,7 @@
 #############################################################################
 
 USERDATA="$HOME/.xbmc/userdata"
+TEMP_DIR="$HOME/.xbmc/temp"
 ADV_SETTINGS="$USERDATA/advancedsettings.xml"
 SOURCES="$USERDATA/sources.xml"
 
@@ -54,6 +55,9 @@ set_default_sources () {
 </sources>
 EOF
 }
+
+# clean temp dir
+rm -rf "$TEMP_DIR/*"
 
 mkdir -p "$USERDATA"
 set_default_advanced_settings
