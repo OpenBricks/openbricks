@@ -1,0 +1,26 @@
+#!/bin/sh
+
+#
+# Samba/CIFS AutoMount Utility
+#
+
+. /etc/network
+
+# umount any previously mounted share
+for DIR in /mnt/shares/*/*; do
+  [ -d "$DIR" ] && rmdir "$DIR"
+done
+
+automount_samba static  >/dev/null 2>&1 &
+automount_samba dynamic >/dev/null 2>&1 &
+
+if [ -n "$NET_RESCAN_DELAY" -a "$NET_RESCAN_DELAY" -gt 0 ]; then
+  CRONTAB=/var/spool/cron/crontabs/root
+  CRONTAB_TMP=/tmp/crontab.root.tmp
+  [ -f $CRONTAB ] && \
+    cat $CRONTAB | grep -v "automount_samba dynamic" >$CRONTAB_TMP
+  echo -e "*/$NET_RESCAN_DELAY * * * *\t/usr/bin/automount_samba dynamic > /dev/null 2>&1" >> $CRONTAB_TMP
+  cat $CRONTAB_TMP >$CRONTAB && rm $CRONTAB_TMP
+fi
+
+exit 0
