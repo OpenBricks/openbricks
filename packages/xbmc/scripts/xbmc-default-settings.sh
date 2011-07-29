@@ -8,7 +8,34 @@
 USERDATA="$HOME/.xbmc/userdata"
 TEMP_DIR="$HOME/.xbmc/temp"
 ADV_SETTINGS="$USERDATA/advancedsettings.xml"
+GUI_SETTINGS="$USERDATA/guisettings.xml"
 SOURCES="$USERDATA/sources.xml"
+
+gpu_guess () {
+
+  GPUDEVICE=$(cat /tmp/pci | grep 0300)
+  GPUTYPE="OTHER"
+  [ "$(echo $GPUDEVICE | grep 8086)" ] && GPUTYPE="INTEL"
+  [ "$(echo $GPUDEVICE | grep 10de)" ] && GPUTYPE="NVIDIA"
+  [ "$(echo $GPUDEVICE | grep 1002)" ] && GPUTYPE="AMD"
+
+  export GPUTYPE
+}
+
+set_default_gui_settings () {
+  [ -f "$GUI_SETTINGS" ] && return
+
+  [ "$GPUTYPE" != "NVIDIA" -a "$GPUTYPE" != "AMD" ] && return
+
+  cat > "$GUI_SETTINGS" << EOF
+<settings>
+  <!-- Sync to vblank -->
+  <videoscreen>
+    <vsync>2</vsync>
+  </videoscreen>
+</settings>
+EOF
+}
 
 set_default_advanced_settings () {
   [ -f "$ADV_SETTINGS" ] && return
@@ -60,5 +87,7 @@ EOF
 rm -rf "$TEMP_DIR/*"
 
 mkdir -p "$USERDATA"
+gpu_guess
 set_default_advanced_settings
+set_default_gui_settings
 set_default_sources
