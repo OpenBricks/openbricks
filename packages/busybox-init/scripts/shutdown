@@ -1,0 +1,39 @@
+#!/bin/sh
+
+# Adapted from dracut shutdown module
+
+do_umount() {
+  local ret=1
+  while read a mp a; do
+    if [ "`echo $mp | cut -f2 -d/`" = "oldroot" ]; then
+      if umount "$mp"; then
+        ret=0
+        echo "Unmounted $mp."
+      fi
+    fi
+  done < /proc/mounts
+
+  return $ret
+}
+
+export PATH=/sbin:/bin
+
+# install busybox symlinks
+busybox --install -s
+
+count=0
+while [ $count -le 40 ]; do
+  echo $count
+  do_umount 2>/dev/null || break
+  count=$(($count+1))
+done
+[ $count -ge 40 ] && do_umount
+
+case "$1" in
+  reboot) reboot -f; break;;
+  halt) halt -f; break;;
+  poweroff) poweroff -f; break;;
+esac
+
+# this should never happen
+sh
