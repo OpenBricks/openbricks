@@ -1,0 +1,42 @@
+#!/bin/sh
+
+. config/options
+
+$SCRIPTS/kconfiginit
+
+DEFCONFIG_PATH="$CONFIG/defconfigs"
+DOT_CONFIG="`ls -d $ROOT/$BUILD_NOARCH/bst-kconfig-*`/.config"
+
+refresh_cfg() {
+  local cfg=`basename $1 .conf`
+
+  $SCRIPTS/loadcfg $cfg
+  $SCRIPTS/savecfg $cfg
+}
+
+if [ -n "$1" ]; then
+  CFG_FILENAME="${DEFCONFIG_PATH}/$1.conf"
+
+  if [ -n ! -f "$CFG_FILENAME" ]; then
+    echo "File not found: $CFG_FILENAME"
+    exit 1
+  fi
+fi
+
+if [ -r "$DOT_CONFIG" ]; then
+  BACKUP_CONFIG=`mktemp`
+  cat $DOT_CONFIG > $BACKUP_CONFIG
+  trap "cp $BACKUP_CONFIG $DOT_CONFIG; rm -f $BACKUP_CONFIG" INT TERM EXIT
+fi
+
+if [ -n "$CFG_FILENAME" ]; then
+  refresh_cfg $CFG_FILENAME
+else
+  for cfg in $DEFCONFIG_PATH/*.conf; do
+    refresh_cfg $cfg
+  done
+fi
+
+[ -r "$BACKUP_CONFIG" ] && cp $BACKUP_CONFIG $DOT_CONFIG && rm -f $BACKUP_CONFIG
+
+exit 0
