@@ -11,9 +11,15 @@
 CONFIG_OVERLAYS="$CONFIG/overlays"
 
 update_overlay() {
+  if [ ! -r $CONFIG_OVERLAYS/${1}.conf ]; then
+    echo "$0: invalid overlay '$1', aborting..."
+    return 1
+  fi
+
   . $CONFIG_OVERLAYS/${1}.conf
 
   if [ -d $OVERLAYS/$OVERLAY_NAME ]; then
+    echo "Updating '$OVERLAY_NAME'..."
     case "$OVERLAY_URL_PROTO" in
       hg) (cd $OVERLAYS/$OVERLAY_NAME; hg pull -u) ;;
       git) (cd $OVERLAYS/$OVERLAY_NAME; git pull) ;;
@@ -25,10 +31,11 @@ update_overlay() {
         ;;
       *)
         echo "Unsupported OVERLAY_URL_PROTO '$OVERLAY_URL_PROTO', aborting."
-        exit 1
+        return 1
         ;;
     esac
   else
+    echo "Checking out '$OVERLAY_NAME'..."
     mkdir -p $OVERLAYS
     case "$OVERLAY_URL_PROTO" in
       hg) hg clone $OVERLAY_URL $OVERLAYS/$OVERLAY_NAME ;;
@@ -41,10 +48,21 @@ update_overlay() {
         ;;
       *)
         echo "Unsupported OVERLAY_URL_PROTO '$OVERLAY_URL_PROTO', aborting."
-        exit 1
+        return 1
         ;;
     esac
   fi
+}
+
+update() {
+  if [ -r $CONFIG_OVERLAYS/${1}.conf ]; then
+    update_overlay $1
+    return $?
+  fi
+
+  for overlay in $CONFIG_OVERLAYS/*.conf; do
+    update_overlay `basename $overlay .conf`
+  done
 }
 
 # Usage: install_overlay_package <overlay> <package>
@@ -168,10 +186,10 @@ if [ ! -d $CONFIG_OVERLAYS ]; then
 fi
 
 case "$1" in
-  update) update_overlay $2 ; exit $? ;;
+  update) update $2 ; exit $? ;;
   install) install_overlay $2 $3 ; exit $? ;;
   remove) remove_overlay $2 $3 ; exit $? ;;
   *)
-    echo "Usage: $0 <update <overlay> | install <overlay> [package] | remove <overlay> [package]>"
+    echo "Usage: $0 <update [overlay] | install <overlay> [package] | remove <overlay> [package]>"
     exit 1
 esac
