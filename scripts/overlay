@@ -1,0 +1,174 @@
+#!/bin/sh
+
+. config/options
+
+# config/overlays/*
+# sample overlay.conf
+# OVERLAY_NAME=myoverlay
+# OVERLAY_URL_PROTO=file
+# OVERLAY_URL=/path/to/my/overlay
+
+CONFIG_OVERLAYS="$CONFIG/overlays"
+
+update_overlay() {
+  . $CONFIG_OVERLAYS/${1}.conf
+
+  if [ -d $OVERLAYS/$OVERLAY_NAME ]; then
+    cd $OVERLAYS/$OVERLAY_NAME
+    case "$OVERLAY_URL_PROTO" in
+      hg) hg pull -u ;;
+      git) git pull ;;
+      svn) svn up ;;
+      cvs) csv up ;;
+      file)
+        rm -rf *
+        cp -PR $OVERLAY_URL/* .
+        ;;
+      *)
+        echo "Unsupported OVERLAY_URL_PROTO '$OVERLAY_URL_PROTO', aborting."
+        exit 1
+        ;;
+    esac
+  else
+    mkdir -p $OVERLAYS
+    case "$OVERLAY_URL_PROTO" in
+      hg) hg clone $OVERLAY_URL $OVERLAYS/$OVERLAY_NAME ;;
+      git) git clone $OVERLAY_URL $OVERLAYS/$OVERLAY_NAME ;;
+      svn) svn checkout $OVERLAY_URL $OVERLAYS/$OVERLAY_NAME ;;
+      cvs) cvs -d${OVERLAY_URL} checkout -d $OVERLAYS/$OVERLAY_NAME $OVERLAY_NAME ;;
+      file)
+        mkdir -p $OVERLAYS/$OVERLAY_NAME
+        cp -PR $OVERLAY_URL/* $OVERLAYS/$OVERLAY_NAME/
+        ;;
+      *)
+        echo "Unsupported OVERLAY_URL_PROTO '$OVERLAY_URL_PROTO', aborting."
+        exit 1
+        ;;
+    esac
+  fi
+}
+
+# Usage: install_overlay_package <overlay> <package>
+install_overlay_package() {
+  local skip_install="false"
+
+  if [ ! -d $OVERLAYS/$1 ]; then
+    echo "$0: invalid overlay '$1', aborting..."
+    return 1
+  fi
+  overlay_name=$1
+
+  if [ ! -d $OVERLAYS/$overlay_name/$2 ]; then
+    echo "$0: invalid package '$2' for overlay '$overlay_name', aborting..."
+    return 1
+  fi
+  pkg=$OVERLAYS/$overlay_name/$2
+  pkgname=$2
+  
+  if [ ! -r $pkg/meta ]; then
+    echo "$0: invalid package '$2' for overlay '$overlay_name', aborting..."
+    return 1
+  fi
+
+  if [ -d $PACKAGES/$pkgname ]; then
+    echo "Warning: package '$pkgname' already exists in base tree, skipping..."
+    return 0
+  fi
+
+  for overlay in $OVERLAYS/*; do
+    [ ! -r $overlay/installed ] && continue
+    if grep -q "^${pkgname}\$" $overlay/installed; then
+      echo "Warning: package '$pkgname' already installed by overlay '$overlay', skipping..."
+      skip_install="true"
+      break
+    fi
+  done
+  if [ "$skip_install" != "true" ]; then
+    echo "Installing '$pkgname'..."
+    echo "$pkgname" >> $OVERLAYS/$overlay_name/installed
+    ln -sf ../$OVERLAYS/$overlay_name/$pkgname $PACKAGES/$pkgname
+  fi
+
+  return 0
+}
+
+install_overlay() {
+  if [ ! -r $CONFIG_OVERLAYS/${1}.conf ]; then
+    echo "Usage: overlay install <overlay> [package]"
+    exit 1
+  fi
+
+  . $CONFIG_OVERLAYS/${1}.conf
+
+  if [ -n "$2" -a -r $OVERLAYS/$OVERLAY_NAME/$2/meta ]; then
+    install_overlay_package $OVERLAY_NAME $2
+    return
+  fi
+
+  for pkg in $OVERLAYS/$OVERLAY_NAME/*; do
+    install_overlay_package $OVERLAY_NAME `basename $pkg`
+  done
+}
+
+# Usage: remove_overlay_package <overlay> <package>
+remove_overlay_package() {
+  if [ ! -d $OVERLAYS/$1 ]; then
+    echo "$0: invalid overlay '$1', aborting..."
+    return 1
+  fi
+  overlay_name=$1
+
+  if [ ! -d $OVERLAYS/$overlay_name/$2 ]; then
+    echo "$0: invalid package '$2' for overlay '$overlay_name', aborting..."
+    return 1
+  fi
+  pkg=$OVERLAYS/$overlay_name/$2
+  pkgname=$2
+  
+  if [ ! -r $pkg/meta ]; then
+    echo "$0: invalid package '$2' for overlay '$overlay_name', aborting..."
+    return 1
+  fi
+
+  if grep -q "^${pkgname}\$" $OVERLAYS/$overlay_name/installed; then
+    if [ ! -L $PACKAGES/$pkgname ]; then
+      echo "Warning, package '$pkgname' is marked as installed by '$overlay_name' but cannot be found!"
+      return 1
+    fi
+    echo "Removing '$pkgname'..."
+    rm -f $PACKAGES/$pkgname
+    sed -i $OVERLAYS/$overlay_name/installed -e "/^${pkgname}\$/d"
+  fi
+}
+
+remove_overlay() {
+  if [ ! -r $CONFIG_OVERLAYS/${1}.conf ]; then
+    echo "Usage: overlay remove <overlay> [package]"
+    exit 1
+  fi
+
+  . $CONFIG_OVERLAYS/${1}.conf
+
+  if [ -n "$2" -a -r $OVERLAYS/$OVERLAY_NAME/$2/meta ]; then
+    remove_overlay_package $OVERLAY_NAME $2
+    return
+  fi
+
+  for pkg in `cat $OVERLAYS/$OVERLAY_NAME/installed`; do
+    remove_overlay_package $OVERLAY_NAME/ $pkg
+  done
+}
+
+if [ ! -d $CONFIG_OVERLAYS ]; then
+  echo "No overlays are defined."
+  exit 1
+fi
+
+case "$1" in
+  update) update_overlay $2 ; exit $? ;;
+  install) install_overlay $2 $3 ; exit $? ;;
+  remove) remove_overlay $2 $3 ; exit $? ;;
+  *)
+    echo "Usage: $0 <update <overlay> | install <overlay> [package] | remove <overlay> [package]>"
+    exit 1
+esac
