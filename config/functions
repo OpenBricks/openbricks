@@ -661,3 +661,71 @@ do_gcc_strip_file_offset () {
   CFLAGS=$(echo $CFLAGS | sed -e "s%-D_FILE_OFFSET_BITS=64%%")
   CXXFLAGS=$(echo $CXXFLAGS | sed -e "s%-D_FILE_OFFSET_BITS=64%%")
 }
+
+# WAF build-system
+do_waf_configure () {
+  local buildfor=target
+  local buildhost=$TARGET_NAME
+
+  if [ "$1" = target ]; then
+    buildfor=target
+    buildhost=$TARGET_NAME
+    shift
+  elif [ "$1" = host ]; then
+    buildfor=host
+    buildhost=$HOST_NAME
+    shift
+  fi
+
+  setup_toolchain $buildfor
+
+  [ "$GCC_NO_LTO" = 1 ]       && do_gcc_strip_lto
+  [ "$GCC_NO_GOLD" = 1 ]      && do_gcc_strip_gold
+  [ "$GCC_NO_LOOP_TREE" = 1 ] && do_gcc_strip_loop_tree
+  [ "$GCC_NO_GRAPHITE" = 1 ]  && do_gcc_strip_graphite
+  [ "$GCC_NO_OFFSET_64" = 1 ] && do_gcc_strip_file_offset
+
+  export CFLAGS="$CFLAGS $local_cflags"
+  export CXXFLAGS="$CXXFLAGS $local_cxxflags"
+  export CPPFLAGS="$CPPFLAGS $local_cppflags"
+  export LDFLAGS="$LDFLAGS $local_ldflags"
+
+  ./waf configure \
+    --prefix=/usr \
+    $@
+}
+
+do_waf_build () {
+  ./waf build -p -j$CONCURRENCY_MAKE_LEVEL
+}
+
+# Usage: make_install [toolchain|sysroot|libprefix] [unstripped]
+do_waf_install () {
+  install_dir="$PWD/.install"
+  install_dir_debug="$PWD/.install-debuginfo"
+  local prefix="$1"
+  local is_strip="$2"
+
+  rm -rf "$install_dir"
+  mkdir -p "$install_dir"
+
+  ./waf install --destdir="$install_dir"
+  chmod -R u+w .install
+  fix_libs "$install_dir" $prefix
+
+  [ "$is_strip" = unstripped ] && return 0
+
+  if [ "$prefix" != toolchain ]; then
+    strip_libs "$install_dir" "$install_dir_debug/usr/lib/debug"
+    kmod_dir="$install_dir/lib/modules/$(kernel_version)"
+    if [ -d "$kmod_dir" ]; then
+      rm -f $kmod_dir/build $kmod_dir/source $kmod_dir/modules.*
+      strip_kmods "$kmod_dir" "$install_dir_debug/usr/lib/debug"
+    fi
+    for b in bin sbin usr/bin usr/sbin usr/lib/xbmc lib/udev lib/systemd usr/libexec; do
+      [ -d "$install_dir/$b" ] && strip_bins "$install_dir/$b" "$install_dir_debug/usr/lib/debug"
+    done
+  fi
+
+  return 0
+}
