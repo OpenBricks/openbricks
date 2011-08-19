@@ -1,0 +1,91 @@
+#!/bin/sh
+
+. config/options
+
+if [ -z "$1" ]; then
+  echo "usage: $0 package_name username"
+  echo "usage: $0 --all username"
+  exit 1
+fi
+
+if [ -z "$2" ]; then
+  echo "usage: $0 package_name username"
+  echo "usage: $0 --all username"
+  exit 1
+fi
+
+[ "$1" = "--all" ] && ALL=0
+
+REPO_L=$REPO_L/$BINROOT/$PACKAGES
+F_PATH=data/openbricks.org/download/$BINROOT/$PACKAGES
+TEMP_SEND=$ROOT/$BUILD_NOARCH/ready-to-send
+
+ssh_user=$2
+mkdir -p $TEMP_SEND
+
+mod_name () {
+  uses=""
+  get_meta $1
+
+  for flag in $PKG_USE; do
+    type=`get_use_type $flag`
+  if [ -z "$type" ] && pkg_uses $PKG_NAME $flag; then
+    [ -z "$uses" ] && uses=$flag || uses="${uses}_${flag}"
+  fi
+  done
+
+  # check for platform-specific package overlay
+  INSTALL_RULE=$PACKAGES/$1/install
+  PLATFORM_INSTALL="$PLATFORM_PACKAGES/$1/install"
+  [ -r "$PLATFORM_INSTALL" ] && INSTALL_RULE="$PLATFORM_INSTALL"
+  MACHINE_INSTALL="$MACHINE_PACKAGES/$1/install"
+  [ -r "$MACHINE_INSTALL" ] && INSTALL_RULE="$MACHINE_INSTALL"
+
+  # check for flavour-specific package overlay
+  FLAVOUR_INSTALL="$FLAVOUR_PACKAGES/$1/install"
+  [ -r "$FLAVOUR_INSTALL" ] && INSTALL_RULE="$FLAVOUR_INSTALL"
+
+  if [ "$PKG_OPK_ARCH" = unsupported ]; then
+    echo "$1 is not supported on $TARGET_ARCH"
+  fi
+  INSTALLDEV_RULE=$PACKAGES/$1/installdev
+  
+  if [ ! -f $INSTALL_RULE ]; then
+    echo "$1 is not a runtime package, skipping ..."
+  else
+    PKG_DBG_OPK_DEV=${PKG_NAME}-dbg_${PKG_VERSION}-${PKG_REV}dev${PKG_OPK_ARCH}_`uname -m`.opk
+    [ -f $PKGROOT/$PKG_OPK -a ! -L $PKGROOT/$PKG_OPK ] && create_link "$PKG_OPK" "nodev" "$uses"
+    [ -f $PKGROOT/$PKG_DBG_OPK -a ! -L $PKGROOT/$PKG_DBG_OPK ] && create_link "$PKG_DBG_OPK" "nodev" "$uses"
+    [ -f $DEVPKGROOT/$PKG_DBG_OPK_DEV -a ! -L $DEVPKGROOT/$PKG_DBG_OPK_DEV ] && create_link "$PKG_DBG_OPK_DEV" "dev" "$uses"
+  fi
+
+  if [ -f $INSTALLDEV_RULE ] ; then
+   [ -f $DEVPKGROOT/$PKG_OPK_DEV -a ! -L $DEVPKGROOT/$PKG_OPK_DEV ] && create_link "$PKG_OPK_DEV" "dev" "$uses"
+  else
+    echo "$1 is not a dev package, skipping ..."
+  fi
+  return 0
+}
+
+create_link () {
+  [ "$2" = "dev" ] && PROOT=$DEVPKGROOT || PROOT=$PKGROOT
+  [ -n "$3" ] && name="`echo $1 | sed -e "s,.opk,,"`_$3.opk" || name=$1
+  echo "$name"
+  ln -s $PROOT/$1 $TEMP_SEND/$name
+}
+
+send_to_server () {
+echo "scp -r $TEMP_SEND/*  "$ssh_user"@download.openbricks.org:/$F_PATH/"
+}
+
+get_all () {
+  for i in $PACKAGES/* ; do
+    j=${i#$PACKAGES/}
+    mod_name "$j"
+  done
+}
+
+[ "$ALL" = "0" ] && get_all || mod_name "$1"
+send_to_server
+rm $TEMP_SEND/*
+
