@@ -7,6 +7,7 @@ if [ -z "$1" ]; then
   echo " or"
   echo "usage: $0 --all"
   echo "Option : user=ssh_username"
+  echo "Option : --force (overwrite files)"
   exit 1
 fi
 
@@ -20,6 +21,9 @@ for arg in "$@"; do
       ;;
     --all)
       ALL=0
+      ;;
+    --force)
+      FORCE=0
       ;;
     *)
       pkg=$arg
@@ -79,7 +83,11 @@ create_link () {
   [ "$2" = "dev" ] && PROOT=$DEVPKGROOT || PROOT=$PKGROOT
   [ -n "$3" ] && name="`echo $1 | sed -e "s,.opk,,"`_$3.opk" || name=$1
   echo "$name"
-  ln -s $PROOT/$1 $TEMP_SEND/$name
+  if ! wget --no-check-certificate --passive-ftp --spider -nv -q $REPO_PATH/$name ; then
+    ln -s $PROOT/$1 $TEMP_SEND/$name
+  else
+    [ -z $FORCE ] && echo "Package $name aready exists at $REPO_PATH : use --force to overwrite it !" || ( echo "!! Warning : Using --force for $name !!" && ln -s $PROOT/$1 $TEMP_SEND/$name )
+  fi
 }
 
 send_to_server () {
