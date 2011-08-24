@@ -1,0 +1,140 @@
+#!/bin/sh
+
+. config/options
+
+if [ -z "$1" ]; then
+  echo "usage: $0 package_name"
+  echo "Option : --verbose"
+  exit 1
+fi
+
+[ "$2" = "--verbose" ] && VERBOSE=0
+#VERBOSE=0
+
+[ -n "$REPO_URL" ] && REPO_L=$REPO_URL || REPO_L=$REPO_PATH
+
+BLACKLIST_OPK=$ROOT/$BUILD_NOARCH/blacklist-opk.txt
+BINARIES_DL=$ROOT/binaries-dl/binaries-$TARGET_MACHINE
+
+mkdir -p $BINARIES_DL $ROOT/$STAMPS $DEVPKGROOT $PKGROOT
+
+count=0
+
+change_name () {
+  [ -n "$2" ] && name="`echo $1 | sed -e "s,.opk,,"`_$2.opk" || name=$1
+  echo $name
+}
+
+get_binary () {
+  if wget --no-check-certificate --passive-ftp --spider -nv -q $REPO_PATH/$1 ; then
+     [ ! -f $ROOT/$STAMPS/need-symlink ] && touch $ROOT/$STAMPS/need-symlink
+     until [ -f "$BINARIES_DL/$1" ] || wget --no-check-certificate --passive-ftp -c -P $BINARIES_DL $REPO_L/$1; do
+     NBWGET=$(($NBWGET+1))
+     if [ $NBWGET -gt 2 ]; then
+       [ "$VERBOSE" = 0 ] && echo "\nCan't get $1\n Try later !!"
+       touch $ROOT/$STAMPS/dl-from-repo-not-ok
+       [ -f $ROOT/$STAMPS/need-symlink ] && rm $ROOT/$STAMPS/need-symlink
+     fi
+     done
+  else
+    [ "$VERBOSE" = 0 ] && echo " $1 not found at $REPO_PATH"
+    count=$(($count+1))
+    [ "$VERBOSE" = 0 ] && echo "count : $count"  
+  fi
+  return 0
+}
+
+create_symlink () {
+  [ "$2" = "dev" ] && PROOT=$DEVPKGROOT || PROOT=$PKGROOT
+  b=`change_name "$1" "$uses"`
+  [ -f $BINARIES_DL/$b ] && ln -sf $BINARIES_DL/$b $PROOT/$1
+  return 0
+}
+
+check_binary () {
+  # $1 path , $2 pkg , $3 uses
+  if [ -f $1/$2 -a ! -L $1/$2 ] ; then
+    [ "$VERBOSE" = 0 ] && echo "$2 is already packaged, skipping it ..."
+  else
+    tmp_name=`change_name "$2" "$3"`
+    if [ ! -f $BINARIES_DL/$tmp_name ] ; then
+      get_binary "$tmp_name"
+    else
+      [ "$VERBOSE" = 0 ] && echo "$2 is already downloaded ... skipping it"
+      touch $ROOT/$STAMPS/need-symlink
+    fi
+  fi
+}
+
+add_control() {
+  local KEY="$1"
+  local VAL="$2"
+
+  [ -n "$KEY" -a -n "$VAL" ] && \
+    echo "${KEY}: $VAL" >> $INSTALL/CONTROL/control
+
+  return 0
+}
+
+check_opk () {
+  uses=""
+  get_meta $1
+
+  for flag in $PKG_USE; do
+    type=`get_use_type $flag`
+  if [ -z "$type" ] && pkg_uses $PKG_NAME $flag; then
+    [ -z "$uses" ] && uses=$flag || uses="${uses}_${flag}"
+  fi
+  done
+
+  # check for platform-specific package overlay
+  INSTALL_RULE=$PACKAGES/$1/install
+  PLATFORM_INSTALL="$PLATFORM_PACKAGES/$1/install"
+  [ -r "$PLATFORM_INSTALL" ] && INSTALL_RULE="$PLATFORM_INSTALL"
+  MACHINE_INSTALL="$MACHINE_PACKAGES/$1/install"
+  [ -r "$MACHINE_INSTALL" ] && INSTALL_RULE="$MACHINE_INSTALL"
+
+  # check for flavour-specific package overlay
+  FLAVOUR_INSTALL="$FLAVOUR_PACKAGES/$1/install"
+  [ -r "$FLAVOUR_INSTALL" ] && INSTALL_RULE="$FLAVOUR_INSTALL"
+
+  if [ "$PKG_OPK_ARCH" = unsupported ]; then
+    [ "$VERBOSE" = 0 ] && echo "$1 is not supported on $TARGET_ARCH"
+  fi
+  INSTALLDEV_RULE=$PACKAGES/$1/installdev
+  
+  [ -f $ROOT/$STAMPS/dl-from-repo-not-ok ] && rm $ROOT/$STAMPS/dl-from-repo-not-ok
+  [ -f $ROOT/$STAMPS/need-symlink ] && rm $ROOT/$STAMPS/need-symlink
+
+  if [ ! -f $INSTALL_RULE ]; then
+    [ "$VERBOSE" = 0 ] && echo "$1 is not a runtime package, skipping ..."
+  else
+    PKG_DBG_OPK_DEV=${PKG_NAME}-dbg_${PKG_VERSION}-${PKG_REV}dev${PKG_OPK_ARCH}_`uname -m`.opk
+    check_binary "$PKGROOT" "$PKG_OPK" "$uses" 
+    check_binary "$DEVPKGROOT" "$PKG_DBG_OPK_DEV" "$uses"
+    check_binary "$PKGROOT" "$PKG_DBG_OPK" "$uses"
+    [ "$count" = 3 ] && touch $ROOT/$STAMPS/dl-from-repo-not-ok
+  fi
+
+  if [ -f $INSTALLDEV_RULE ] ; then
+    [ ! -f $ROOT/$STAMPS/need-symlink ] && touch $ROOT/$STAMPS/need-symlink
+    [ ! -f $ROOT/$STAMPS/dl-from-repo-not-ok ] && check_binary "$DEVPKGROOT" "$PKG_OPK_DEV" "$uses"
+    [ ! -f $BINARIES_DL/`change_name "$PKG_OPK_DEV" "$uses"` ] && touch $ROOT/$STAMPS/dl-from-repo-not-ok 
+  else
+    [ "$VERBOSE" = 0 ] && echo "$1 is not a dev package, skipping ..."
+  fi
+
+  if [ -f $ROOT/$STAMPS/need-symlink ] ; then
+    [ "$VERBOSE" = 0 ] && echo " creating links"
+    create_symlink "$PKG_OPK" "nodev"
+    create_symlink "$PKG_DBG_OPK" "nodev"
+    create_symlink "$PKG_DBG_OPK_DEV" "dev"
+    create_symlink "$PKG_OPK_DEV" "dev"
+  fi
+
+  return 0
+}
+
+[ -f $BLACKLIST_OPK ] && dt=`cat $BLACKLIST_OPK | grep "$1|"` || dt=""
+[ -z $dt ] && check_opk "$1" || ( echo " $1 is blacklisted, skipping download !" && touch $ROOT/$STAMPS/dl-from-repo-not-ok )
+exit 0
