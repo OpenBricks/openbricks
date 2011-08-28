@@ -61,6 +61,36 @@ if [ -f $PACKAGE ]; then
   # this breaks our scripts, so we touch the control file to make sure it's
   # more recent than the package
   touch $STAMP
+
+  # Remove old $ROOT/$TOOLCHAIN from downloaded opk after installing it
+  if [ -L $DEVPKGROOT/$PKG_OPK_DEV ] ; then
+    b=$ROOT/$TOOLCHAIN
+    special_list="$LIB_PREFIX/bin/gpg-error-config $LIB_PREFIX/bin/xml2-config $LIB_PREFIX/bin/libpng-config $LIB_PREFIX/lib/python2.7/config/Makefile $LIB_PREFIX/bin/freetype-config $LIB_PREFIX/bin/sdl-config $ROOT/$TOOLCHAIN/lib/perl/5.12.3/perllocal.pod"
+    mkdir -p $ROOT/binaries-dl/binaries-$TARGET_MACHINE/temp
+    cd $ROOT/binaries-dl/binaries-$TARGET_MACHINE/temp
+    ln -sf $DEVPKGROOT/$PKG_OPK_DEV $PKG_OPK_DEV
+    ar x $PKG_OPK_DEV
+    i=""
+    suff="pm pc la cfg hh h"
+    for suf in $suff; do
+    j=`tar -ztf data.tar.gz  | grep ".${suf}" | sed 's|./||'`
+    [ -n "$j" ] && i="$i $j"
+    done
+    cd -
+    rm $ROOT/binaries-dl/binaries-$TARGET_MACHINE/temp/*
+
+    for a in `find $ROOT/$TOOLCHAIN/bin -type f -readable -writable -executable` ; do
+    sed -e 's|/.\S*toolchain|'"$b"'|g' -i $a
+    done
+
+    for a in $i ; do 
+      [ -f $b/$a ] && sed -e 's|/.\S*toolchain|'"$b"'|g' -i $b/$a
+    done
+
+    for a in $special_list ; do
+      [ -f $a ] && sed -e 's|/.\S*toolchain|'"$b"'|g' -i $a
+    done
+  fi
 fi
 
 exit 0
