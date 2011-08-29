@@ -8,6 +8,7 @@ if [ -z "$1" ]; then
   echo "usage: $0 --all"
   echo "Option : user=ssh_username"
   echo "Option : --force (overwrite files)"
+  echo "Option : --local copy file to \$BINARIES_DL"
   exit 1
 fi
 
@@ -25,6 +26,9 @@ for arg in "$@"; do
     --force)
       FORCE=0
       ;;
+    --local)
+      LOCAL_R=0
+      ;;
     *)
       pkg=$arg
       ;;
@@ -32,8 +36,9 @@ for arg in "$@"; do
 done
 
 TEMP_SEND=$ROOT/$BUILD_NOARCH/ready-to-send
+BINARIES_DL=$ROOT/binaries-dl/binaries.$VERSION_SUFFIX
 
-mkdir -p $TEMP_SEND
+mkdir -p $TEMP_SEND $BINARIES_DL
 
 mod_name () {
   uses=""
@@ -83,15 +88,25 @@ create_link () {
   [ "$2" = "dev" ] && PROOT=$DEVPKGROOT || PROOT=$PKGROOT
   [ -n "$3" ] && name="`echo $1 | sed -e "s,.opk,,"`_$3.opk" || name=$1
   echo "$name"
-  if ! wget --no-check-certificate --passive-ftp --spider -nv -q $REPO_PATH/$name ; then
-    ln -s $PROOT/$1 $TEMP_SEND/$name
+  if [ "$LOCAL_R" = 0 ] ; then
+     if [ -f $BINARIES_DL/$name ] ; then
+       [ -z $FORCE ] && echo "Package $name aready exists at $BINARIES_DL : use --force to overwrite it !" || ( echo "!! Warning : Using --force for $name !!" && ln -s $PROOT/$1 $TEMP_SEND/$name )
+     fi
   else
-    [ -z $FORCE ] && echo "Package $name aready exists at $REPO_PATH : use --force to overwrite it !" || ( echo "!! Warning : Using --force for $name !!" && ln -s $PROOT/$1 $TEMP_SEND/$name )
+    if ! wget --no-check-certificate --passive-ftp --spider -nv -q $REPO_PATH/$name ; then
+      ln -s $PROOT/$1 $TEMP_SEND/$name
+    else
+      [ -z $FORCE ] && echo "Package $name aready exists at $REPO_PATH : use --force to overwrite it !" || ( echo "!! Warning : Using --force for $name !!" && ln -s $PROOT/$1 $TEMP_SEND/$name )
+  fi
   fi
 }
 
 send_to_server () {
-  [ -z "`ls $TEMP_SEND`" ] && echo "Nothing to send !" || scp -r $TEMP_SEND/*  "$ssh_user"$F_PATH/
+  if [ "$LOCAL_R" = 0 ] ; then
+    [ -z "`ls $TEMP_SEND`" ] && echo "Nothing to send !" || cp -L $TEMP_SEND/*  $BINARIES_DL
+  else
+    [ -z "`ls $TEMP_SEND`" ] && echo "Nothing to send !" || scp -r $TEMP_SEND/*  "$ssh_user"$F_PATH/
+  fi
 }
 
 get_all () {
