@@ -1,0 +1,38 @@
+#!/bin/sh
+
+. config/options
+
+cd $BUILD/$1*
+
+#cd base
+mkdir -p objdir-host
+setup_toolchain host
+python setup.py build
+python setup.py install --prefix /usr --root objdir-host/.install
+
+for a in base imlib2 display mevas epg metadata xine cherrypy beacon popcorn feedmanage candy ; do
+  [ -d $a/objdir-host/.install ] && cp -r $a/objdir-host/.install objdir-host/
+done
+for a in ` find . -type d -name build` ; do
+  rm -rf $a
+done
+for a in ` find . -type d -name *.egg-info` ; do
+  rm -rf $a
+done
+
+
+mkdir -p objdir-target
+setup_toolchain target
+export PYTHONXCPREFIX="$LIB_PREFIX"
+
+python setup.py build --cross-compile
+python setup.py install -O1 --skip-build --prefix /usr --root objdir-target/.install
+
+for a in base imlib2 display mevas epg metadata xine cherrypy beacon popcorn feedmanage candy ; do
+  [ -d $a/objdir-target/.install ] && cp -r $a/objdir-target/.install objdir-target/
+done
+
+cd objdir-target
+do_python_strip
+
+exit 0
