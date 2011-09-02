@@ -16,6 +16,9 @@ config silentoldconfig oldconfig menuconfig xconfig gconfig: .stamps/kconfiginit
 	$(MAKE) -C build/build.host/bst-kconfig* $@
 	scripts/kconfig2options
 
+%_defconfig:
+	scripts/loadcfg $*
+
 cleanconfig:
 	rm -f build/build.host/bst-kconfig*/.config
 
@@ -112,4 +115,4 @@ distclean: clean-doc
 	rm -rf .stamps build* sources geexbox* binaries
 
 
-.PHONY: iso burn dist fulldist generator installator exec clean distclean clean-doc doc docs config oldconfig menuconfig xconfig gconfig
+.PHONY: iso burn dist fulldist generator installator exec clean distclean clean-doc doc docs config %_defconfig oldconfig menuconfig xconfig gconfig
