@@ -1733,3 +1733,6 @@ CACHE_IMAGES = 1
 # DEBUG_CHILDAPP = 1
 # timing messages
 # DEBUG_TIME = 0
+
+YOUTUBE_DL = "/usr/bin/youtube-dl"
+
