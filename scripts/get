@@ -176,8 +176,23 @@ if [ "$DL" = yes ]; then
         until [ -f $STAMPS_NOARCH/$1/$PACKAGE_BASENAME.ok ] || wget --no-check-certificate --passive-ftp -c $WGET_OPT -P $SOURCES/$1 $i; do
           NBWGET=$(($NBWGET+1))
           if [ $NBWGET -gt 10 ]; then
-            echo "\nCan't get $1 sources : $i\n Try later !!"
-            exit 1
+            if [ "$MIRROR" = yes -a -n "$MIRROR_URL" ]; then
+              echo "\nCan't get $1 sources : $i\n Try later !!"
+              exit 1
+            else
+              echo "\nCan't get $1 sources, trying on OpenBricks server..."
+              until [ -f $STAMPS_NOARCH/$1/$PACKAGE_BASENAME.ok ] || wget --no-check-certificate --passive-ftp -c $WGET_OPT -P $SOURCES/$1 $DISTRO_SRCS/$PACKAGE_BASENAME; do
+                NBWGET=$(($NBWGET+1))
+                if [ $NBWGET -gt 10 ]; then
+                  echo "\nCan't get $1 sources : $i\n Try later !!"
+                  exit 1
+                fi
+              done
+            fi
+
+            do_md5sum    "$SOURCES/$1/$PACKAGE_BASENAME"
+            do_sha256sum "$SOURCES/$1/$PACKAGE_BASENAME"
+            touch $STAMPS_NOARCH/$1/$PACKAGE_BASENAME.ok
           fi
         done
       fi
