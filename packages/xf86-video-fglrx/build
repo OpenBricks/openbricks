@@ -6,8 +6,12 @@ require_glibc $1
 
 if [ "$TARGET_ARCH" = i386 ]; then
   ARCH=x86
+  XPIC=xpic
+  LIBDIR=lib
 elif [ "$TARGET_ARCH" = x86_64 ]; then
   ARCH=x86_64
+  XPIC=xpic_64a
+  LIBDIR=lib64
 else
   echo "$1 is compiled only for i386 or x86_64, exiting."
   exit 1
@@ -15,17 +19,53 @@ fi
 
 $SCRIPTS/build linux
 
-cd $BUILD/$1*/common/lib/modules/fglrx/build_mod
-sed -i -e 's/__SMP__/CONFIG_SMP/' *.c *h
-sed -i -e 's/ifdef MODVERSIONS/ifdef CONFIG_MODVERSIONS/' *.c *.h
+cd $BUILD/$1*
 
-ln -sf \
-  $ROOT/$BUILD/$1*/arch/$ARCH/lib/modules/fglrx/build_mod/libfglrx_ip.a.GCC4 .
+cp -P arch/$ARCH/lib/modules/fglrx/build_mod/libfglrx_ip.a \
+  common/lib/modules/fglrx/build_mod/2.6.x
 
-cd 2.6.x
+cd common/lib/modules/fglrx/build_mod/2.6.x
 make CC=${CC} \
-    KDIR=$(kernel_path) \
-    KVER=2.6.38 \
-    GCC_VER_MAJ=4
+     KDIR=$(kernel_path) \
+     KVER=$(kernel_version)
+cd -
 
-cd ../../../../..
+rm -rf .install
+
+# ATI kernel driver
+mkdir -p .install/lib/modules/$(kernel_version)/kernel/drivers/video
+cp -P common/lib/modules/fglrx/build_mod/2.6.x/fglrx.ko \
+  .install/lib/modules/$(kernel_version)/kernel/drivers/video
+
+# X.Org modules
+mkdir -p .install/usr/lib/fglrx/xorg/modules
+cp -PR $XPIC/usr/X11R6/$LIBDIR/modules/* .install/usr/lib/fglrx/xorg/modules
+
+# DRI driver
+mkdir -p .install/usr/lib/dri
+cp -P arch/$ARCH/usr/X11R6/$LIBDIR/modules/dri/fglrx_dri.so \
+  .install/usr/lib/dri
+
+# System Libs
+mkdir -p .install/usr/lib
+cp -P arch/$ARCH/usr/X11R6/$LIBDIR/lib*.so* .install/usr/lib
+cp -P arch/$ARCH/usr/X11R6/$LIBDIR/lib*.cap .install/usr/lib
+cp -P arch/$ARCH/usr/$LIBDIR/libati*.so* .install/usr/lib
+
+# Binaries
+mkdir -p .install/usr/bin
+cp -P arch/$ARCH/usr/sbin/* .install/usr/bin
+cp -P arch/$ARCH/usr/X11R6/bin/* .install/usr/bin
+
+# Ati's libGL has an hardcoded location for DRI modules
+mkdir -p .install/usr/X11R6/$LIBDIR/modules
+ln -sf /usr/lib/dri .install/usr/X11R6/$LIBDIR/modules/dri
+
+# OpenGL libs
+mkdir -p .install/usr/lib/fglrx
+cp -P arch/$ARCH/usr/X11R6/$LIBDIR/fglrx/fglrx-libGL.so.1.2 \
+  .install/usr/lib/fglrx/libGL.so.1.2
+ln -sf libGL.so.1.2 .install/usr/lib/fglrx/libGL.so.1
+ln -sf libGL.so.1.2 .install/usr/lib/fglrx/libGL.so
+mv .install/usr/lib/fglrx/xorg/modules/extensions/fglrx/fglrx-libglx.so \
+  .install/usr/lib/fglrx/libglx.so
