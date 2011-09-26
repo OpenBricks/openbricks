@@ -43,6 +43,9 @@ for arg in $(cat /proc/cmdline); do
     persistent)
       PERSISTENT=yes
       ;;
+    nocache)
+      NOCACHE=yes
+      ;;
     initshell)
       echo "Dropping to shell as requested"
       exec sh
@@ -77,7 +80,14 @@ if [ -z "$ROOT" ]; then
       echo $dev | grep -q loop && continue
       echo $dev | grep -q ram && continue
       dbg_echo -n "[$i] Trying $dev..."
-      if ! mount -o ro /dev/$dev /mnt >/dev/null 2>&1; then
+      if mount -o ro /dev/$dev /mnt >/dev/null 2>&1; then
+        ROOT_DEV=$dev
+        if [ `cat /sys/block/$ROOT_DEV/device/type` -eq 5 ]; then
+          ROOT_TYPE=cdrom
+        else
+          ROOT_TYPE=disk
+        fi
+      else
         # check for removable devices not built with isohybrid support
         if [ $(cat /sys/block/$dev/removable) = 1 ]; then
           dbg_echo -n "[$i] Trying ${dev}1..."
@@ -89,6 +99,15 @@ if [ -z "$ROOT" ]; then
           dbg_echo "failed, cannot mount device."
           continue
         fi
+      fi
+      if [ "$ROOT_TYPE" = cdrom -a -z "$NOCACHE" ]; then
+        mkdir /cache
+        mount -t tmpfs tmpfs /cache
+        cp /mnt/$ROOTFS /cache/rootfs
+        ROOTFS=/rootfs
+        umount /mnt
+        eject -s $ROOT_DEV || eject $ROOT_DEV
+        mount --move /cache /mnt
       fi
       if mount -t squashfs /mnt/$ROOTFS /squashfs >/dev/null 2>&1; then
         dbg_echo "found."
