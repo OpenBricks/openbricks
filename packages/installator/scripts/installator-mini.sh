@@ -119,7 +119,7 @@ LABEL geexbox
   MENU LABEL Start $DISTRO ...
   MENU DEFAULT
   KERNEL /boot/vmlinuz
-  APPEND root=$target_part vga=789 quiet loglevel=3
+  APPEND root=$target_part quiet loglevel=3
 
 MENU SEPARATOR
 
