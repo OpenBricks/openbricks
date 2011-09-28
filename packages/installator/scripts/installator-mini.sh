@@ -20,7 +20,7 @@ abort_install() {
   reboot
 }
 
-echo "$DISTRO $VERSION installator"
+echo "$DISTRO $ARCH $VERSION installator"
 echo "----------------------------"
 echo
 
@@ -33,13 +33,14 @@ yesnoquestion "Begin the install" || abort_install
 echo "Ok, let's get started."
 echo "Here's a list of the hard drives I could find on your system:"
 disklist=""
+rdev=`cat /proc/mounts | grep '/\.root' | cut -f1 -d\ | cut -f3 -d/`
 for i in /sys/block/*; do
   dev=`basename $i`
 
-  echo $dev | grep -q loop && continue
-  echo $dev | grep -q ram && continue
-  echo $dev | grep -q `readlink /dev/root` && continue
-
+  [ "$dev" =  loop ] && continue
+  [ "$dev" = ram ] && continue
+  [ "$dev" = "$rdev" ] && continue
+  [ -r /sys/block/$dev/device/type ] || continue
   [ `cat /sys/block/$dev/device/type` -eq 0 ] || continue
   unset vendor model size
   [ -r /sys/block/$dev/device/vendor ] &&
@@ -60,8 +61,13 @@ for i in /sys/block/*; do
   [ -z "$disklist" ] && disklist=$dev || disklist="${disklist}/${dev}"
 done
 
-until echo "$disklist" | grep -q $DISK; do
-  read -p "Where to you want to install $DISTRO ($disklist) ?" DISK
+if [ -z "$disklist" ]; then
+  echo "Couldn't find any hard drives!"
+  abort_install
+fi
+
+until [ -n "$DISK" ] && echo "$disklist" | grep -q "$DISK"; do
+  read -p "Where to you want to install $DISTRO ($disklist) ? " DISK
 done
 
 echo "----------- WARNING --------------"
@@ -74,15 +80,16 @@ echo "Let me say that again: ALL the contents of $DISK will be ERASED"
 yesnoquestion "Are you REALLY sure you want to continue" || abort_install
 
 echo "Repartitioning..." 
-$target_dev="/dev/$DISK"
+target_dev="/dev/$DISK"
 dd if=/dev/zero of=$target_dev bs=512 count=4
 /bin/echo -e 'o\nn\np\n1\n1\n\na\n1\nw\n' | fdisk $target_dev
+target_part=${target_dev}1
 echo "Formatting..." 
-mkfs.ext4 -L $DISTRO -m 0 $target_dev
+/usr/sbin/mkfs.ext4 -L $DISTRO -m 0 $target_part
 echo "Installing $DISTRO..."
 target="/tmp/installator/target"
 mkdir -p $target
-mount $target_dev $target
+mount $target_part $target
 cp -PR /.squashfs/* $target
 echo "Installing the kernel..."
 mkdir -p $target/boot/isolinux
@@ -92,13 +99,13 @@ cp -P /.root/isolinux/isolinux.bin $target/boot/
 cp -P /.root/isolinux/splash.png $target/boot/
 cp -P /.root/isolinux/vesamenu.c32 $target/boot/
 cp -P /.root/isolinux/help.msg $target/boot/
-cat > /boot/isolinux/isolinux.cfg <<EOF
-DEFAULT vesamenu.c32
+cat > $target/boot/isolinux/syslinux.cfg <<EOF
+DEFAULT /boot/isolinux/vesamenu.c32
 PROMPT 0
 
 TIMEOUT 20
 
-MENU BACKGROUND splash.png
+MENU BACKGROUND /boot/isolinux/splash.png
 MENU TITLE Welcome to $DISTRO $ARCH $VERSION (C) 2002-2011
 MENU VSHIFT 11
 MENU ROWS 6
@@ -113,14 +120,14 @@ LABEL geexbox
   MENU LABEL Start $DISTRO ...
   MENU DEFAULT
   KERNEL /boot/vmlinuz
-  APPEND root=$target_dev vga=789 quiet loglevel=3
+  APPEND root=$target_part vga=789 quiet loglevel=3
 
 MENU SEPARATOR
 
 LABEL debug
   MENU LABEL Start in debugging mode ...
   KERNEL /boot/vmlinuz
-  APPEND root=$target_dev emergency
+  APPEND root=$target_part emergency
 
 F1 help.msg #00000000
 EOF
