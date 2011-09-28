@@ -92,20 +92,19 @@ mkdir -p $target
 mount $target_part $target
 cp -PR /.squashfs/* $target
 echo "Installing the kernel..."
-mkdir -p $target/boot/isolinux
+mkdir -p $target/boot
 cp -P /.root/vmlinuz $target/boot/
 echo "Installing the boot loader..."
-cp -P /.root/isolinux/isolinux.bin $target/boot/
 cp -P /.root/isolinux/splash.png $target/boot/
 cp -P /.root/isolinux/vesamenu.c32 $target/boot/
 cp -P /.root/isolinux/help.msg $target/boot/
-cat > $target/boot/isolinux/syslinux.cfg <<EOF
-DEFAULT /boot/isolinux/vesamenu.c32
+cat > $target/boot/syslinux.cfg <<EOF
+DEFAULT /boot/vesamenu.c32
 PROMPT 0
 
 TIMEOUT 20
 
-MENU BACKGROUND /boot/isolinux/splash.png
+MENU BACKGROUND /boot/splash.png
 MENU TITLE Welcome to $DISTRO $ARCH $VERSION (C) 2002-2011
 MENU VSHIFT 11
 MENU ROWS 6
@@ -132,7 +131,7 @@ LABEL debug
 F1 help.msg #00000000
 EOF
 
-/sbin/extlinux --install $target/boot/isolinux
+/sbin/extlinux --install $target/boot
 umount $target
 cat /usr/share/syslinux/mbr.bin > $target_dev
 
