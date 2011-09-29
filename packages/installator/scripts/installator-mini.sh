@@ -52,8 +52,12 @@ for i in /sys/block/*; do
     size=$((size*512))
     size=$((size/1000))
     size=$((size/1000))
-    size=$((size/1000))
-    size="${size}GB"
+    if [ $size -ge 1000 ]; then
+      size=$((size/1000))
+      size="${size} GB"
+    else
+      size="${size} MB"
+    fi
   else
     size=""
   fi
