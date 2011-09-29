@@ -54,11 +54,14 @@ for arg in $(cat /proc/cmdline); do
 done
 
 # try to mount the rootfs specified in cmdline...
+[ -z "$ROOT" -a "$ROOTFS" = flat ] && ROOTFS="/rootfs"
 [ -z "$ROOTFS" ] && ROOTFS="/rootfs"
 if [ -n "$ROOT" ]; then
   dbg_echo -n "Trying root=$ROOT as requested..."
   if mount -o ro $ROOT /mnt >/dev/null 2>&1; then
-    if mount -t squashfs /mnt/$ROOTFS /squashfs >/dev/null 2>&1; then
+    if [ "$ROOTFS" = flat ]; then
+      dbg_echo "found."
+    elif mount -t squashfs /mnt/$ROOTFS /squashfs >/dev/null 2>&1; then
       dbg_echo "found."
     else
       dbg_echo "failed, cannot mount squashfs."
@@ -126,6 +129,13 @@ fi
 
 [ -z "$INIT" ] && INIT=/bin/systemd
 
+if [ "$ROOTFS" = flat ]; then
+  if [ ! -x /mnt/$INIT ]; then
+    echo "Cannot find a valid root filesystem, dropping to shell"
+    exec sh
+  fi
+  mount --move /mnt /newroot
+else
 if [ ! -x /squashfs/$INIT ]; then
     echo "Cannot find a valid root filesystem, dropping to shell"
     exec sh
@@ -159,6 +169,7 @@ mount --move /mnt /newroot/.root
 mkdir -p /newroot/run/initramfs/bin /newroot/run/initramfs/sbin
 cp -P /bin/busybox /bin/sh /newroot/run/initramfs/bin/
 cp -P /bin/shutdown /newroot/run/initramfs/
+fi
 
 INIT_ARGS=`cat /proc/cmdline`
 
