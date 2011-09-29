@@ -93,4 +93,4 @@ set_default_gui_settings
 set_default_sources
 
 # remote
-cp /usr/share/xbmc/system/Lircmap.xml "$USERDATA"
+[ -f /usr/share/xbmc/system/Lircmap.xml ] && cp /usr/share/xbmc/system/Lircmap.xml "$USERDATA"
