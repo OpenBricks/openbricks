@@ -91,6 +91,10 @@ target="/tmp/installator/target"
 mkdir -p $target
 mount $target_part $target
 cp -PR /.squashfs/* $target
+cat > $target/etc/fstab <<EOF
+proc /proc proc defaults 0 0
+$target_part / ext4 relatime,errors=remount-ro 0 1
+EOF
 echo "Installing the kernel..."
 mkdir -p $target/boot
 cp -P /.root/vmlinuz $target/boot/
@@ -119,7 +123,7 @@ LABEL geexbox
   MENU LABEL Start $DISTRO ...
   MENU DEFAULT
   KERNEL /boot/vmlinuz
-  APPEND root=$target_part rw quiet loglevel=3
+  APPEND root=$target_part ro quiet loglevel=3
 
 MENU SEPARATOR
 
