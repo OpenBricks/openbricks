@@ -136,39 +136,39 @@ if [ "$ROOTFS" = flat ]; then
   fi
   mount --move /mnt /newroot
 else
-if [ ! -x /squashfs/$INIT ]; then
+  if [ ! -x /squashfs/$INIT ]; then
     echo "Cannot find a valid root filesystem, dropping to shell"
     exec sh
-fi
+  fi
 
-# setup aufs
-if [ "$PERSISTENT" = yes ]; then
+  # setup aufs
+  if [ "$PERSISTENT" = yes ]; then
    DATA=/mnt/casper-rw
    PERSISTENT_OPT="-o loop -t ext2"
    [ ! -f "$DATA" ] && unset DATA && unset PERSISTENT_OPT
-fi
-if [ -n "$DATA" ]; then
-  if ! mount $PERSISTENT_OPT -o rw,noatime $DATA /rw; then
-    echo "Cannot mount data partition, using tmpfs instead"
-    unset DATA
   fi
-fi
-[ -z "$DATA" ] && mount -t tmpfs none /rw
-if ! mount -t aufs -o br=/rw:/squashfs none /newroot; then
-  echo "Cannot mount aufs, dropping to shell"
-  exec sh
-fi
+  if [ -n "$DATA" ]; then
+    if ! mount $PERSISTENT_OPT -o rw,noatime $DATA /rw; then
+      echo "Cannot mount data partition, using tmpfs instead"
+      unset DATA
+    fi
+  fi
+  [ -z "$DATA" ] && mount -t tmpfs none /rw
+  if ! mount -t aufs -o br=/rw:/squashfs none /newroot; then
+    echo "Cannot mount aufs, dropping to shell"
+    exec sh
+  fi
 
-# move backed filesystems inside newroot otherwise aufs won't work properly
-mkdir -p /newroot/run
-mount -t tmpfs -o mode=0755,nosuid,nodev tmpfs /newroot/run
-mkdir -p /newroot/.data /newroot/.squashfs /newroot/.root
-mount --move /rw /newroot/.data
-mount --move /squashfs /newroot/.squashfs
-mount --move /mnt /newroot/.root
-mkdir -p /newroot/run/initramfs/bin /newroot/run/initramfs/sbin
-cp -P /bin/busybox /bin/sh /newroot/run/initramfs/bin/
-cp -P /bin/shutdown /newroot/run/initramfs/
+  # move backed filesystems inside newroot otherwise aufs won't work properly
+  mkdir -p /newroot/run
+  mount -t tmpfs -o mode=0755,nosuid,nodev tmpfs /newroot/run
+  mkdir -p /newroot/.data /newroot/.squashfs /newroot/.root
+  mount --move /rw /newroot/.data
+  mount --move /squashfs /newroot/.squashfs
+  mount --move /mnt /newroot/.root
+  mkdir -p /newroot/run/initramfs/bin /newroot/run/initramfs/sbin
+  cp -P /bin/busybox /bin/sh /newroot/run/initramfs/bin/
+  cp -P /bin/shutdown /newroot/run/initramfs/
 fi
 
 INIT_ARGS=`cat /proc/cmdline`
