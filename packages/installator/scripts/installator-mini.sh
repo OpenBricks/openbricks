@@ -86,6 +86,9 @@ dd if=/dev/zero of=$target_dev bs=512 count=4
 target_part=${target_dev}1
 echo "Formatting..." 
 /usr/sbin/mkfs.ext4 -L $DISTRO -m 0 $target_part
+mkdir -p /tmp/installator
+/sbin/blkid -o udev $target_part > /tmp/installator/blkid
+. /tmp/installator/blkid
 echo "Installing $DISTRO..."
 target="/tmp/installator/target"
 mkdir -p $target
@@ -93,11 +96,12 @@ mount $target_part $target
 cp -PR /.squashfs/* $target
 cat > $target/etc/fstab <<EOF
 proc /proc proc defaults 0 0
-$target_part / ext4 relatime,errors=remount-ro 0 1
+UUID=${ID_FS_UUID} / ext4 relatime,errors=remount-ro 0 1
 EOF
 echo "Installing the kernel..."
 mkdir -p $target/boot
 cp -P /.root/vmlinuz $target/boot/
+cp -P /.root/initrd $target/boot/
 echo "Installing the boot loader..."
 cp -P /.root/isolinux/splash.png $target/boot/
 cp -P /.root/isolinux/vesamenu.c32 $target/boot/
@@ -123,14 +127,14 @@ LABEL geexbox
   MENU LABEL Start $DISTRO ...
   MENU DEFAULT
   KERNEL /boot/vmlinuz
-  APPEND root=$target_part ro quiet loglevel=3
+  APPEND initrd=/boot/initrd root=UUID=${ID_FS_UUID} rootfs=flat quiet loglevel=3
 
 MENU SEPARATOR
 
 LABEL debug
   MENU LABEL Start in debugging mode ...
   KERNEL /boot/vmlinuz
-  APPEND root=$target_part emergency
+  APPEND initrd=/boot/initrd root=UUID=${ID_FS_UUID} rootfs=flat emergency
 
 F1 help.msg #00000000
 EOF
