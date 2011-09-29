@@ -86,6 +86,7 @@ dd if=/dev/zero of=$target_dev bs=512 count=4
 target_part=${target_dev}1
 echo "Formatting..." 
 /usr/sbin/mkfs.ext4 -L $DISTRO -m 0 $target_part
+/usr/sbin/tune2fs -c 0 -i 0 $target_part
 mkdir -p /tmp/installator
 /sbin/blkid -o udev $target_part > /tmp/installator/blkid
 . /tmp/installator/blkid
