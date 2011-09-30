@@ -46,6 +46,14 @@ for arg in $(cat /proc/cmdline); do
     nocache)
       NOCACHE=yes
       ;;
+    ro|rootro)
+      ROOT_MODE=ro
+      ROOT_MODE_PART=ro
+      ;;
+    rw|rootrw)
+      ROOT_MODE=rw
+      ROOT_MODE_PART=rw
+      ;;
     initshell)
       echo "Dropping to shell as requested"
       exec sh
@@ -53,12 +61,25 @@ for arg in $(cat /proc/cmdline); do
   esac
 done
 
+# if rootro, always mount root as r/o
+# if rootrw, always mount root as r/w
+# if neither, mount root as r/w only if persistent is enabled and we're
+# mounting a partition (not a disk); otherwise, mount root as r/o
+if [ -z "$ROOT_MODE" ]; then
+  ROOT_MODE=ro
+  if [ "$PERSISTENT" = yes ]; then
+    ROOT_MODE_PART=rw
+  else
+    ROOT_MODE_PART=ro
+  fi
+fi
+
 # try to mount the rootfs specified in cmdline...
 [ -z "$ROOT" -a "$ROOTFS" = flat ] && ROOTFS="/rootfs"
 [ -z "$ROOTFS" ] && ROOTFS="/rootfs"
 if [ -n "$ROOT" ]; then
   dbg_echo -n "Trying root=$ROOT as requested..."
-  if mount -o ro $ROOT /mnt >/dev/null 2>&1; then
+  if mount -o $ROOT_MODE $ROOT /mnt >/dev/null 2>&1; then
     if [ "$ROOTFS" = flat ]; then
       dbg_echo "found."
     elif mount -t squashfs /mnt/$ROOTFS /squashfs >/dev/null 2>&1; then
@@ -83,7 +104,7 @@ if [ -z "$ROOT" ]; then
       echo $dev | grep -q loop && continue
       echo $dev | grep -q ram && continue
       dbg_echo -n "[$i] Trying $dev..."
-      if mount -o ro /dev/$dev /mnt >/dev/null 2>&1; then
+      if mount -o $ROOT_MODE /dev/$dev /mnt >/dev/null 2>&1; then
         ROOT_DEV=$dev
         if [ `cat /sys/block/$ROOT_DEV/device/type` -eq 5 ]; then
           ROOT_TYPE=cdrom
@@ -91,17 +112,13 @@ if [ -z "$ROOT" ]; then
           ROOT_TYPE=disk
         fi
       else
-        # check for removable devices not built with isohybrid support
-        if [ $(cat /sys/block/$dev/removable) = 1 ]; then
-          dbg_echo -n "[$i] Trying ${dev}1..."
-          if ! mount -o rw /dev/${dev}1 /mnt >/dev/null 2>&1; then
-            dbg_echo "failed, cannot mount device."
-            continue
-          fi
-        else
+        dbg_echo -n "[$i] Trying ${dev}1..."
+        if ! mount -o $ROOT_MODE_PART /dev/${dev}1 /mnt >/dev/null 2>&1; then
           dbg_echo "failed, cannot mount device."
           continue
         fi
+        ROOT_DEV=${dev}1
+        ROOT_TYPE=disk
       fi
       if [ "$ROOT_TYPE" = cdrom -a -z "$NOCACHE" ]; then
         mkdir /cache
