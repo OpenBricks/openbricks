@@ -6,6 +6,7 @@
 #############################################################################
 
 USERDATA="$HOME/.xbmc/userdata"
+ADDONS="$HOME/.xbmc/addons"
 TEMP_DIR="$HOME/.xbmc/temp"
 ADV_SETTINGS="$USERDATA/advancedsettings.xml"
 GUI_SETTINGS="$USERDATA/guisettings.xml"
@@ -94,3 +95,7 @@ set_default_sources
 
 # remote
 [ -f /usr/share/xbmc/system/Lircmap.xml ] && cp /usr/share/xbmc/system/Lircmap.xml "$USERDATA"
+
+# geexbox.network.cfg
+mkdir -p $ADDONS
+[ -d /usr/share/xbmc/addons/geexbox.network.cfg ]  && cp -R /usr/share/xbmc/addons/geexbox.network.cfg "$ADDONS"
