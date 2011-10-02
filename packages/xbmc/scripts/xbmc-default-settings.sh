@@ -99,3 +99,7 @@ set_default_sources
 # geexbox.network.cfg
 mkdir -p $ADDONS
 [ -d /usr/share/xbmc/addons/geexbox.network.cfg ]  && cp -R /usr/share/xbmc/addons/geexbox.network.cfg "$ADDONS"
+
+# geexbox.updater
+mkdir -p $ADDONS
+[ -d /usr/share/xbmc/addons/geexbox.updater ]  && cp -R /usr/share/xbmc/addons/geexbox.updater "$ADDONS"
