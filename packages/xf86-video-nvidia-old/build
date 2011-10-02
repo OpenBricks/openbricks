@@ -1,0 +1,48 @@
+#!/bin/sh
+
+. config/options
+
+require_glibc $1
+
+$SCRIPTS/build linux
+
+get_meta $1
+
+do_symlink() {
+  local lib=$1
+  local dest=$2
+
+  ln -s $lib.so.$PKG_VERSION $dest/$lib.so.1
+  ln -s $lib.so.1 $dest/$lib.so
+}
+
+cd $BUILD/$1*
+
+# Kernel module
+(cd usr/src/nv; make module CC=$CC SYSSRC=$(kernel_path) SYSOUT=$(kernel_path))
+
+mkdir -p .install/lib/modules/$(kernel_version)/kernel/drivers/video
+cp -P usr/src/nv/nvidia.ko .install/lib/modules/$(kernel_version)/kernel/drivers/video
+
+# X.org driver
+mkdir -p .install/$XORG_PATH_MODULES/drivers
+cp -P usr/X11R6/lib/modules/drivers/nvidia_drv.so .install/$XORG_PATH_MODULES/drivers
+
+# System Libs
+mkdir -p .install/usr/lib/tls
+cp -P usr/lib/tls/libnvidia-tls.so.$PKG_VERSION .install/usr/lib
+do_symlink libnvidia-tls .install/usr/lib
+
+cp -P usr/lib/tls/libnvidia-tls.so.$PKG_VERSION .install/usr/lib/tls
+do_symlink libnvidia-tls .install/usr/lib/tls
+
+# OpenGL libs
+cp -P usr/lib/libGLcore.so.$PKG_VERSION .install/usr/lib
+do_symlink libGLcore .install/usr/lib
+
+mkdir -p .install/usr/lib/nvidia
+cp -P usr/lib/libGL.so.$PKG_VERSION .install/usr/lib/nvidia/libGL.so.1
+cp -P usr/lib/libGL.so.$PKG_VERSION .install/usr/lib/libGL.so.1
+cp -P usr/X11R6/lib/modules/extensions/libglx.so.$PKG_VERSION .install/usr/lib/nvidia/libglx.so
+
+exit 0
