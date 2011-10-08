@@ -1,0 +1,115 @@
+#!/bin/sh -
+
+# Utility script that builds an archive file of all git repositories and
+# submodules in the current path.
+#
+# Based on https://github.com/meitar/git-archive-all.sh
+# Copyright (C) 2010 Meitar Moscovitz <meitarm at gmail dot com>
+# Copyright (C) 2011 Davide Cavalca <davide@openbricks.org>
+#
+# This file is part of OpenBricks.
+#
+# OpenBricks is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# OpenBricks is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with OpenBricks; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+set -e
+set -C # noclobber
+
+# For security reasons, explicitly set the internal field separator
+# to newline, space, tab
+OLD_IFS=$IFS
+IFS='
+ 	'
+
+OLD_PWD="`pwd`"
+TMPDIR=`mktemp -d`
+# Create a place to store our work's progress
+TMPFILE=`mktemp "$TMPDIR/$PROGRAM.XXXXXX"`
+TOARCHIVE=`mktemp "$TMPDIR/$PROGRAM.toarchive.XXXXXX"`
+
+cleanup () {
+  rm -f $TMPFILE
+  rm -f $TOARCHIVE
+  rm -rf $TMPDIR
+  IFS="$OLD_IFS"
+}
+
+trap 'cleanup' QUIT EXIT
+
+PREFIX=
+TREEISH=HEAD
+
+# Process command-line arguments.
+while test $# -gt 0; do
+  case $1 in
+    --prefix )
+      shift
+      PREFIX="$1"
+      shift
+      ;;
+
+    --rev )
+      shift
+      TREEISH="$1"
+      shift
+      ;;
+
+    -* )
+      echo "Unrecognized option: $1" >&2
+      exit
+      ;;
+
+    * )
+      break
+      ;;
+  esac
+done
+
+# Validate parameters; error early, error often.
+if [ `git config -l | grep -q '^core\.bare=false'; echo $?` -ne 0 ]; then
+  echo "$PROGRAM must be run from a git working copy (i.e., not a bare repository)."
+  exit
+fi
+
+# Create the superproject's git-archive
+git archive --prefix="$PREFIX" $TREEISH > $TMPDIR/$(basename $(pwd)).tar
+echo $TMPDIR/$(basename $(pwd)).tar >| $TMPFILE # clobber on purpose
+superfile=`head -n 1 $TMPFILE`
+
+# find all '.git' dirs, these show us the remaining to-be-archived dirs
+find . -name '.git' -type d -print | \
+  sed -e 's/^\.\///' -e 's/\.git$//' | \
+  grep -v '^$' >> $TOARCHIVE
+
+while read path; do
+  # git-submodule does not list trailing slashes in $path
+  TREEISH=$(git submodule | grep "^ .*${path%/} " | cut -d ' ' -f 2)
+  cd "$path"
+  git archive --prefix="${PREFIX}$path" ${TREEISH:-HEAD} > \
+    "$TMPDIR"/"$(echo "$path" | sed -e 's/\//./g')"tar
+  echo "$TMPDIR"/"$(echo "$path" | sed -e 's/\//./g')"tar >> $TMPFILE
+  cd "$OLD_PWD"
+done < $TOARCHIVE
+
+# Concatenate archives into a super-archive.
+sed -e '1d' $TMPFILE | while read file; do
+  tar --concatenate -f "$superfile" "$file" && rm -f "$file"
+done
+
+echo "$superfile" >| $TMPFILE # clobber on purpose
+
+while read file; do
+  cat "$file"
+done < $TMPFILE
+cleanup
