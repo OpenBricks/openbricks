@@ -1,0 +1,43 @@
+#!/bin/sh -e
+
+DEVICE="$1"
+ROOTFS="$2"
+
+if [ ! -b "$DEVICE" ] || [ ! -f "$ROOTFS" -a ! -d "$ROOTFS" ]; then
+  echo "Usage: $0 <device> <rootfs|rootfs-archive>"
+  exit 1
+fi
+
+if [ "`id -u`" -ne 0 ]; then
+  echo "Please run this program as root."
+fi
+
+echo "I'm about to overwrite ${DEVICE}. All existing data will be lost."
+until [ "$REPLY" = y -o "$REPLY" = yes ] || [ "$REPLY" = n -o "$REPLY" = no ]; do
+  read -p "Do you want to continue? " REPLY
+done
+[ "$REPLY" = n -o "$REPLY" = no ] && exit
+
+grep -q $DEVICE /proc/mounts && grep $DEVICE /proc/mounts | cut -f2 -d\ | xargs umount
+dd if=/dev/zero of=$DEVICE bs=512 count=4
+/bin/echo -e 'o\nn\np\n1\n\n+64M\nt\nc\na\n1\nn\np\n2\n\n\nw\n' | fdisk $DEVICE
+boot_part=${DEVICE}1
+root_part=${DEVICE}2
+mkfs.vfat -F 32 -n boot $boot_part
+mkfs.ext4 -L GEEXBOX $root_part
+
+mountdir=`mktemp -d`
+mount $root_part $mountdir
+mkdir -p $mountdir/boot
+mount $boot_part $mountdir/boot
+
+echo "Copying files..."
+if [ -d "$ROOTFS" ]; then
+  cp -PR $ROOTFS/* $mountdir
+else
+  tar xjf $ROOTFS -C $mountdir
+fi
+
+umount $mountdir/boot
+umount $mountdir
+rmdir $mountdir
