@@ -4,50 +4,16 @@
 
 $SCRIPTS/checkdeps build || exit 1
 
+$SCRIPTS/tarball
+
 rm -rf $TARBALL_NAME $TARBALL_DIR
 mkdir -p $TARBALL_DIR
 
-[ "$NOROOTFS" = 1 ] || $SCRIPTS/rootfs
-
-cp -PR $ROOTFS/* $TARBALL_DIR
-
-. $CONFIG_MACHINE/meta
-
-if [ -n "$MACHINE_XLOADER_CONFIG" ]; then
-  $SCRIPTS/installdev x-loader
-  mkdir -p $FLAT_NAME/boot
-  cp -P $ROOT/$TOOLCHAIN/share/x-loader/* $TARBALL_DIR/boot
-fi
-
-if [ -n "$MACHINE_UBOOT_CONFIG" ]; then
-  $SCRIPTS/installdev u-boot
-  mkdir -p $FLAT_NAME/boot
-  cp -P $ROOT/$TOOLCHAIN/share/u-boot/* $TARBALL_DIR/boot
-fi
-
-# first partition image
-mkdir -p $TARBALL_DIR/mmc1
-cp -PR $TARBALL_DIR/boot $TARBALL_DIR/mmc1
-cd $TARBALL_DIR/mmc1
-tar cjf ../boot.tar.bz2 *
-cd -
-
-# rootfs
-mkdir -p $TARBALL_DIR/mmc2
-for dir in $(ls $TARBALL_DIR | grep -v boot | grep -v mmc1 | grep -v mmc2); do
-  cp -PR $TARBALL_DIR/$dir $TARBALL_DIR/mmc2
-done
-cd $TARBALL_DIR/mmc2
-tar cjf ../rootfs.tar.bz2 *
-cd -
+cp -P $TBZ2_NAME $TARBALL_DIR
+cp -P $SCRIPTS/omapsd $TARBALL_DIR
 
 # build release tarball
-mkdir -p $TARBALL_DIR/image
-cp -P $TARBALL_DIR/boot.tar.bz2 $TARBALL_DIR/image
-cp -P $TARBALL_DIR/rootfs.tar.bz2 $TARBALL_DIR/image
-cd $TARBALL_DIR/image
-tar cjf $ROOT/$TARBALL_NAME *
-cd -
+tar cf $ROOT/$TARBALL_NAME -C $TARBALL_DIR .
 
 rm -rf $TARBALL_DIR
 
