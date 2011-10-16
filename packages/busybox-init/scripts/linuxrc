@@ -55,6 +55,12 @@ for arg in $(cat /proc/cmdline); do
       ROOT_MODE=rw
       ROOT_MODE_PART=rw
       ;;
+    nfsroot=*)
+      NFSROOT="${arg#nfsroot=}"
+      ;;
+    ip=*)
+    IP="${arg#ip=}"
+      ;;
     initshell)
       echo "Dropping to shell as requested"
       exec sh
@@ -100,6 +106,28 @@ if [ -n "$ROOT" ]; then
     fi
     sleep 1
   done
+  [ -n "$FOUND_ROOTFS" ] || unset ROOT
+  unset FOUND_ROOTFS
+fi
+
+if [ -n "$NFSROOT" ] ; then
+  dbg_echo -n "Trying nfsroot=$NFSROOT as requested..."
+  ROOT=/mnt
+  if [ -z "$IP" ] ; then
+    ifconfig eth0 up >/dev/null 2>&1
+    udhcpc -s /bin/assign-ip >/dev/null 2>&1
+  fi
+  if mount -o nolock,$ROOT_MODE_PART $NFSROOT /mnt >/dev/null 2>&1; then
+    if mount -t squashfs /mnt/rootfs /squashfs >/dev/null 2>&1; then
+      dbg_echo "found."
+      FOUND_ROOTFS=yes
+    else
+      dbg_echo -n "failed, cannot mount squashfs."
+      umount /mnt
+    fi
+  else
+    dbg_echo -n "failed, cannot mount $NFSROOT."
+  fi
   [ -n "$FOUND_ROOTFS" ] || unset ROOT
   unset FOUND_ROOTFS
 fi
