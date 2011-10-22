@@ -60,3 +60,6 @@ EOF
 mkdir -p "$USERDATA"
 set_default_advanced_settings
 set_default_sources
+
+# remote
+[ -f /usr/share/xbmc/system/Lircmap.xml ] && cp /usr/share/xbmc/system/Lircmap.xml "$USERDATA"
