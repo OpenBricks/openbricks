@@ -1,25 +1,25 @@
-From f66627a085412f7fe7c9438ab8144df3a06e469b Mon Sep 17 00:00:00 2001
+From 779d7f681d90b68098e4b49945a41454eb41f402 Mon Sep 17 00:00:00 2001
 From: Rob Clark <rob@ti.com>
 Date: Tue, 25 May 2010 11:02:45 -0500
-Subject: [PATCH 20/32] use GstEventVstab to get crop info
+Subject: [PATCH 09/19] use GstEventCrop to get crop info
 
 ---
- sys/v4l2/gstv4l2sink.c |   51 ++++++++++++++++++++++++++++++++++++++++++++++-
- 1 files changed, 49 insertions(+), 2 deletions(-)
+ sys/v4l2/gstv4l2sink.c |   63 +++++++++++++++++++++++++++++++++++++++++++++++-
+ 1 files changed, 62 insertions(+), 1 deletions(-)
 
 diff --git a/sys/v4l2/gstv4l2sink.c b/sys/v4l2/gstv4l2sink.c
-index 2c0dc01..f579224 100644
+index d09beb5..7e048b7 100644
 --- a/sys/v4l2/gstv4l2sink.c
 +++ b/sys/v4l2/gstv4l2sink.c
-@@ -186,6 +186,7 @@ static GstCaps *gst_v4l2sink_get_caps (GstBaseSink * bsink);
+@@ -252,6 +252,7 @@ static GstCaps *gst_v4l2sink_get_caps (GstBaseSink * bsink);
  static gboolean gst_v4l2sink_set_caps (GstBaseSink * bsink, GstCaps * caps);
  static GstFlowReturn gst_v4l2sink_buffer_alloc (GstBaseSink * bsink,
      guint64 offset, guint size, GstCaps * caps, GstBuffer ** buf);
 +static gboolean gst_v4l2sink_event (GstBaseSink * bsink, GstEvent * event);
  static GstFlowReturn gst_v4l2sink_show_frame (GstBaseSink * bsink,
      GstBuffer * buf);
- 
-@@ -278,6 +279,7 @@ gst_v4l2sink_class_init (GstV4l2SinkClass * klass)
+ static void gst_v4l2sink_sync_rotation (GstV4l2Sink * v4l2sink);
+@@ -354,6 +355,7 @@ gst_v4l2sink_class_init (GstV4l2SinkClass * klass)
    basesink_class->get_caps = GST_DEBUG_FUNCPTR (gst_v4l2sink_get_caps);
    basesink_class->set_caps = GST_DEBUG_FUNCPTR (gst_v4l2sink_set_caps);
    basesink_class->buffer_alloc = GST_DEBUG_FUNCPTR (gst_v4l2sink_buffer_alloc);
@@ -27,7 +27,7 @@ index 2c0dc01..f579224 100644
    basesink_class->render = GST_DEBUG_FUNCPTR (gst_v4l2sink_show_frame);
  }
  
-@@ -738,15 +740,25 @@ gst_v4l2sink_set_caps (GstBaseSink * bsink, GstCaps * caps)
+@@ -895,11 +897,22 @@ gst_v4l2sink_set_caps (GstBaseSink * bsink, GstCaps * caps)
  
      gst_query_parse_buffers_dimensions (query, &min_width, &min_height);
      if (min_width > w) {
@@ -50,13 +50,9 @@ index 2c0dc01..f579224 100644
    }
    gst_query_unref (query);
  
--
-   if (!gst_v4l2_object_set_format (v4l2sink->v4l2object, format->pixelformat, w,
-           h)) {
-     /* error already posted */
-@@ -754,7 +766,13 @@ gst_v4l2sink_set_caps (GstBaseSink * bsink, GstCaps * caps)
-     return FALSE;
-   }
+@@ -919,7 +932,13 @@ gst_v4l2sink_set_caps (GstBaseSink * bsink, GstCaps * caps)
+   GST_VIDEO_SINK_WIDTH (v4l2sink) = w;
+   GST_VIDEO_SINK_HEIGHT (v4l2sink) = h;
  
 -  v4l2sink->current_caps = gst_caps_ref (caps);
 +  /* this needs to go after gst_v4l2_object_set_format() to ensure driver
@@ -69,7 +65,7 @@ index 2c0dc01..f579224 100644
  
    return TRUE;
  }
-@@ -860,6 +878,35 @@ gst_v4l2sink_buffer_alloc (GstBaseSink * bsink, guint64 offset, guint size,
+@@ -1023,6 +1042,48 @@ gst_v4l2sink_buffer_alloc (GstBaseSink * bsink, guint64 offset, guint size,
    }
  }
  
@@ -83,12 +79,25 @@ index 2c0dc01..f579224 100644
 +  GST_DEBUG_OBJECT (v4l2sink, "event %" GST_PTR_FORMAT, event);
 +
 +  switch (type) {
-+    case GST_EVENT_VSTAB:{
-+      gint top, left;
-+      gst_event_parse_vstab (event, &top, &left);
-+      v4l2sink->crop.top = top;
-+      v4l2sink->crop.left = left;
-+      v4l2sink->crop_fields_set |= RECT_TOP_SET | RECT_LEFT_SET;
++    case GST_EVENT_CROP:{
++      gint top, left, width, height;
++      gst_event_parse_crop (event, &top, &left, &width, &height);
++      if (top >= 0) {
++        v4l2sink->crop.top = top;
++        v4l2sink->crop_fields_set |= RECT_TOP_SET;
++      }
++      if (left >= 0) {
++        v4l2sink->crop.left = left;
++        v4l2sink->crop_fields_set |= RECT_LEFT_SET;
++      }
++      if (width >= 0) {
++        v4l2sink->crop.width = width;
++        v4l2sink->crop_fields_set |= RECT_WIDTH_SET;
++      }
++      if (height >= 0) {
++        v4l2sink->crop.height = height;
++        v4l2sink->crop_fields_set |= RECT_HEIGHT_SET;
++      }
 +      gst_v4l2sink_sync_crop_fields (v4l2sink);
 +      return TRUE;
 +    }

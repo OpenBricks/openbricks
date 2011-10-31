@@ -1,20 +1,20 @@
-From 54cc1efba65adf82ced5f6b60edae8bdea1a29e2 Mon Sep 17 00:00:00 2001
+From fd1995f004b0f52eead189104581c27b5b8f2de4 Mon Sep 17 00:00:00 2001
 From: Rob Clark <rob@ti.com>
 Date: Fri, 21 May 2010 15:21:32 -0500
-Subject: [PATCH 19/32] add rowstride support
+Subject: [PATCH 08/19] add rowstride support
 
 ---
- sys/v4l2/gstv4l2object.c |  143 +++++++++++++++++++++++++++++++++++++---------
- sys/v4l2/gstv4l2object.h |   10 ++-
- sys/v4l2/gstv4l2sink.c   |   58 ++++++++++++-------
- sys/v4l2/gstv4l2src.c    |   26 +++++----
- 4 files changed, 175 insertions(+), 62 deletions(-)
+ sys/v4l2/gstv4l2object.c |  141 +++++++++++++++++++++++++++++++++++++---------
+ sys/v4l2/gstv4l2object.h |    6 +-
+ sys/v4l2/gstv4l2sink.c   |   61 +++++++++++++-------
+ sys/v4l2/gstv4l2src.c    |   28 +++++----
+ 4 files changed, 174 insertions(+), 62 deletions(-)
 
 diff --git a/sys/v4l2/gstv4l2object.c b/sys/v4l2/gstv4l2object.c
-index d84da31..32dedb4 100644
+index 0b573de..a3ee5eb 100644
 --- a/sys/v4l2/gstv4l2object.c
 +++ b/sys/v4l2/gstv4l2object.c
-@@ -1029,16 +1029,23 @@ gst_v4l2_object_get_format_list (GstV4l2Object * v4l2object)
+@@ -1079,19 +1079,26 @@ gst_v4l2_object_get_format_list (GstV4l2Object * v4l2object)
    return v4l2object->formats;
  }
  
@@ -38,13 +38,16 @@ index d84da31..32dedb4 100644
 +  gint count = 0;
    switch (fourcc) {
      case V4L2_PIX_FMT_MJPEG:   /* Motion-JPEG */
+ #ifdef V4L2_PIX_FMT_PJPG
+     case V4L2_PIX_FMT_PJPG:    /* Progressive-JPEG */
+ #endif
      case V4L2_PIX_FMT_JPEG:    /* JFIF JPEG */
 -      structure = gst_structure_new ("image/jpeg", NULL);
 +      structures[count++] = gst_structure_new ("image/jpeg", NULL);
        break;
      case V4L2_PIX_FMT_RGB332:
      case V4L2_PIX_FMT_RGB555:
-@@ -1114,17 +1121,25 @@ gst_v4l2_object_v4l2fourcc_to_structure (guint32 fourcc)
+@@ -1169,17 +1176,25 @@ gst_v4l2_object_v4l2fourcc_to_structure (guint32 fourcc)
            g_assert_not_reached ();
            break;
        }
@@ -72,7 +75,7 @@ index d84da31..32dedb4 100644
            "bpp", G_TYPE_INT, 8, NULL);
        break;
      case V4L2_PIX_FMT_YYUV:    /* 16  YUV 4:2:2     */
-@@ -1190,38 +1205,41 @@ gst_v4l2_object_v4l2fourcc_to_structure (guint32 fourcc)
+@@ -1245,38 +1260,41 @@ gst_v4l2_object_v4l2fourcc_to_structure (guint32 fourcc)
            g_assert_not_reached ();
            break;
        }
@@ -121,7 +124,7 @@ index d84da31..32dedb4 100644
        break;
  #endif
      default:
-@@ -1230,7 +1248,7 @@ gst_v4l2_object_v4l2fourcc_to_structure (guint32 fourcc)
+@@ -1285,7 +1303,7 @@ gst_v4l2_object_v4l2fourcc_to_structure (guint32 fourcc)
        break;
    }
  
@@ -130,7 +133,7 @@ index d84da31..32dedb4 100644
  }
  
  
-@@ -1241,22 +1259,23 @@ gst_v4l2_object_get_all_caps (void)
+@@ -1296,22 +1314,23 @@ gst_v4l2_object_get_all_caps (void)
    static GstCaps *caps = NULL;
  
    if (caps == NULL) {
@@ -161,7 +164,7 @@ index d84da31..32dedb4 100644
        }
      }
    }
-@@ -1269,23 +1288,27 @@ gst_v4l2_object_get_all_caps (void)
+@@ -1324,12 +1343,14 @@ gst_v4l2_object_get_all_caps (void)
   * @caps: given input caps
   * @format: location for the v4l format
   * @w/@h: location for width and height
@@ -172,13 +175,12 @@ index d84da31..32dedb4 100644
   */
  gboolean
  gst_v4l2_object_get_caps_info (GstV4l2Object * v4l2object, GstCaps * caps,
--    struct v4l2_fmtdesc ** format, gint * w, gint * h, guint * fps_n,
--    guint * fps_d, guint * size)
+-    struct v4l2_fmtdesc ** format, gint * w, gint * h,
 +    struct v4l2_fmtdesc ** format, gint * w, gint * h, gint * rs,
-+    guint * fps_n, guint * fps_d, guint * size)
+     gboolean * interlaced, guint * fps_n, guint * fps_d, guint * size)
  {
    GstStructure *structure;
-   const GValue *framerate;
+@@ -1337,10 +1358,12 @@ gst_v4l2_object_get_caps_info (GstV4l2Object * v4l2object, GstCaps * caps,
    guint32 fourcc;
    const gchar *mimetype;
    guint outsize;
@@ -191,7 +193,7 @@ index d84da31..32dedb4 100644
  
    structure = gst_caps_get_structure (caps, 0);
  
-@@ -1312,61 +1335,73 @@ gst_v4l2_object_get_caps_info (GstV4l2Object * v4l2object, GstCaps * caps,
+@@ -1369,61 +1392,73 @@ gst_v4l2_object_get_caps_info (GstV4l2Object * v4l2object, GstCaps * caps,
    *fps_n = gst_value_get_fraction_numerator (framerate);
    *fps_d = gst_value_get_fraction_denominator (framerate);
  
@@ -264,11 +266,11 @@ index d84da31..32dedb4 100644
 -  } else if (!strcmp (mimetype, "video/x-raw-rgb")) {
 +  } else if (!strcmp (mimetype, "video/x-raw-rgb") ||
 +      !strcmp (mimetype, "video/x-raw-rgb-strided")) {
-     gint depth, endianness, r_mask;
+     gint bpp, endianness, r_mask;
  
-     gst_structure_get_int (structure, "depth", &depth);
-@@ -1376,20 +1411,25 @@ gst_v4l2_object_get_caps_info (GstV4l2Object * v4l2object, GstCaps * caps,
-     switch (depth) {
+     gst_structure_get_int (structure, "bpp", &bpp);
+@@ -1433,20 +1468,25 @@ gst_v4l2_object_get_caps_info (GstV4l2Object * v4l2object, GstCaps * caps,
+     switch (bpp) {
        case 8:
          fourcc = V4L2_PIX_FMT_RGB332;
 +        *rs = *w;
@@ -293,7 +295,7 @@ index d84da31..32dedb4 100644
          break;
      }
    } else if (strcmp (mimetype, "video/x-dv") == 0) {
-@@ -1419,6 +1459,25 @@ gst_v4l2_object_get_caps_info (GstV4l2Object * v4l2object, GstCaps * caps,
+@@ -1476,6 +1516,25 @@ gst_v4l2_object_get_caps_info (GstV4l2Object * v4l2object, GstCaps * caps,
    if (fourcc == 0)
      return FALSE;
  
@@ -319,7 +321,7 @@ index d84da31..32dedb4 100644
  done:
    *format = gst_v4l2_object_get_format_from_fourcc (v4l2object, fourcc);
    *size = outsize;
-@@ -1426,6 +1485,36 @@ done:
+@@ -1483,6 +1542,36 @@ done:
    return TRUE;
  }
  
@@ -354,22 +356,19 @@ index d84da31..32dedb4 100644
 +  return caps;
 +}
  
- 
- /* The frame interval enumeration code first appeared in Linux 2.6.19. */
+ static gboolean
+ gst_v4l2_object_get_nearest_size (GstV4l2Object * v4l2object,
 diff --git a/sys/v4l2/gstv4l2object.h b/sys/v4l2/gstv4l2object.h
-index 1b38672..cc1b86d 100644
+index a0dd41c..228e7c7 100644
 --- a/sys/v4l2/gstv4l2object.h
 +++ b/sys/v4l2/gstv4l2object.h
-@@ -178,16 +178,18 @@ GValueArray* gst_v4l2_probe_get_values      (GstPropertyProbe * probe, guint pro
- GstCaps*      gst_v4l2_object_probe_caps_for_format (GstV4l2Object *v4l2object, guint32 pixelformat,
+@@ -179,15 +179,17 @@ GstCaps*      gst_v4l2_object_probe_caps_for_format (GstV4l2Object *v4l2object,
                                               const GstStructure * template);
  
--gboolean      gst_v4l2_object_get_caps_info (GstV4l2Object *v4l2object, GstCaps *caps,
+ gboolean      gst_v4l2_object_get_caps_info (GstV4l2Object *v4l2object, GstCaps *caps,
 -                                             struct v4l2_fmtdesc **format, gint *w, gint *h,
--                                             guint *fps_n, guint *fps_d, guint *size);
-+gboolean      gst_v4l2_object_get_caps_info (GstV4l2Object * v4l2object, GstCaps * caps,
-+                                             struct v4l2_fmtdesc ** format, gint * w, gint * h, gint * rs,
-+                                             guint * fps_n, guint * fps_d, guint * size);
++                                             struct v4l2_fmtdesc **format, gint *w, gint *h, gint *rs,
+                                              gboolean * interlaced, guint *fps_n, guint *fps_d, guint *size);
  
 +GstCaps *     gst_v4l2_object_update_rowstride (GstV4l2Object * v4l2object, GstCaps * caps, gint rs);
  
@@ -381,14 +380,14 @@ index 1b38672..cc1b86d 100644
 +#define MAX_STRUCTS_PER_FOURCC 2
 +gint          gst_v4l2_object_v4l2fourcc_to_structures (guint32 fourcc, GstStructure ** structures);
  
- gboolean      gst_v4l2_object_set_format (GstV4l2Object *v4l2object, guint32 pixelformat, guint32 width, guint32 height);
+ gboolean      gst_v4l2_object_set_format (GstV4l2Object *v4l2object, guint32 pixelformat, guint32 width, guint32 height, gboolean interlaced);
  
 diff --git a/sys/v4l2/gstv4l2sink.c b/sys/v4l2/gstv4l2sink.c
-index e9e3d39..2c0dc01 100644
+index 861edba..d09beb5 100644
 --- a/sys/v4l2/gstv4l2sink.c
 +++ b/sys/v4l2/gstv4l2sink.c
-@@ -620,23 +620,23 @@ gst_v4l2sink_get_caps (GstBaseSink * bsink)
-   for (walk = v4l2sink->v4l2object->formats; walk; walk = walk->next) {
+@@ -776,24 +776,23 @@ gst_v4l2sink_get_caps (GstBaseSink * bsink)
+   for (walk = formats; walk; walk = walk->next) {
      struct v4l2_fmtdesc *format;
  
 -    GstStructure *template;
@@ -405,8 +404,10 @@ index e9e3d39..2c0dc01 100644
 +    for (i = 0; i < count; i++) {
        GstCaps *tmp;
  
-       tmp = gst_v4l2_object_probe_caps_for_format (v4l2sink->v4l2object,
+-      tmp =
+-          gst_v4l2_object_probe_caps_for_format (v4l2sink->v4l2object,
 -          format->pixelformat, template);
++      tmp = gst_v4l2_object_probe_caps_for_format (v4l2sink->v4l2object,
 +          format->pixelformat, templates[i]);
        if (tmp)
          gst_caps_append (ret, tmp);
@@ -418,22 +419,22 @@ index e9e3d39..2c0dc01 100644
      }
    }
  
-@@ -653,7 +653,7 @@ gst_v4l2sink_set_caps (GstBaseSink * bsink, GstCaps * caps)
+@@ -810,7 +809,7 @@ gst_v4l2sink_set_caps (GstBaseSink * bsink, GstCaps * caps)
  {
    GstV4l2Sink *v4l2sink = GST_V4L2SINK (bsink);
    GstQuery *query;
 -  gint w = 0, h = 0;
 +  gint w = 0, h = 0, rs = 0;
+   gboolean interlaced;
    struct v4l2_fmtdesc *format;
    guint fps_n, fps_d;
-   guint size;
-@@ -665,11 +665,36 @@ gst_v4l2sink_set_caps (GstBaseSink * bsink, GstCaps * caps)
+@@ -823,11 +822,36 @@ gst_v4l2sink_set_caps (GstBaseSink * bsink, GstCaps * caps)
      return FALSE;
    }
  
 +  /* we want our own v4l2 type of fourcc codes */
 +  if (!gst_v4l2_object_get_caps_info (v4l2sink->v4l2object, caps,
-+          &format, &w, &h, &rs, &fps_n, &fps_d, &size)) {
++          &format, &w, &h, &rs, &interlaced, &fps_n, &fps_d, &size)) {
 +    GST_DEBUG_OBJECT (v4l2sink, "can't get capture format from caps %p", caps);
 +    return FALSE;
 +  }
@@ -464,7 +465,7 @@ index e9e3d39..2c0dc01 100644
        return TRUE;
      }
      GST_DEBUG_OBJECT (v4l2sink, "no they aren't!");
-@@ -684,18 +709,7 @@ gst_v4l2sink_set_caps (GstBaseSink * bsink, GstCaps * caps)
+@@ -842,18 +866,7 @@ gst_v4l2sink_set_caps (GstBaseSink * bsink, GstCaps * caps)
       *
       */
      GST_DEBUG_OBJECT (v4l2sink, "warning, changing caps not supported yet");
@@ -473,7 +474,7 @@ index e9e3d39..2c0dc01 100644
 -
 -  /* we want our own v4l2 type of fourcc codes */
 -  if (!gst_v4l2_object_get_caps_info (v4l2sink->v4l2object, caps,
--          &format, &w, &h, &fps_n, &fps_d, &size)) {
+-          &format, &w, &h, &interlaced, &fps_n, &fps_d, &size)) {
 -    GST_DEBUG_OBJECT (v4l2sink, "can't get capture format from caps %p", caps);
 -    return FALSE;
 -  }
@@ -484,15 +485,15 @@ index e9e3d39..2c0dc01 100644
      return FALSE;
    }
  
-@@ -736,6 +750,7 @@ gst_v4l2sink_set_caps (GstBaseSink * bsink, GstCaps * caps)
-   if (!gst_v4l2_object_set_format (v4l2sink->v4l2object, format->pixelformat, w,
-           h)) {
+@@ -893,6 +906,7 @@ gst_v4l2sink_set_caps (GstBaseSink * bsink, GstCaps * caps)
+   if (!gst_v4l2_object_set_format (v4l2sink->v4l2object, format->pixelformat,
+           w, h, interlaced)) {
      /* error already posted */
 +    gst_caps_unref (caps);
      return FALSE;
    }
  
-@@ -785,6 +800,9 @@ gst_v4l2sink_buffer_alloc (GstBaseSink * bsink, guint64 offset, guint size,
+@@ -951,6 +965,9 @@ gst_v4l2sink_buffer_alloc (GstBaseSink * bsink, guint64 offset, guint size,
          return GST_FLOW_ERROR;
        }
  
@@ -503,11 +504,11 @@ index e9e3d39..2c0dc01 100644
  
        if (!(v4l2sink->pool = gst_v4l2_buffer_pool_new (GST_ELEMENT (v4l2sink),
 diff --git a/sys/v4l2/gstv4l2src.c b/sys/v4l2/gstv4l2src.c
-index c5dea83..1da6c19 100644
+index df11dd4..3aa4259 100644
 --- a/sys/v4l2/gstv4l2src.c
 +++ b/sys/v4l2/gstv4l2src.c
-@@ -558,24 +558,23 @@ gst_v4l2src_get_caps (GstBaseSrc * src)
-   for (walk = v4l2src->v4l2object->formats; walk; walk = walk->next) {
+@@ -581,24 +581,23 @@ gst_v4l2src_get_caps (GstBaseSrc * src)
+   for (walk = formats; walk; walk = walk->next) {
      struct v4l2_fmtdesc *format;
  
 -    GstStructure *template;
@@ -539,21 +540,23 @@ index c5dea83..1da6c19 100644
      }
    }
  
-@@ -590,7 +589,7 @@ static gboolean
+@@ -613,7 +612,7 @@ static gboolean
  gst_v4l2src_set_caps (GstBaseSrc * src, GstCaps * caps)
  {
    GstV4l2Src *v4l2src;
 -  gint w = 0, h = 0;
 +  gint w = 0, h = 0, rs = 0;
+   gboolean interlaced;
    struct v4l2_fmtdesc *format;
    guint fps_n, fps_d;
-   guint size;
-@@ -612,12 +611,17 @@ gst_v4l2src_set_caps (GstBaseSrc * src, GstCaps * caps)
+@@ -635,13 +634,18 @@ gst_v4l2src_set_caps (GstBaseSrc * src, GstCaps * caps)
+   }
  
    /* we want our own v4l2 type of fourcc codes */
-   if (!gst_v4l2_object_get_caps_info (v4l2src->v4l2object, caps, &format, &w,
--          &h, &fps_n, &fps_d, &size)) {
-+          &h, &rs, &fps_n, &fps_d, &size)) {
+-  if (!gst_v4l2_object_get_caps_info (v4l2src->v4l2object, caps, &format, &w,
+-          &h, &interlaced, &fps_n, &fps_d, &size)) {
++  if (!gst_v4l2_object_get_caps_info (v4l2src->v4l2object, caps, &format,
++      &w, &h, &rs, &interlaced, &fps_n, &fps_d, &size)) {
      GST_INFO_OBJECT (v4l2src,
          "can't get capture format from caps %" GST_PTR_FORMAT, caps);
      return FALSE;
