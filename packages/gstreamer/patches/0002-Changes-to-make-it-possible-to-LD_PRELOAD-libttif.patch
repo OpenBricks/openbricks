@@ -1,7 +1,7 @@
-From 8cab883b1ea66b68c8f6eb4588df09858d47d79f Mon Sep 17 00:00:00 2001
+From a0b30c5b2bcefc758b47b998046b5aabbcb9772a Mon Sep 17 00:00:00 2001
 From: Rob Clark <rob@ti.com>
 Date: Sun, 4 Apr 2010 09:14:34 -0500
-Subject: [PATCH 2/6] Changes to make it possible to LD_PRELOAD libttif
+Subject: [PATCH 02/11] Changes to make it possible to LD_PRELOAD libttif
 
 1) if GST_USING_PRINTF_EXTENSION, then prepend the fmt string with "<%P> " and
 pass object as a normal arg.  When using TTIF, you want the whole fmt string,
@@ -11,18 +11,21 @@ string pointer needs to be logged.
 GST_FUNCTION together and pass as a single ptr.. the optimization is probably
 lost in the noise with the default printf() based traces, but makes more of a
 difference with faster trace systems
+
+Incorporate modifications by Ricardo Salveti de Araujo in order to work out
+some errors from recent versions of GStreamer.
 ---
  gst/gstinfo.c |   66 ++++++++++++++++++++++++++++++++++++++++++++++++-----
  gst/gstinfo.h |   70 ++++++++++++++++++++++++++++++++++++++++++++++++++++----
  2 files changed, 125 insertions(+), 11 deletions(-)
 
 diff --git a/gst/gstinfo.c b/gst/gstinfo.c
-index 02a2c94..9b3329e 100644
+index 5062239..d160b5a 100644
 --- a/gst/gstinfo.c
 +++ b/gst/gstinfo.c
-@@ -441,6 +441,32 @@ gst_debug_log (GstDebugCategory * category, GstDebugLevel level,
-   va_end (var_args);
- }
+@@ -435,6 +435,32 @@ _gst_debug_init (void)
+ /* we can't do this further above, because we initialize the GST_CAT_DEFAULT struct */
+ #define GST_CAT_DEFAULT _GST_CAT_DEBUG
  
 +
 +/**
@@ -51,9 +54,9 @@ index 02a2c94..9b3329e 100644
 +
 +
  /**
-  * gst_debug_log_valist:
+  * gst_debug_log:
   * @category: category to log
-@@ -459,6 +485,32 @@ gst_debug_log_valist (GstDebugCategory * category, GstDebugLevel level,
+@@ -506,13 +532,40 @@ gst_debug_log_valist (GstDebugCategory * category, GstDebugLevel level,
      const gchar * file, const gchar * function, gint line,
      GObject * object, const gchar * format, va_list args)
  {
@@ -86,8 +89,6 @@ index 02a2c94..9b3329e 100644
    GstDebugMessage message;
    LogFuncEntry *entry;
    GSList *handler;
-@@ -468,8 +520,9 @@ gst_debug_log_valist (GstDebugCategory * category, GstDebugLevel level,
- #endif
  
    g_return_if_fail (category != NULL);
 -  g_return_if_fail (file != NULL);
@@ -97,8 +98,8 @@ index 02a2c94..9b3329e 100644
 +  g_return_if_fail (location->function != NULL);
    g_return_if_fail (format != NULL);
  
- #ifdef _MSC_VER
-@@ -489,8 +542,9 @@ gst_debug_log_valist (GstDebugCategory * category, GstDebugLevel level,
+   /* The predefined macro __FILE__ is always the exact path given to the
+@@ -530,8 +583,9 @@ gst_debug_log_valist (GstDebugCategory * category, GstDebugLevel level,
    while (handler) {
      entry = handler->data;
      handler = g_slist_next (handler);
@@ -110,7 +111,7 @@ index 02a2c94..9b3329e 100644
    }
    g_free (message.message);
    va_end (message.arguments);
-@@ -567,7 +621,7 @@ gst_info_structure_to_string (GstStructure * s)
+@@ -604,7 +658,7 @@ gst_info_structure_to_string (GstStructure * s)
      return gst_structure_to_string (s);
  }
  
@@ -119,7 +120,7 @@ index 02a2c94..9b3329e 100644
  gst_debug_print_object (gpointer ptr)
  {
    GObject *object = (GObject *) ptr;
-@@ -665,7 +719,7 @@ gst_debug_print_object (gpointer ptr)
+@@ -702,7 +756,7 @@ gst_debug_print_object (gpointer ptr)
  
  #ifdef HAVE_PRINTF_EXTENSION
  
@@ -129,10 +130,10 @@ index 02a2c94..9b3329e 100644
  {
    GstSegment *segment = (GstSegment *) ptr;
 diff --git a/gst/gstinfo.h b/gst/gstinfo.h
-index b827633..fa55549 100644
+index f841cd7..3abdb2d 100644
 --- a/gst/gstinfo.h
 +++ b/gst/gstinfo.h
-@@ -181,6 +181,8 @@ struct _GstDebugCategory {
+@@ -177,6 +177,8 @@ struct _GstDebugCategory {
  
    const gchar *		name;
    const gchar *		description;
@@ -141,7 +142,7 @@ index b827633..fa55549 100644
  };
  
  /********** some convenience macros for debugging **********/
-@@ -264,6 +266,14 @@ typedef void (*GstLogFunction)  (GstDebugCategory * category,
+@@ -260,6 +262,14 @@ typedef void (*GstLogFunction)  (GstDebugCategory * category,
  /* FIXME 0.11: move this into private headers */
  void            _gst_debug_init (void);
  
@@ -156,7 +157,7 @@ index b827633..fa55549 100644
  
  #ifdef GST_USING_PRINTF_EXTENSION
  
-@@ -277,6 +287,13 @@ void		    gst_debug_log            (GstDebugCategory * category,
+@@ -273,6 +283,13 @@ void		    gst_debug_log            (GstDebugCategory * category,
                                            const gchar      * format,
                                            ...) G_GNUC_NO_INSTRUMENT;
  
@@ -170,7 +171,7 @@ index b827633..fa55549 100644
  #else /* GST_USING_PRINTF_EXTENSION */
  
  void		    gst_debug_log            (GstDebugCategory * category,
-@@ -288,6 +305,13 @@ void		    gst_debug_log            (GstDebugCategory * category,
+@@ -284,6 +301,13 @@ void		    gst_debug_log            (GstDebugCategory * category,
                                            const gchar      * format,
                                            ...) G_GNUC_PRINTF (7, 8) G_GNUC_NO_INSTRUMENT;
  
@@ -184,7 +185,7 @@ index b827633..fa55549 100644
  #endif /* GST_USING_PRINTF_EXTENSION */
  
  void            gst_debug_log_valist     (GstDebugCategory * category,
-@@ -325,8 +349,21 @@ G_CONST_RETURN gchar *
+@@ -321,8 +345,21 @@ const gchar *
  	_gst_debug_nameof_funcptr	(GstDebugFuncPtr	func) G_GNUC_NO_INSTRUMENT;
  
  
@@ -206,7 +207,7 @@ index b827633..fa55549 100644
  void            gst_debug_log_default    (GstDebugCategory * category,
                                            GstDebugLevel      level,
                                            const gchar      * file,
-@@ -499,19 +536,41 @@ GST_EXPORT GstDebugLevel            __gst_debug_min;
+@@ -507,19 +544,41 @@ GST_EXPORT GstDebugLevel            __gst_debug_min;
   * debugging messages. You will probably want to use one of the ones described
   * below.
   */
@@ -253,7 +254,7 @@ index b827633..fa55549 100644
    }									\
  }G_STMT_END
  #else /* no variadic macros, use inline */
-@@ -1248,6 +1307,7 @@ GST_TRACE (const char *format, ...)
+@@ -1256,6 +1315,7 @@ GST_TRACE (const char *format, ...)
  
  #if defined(__GNUC__) && __GNUC__ >= 3
  #  pragma GCC poison gst_debug_log
