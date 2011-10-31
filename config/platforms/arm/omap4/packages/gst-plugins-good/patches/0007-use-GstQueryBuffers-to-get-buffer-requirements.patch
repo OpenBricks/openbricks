@@ -1,18 +1,18 @@
-From a8e6d22bd2f7b7e8ef49548c396b366dde22809b Mon Sep 17 00:00:00 2001
+From c31f1743a7d5c2c73dd062ea4d4701848510f894 Mon Sep 17 00:00:00 2001
 From: Rob Clark <rob@ti.com>
 Date: Wed, 19 May 2010 17:33:46 -0500
-Subject: [PATCH 18/32] use GstQueryBuffers to get buffer requirements
+Subject: [PATCH 07/19] use GstQueryBuffers to get buffer requirements
 
 ---
- sys/v4l2/gstv4l2sink.c |   41 +++++++++++++++++++++++++++++++++++++++++
+ sys/v4l2/gstv4l2sink.c |   40 ++++++++++++++++++++++++++++++++++++++++
  sys/v4l2/gstv4l2sink.h |    1 +
- 2 files changed, 42 insertions(+), 0 deletions(-)
+ 2 files changed, 41 insertions(+), 0 deletions(-)
 
 diff --git a/sys/v4l2/gstv4l2sink.c b/sys/v4l2/gstv4l2sink.c
-index 08daaa7..e9e3d39 100644
+index 1de0138..861edba 100644
 --- a/sys/v4l2/gstv4l2sink.c
 +++ b/sys/v4l2/gstv4l2sink.c
-@@ -297,6 +297,7 @@ gst_v4l2sink_init (GstV4l2Sink * v4l2sink, GstV4l2SinkClass * klass)
+@@ -373,6 +373,7 @@ gst_v4l2sink_init (GstV4l2Sink * v4l2sink, GstV4l2SinkClass * klass)
  
    /* number of buffers requested */
    v4l2sink->num_buffers = PROP_DEF_QUEUE_SIZE;
@@ -20,15 +20,15 @@ index 08daaa7..e9e3d39 100644
    v4l2sink->min_queued_bufs = PROP_DEF_MIN_QUEUED_BUFS;
  
    v4l2sink->probed_caps = NULL;
-@@ -651,6 +652,7 @@ static gboolean
+@@ -808,6 +809,7 @@ static gboolean
  gst_v4l2sink_set_caps (GstBaseSink * bsink, GstCaps * caps)
  {
    GstV4l2Sink *v4l2sink = GST_V4L2SINK (bsink);
 +  GstQuery *query;
    gint w = 0, h = 0;
+   gboolean interlaced;
    struct v4l2_fmtdesc *format;
-   guint fps_n, fps_d;
-@@ -697,6 +699,40 @@ gst_v4l2sink_set_caps (GstBaseSink * bsink, GstCaps * caps)
+@@ -855,6 +857,39 @@ gst_v4l2sink_set_caps (GstBaseSink * bsink, GstCaps * caps)
      return FALSE;
    }
  
@@ -47,7 +47,7 @@ index 08daaa7..e9e3d39 100644
 +     * on the pipeline?
 +     */
 +    if (min_buffers != -1) {
-+      min_buffers += 4;
++      min_buffers += 3 + v4l2sink->min_queued_bufs;
 +    }
 +
 +    if (min_buffers > v4l2sink->num_buffers) {
@@ -65,11 +65,10 @@ index 08daaa7..e9e3d39 100644
 +  }
 +  gst_query_unref (query);
 +
-+
-   if (!gst_v4l2_object_set_format (v4l2sink->v4l2object, format->pixelformat, w,
-           h)) {
+   if (!gst_v4l2_object_set_format (v4l2sink->v4l2object, format->pixelformat,
+           w, h, interlaced)) {
      /* error already posted */
-@@ -779,6 +815,11 @@ gst_v4l2sink_buffer_alloc (GstBaseSink * bsink, guint64 offset, guint size,
+@@ -944,6 +979,11 @@ gst_v4l2sink_buffer_alloc (GstBaseSink * bsink, guint64 offset, guint size,
        GST_INFO_OBJECT (v4l2sink, "outputting buffers via mmap()");
  
        if (v4l2sink->num_buffers != v4l2sink->pool->buffer_count) {
@@ -82,7 +81,7 @@ index 08daaa7..e9e3d39 100644
          g_object_notify (G_OBJECT (v4l2sink), "queue-size");
        }
 diff --git a/sys/v4l2/gstv4l2sink.h b/sys/v4l2/gstv4l2sink.h
-index 07a32bf..dcb97de 100644
+index 907973a..7649fa1 100644
 --- a/sys/v4l2/gstv4l2sink.h
 +++ b/sys/v4l2/gstv4l2sink.h
 @@ -58,6 +58,7 @@ struct _GstV4l2Sink {
@@ -92,7 +91,7 @@ index 07a32bf..dcb97de 100644
 +  gboolean num_buffers_can_change;
    guint32 min_queued_bufs;
  
-   /*
+   gint video_width, video_height;      /* original (unscaled) video w/h */
 -- 
 1.7.1
 

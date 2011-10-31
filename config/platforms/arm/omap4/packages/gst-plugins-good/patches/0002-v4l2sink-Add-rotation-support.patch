@@ -1,7 +1,7 @@
-From f7c328372bb7dcd6ff0a44cff82fb8d3361b4c06 Mon Sep 17 00:00:00 2001
+From af69329da5043ee6eb8a9685d47b2bd525e74fcd Mon Sep 17 00:00:00 2001
 From: Kiran Nataraju <knataraju@ti.com>
 Date: Fri, 27 Aug 2010 09:00:57 +0200
-Subject: [PATCH 23/32] v4l2sink: Add rotation support.
+Subject: [PATCH 02/19] v4l2sink: Add rotation support.
 
 Signed-off-by: Kiran Nataraju <knataraju@ti.com>
 Signed-off-by: Daniel Diaz <ddiaz@ti.com>
@@ -11,10 +11,10 @@ Signed-off-by: Daniel Diaz <ddiaz@ti.com>
  2 files changed, 35 insertions(+), 0 deletions(-)
 
 diff --git a/sys/v4l2/gstv4l2sink.c b/sys/v4l2/gstv4l2sink.c
-index f84051c..9f4ac56 100644
+index fcf7e87..808d020 100644
 --- a/sys/v4l2/gstv4l2sink.c
 +++ b/sys/v4l2/gstv4l2sink.c
-@@ -60,6 +60,10 @@ GST_DEBUG_CATEGORY (v4l2sink_debug);
+@@ -72,6 +72,10 @@ GST_DEBUG_CATEGORY (v4l2sink_debug);
  #define PROP_DEF_MIN_QUEUED_BUFS    1
  #define DEFAULT_PROP_DEVICE   "/dev/video1"
  
@@ -25,7 +25,7 @@ index f84051c..9f4ac56 100644
  enum
  {
    PROP_0,
-@@ -74,6 +78,7 @@ enum
+@@ -86,6 +90,7 @@ enum
    PROP_CROP_LEFT,
    PROP_CROP_WIDTH,
    PROP_CROP_HEIGHT,
@@ -33,15 +33,15 @@ index f84051c..9f4ac56 100644
  };
  
  
-@@ -189,6 +194,7 @@ static GstFlowReturn gst_v4l2sink_buffer_alloc (GstBaseSink * bsink,
- static gboolean gst_v4l2sink_event (GstBaseSink * bsink, GstEvent * event);
+@@ -220,6 +225,7 @@ static GstFlowReturn gst_v4l2sink_buffer_alloc (GstBaseSink * bsink,
+     guint64 offset, guint size, GstCaps * caps, GstBuffer ** buf);
  static GstFlowReturn gst_v4l2sink_show_frame (GstBaseSink * bsink,
      GstBuffer * buf);
 +static void gst_v4l2sink_set_rotation (GstV4l2Sink * v4l2sink);
  
- 
  static void
-@@ -276,6 +282,11 @@ gst_v4l2sink_class_init (GstV4l2SinkClass * klass)
+ gst_v4l2sink_base_init (gpointer g_class)
+@@ -306,6 +312,11 @@ gst_v4l2sink_class_init (GstV4l2SinkClass * klass)
            "The height of the video crop; default is equal to negotiated image height",
            0, 0xffffffff, 0, G_PARAM_READWRITE));
  
@@ -53,7 +53,7 @@ index f84051c..9f4ac56 100644
    basesink_class->get_caps = GST_DEBUG_FUNCPTR (gst_v4l2sink_get_caps);
    basesink_class->set_caps = GST_DEBUG_FUNCPTR (gst_v4l2sink_set_caps);
    basesink_class->buffer_alloc = GST_DEBUG_FUNCPTR (gst_v4l2sink_buffer_alloc);
-@@ -308,6 +319,7 @@ gst_v4l2sink_init (GstV4l2Sink * v4l2sink, GstV4l2SinkClass * klass)
+@@ -336,6 +347,7 @@ gst_v4l2sink_init (GstV4l2Sink * v4l2sink, GstV4l2SinkClass * klass)
    v4l2sink->overlay_fields_set = 0;
    v4l2sink->crop_fields_set = 0;
    v4l2sink->state = 0;
@@ -61,7 +61,7 @@ index f84051c..9f4ac56 100644
  }
  
  
-@@ -435,6 +447,20 @@ gst_v4l2sink_sync_crop_fields (GstV4l2Sink * v4l2sink)
+@@ -475,6 +487,20 @@ gst_v4l2sink_sync_crop_fields (GstV4l2Sink * v4l2sink)
    }
  }
  
@@ -82,7 +82,7 @@ index f84051c..9f4ac56 100644
  
  static void
  gst_v4l2sink_set_property (GObject * object,
-@@ -491,6 +517,10 @@ gst_v4l2sink_set_property (GObject * object,
+@@ -531,6 +557,10 @@ gst_v4l2sink_set_property (GObject * object,
          v4l2sink->crop_fields_set |= RECT_HEIGHT_SET;
          gst_v4l2sink_sync_crop_fields (v4l2sink);
          break;
@@ -93,7 +93,7 @@ index f84051c..9f4ac56 100644
        default:
          G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
          break;
-@@ -538,6 +568,9 @@ gst_v4l2sink_get_property (GObject * object,
+@@ -578,6 +608,9 @@ gst_v4l2sink_get_property (GObject * object,
        case PROP_CROP_HEIGHT:
          g_value_set_uint (value, v4l2sink->crop.height);
          break;
@@ -103,7 +103,7 @@ index f84051c..9f4ac56 100644
        default:
          G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
          break;
-@@ -560,6 +593,7 @@ gst_v4l2sink_change_state (GstElement * element, GstStateChange transition)
+@@ -600,6 +633,7 @@ gst_v4l2sink_change_state (GstElement * element, GstStateChange transition)
        /* open the device */
        if (!gst_v4l2_object_start (v4l2sink->v4l2object))
          return GST_STATE_CHANGE_FAILURE;
@@ -112,10 +112,10 @@ index f84051c..9f4ac56 100644
      default:
        break;
 diff --git a/sys/v4l2/gstv4l2sink.h b/sys/v4l2/gstv4l2sink.h
-index dcb97de..888ca20 100644
+index 8fe8222..1239621 100644
 --- a/sys/v4l2/gstv4l2sink.h
 +++ b/sys/v4l2/gstv4l2sink.h
-@@ -74,6 +74,7 @@ struct _GstV4l2Sink {
+@@ -75,6 +75,7 @@ struct _GstV4l2Sink {
    guint8 overlay_fields_set, crop_fields_set;
  
    guint8 state;
