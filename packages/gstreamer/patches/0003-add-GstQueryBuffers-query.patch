@@ -1,7 +1,7 @@
-From 24a8e9a62e212f4e4e04076d6129b971ffd2fe02 Mon Sep 17 00:00:00 2001
+From 4b452f9f2e3feee04ab4b2c22287e94d5645b5d2 Mon Sep 17 00:00:00 2001
 From: Rob Clark <rob@ti.com>
 Date: Wed, 19 May 2010 15:48:09 -0500
-Subject: [PATCH 3/6] add GstQueryBuffers query
+Subject: [PATCH 03/11] add GstQueryBuffers query
 
 This query is used by buffer allocator, for example a video sink element,
 to find out any minimum buffer requirements of upstream elements that uses
@@ -11,50 +11,49 @@ decoders may have requirements for a certain minimum number of buffers (so
 they can hold refs to reference-frames)
 ---
  gst/gstquark.c |    3 +-
- gst/gstquark.h |    8 +++-
+ gst/gstquark.h |    7 ++-
  gst/gstquery.c |  141 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++
  gst/gstquery.h |   16 ++++++-
- 4 files changed, 165 insertions(+), 3 deletions(-)
+ 4 files changed, 164 insertions(+), 3 deletions(-)
 
 diff --git a/gst/gstquark.c b/gst/gstquark.c
-index a4253a9..58badca 100644
+index 91a2012..0459b4e 100644
 --- a/gst/gstquark.c
 +++ b/gst/gstquark.c
-@@ -49,7 +49,8 @@ static const gchar *_quark_strings[] = {
-   "GstQueryURI", "GstEventStep", "GstMessageStepDone", "amount", "flush",
+@@ -50,7 +50,8 @@ static const gchar *_quark_strings[] = {
    "intermediate", "GstMessageStepStart", "active", "eos", "sink-message",
    "message", "GstMessageQOS", "running-time", "stream-time", "jitter",
--  "quality", "processed", "dropped"
-+  "quality", "processed", "dropped", "buffering-ranges", "GstQueryBuffers",
-+  "caps", "count", "width", "height"
+   "quality", "processed", "dropped", "buffering-ranges", "GstMessageProgress",
+-  "code", "text", "percent", "timeout"
++  "code", "text", "percent", "timeout",
++  "GstQueryBuffers", "caps", "count", "width", "height"
  };
  
  GQuark _priv_gst_quark_table[GST_QUARK_MAX];
 diff --git a/gst/gstquark.h b/gst/gstquark.h
-index 8273c3d..f4c8e0f 100644
+index 6e16ee5..350f9fc 100644
 --- a/gst/gstquark.h
 +++ b/gst/gstquark.h
-@@ -126,8 +126,14 @@ typedef enum _GstQuarkId
-   GST_QUARK_QUALITY = 97,
-   GST_QUARK_PROCESSED = 98,
-   GST_QUARK_DROPPED = 99,
-+  GST_QUARK_BUFFERING_RANGES = 100,
-+  GST_QUARK_QUERY_BUFFERS = 101,
-+  GST_QUARK_CAPS = 102,
-+  GST_QUARK_COUNT = 103,
-+  GST_QUARK_WIDTH = 104,
-+  GST_QUARK_HEIGHT = 105,
+@@ -132,8 +132,13 @@ typedef enum _GstQuarkId
+   GST_QUARK_TEXT = 103,
+   GST_QUARK_PERCENT = 104,
+   GST_QUARK_TIMEOUT = 105,
++  GST_QUARK_QUERY_BUFFERS = 106,
++  GST_QUARK_CAPS = 107,
++  GST_QUARK_COUNT = 108,
++  GST_QUARK_WIDTH = 109,
++  GST_QUARK_HEIGHT = 110,
  
--  GST_QUARK_MAX = 100
-+  GST_QUARK_MAX = 106
+-  GST_QUARK_MAX = 106
++  GST_QUARK_MAX = 111
  } GstQuarkId;
  
  extern GQuark _priv_gst_quark_table[GST_QUARK_MAX];
 diff --git a/gst/gstquery.c b/gst/gstquery.c
-index c835e20..b165235 100644
+index 4104e0a..f34afc7 100644
 --- a/gst/gstquery.c
 +++ b/gst/gstquery.c
-@@ -94,6 +94,7 @@ static GstQueryTypeDefinition standard_definitions[] = {
+@@ -96,6 +96,7 @@ static GstQueryTypeDefinition standard_definitions[] = {
    {GST_QUERY_BUFFERING, "buffering", "Buffering status", 0},
    {GST_QUERY_CUSTOM, "custom", "Custom query", 0},
    {GST_QUERY_URI, "uri", "URI of the source or sink", 0},
@@ -62,8 +61,8 @@ index c835e20..b165235 100644
    {0, NULL, NULL, 0}
  };
  
-@@ -1351,3 +1352,143 @@ gst_query_parse_uri (GstQuery * query, gchar ** uri)
-     *uri = g_value_dup_string (gst_structure_id_get_value (structure,
+@@ -1481,3 +1482,143 @@ gst_query_parse_uri (GstQuery * query, gchar ** uri)
+     *uri = g_value_dup_string (gst_structure_id_get_value (query->structure,
              GST_QUARK (URI)));
  }
 +
@@ -207,7 +206,7 @@ index c835e20..b165235 100644
 +            GST_QUARK (HEIGHT)));
 +}
 diff --git a/gst/gstquery.h b/gst/gstquery.h
-index ae9b07b..e3c7bb3 100644
+index f77c0c7..fde23d6 100644
 --- a/gst/gstquery.h
 +++ b/gst/gstquery.h
 @@ -31,6 +31,7 @@
@@ -238,7 +237,7 @@ index ae9b07b..e3c7bb3 100644
  } GstQueryType;
  
  /**
-@@ -323,6 +328,15 @@ GstQuery *      gst_query_new_uri                 (void);
+@@ -336,6 +341,15 @@ GstQuery *      gst_query_new_uri                 (void);
  void            gst_query_parse_uri               (GstQuery *query, gchar **uri);
  void            gst_query_set_uri                 (GstQuery *query, const gchar *uri);
  
