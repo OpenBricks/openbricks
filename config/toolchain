@@ -315,7 +315,33 @@ TARGET_ASFLAGS="$GCC_FLAGS $TARGET_INCLUDES"
 # Autodetect local compiler if not set #
 ########################################
 
+cc_die () {
+  echo "System has supported an unsupported $1 version."
+  echo "OpenBricks need $1-4.4 for build to work on your system."
+  echo "Please ensure you got it installed."
+  exit 1
+}
+
+cc_workaround () {
+  DISTRO=$(lsb_release -i -s)
+  if [ "$DISTRO" = Ubuntu ]; then
+    CC_VERSION=$($LOCAL_CC --version | head -n 1 | sed "s%gcc (.*) \([0-9]\.[0-9]\).*%\1%")
+    if [ "$CC_VERSION" = 4.6 -o "$CC_VERSION" = 4.5 ]; then
+      CC_44=$(which gcc-4.4) || true
+      [ -z "$CC_44" ] && cc_die gcc || export LOCAL_CC=$CC_44
+    fi
+
+    CXX_VERSION=$($LOCAL_CXX --version | head -n 1 | sed "s%g++ (.*) \([0-9]\.[0-9]\).*%\1%")
+    if [ "$CXX_VERSION" = 4.6 -o "$CXX_VERSION" = 4.5 ]; then
+      CXX_44=$(which g++-4.4) || true
+      [ -z "$CXX_44" ] && cc_die g++ || export LOCAL_CXX=$CXX_44
+    fi
+  fi
+}
+
 [ -z "$LOCAL_CC" ] && LOCAL_CC=`which gcc` || true
 [ -z "$LOCAL_CXX" ] && LOCAL_CXX=`which g++` || true
+
+cc_workaround
 
 return 0
