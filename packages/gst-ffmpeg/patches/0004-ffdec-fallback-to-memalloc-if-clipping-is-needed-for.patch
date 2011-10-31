@@ -1,0 +1,47 @@
+From 768b42c811faa3434f9772b7b048706745bca5ea Mon Sep 17 00:00:00 2001
+From: Alessandro Decina <alessandro.decina@collabora.co.uk>
+Date: Thu, 6 Oct 2011 16:27:23 +0200
+Subject: [PATCH] ffdec: fallback to memalloc if clipping is needed for codecs
+ != VP8
+
+Fixes crashes with weird resolutions where clipping is applied.
+---
+ ext/ffmpeg/gstffmpegdec.c |   22 ++++++++++++++++------
+ 1 files changed, 16 insertions(+), 6 deletions(-)
+
+diff --git a/ext/ffmpeg/gstffmpegdec.c b/ext/ffmpeg/gstffmpegdec.c
+index 33fd82b..bc25518 100644
+--- a/ext/ffmpeg/gstffmpegdec.c
++++ b/ext/ffmpeg/gstffmpegdec.c
+@@ -1047,12 +1047,22 @@ gst_ffmpegdec_get_buffer (AVCodecContext * context, AVFrame * picture)
+           width, height, clip_width, clip_height);
+ 
+       if (width != clip_width || height != clip_height) {
+-        /* we can clip.. although we should somehow keep track of the
+-         * clipped size so we can send the correct vstab event to the
+-         * video sink..
+-         */
+-        width = clip_width;
+-        height = clip_height;
++        GST_DEBUG_OBJECT (ffmpegdec, "clipping from %dx%d to %dx%d",
++            width, height, clip_width, clip_height);
++        if (ffmpegdec->use_border) {
++          /* we can clip.. although we should somehow keep track of the
++           * clipped size so we can send the correct vstab event to the
++           * video sink..
++           *
++           * NOTE: this assumes that clip_width >= width && clip_height >= height
++           */
++          width = clip_width;
++          height = clip_height;
++        } else {
++          /* We can't alloc if we need to clip the output buffer later */
++          GST_LOG_OBJECT (ffmpegdec, "we need clipping, fallback alloc");
++          return avcodec_default_get_buffer (context, picture);
++        }
+       }
+ 
+       /* alloc with aligned dimensions for ffmpeg */
+-- 
+1.7.5.4
+
