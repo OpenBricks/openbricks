@@ -3,7 +3,6 @@ FLAVOURS = $(wildcard config/flavours/*/meta)
 ARCHS = $(wildcard config/platforms/*/meta)
 PLATFORMS = $(wildcard config/platforms/*/*/meta)
 MACHINES = $(wildcard config/platforms/*/*/machines/*/meta)
-REMOTES = $(wildcard packages/lirc*/config/lircd*)
 SCRIPTS = $(wildcard scripts/*2kconfig)
 
 all: binaries
@@ -11,7 +10,7 @@ all: binaries
 .stamps/kconfiginit:
 	scripts/kconfiginit
 
-config silentoldconfig oldconfig menuconfig xconfig gconfig: .stamps/kconfiginit build/config/Kconfig.version build/config/Kconfig.arch build/config/Kconfig.platform build/config/Kconfig.machine build/config/Kconfig.flavours build/config/Kconfig.remote build/config/Kconfig.packages build/config/Kconfig.use
+config silentoldconfig oldconfig menuconfig xconfig gconfig: .stamps/kconfiginit build/config/Kconfig.version build/config/Kconfig.arch build/config/Kconfig.platform build/config/Kconfig.machine build/config/Kconfig.flavours build/config/Kconfig.packages build/config/Kconfig.use
 	scripts/checkdeps $@
 	-$(MAKE) -C build/build.host/bst-kconfig* $@
 	scripts/kconfig2options
@@ -36,9 +35,6 @@ build/config/Kconfig.machine: $(SCRIPTS) $(MACHINES)
 
 build/config/Kconfig.flavours: $(SCRIPTS) $(FLAVOURS)
 	scripts/flavours2kconfig
-
-build/config/Kconfig.remote: $(SCRIPTS) $(REMOTES) $(MACHINES)
-	scripts/remotes2kconfig
 
 build/config/Kconfig.packages: $(SCRIPTS) config/use $(META)
 	scripts/meta2kconfig
