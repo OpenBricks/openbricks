@@ -49,9 +49,9 @@ for i in /sys/block/*; do
     model=`cat /sys/block/$dev/device/model`
   if [ -r /sys/block/$dev/size ]; then
     size=`cat /sys/block/$dev/size`
+    size=$((size/1000))
+    size=$((size/1000))
     size=$((size*512))
-    size=$((size/1000))
-    size=$((size/1000))
     if [ $size -ge 1000 ]; then
       size=$((size/1000))
       size="${size} GB"
