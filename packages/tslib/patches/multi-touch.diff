@@ -1,0 +1,380 @@
+From 13fc481965875dbffe4aa9805056ae602482ac10 Mon Sep 17 00:00:00 2001
+From: Tony Lin <tony.lin@freescale.com>
+Date: Mon, 14 Nov 2011 17:07:56 +0800
+Subject: [PATCH 1/1] change input-raw.c to support multi-touch
+
+Signed-off-by: Tony Lin <tony.lin@freescale.com>
+---
+ plugins/input-raw.c |  229 ++++++++++++++++++++++++++++++++++++--------------
+ 1 files changed, 165 insertions(+), 64 deletions(-)
+ mode change 100644 => 100755 plugins/input-raw.c
+
+diff --git a/plugins/input-raw.c b/plugins/input-raw.c
+old mode 100644
+new mode 100755
+index 9659eac..7d51876
+--- a/plugins/input-raw.c
++++ b/plugins/input-raw.c
+@@ -10,7 +10,7 @@
+  * This file is placed under the LGPL.  Please see the file
+  * COPYING for more details.
+  *
+- * $Id: input-raw.c,v 1.5 2005/02/26 01:47:23 kergoth Exp $
++ * $Id: input-raw.c,v 1.5 2005/02/26 01:47:23 kergoth Exp
+  *
+  * Read raw pressure, x, y, and timestamp from a touchscreen device.
+  */
+@@ -18,6 +18,7 @@
+ 
+ #include <errno.h>
+ #include <stdio.h>
++#include <assert.h>
+ 
+ #include <stdlib.h>
+ #ifdef HAVE_UNISTD_H
+@@ -30,57 +31,113 @@
+ #ifndef EV_SYN /* 2.4 kernel headers */
+ # define EV_SYN 0x00
+ #endif
++#ifndef EV_ABS /* 2.4 kernel headers */
++#define EV_ABS 0x03
++#endif
+ 
+ #include "tslib-private.h"
+ 
+-struct tslib_input {
++#define dbg(...)
++
++/* includes available in 2.6.30-rc5 */
++#ifndef BTN_TOOL_QUADTAP
++#define BTN_TOOL_QUADTAP	0x14f	/* Four fingers on trackpad */
++#define ABS_MT_TOUCH_MAJOR	0x30	/* Major axis of touching ellipse */
++#define ABS_MT_TOUCH_MINOR	0x31	/* Minor axis (omit if circular) */
++#define ABS_MT_WIDTH_MAJOR	0x32	/* Major axis of approaching ellipse */
++#define ABS_MT_WIDTH_MINOR	0x33	/* Minor axis (omit if circular) */
++#define ABS_MT_ORIENTATION	0x34	/* Ellipse orientation */
++#define ABS_MT_POSITION_X	0x35	/* Center X ellipse position */
++#define ABS_MT_POSITION_Y	0x36	/* Center Y ellipse position */
++#define ABS_MT_TOOL_TYPE	0x37	/* Type of touching device */
++#define ABS_MT_BLOB_ID		0x38	/* Group a set of packets as a blob */
++#define ABS_MT_TRACKING_ID	0x39	/* Unique ID of initiated contact */
++#define SYN_MT_REPORT		2
++#define MT_TOOL_FINGER		0
++#define MT_TOOL_PEN		1
++#endif
++
++/* includes available in 2.6.33 */
++#ifndef ABS_MT_PRESSURE
++#define ABS_MT_PRESSURE		0x3a	/* Pressure on contact area */
++#endif
++
++/* includes available in 2.6.36 */
++#ifndef ABS_MT_SLOT
++#define ABS_MT_SLOT		0x2f	/* MT slot being modified */
++#endif
++
++/* includes available in 2.6.38 */
++#ifndef ABS_MT_DISTANCE
++#define ABS_MT_DISTANCE		0x3b	/* Contact hover distance */
++#endif
++
++#define SLOT_MAX (10)
++struct tslib_mtinput {
+ 	struct tslib_module_info module;
+ 
+-	int	current_x;
+-	int	current_y;
+-	int	current_p;
++	int	current_x[SLOT_MAX];
++	int	current_y[SLOT_MAX];
++	int	current_p[SLOT_MAX];
+ 
+-	int	sane_fd;
++	int	checked_fd;
+ 	int	using_syn;
++
++	int	current_slot;
+ };
+ 
+-static int check_fd(struct tslib_input *i)
++#define BITS_PER_LONG 32
++#define BIT_WORD(nr) ((nr) / BITS_PER_LONG)
++static int test_bit(int nr, const unsigned long *addr)
++{
++	return 1UL & (addr[BIT_WORD(nr)] >> (nr & (BITS_PER_LONG-1)));
++}
++
++static int check_fd(struct tslib_mtinput *i)
+ {
+ 	struct tsdev *ts = i->module.dev;
+-	int version;
+-	u_int32_t bit;
+-	u_int64_t absbit;
+-
+-	if (! ((ioctl(ts->fd, EVIOCGVERSION, &version) >= 0) &&
+-		(version == EV_VERSION) &&
+-		(ioctl(ts->fd, EVIOCGBIT(0, sizeof(bit) * 8), &bit) >= 0) &&
+-		(bit & (1 << EV_ABS)) &&
+-		(ioctl(ts->fd, EVIOCGBIT(EV_ABS, sizeof(absbit) * 8), &absbit) >= 0) &&
+-		(absbit & (1 << ABS_X)) &&
+-		(absbit & (1 << ABS_Y)) && (absbit & (1 << ABS_PRESSURE)))) {
+-		fprintf(stderr, "selected device is not a touchscreen I understand\n");
+-		return -1;
++	unsigned long absbits[(ABS_MAX+31)/32];
++	int rc;
++
++	if (ioctl(ts->fd, EVIOCGRAB, 1)) {
++		fprintf(stderr, "error: could not grab the device. not a multi-touch?\n");
++		return -1;
+ 	}
+ 
+-	if (bit & (1 << EV_SYN))
+-		i->using_syn = 1;
++	rc = ioctl(ts->fd, EVIOCGBIT(EV_ABS, sizeof(absbits)), absbits);
++	if (rc < 0)
++		return rc;
+ 
++	if ((0 == test_bit(ABS_MT_POSITION_X, absbits)) ||
++		 (0 == test_bit(ABS_MT_POSITION_Y, absbits)) ||
++		 (0 == test_bit(ABS_MT_TOUCH_MAJOR, absbits))) {
++		fprintf(stderr, "error: could not support the device\n");
++		fprintf(stderr, "EV_SYN=%d\n", test_bit(EV_SYN, absbits));
++		fprintf(stderr, "EV_ABS=%d\n", test_bit(EV_ABS, absbits));
++		fprintf(stderr, "ABS_MT_POSITION_X=%d\n", test_bit(ABS_MT_POSITION_X, absbits));
++		fprintf(stderr, "ABS_MT_POSITION_Y=%d\n", test_bit(ABS_MT_POSITION_Y, absbits));
++		fprintf(stderr, "ABS_MT_TOUCH_MAJOR=%d\n", test_bit(ABS_MT_TOUCH_MAJOR, absbits));
++		return -1;
++	}
++
++	i->using_syn = 1;
++	i->checked_fd = 1;
+ 	return 0;
+ }
+ 
+-static int ts_input_read(struct tslib_module_info *inf,
++static int ts_input_read2(struct tslib_module_info *inf,
+ 			 struct ts_sample *samp, int nr)
+ {
+-	struct tslib_input *i = (struct tslib_input *)inf;
++	struct tslib_mtinput *i = (struct tslib_mtinput *)inf;
+ 	struct tsdev *ts = inf->dev;
+ 	struct input_event ev;
+ 	int ret = nr;
+ 	int total = 0;
+ 
+-	if (i->sane_fd == 0)
+-		i->sane_fd = check_fd(i);
++	if (i->checked_fd == 0)
++		check_fd(i);
+ 
+-	if (i->sane_fd == -1)
++	if (i->checked_fd == -1)
+ 		return 0;
+ 
+ 	if (i->using_syn) {
+@@ -90,9 +147,10 @@ static int ts_input_read(struct tslib_module_info *inf,
+ 				total = -1;
+ 				break;
+ 			}
+-	
++
+ 			switch (ev.type) {
+ 			case EV_KEY:
++				dbg("event=EV_KEY:\n");
+ 				switch (ev.code) {
+ 				case BTN_TOUCH:
+ 					if (ev.value == 0) {
+@@ -108,29 +166,56 @@ static int ts_input_read(struct tslib_module_info *inf,
+ 				}
+ 				break;
+ 			case EV_SYN:
++			case SYN_MT_REPORT:
++				dbg("event=%d\n", ev.type);
+ 				/* Fill out a new complete event */
+-				samp->x = i->current_x;
+-				samp->y = i->current_y;
+-				samp->pressure = i->current_p;
++				samp->x = i->current_x[i->current_slot];
++				samp->y = i->current_y[i->current_slot];
++				samp->pressure = i->current_p[i->current_slot];
+ 				samp->tv = ev.time;
+-	#ifdef DEBUG
++
++#ifdef DEBUG
+ 				fprintf(stderr, "RAW---------------------> %d %d %d %d.%d\n",
+-						samp->x, samp->y, samp->pressure, samp->tv.tv_sec,
+-						samp->tv.tv_usec);
+-	#endif		 /*DEBUG*/
+-					samp++;
++						samp->x, samp->y, samp->pressure, (int)samp->tv.tv_sec,
++						(int)samp->tv.tv_usec);
++#endif
++				samp++;
+ 				total++;
+ 				break;
+ 			case EV_ABS:
++				dbg("event=EV_ABS\n");
+ 				switch (ev.code) {
+ 				case ABS_X:
+-					i->current_x = ev.value;
++					dbg("event.code=ABS_X.v=%d\n", ev.value);
++					i->current_x[i->current_slot] = ev.value;
+ 					break;
+ 				case ABS_Y:
+-					i->current_y = ev.value;
++					dbg("event.code=ABS_Y.v=%d\n", ev.value);
++					i->current_y[i->current_slot] = ev.value;
+ 					break;
+ 				case ABS_PRESSURE:
+-					i->current_p = ev.value;
++					dbg("event.code=ABS_PRESSURE.v=%d\n", ev.value);
++					i->current_p[i->current_slot] = ev.value;
++					break;
++				case ABS_MT_SLOT:
++					dbg("event.code=ABS_MT_SLOT.v=%d\n", ev.value);
++					i->current_slot = ev.value;
++					if (i->current_slot >= SLOT_MAX) {
++						fprintf(stderr, "slot limit error. SLOT_MAX=%d. current slot=%d\n", SLOT_MAX, i->current_slot);
++						i->current_slot = 0;
++					}
++					break;
++				case ABS_MT_TOUCH_MAJOR:
++					dbg("event.code=ABS_MT_TOUCH_MAJOR.v=%d\n", ev.value);
++					i->current_p[i->current_slot] = ev.value;
++					break;
++				case ABS_MT_POSITION_X:
++					dbg("event.code=ABS_MT_POSITION_X.v=%d\n", ev.value);
++					i->current_x[i->current_slot] = ev.value;
++					break;
++				case ABS_MT_POSITION_Y:
++					dbg("event.code=ABS_MT_POSITION_Y.v=%d\n", ev.value);
++					i->current_y[i->current_slot] = ev.value;
+ 					break;
+ 				}
+ 				break;
+@@ -140,16 +225,15 @@ static int ts_input_read(struct tslib_module_info *inf,
+ 	} else {
+ 		unsigned char *p = (unsigned char *) &ev;
+ 		int len = sizeof(struct input_event);
+-	
++
+ 		while (total < nr) {
+ 			ret = read(ts->fd, p, len);
+ 			if (ret == -1) {
+-				if (errno == EINTR) {
++				if (errno == EINTR)
+ 					continue;
+-				}
+ 				break;
+ 			}
+-	
++
+ 			if (ret < (int)sizeof(struct input_event)) {
+ 				/* short read
+ 				 * restart read to get the rest of the event
+@@ -159,14 +243,14 @@ static int ts_input_read(struct tslib_module_info *inf,
+ 				continue;
+ 			}
+ 			/* successful read of a whole event */
+-	
++
+ 			if (ev.type == EV_ABS) {
+ 				switch (ev.code) {
+ 				case ABS_X:
+ 					if (ev.value != 0) {
+-						samp->x = i->current_x = ev.value;
+-						samp->y = i->current_y;
+-						samp->pressure = i->current_p;
++						samp->x = i->current_x[i->current_slot] = ev.value;
++						samp->y = i->current_y[i->current_slot];
++						samp->pressure = i->current_p[i->current_slot];
+ 					} else {
+ 						fprintf(stderr, "tslib: dropped x = 0\n");
+ 						continue;
+@@ -174,18 +258,30 @@ static int ts_input_read(struct tslib_module_info *inf,
+ 					break;
+ 				case ABS_Y:
+ 					if (ev.value != 0) {
+-						samp->x = i->current_x;
+-						samp->y = i->current_y = ev.value;
+-						samp->pressure = i->current_p;
++						samp->x = i->current_x[i->current_slot];
++						samp->y = i->current_y[i->current_slot] = ev.value;
++						samp->pressure = i->current_p[i->current_slot];
+ 					} else {
+ 						fprintf(stderr, "tslib: dropped y = 0\n");
+ 						continue;
+ 					}
+ 					break;
+ 				case ABS_PRESSURE:
+-					samp->x = i->current_x;
+-					samp->y = i->current_y;
+-					samp->pressure = i->current_p = ev.value;
++					samp->x = i->current_x[i->current_slot];
++					samp->y = i->current_y[i->current_slot];
++					samp->pressure = i->current_p[i->current_slot] = ev.value;
++					break;
++				case ABS_MT_SLOT:
++					i->current_slot = ev.value;
++					break;
++				case ABS_MT_TOUCH_MAJOR:
++					i->current_p[i->current_slot] = ev.value;
++					break;
++				case ABS_MT_POSITION_X:
++					i->current_x[i->current_slot] = ev.value;
++					break;
++				case ABS_MT_POSITION_Y:
++					i->current_y[i->current_slot] = ev.value;
+ 					break;
+ 				}
+ 				samp->tv = ev.time;
+@@ -220,30 +316,35 @@ static int ts_input_read(struct tslib_module_info *inf,
+ 	return ret;
+ }
+ 
+-static int ts_input_fini(struct tslib_module_info *inf)
++static int ts_input_fini2(struct tslib_module_info *inf)
+ {
++	struct tslib_mtinput *i = (struct tslib_mtinput *)inf;
++	ioctl(i->module.dev->fd, EVIOCGRAB, 0);
+ 	free(inf);
+ 	return 0;
+ }
+ 
+-static const struct tslib_ops __ts_input_ops = {
+-	.read	= ts_input_read,
+-	.fini	= ts_input_fini,
++static const struct tslib_ops __ts_input_ops2 = {
++	.read	= ts_input_read2,
++	.fini	= ts_input_fini2,
+ };
+ 
+ TSAPI struct tslib_module_info *mod_init(struct tsdev *dev, const char *params)
+ {
+-	struct tslib_input *i;
++	assert(NULL != dev);
++
++	struct tslib_mtinput *i;
+ 
+-	i = malloc(sizeof(struct tslib_input));
++	i = malloc(sizeof(struct tslib_mtinput));
+ 	if (i == NULL)
+ 		return NULL;
+ 
+-	i->module.ops = &__ts_input_ops;
+-	i->current_x = 0;
+-	i->current_y = 0;
+-	i->current_p = 0;
+-	i->sane_fd = 0;
++	i->module.ops = &__ts_input_ops2;
++	memset(i->current_x, 0, sizeof(int)*SLOT_MAX);
++	memset(i->current_y, 0, sizeof(int)*SLOT_MAX);
++	memset(i->current_p, 0, sizeof(int)*SLOT_MAX);
++	i->checked_fd = 0;
+ 	i->using_syn = 0;
++	i->current_slot = 0;
+ 	return &(i->module);
+ }
+-- 
+1.7.0.4
+
