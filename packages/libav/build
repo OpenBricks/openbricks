@@ -1,0 +1,71 @@
+#!/bin/sh
+
+. config/options
+
+if pkg_uses $1 vdpau; then
+  VDPAU_CONFIG="--enable-vdpau"
+else
+  VDPAU_CONFIG="--disable-vdpau"
+fi
+
+if pkg_uses $1 vaapi; then
+  VAAPI_CONFIG="--enable-vaapi"
+else
+  VAAPI_CONFIG="--disable-vaapi"
+fi
+
+if [ "$OPTIMIZATIONS" = size ]; then
+  OPTIM_CONFIG="--enable-small"
+else
+  OPTIM_CONFIG="--disable-small"
+fi
+
+if [ "$FPU_OPTIMIZATIONS" = neon ]; then
+  FPU_CONFIG="--enable-neon"
+else
+  FPU_CONFIG="--disable-neon"
+fi
+
+cd $BUILD/$1*
+do_gcc_strip_lto
+do_gcc_strip_gold
+./configure --enable-cross-compile \
+            --cross-prefix=$TARGET_PREFIX \
+            --arch=$TARGET_ARCH \
+            --prefix=/usr \
+            --target-os=linux \
+            --extra-cflags="$CFLAGS" \
+            --cpu=$TARGET_CPU \
+            --disable-static \
+            --enable-shared \
+            --enable-gpl \
+            --disable-ffmpeg \
+            --enable-postproc \
+            --disable-avfilter \
+            --enable-pthreads \
+            --disable-x11grab \
+            $OPTIM_CONFIG \
+            --enable-encoders \
+            --enable-decoders \
+            --enable-muxers \
+            --enable-demuxers \
+            --enable-parsers \
+            --enable-bsfs \
+            --enable-protocols \
+            --disable-indevs \
+            --disable-outdevs \
+            --disable-devices \
+            --enable-filters \
+            --enable-zlib \
+            --enable-bzlib \
+            --disable-avplay \
+            --disable-libvpx \
+            $VDPAU_CONFIG \
+            $VAAPI_CONFIG \
+            $FPU_CONFIG \
+
+[ $TARGET_LIBC = "uclibc" ] && ! pkg_uses $1 ipv6 && \
+  sed "s%#define HAVE_STRUCT_IPV6_MREQ.*%#define HAVE_STRUCT_IPV6_MREQ 0%" -i config.h
+
+make
+make_install
