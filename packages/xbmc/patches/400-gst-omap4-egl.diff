@@ -1,0 +1,2004 @@
+diff -Naur xbmc-pvr-20111231-git5559867/configure.in xbmc-pvr-20111231-git5559867.edit//configure.in
+--- xbmc-pvr-20111231-git5559867/configure.in	2011-12-31 09:31:35.000000000 +0100
++++ xbmc-pvr-20111231-git5559867.edit//configure.in	2012-01-01 15:38:21.731960698 +0100
+@@ -129,6 +129,8 @@
+ libcec_enabled="== libcec enabled. =="
+ libcec_disabled="== libcec disabled. CEC adapter support will not be available. =="
+ libcec_disabled_missing_libs="== libcec disabled because both libudev and libusb are not available. CEC adapter support will not be available. =="
++gstreamer_not_found="== GStreamer libraries not found. GStreamer support disabled. =="
++gstreamer_disabled="== GStreamer support manually disabled. =="
+ 
+ # External library message strings
+ external_libraries_enabled="== Use of all supported external libraries enabled. =="
+@@ -231,6 +233,12 @@
+   [use_openmax=$enableval],
+   [use_openmax=auto])
+ 
++AC_ARG_ENABLE([gstreamer],
++  [AS_HELP_STRING([--enable-gstreamer],
++  [enable GStreamer support (default is auto)])],
++  [use_gstreamer=$enableval],
++  [use_gstreamer=auto])
++
+ AC_ARG_ENABLE([tegra],
+   [AS_HELP_STRING([--enable-tegra],
+   [enable Tegra2 arm (default is no)])],
+@@ -1486,6 +1494,45 @@
+ AC_DEFINE(YAJL_MAJOR, 1, [yajl version 1])
+ ], [])
+ 
++# GSTREAMER
++if test "x$use_gstreamer" != "xno"; then
++  if test "$host_vendor" = "apple" ; then
++    if test "x$use_gstreamer" = "xyes"; then
++      AC_MSG_ERROR([GStreamer not supported on this platform])
++    else
++      use_gstreamer="no"
++      AC_MSG_NOTICE($gstreamer_disabled)
++    fi
++    USE_GSTREAMER=0
++  else
++    AC_SUBST(gstreamer_req, 0.10.0)
++    AC_SUBST(gstreamer_plugins_base_req, 0.10.0)
++    PKG_CHECK_MODULES(GSTREAMER, gstreamer-0.10 >= $gstreamer_req, HAVE_GSTREAMER=1, HAVE_GSTREAMER=0)
++    PKG_CHECK_MODULES(GSTREAMER_BASE, gstreamer-base-0.10 >= $gstreamer_req, HAVE_GSTREAMER_BASE=1, HAVE_GSTREAMER_BASE=0)
++    PKG_CHECK_MODULES(GSTREAMER_PLUGINS_BASE, gstreamer-plugins-base-0.10 >= $gstreamer_plugins_base_req, HAVE_GSTREAMER_PLUGINS_BASE=1, HAVE_GSTREAMER_PLUGINS_BASE=0)
++    HAVE_GSTREAMER_APP=1
++    AC_CHECK_LIB([gstapp-0.10], main, , HAVE_GSTREAMER_APP=0)
++
++    if test $HAVE_GSTREAMER -eq 1 -a $HAVE_GSTREAMER_BASE -eq 1 -a $HAVE_GSTREAMER_PLUGINS_BASE -eq 1 -a $HAVE_GSTREAMER_APP -eq 1; then
++      INCLUDES="$INCLUDES $GSTREAMER_CFLAGS $GSTREAMER_BASE_CFLAGS $GSTREAMER_PLUGINS_BASE_CFLAGS"
++      LIBS="$LIBS $GSTREAMER_LIBS $GSTREAMER_BASE_LIBS $GSTREAMER_PLUGINS_BASE_LIBS"
++      USE_GSTREAMER=1
++      AC_DEFINE([HAVE_LIBGSTREAMER], [1], [Define to 1 if you have the 'GStreamer' library.])
++    else
++      if test "x$use_gstreamer" = "xyes"; then
++        AC_MSG_ERROR([$gstreamer_not_found])
++      else
++        use_gstreamer="no"
++        USE_GSTREAMER=0
++        AC_MSG_RESULT($gstreamer_not_found)
++      fi
++    fi
++  fi
++else
++  USE_GSTREAMER=0
++  AC_MSG_NOTICE($gstreamer_disabled)
++fi
++
+ # platform specific bin utilities
+ if test "$host_vendor" != "apple" ; then
+   AC_CHECK_PROG(HAVE_GAWK,gawk,"yes","no",)
+@@ -1642,6 +1689,12 @@
+   final_message="$final_message\n  OpenMax:\tNo"
+ fi
+ 
++if test "$use_gstreamer" != "no"; then
++  final_message="$final_message\n  GStreamer:\tYes"
++else
++  final_message="$final_message\n  GStreamer:\tNo"
++fi
++
+ if test "$use_joystick" = "yes"; then
+   final_message="$final_message\n  Joystick:\tYes"
+   SDL_DEFINES="$SDL_DEFINES -DHAS_SDL_JOYSTICK"
+@@ -2005,6 +2058,7 @@
+ AC_SUBST(USE_AIRPLAY)
+ AC_SUBST(USE_VDA)
+ AC_SUBST(USE_OPENMAX)
++AC_SUBST(USE_GSTREAMER)
+ AC_SUBST(USE_PULSE)
+ AC_SUBST(USE_XRANDR)
+ AC_SUBST(USE_ALSA)
+diff -Naur xbmc-pvr-20111231-git5559867/system/shaders/yuv2rgb_egl_image_external_gles.glsl xbmc-pvr-20111231-git5559867.edit//system/shaders/yuv2rgb_egl_image_external_gles.glsl
+--- xbmc-pvr-20111231-git5559867/system/shaders/yuv2rgb_egl_image_external_gles.glsl	1970-01-01 01:00:00.000000000 +0100
++++ xbmc-pvr-20111231-git5559867.edit//system/shaders/yuv2rgb_egl_image_external_gles.glsl	2012-01-01 15:38:21.731960698 +0100
+@@ -0,0 +1,46 @@
++/*
++ *      Copyright (C) 2010 Team XBMC
++ *      http://www.xbmc.org
++ *
++ *  This Program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; either version 2, or (at your option)
++ *  any later version.
++ *
++ *  This Program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with XBMC; see the file COPYING.  If not, write to
++ *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
++ *  http://www.gnu.org/copyleft/gpl.html
++ *
++ */
++
++/*
++ * The texture object uses the GL_TEXTURE_EXTERNAL_OES texture target, which
++ * is defined by the GL_OES_EGL_image_external OpenGL ES extension. This
++ * limits how the texture may be used. Each time the texture is bound it
++ * must be bound to the GL_TEXTURE_EXTERNAL_OES target rather than the
++ * GL_TEXTURE_2D target. Additionally, any OpenGL ES 2.0 shader that samples
++ * from the texture must declare its use of this extension using, for example,
++ * an "#extension GL_OES_EGL_image_external : require" directive. Such shaders
++ * must also access the texture using the samplerExternalOES GLSL sampler type.
++ */
++
++#extension GL_OES_EGL_image_external : require
++
++precision mediump float;
++
++uniform samplerExternalOES m_samp;
++varying vec2   m_cord;
++uniform float  m_alpha;
++
++void main()
++{
++  vec4 rgb = texture2D(m_samp, m_cord);
++  rgb.a = m_alpha;
++  gl_FragColor = rgb;
++}
+diff -Naur xbmc-pvr-20111231-git5559867/system/shaders/yuv2rgb_vertex_egl_image_external_gles.glsl xbmc-pvr-20111231-git5559867.edit//system/shaders/yuv2rgb_vertex_egl_image_external_gles.glsl
+--- xbmc-pvr-20111231-git5559867/system/shaders/yuv2rgb_vertex_egl_image_external_gles.glsl	1970-01-01 01:00:00.000000000 +0100
++++ xbmc-pvr-20111231-git5559867.edit//system/shaders/yuv2rgb_vertex_egl_image_external_gles.glsl	2012-01-01 15:38:21.731960698 +0100
+@@ -0,0 +1,33 @@
++/*
++ *      Copyright (C) 2010 Team XBMC
++ *      http://www.xbmc.org
++ *
++ *  This Program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; either version 2, or (at your option)
++ *  any later version.
++ *
++ *  This Program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with XBMC; see the file COPYING.  If not, write to
++ *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
++ *  http://www.gnu.org/copyleft/gpl.html
++ *
++ */
++
++attribute vec4 m_attrpos;
++attribute vec2 m_attrcord;
++varying vec2 m_cord;
++uniform mat4 m_proj;
++uniform mat4 m_model;
++
++void main ()
++{
++  mat4 mvp    = m_proj * m_model;
++  gl_Position = mvp * m_attrpos;
++  m_cord      = m_attrcord;
++}
+diff -Naur xbmc-pvr-20111231-git5559867/xbmc/cores/dvdplayer/DVDCodecs/DVDFactoryCodec.cpp xbmc-pvr-20111231-git5559867.edit//xbmc/cores/dvdplayer/DVDCodecs/DVDFactoryCodec.cpp
+--- xbmc-pvr-20111231-git5559867/xbmc/cores/dvdplayer/DVDCodecs/DVDFactoryCodec.cpp	2011-10-18 17:28:35.000000000 +0200
++++ xbmc-pvr-20111231-git5559867.edit//xbmc/cores/dvdplayer/DVDCodecs/DVDFactoryCodec.cpp	2012-01-01 15:38:21.739960698 +0100
+@@ -33,6 +33,7 @@
+ #endif
+ #include "Video/DVDVideoCodecFFmpeg.h"
+ #include "Video/DVDVideoCodecOpenMax.h"
++#include "Video/DVDVideoCodecGStreamer.h"
+ #include "Video/DVDVideoCodecLibMpeg2.h"
+ #if defined(HAVE_LIBCRYSTALHD)
+ #include "Video/DVDVideoCodecCrystalHD.h"
+@@ -162,9 +163,22 @@
+ #elif defined(_LINUX) && !defined(__APPLE__)
+   hwSupport += "VAAPI:no ";
+ #endif
++#if defined(HAVE_LIBGSTREAMER)
++  hwSupport += "GStreamer:yes ";
++#else
++  hwSupport += "GStreamer:no ";
++#endif
+ 
+   CLog::Log(LOGDEBUG, "CDVDFactoryCodec: compiled in hardware support: %s", hwSupport.c_str());
+ 
++#if defined(HAVE_LIBGSTREAMER)
++  if (!hint.software)
++  {
++      CLog::Log(LOGINFO, "Trying GStreamer Video Decoder...");
++      if ( (pCodec = OpenCodec(new CDVDVideoCodecGStreamer(), hint, options)) ) return pCodec;
++  }
++#endif
++
+   // dvd's have weird still-frames in it, which is not fully supported in ffmpeg
+   if(hint.stills && (hint.codec == CODEC_ID_MPEG2VIDEO || hint.codec == CODEC_ID_MPEG1VIDEO))
+   {
+diff -Naur xbmc-pvr-20111231-git5559867/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecGStreamer.cpp xbmc-pvr-20111231-git5559867.edit//xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecGStreamer.cpp
+--- xbmc-pvr-20111231-git5559867/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecGStreamer.cpp	1970-01-01 01:00:00.000000000 +0100
++++ xbmc-pvr-20111231-git5559867.edit//xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecGStreamer.cpp	2012-01-01 15:38:21.739960698 +0100
+@@ -0,0 +1,474 @@
++/*
++ *      Copyright (C) 2005-2011 Team XBMC
++ *      http://www.xbmc.org
++ *
++ *  This Program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; either version 2, or (at your option)
++ *  any later version.
++ *
++ *  This Program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with XBMC; see the file COPYING.  If not, write to
++ *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
++ *  http://www.gnu.org/copyleft/gpl.html
++ *
++ */
++
++#include "system.h"
++#if (defined HAVE_CONFIG_H) && (!defined WIN32)
++  #include "config.h"
++#endif
++#include "DVDVideoCodecGStreamer.h"
++#include "DVDStreamInfo.h"
++#include "DVDClock.h"
++#include "windowing/WindowingFactory.h"
++#include <gst/app/gstappsrc.h>
++#include <gst/app/gstappsink.h>
++#include <EGL/egl.h>
++
++bool CDVDVideoCodecGStreamer::gstinitialized = false;
++
++static PFNEGLCREATEIMAGEKHRPROC eglCreateImageKHR;
++static PFNEGLDESTROYIMAGEKHRPROC eglDestroyImageKHR;
++
++
++#ifndef EGLIMAGE_FLAGS_YUV_CONFORMANT_RANGE
++// XXX these should come from some egl header??
++#define EGLIMAGE_FLAGS_YUV_CONFORMANT_RANGE (0 << 0)
++#define EGLIMAGE_FLAGS_YUV_FULL_RANGE       (1 << 0)
++#define EGLIMAGE_FLAGS_YUV_BT601            (0 << 1)
++#define EGLIMAGE_FLAGS_YUV_BT709            (1 << 1)
++#endif
++#ifndef EGL_TI_raw_video
++#  define EGL_TI_raw_video 1
++#  define EGL_RAW_VIDEO_TI            0x333A  /* eglCreateImageKHR target */
++#  define EGL_GL_VIDEO_FOURCC_TI        0x3331  /* eglCreateImageKHR attribute */
++#  define EGL_GL_VIDEO_WIDTH_TI         0x3332  /* eglCreateImageKHR attribute */
++#  define EGL_GL_VIDEO_HEIGHT_TI        0x3333  /* eglCreateImageKHR attribute */
++#  define EGL_GL_VIDEO_BYTE_STRIDE_TI     0x3334  /* eglCreateImageKHR attribute */
++#  define EGL_GL_VIDEO_BYTE_SIZE_TI       0x3335  /* eglCreateImageKHR attribute */
++#  define EGL_GL_VIDEO_YUV_FLAGS_TI       0x3336  /* eglCreateImageKHR attribute */
++#endif
++
++class GSTEGLImageHandle : public EGLImageHandle
++{
++public:
++  GSTEGLImageHandle(GstBuffer *buf, gint width, gint height, guint32 format)
++    : EGLImageHandle()
++  {
++    this->eglImage = NULL;
++    this->buf = gst_buffer_ref(buf);
++    this->width = width;
++    this->height = height;
++    this->format = format;
++    this->refcnt = 1;
++  }
++
++  virtual ~GSTEGLImageHandle()
++  {
++    if (eglImage)
++      eglDestroyImageKHR(g_Windowing.GetEGLDisplay(), eglImage);
++    gst_buffer_unref(buf);
++  }
++
++  virtual EGLImageHandle * Ref()
++  {
++    CSingleLock lock(m_monitorLock);
++    refcnt++;
++    return this;
++  }
++
++  void UnRef()
++  {
++    CSingleLock lock(m_monitorLock);
++    --refcnt;
++    if (refcnt == 0)
++      delete this;
++  }
++
++  virtual EGLImageKHR Get()
++  {
++    if (!eglImage)
++    {
++      EGLint attr[] = {
++          EGL_GL_VIDEO_FOURCC_TI,      format,
++          EGL_GL_VIDEO_WIDTH_TI,       width,
++          EGL_GL_VIDEO_HEIGHT_TI,      height,
++          EGL_GL_VIDEO_BYTE_SIZE_TI,   GST_BUFFER_SIZE(buf),
++          // TODO: pick proper YUV flags..
++          EGL_GL_VIDEO_YUV_FLAGS_TI,   EGLIMAGE_FLAGS_YUV_CONFORMANT_RANGE |
++          EGLIMAGE_FLAGS_YUV_BT601,
++          EGL_NONE
++      };
++      eglImage = eglCreateImageKHR(g_Windowing.GetEGLDisplay(),
++          EGL_NO_CONTEXT, EGL_RAW_VIDEO_TI, GST_BUFFER_DATA(buf), attr);
++    }
++    return eglImage;
++  }
++
++private:
++  static CCriticalSection m_monitorLock;
++  int refcnt;
++  EGLImageKHR eglImage;
++  gint width, height;
++  guint32 format;
++  GstBuffer *buf;
++};
++CCriticalSection GSTEGLImageHandle::m_monitorLock;
++
++
++CDVDVideoCodecGStreamer::CDVDVideoCodecGStreamer()
++{
++  if (gstinitialized == false)
++ {
++    gst_init (NULL, NULL);
++    gstinitialized = true;
++
++    eglCreateImageKHR = (PFNEGLCREATEIMAGEKHRPROC)
++        eglGetProcAddress("eglCreateImageKHR");
++    eglDestroyImageKHR = (PFNEGLDESTROYIMAGEKHRPROC)
++        eglGetProcAddress("eglDestroyImageKHR");
++  }
++
++  m_initialized = false;
++  m_pictureBuffer = NULL;
++
++  m_decoder = NULL;
++  m_needData = false;
++  m_AppSrc = NULL;
++  m_AppSrcCaps = NULL;
++  m_AppSinkCaps = NULL;
++  m_ptsinvalid = true;
++  m_drop = false;
++  m_reset = false;
++
++  m_timebase = 1000.0;
++}
++
++CDVDVideoCodecGStreamer::~CDVDVideoCodecGStreamer()
++{
++  Dispose();
++}
++
++bool CDVDVideoCodecGStreamer::Open(CDVDStreamInfo &hints, CDVDCodecOptions &options)
++{
++  Dispose();
++
++  m_ptsinvalid = hints.ptsinvalid;
++
++  m_AppSrcCaps = CreateVideoCaps(hints, options);
++
++  if (m_AppSrcCaps)
++  {
++    m_decoder = new CGstDecoder(this);
++    m_AppSrc = m_decoder->Open(m_AppSrcCaps);
++  }
++
++  return (m_AppSrc != NULL);
++}
++
++void CDVDVideoCodecGStreamer::Flush()
++{
++  while (m_pictureQueue.size())
++  {
++    gst_buffer_unref(m_pictureQueue.front());
++    m_pictureQueue.pop();
++  }
++
++  if (m_pictureBuffer)
++  {
++    gst_buffer_unref(m_pictureBuffer);
++    m_pictureBuffer = NULL;
++  }
++}
++
++void CDVDVideoCodecGStreamer::Dispose()
++{
++  Flush();
++
++  if (m_AppSrc)
++  {
++    GstFlowReturn ret;
++    g_signal_emit_by_name(m_AppSrc, "end-of-stream", &ret);
++
++    if (ret != GST_FLOW_OK)
++      ERR("Flow error %i", ret);
++
++    gst_object_unref(m_AppSrc);
++    m_AppSrc = NULL;
++  }
++
++  if (m_AppSrcCaps)
++  {
++    gst_caps_unref(m_AppSrcCaps);
++    m_AppSrcCaps = NULL;
++  }
++
++  if (m_AppSinkCaps)
++  {
++    gst_caps_unref(m_AppSinkCaps);
++    m_AppSinkCaps = NULL;
++  }
++
++  if (m_decoder)
++  {
++    m_decoder->StopThread();
++    delete m_decoder;
++    m_decoder = NULL;
++
++    m_initialized = false;
++  }
++}
++
++int CDVDVideoCodecGStreamer::Decode(BYTE* pData, int iSize, double dts, double pts)
++{
++  CSingleLock lock(m_monitorLock);
++
++  GstBuffer *buffer = NULL;
++
++  if (pts == DVD_NOPTS_VALUE)
++    pts = dts;
++
++  if (pData)
++  {
++    if (m_reset)
++    {
++      m_decoder->Reset(dts, pts);
++      Flush();
++      m_reset = false;
++    }
++
++    buffer = gst_buffer_new_and_alloc(iSize);
++    if (buffer)
++    {
++      memcpy(GST_BUFFER_DATA(buffer), pData, iSize);
++
++      GST_BUFFER_TIMESTAMP(buffer) = pts * 1000.0;
++
++      DBG("push buffer: %"GST_TIME_FORMAT", dts=%f, pts=%f",
++          GST_TIME_ARGS(GST_BUFFER_TIMESTAMP(buffer)), dts, pts);
++
++      GstFlowReturn ret;
++      g_signal_emit_by_name(m_AppSrc, "push-buffer", buffer, &ret);
++
++      if (ret != GST_FLOW_OK)
++        ERR("Flow error %i", ret);
++
++      gst_buffer_unref(buffer);
++    }
++  }
++
++  if (m_pictureBuffer)
++  {
++    gst_buffer_unref(m_pictureBuffer);
++    m_pictureBuffer = NULL;
++  }
++
++  if (m_pictureQueue.size())
++    return VC_PICTURE;
++  else
++    return VC_BUFFER;
++}
++
++void CDVDVideoCodecGStreamer::Reset()
++{
++  m_reset = true;
++}
++
++bool CDVDVideoCodecGStreamer::GetPicture(DVDVideoPicture* pDvdVideoPicture)
++{
++  CSingleLock lock(m_monitorLock);
++  if (m_pictureQueue.size())
++  {
++    m_pictureBuffer = m_pictureQueue.front();
++    m_pictureQueue.pop();
++  }
++  else
++    return false;
++
++  GstCaps *caps = gst_buffer_get_caps(m_pictureBuffer);
++  if (caps == NULL)
++  {
++    ERR("No caps on decoded buffer");
++    return false;
++  }
++
++  if (caps != m_AppSinkCaps)
++  {
++    if (m_AppSinkCaps)
++      gst_caps_unref(m_AppSinkCaps);
++
++    m_AppSinkCaps = caps;
++
++    GstStructure *structure = gst_caps_get_structure (caps, 0);
++    if (structure == NULL ||
++        !gst_structure_get_int (structure, "width", &m_width) ||
++        !gst_structure_get_int (structure, "height", &m_height) ||
++        !gst_structure_get_fourcc (structure, "format", &m_format))
++    {
++      ERR("invalid caps on decoded buffer");
++      gst_caps_unref(m_AppSinkCaps);
++      m_AppSinkCaps = NULL;
++      return false;
++    }
++
++    /* we could probably even lift this restriction on color formats
++     * (note: update caps filter in gst pipeline if you do).. this
++     * might make sense on OMAP3 where DSP codecs might be returning
++     * YUY2/UYVY.. at least if we are using eglimageexternal/
++     * texture streaming, the SGX can directly render YUY2/UYVY
++     *
++     * XXX if using eglImage, we need some way to query supported YUV
++     * formats..
++     */
++    if ((m_format != GST_STR_FOURCC("NV12")) &&
++        (m_format != GST_STR_FOURCC("I420")))
++    {
++      ERR("invalid color format on decoded buffer");
++      gst_caps_unref(m_AppSinkCaps);
++      m_AppSinkCaps = NULL;
++      return false;
++    }
++  }
++  else
++  {
++    gst_caps_unref(caps);
++  }
++
++  pDvdVideoPicture->iWidth  = m_width;
++  pDvdVideoPicture->iHeight = m_height;
++
++  if (m_crop)
++  {
++    pDvdVideoPicture->iDisplayWidth  = m_cropWidth;
++    pDvdVideoPicture->iDisplayHeight = m_cropHeight;
++    pDvdVideoPicture->iDisplayX      = m_cropLeft;
++    pDvdVideoPicture->iDisplayY      = m_cropTop;
++  }
++  else
++  {
++    pDvdVideoPicture->iDisplayWidth  = pDvdVideoPicture->iWidth;
++    pDvdVideoPicture->iDisplayHeight = pDvdVideoPicture->iHeight;
++    pDvdVideoPicture->iDisplayX      = 0;
++    pDvdVideoPicture->iDisplayY      = 0;
++  }
++
++  pDvdVideoPicture->eglImageHandle = new GSTEGLImageHandle(m_pictureBuffer, m_width, m_height, m_format);
++  pDvdVideoPicture->format  = DVDVideoPicture::FMT_EGLIMG;
++  pDvdVideoPicture->pts     = (double)GST_BUFFER_TIMESTAMP(m_pictureBuffer) / 1000.0;
++  pDvdVideoPicture->dts     = DVD_NOPTS_VALUE;
++  pDvdVideoPicture->iDuration = (double)GST_BUFFER_DURATION(m_pictureBuffer) / 1000.0;
++
++  DBG("create %p (%f)", pDvdVideoPicture->eglImageHandle, pDvdVideoPicture->pts);
++
++  return true;
++}
++
++void CDVDVideoCodecGStreamer::SetDropState(bool bDrop)
++{
++  m_drop = bDrop;
++}
++
++const char *CDVDVideoCodecGStreamer::GetName()
++{
++  return "GStreamer";
++}
++
++void CDVDVideoCodecGStreamer::OnCrop(gint top, gint left, gint width, gint height)
++{
++  m_crop = true;
++  m_cropTop = top;
++  m_cropLeft = left;
++  m_cropWidth = width;
++  m_cropHeight = height;
++}
++
++void CDVDVideoCodecGStreamer::OnDecodedBuffer(GstBuffer *buffer)
++{
++  if (m_drop || m_reset)
++  {
++    DBG("dropping! drop=%d, reset=%d", m_drop, m_reset);
++    gst_buffer_unref (buffer);
++    return;
++  }
++
++  /* throttle decoding if rendering is not keeping up.. */
++  while (m_pictureQueue.size() > 4)
++  {
++//    DBG("throttling: %d", m_pictureQueue.size());
++    usleep(1000);
++  }
++
++  if (buffer)
++  {
++    CSingleLock lock(m_monitorLock);
++    m_pictureQueue.push(buffer);
++  }
++  else
++    ERR("Received null buffer?");
++}
++
++void CDVDVideoCodecGStreamer::OnNeedData()
++{
++  m_needData = true;
++}
++
++void CDVDVideoCodecGStreamer::OnEnoughData()
++{
++  m_needData = false;
++}
++
++GstCaps *CDVDVideoCodecGStreamer::CreateVideoCaps(CDVDStreamInfo &hints, CDVDCodecOptions &options)
++{
++  GstCaps *caps = NULL;
++
++  switch (hints.codec)
++  {
++    case CODEC_ID_H264:
++      caps = gst_caps_new_simple ("video/x-h264", NULL);
++      break;
++    case CODEC_ID_MPEG4:
++      caps = gst_caps_new_simple ("video/mpeg", NULL);
++      if (caps)
++      {
++        gst_caps_set_simple(caps,
++            "mpegversion", G_TYPE_INT, 4,
++            "systemstream", G_TYPE_BOOLEAN, false,
++            NULL);
++      }
++      break;
++    default:
++      ERR("codec: unknown = %i", hints.codec);
++      break;
++  }
++
++  if (caps)
++  {
++    gst_caps_set_simple(caps, 
++                        "width", G_TYPE_INT, hints.width,
++                        "height", G_TYPE_INT, hints.height,
++                        "framerate", GST_TYPE_FRACTION,
++                          (hints.vfr ? 0 : hints.fpsrate),
++                          (hints.vfr ? 1 : hints.fpsscale),
++                        NULL);
++
++    if (hints.extradata && hints.extrasize > 0)
++    {
++      GstBuffer *data = NULL;
++      data = gst_buffer_new_and_alloc(hints.extrasize);
++      memcpy(GST_BUFFER_DATA(data), hints.extradata, hints.extrasize);
++
++      gst_caps_set_simple(caps, "codec_data", GST_TYPE_BUFFER, data, NULL);
++      gst_buffer_unref(data);
++    }
++  }
++
++  DBG("got caps: %"GST_PTR_FORMAT, caps);
++
++  return caps;
++}
+diff -Naur xbmc-pvr-20111231-git5559867/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecGStreamer.h xbmc-pvr-20111231-git5559867.edit//xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecGStreamer.h
+--- xbmc-pvr-20111231-git5559867/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecGStreamer.h	1970-01-01 01:00:00.000000000 +0100
++++ xbmc-pvr-20111231-git5559867.edit//xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecGStreamer.h	2012-01-01 15:38:21.739960698 +0100
+@@ -0,0 +1,84 @@
++#pragma once
++/*
++ *      Copyright (C) 2005-2011 Team XBMC
++ *      http://www.xbmc.org
++ *
++ *  This Program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; either version 2, or (at your option)
++ *  any later version.
++ *
++ *  This Program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with XBMC; see the file COPYING.  If not, write to
++ *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
++ *  http://www.gnu.org/copyleft/gpl.html
++ *
++ */
++
++#include "DVDVideoCodec.h"
++#include "threads/SingleLock.h"
++#include <gst/gst.h>
++#include <queue>
++#include "threads/Thread.h"
++#include "GstDecoder.h"
++
++class CGstDecoder;
++
++class CDVDVideoCodecGStreamer : public CDVDVideoCodec, public IGstDecoderCallback
++{
++public:
++  CDVDVideoCodecGStreamer();
++  virtual ~CDVDVideoCodecGStreamer();
++  virtual bool Open(CDVDStreamInfo &hints, CDVDCodecOptions &options);
++  virtual void Dispose();
++  virtual int Decode(BYTE* pData, int iSize, double dts, double pts);
++  virtual void Reset();
++  virtual bool GetPicture(DVDVideoPicture* pDvdVideoPicture);
++  virtual void SetDropState(bool bDrop);
++  virtual const char* GetName();
++
++  void OnCrop(gint top, gint left, gint width, gint height);
++  void OnDecodedBuffer(GstBuffer *buffer);
++  void OnNeedData();
++  void OnEnoughData();
++
++private:
++  virtual void Flush();
++  static GstCaps *CreateVideoCaps(CDVDStreamInfo &hints, CDVDCodecOptions &options);
++
++  static bool gstinitialized;
++
++  bool m_initialized;
++
++  // crop parameters
++  bool m_crop;
++  gint m_cropTop, m_cropLeft, m_cropWidth, m_cropHeight;
++
++  gboolean m_drop, m_reset;
++
++  // caps parameters:
++  gint m_width, m_height;
++  guint32 m_format;
++
++  // sink caps:
++  GstCaps *m_AppSinkCaps;
++
++  std::queue<GstBuffer *> m_pictureQueue;
++  GstBuffer *m_pictureBuffer;
++
++  CCriticalSection m_needBuffer;
++  CCriticalSection m_monitorLock;
++
++  CGstDecoder *m_decoder;
++  GstElement *m_AppSrc;
++  GstCaps *m_AppSrcCaps;
++  double m_timebase;
++
++  bool m_needData;
++  bool m_ptsinvalid;
++};
+diff -Naur xbmc-pvr-20111231-git5559867/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodec.h xbmc-pvr-20111231-git5559867.edit//xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodec.h
+--- xbmc-pvr-20111231-git5559867/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodec.h	2011-12-31 09:31:36.000000000 +0100
++++ xbmc-pvr-20111231-git5559867.edit//xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodec.h	2012-01-01 15:39:21.239962111 +0100
+@@ -22,6 +22,7 @@
+  */
+ 
+ #include "system.h"
++#include "threads/SingleLock.h"
+ 
+ #include <vector>
+ 
+@@ -35,6 +36,7 @@
+ namespace DXVA { class CSurfaceContext; }
+ namespace VAAPI { struct CHolder; }
+ namespace XVBA { class CDecoder; }
++class CDVDVideoCodec;
+ class CVDPAU;
+ class COpenMax;
+ class COpenMaxVideo;
+@@ -44,6 +46,20 @@
+   struct __CVBuffer;
+ #endif
+ 
++class EGLImageHandle
++{
++public:
++  EGLImageHandle()
++  {
++  }
++  virtual ~EGLImageHandle()
++  {
++  }
++  virtual EGLImageKHR Get() = 0;
++  virtual EGLImageHandle * Ref() = 0;
++  virtual void UnRef() = 0;
++};
++
+ // should be entirely filled by all codecs
+ struct DVDVideoPicture
+ {
+@@ -81,6 +97,11 @@
+ #endif
+   };
+ 
++  // XXX move this into union, and use instead of data/iLineSize!!
++    struct {
++      EGLImageHandle *eglImageHandle;
++    };
++
+   unsigned int iFlags;
+ 
+   double       iRepeatPicture;
+@@ -100,6 +121,7 @@
+ 
+   unsigned int iWidth;
+   unsigned int iHeight;
++  unsigned int iDisplayX, iDisplayY;
+   unsigned int iDisplayWidth;  // width of the picture without black bars
+   unsigned int iDisplayHeight; // height of the picture without black bars
+ 
+@@ -115,6 +137,7 @@
+     FMT_CVBREF,
+     FMT_XVBA,
+     FMT_XVBA_YV12,
++    FMT_EGLIMG,
+   } format;
+ };
+ 
+@@ -191,6 +214,8 @@
+    */ 
+   virtual bool ClearPicture(DVDVideoPicture* pDvdVideoPicture)
+   {
++    if (pDvdVideoPicture->eglImageHandle)
++      pDvdVideoPicture->eglImageHandle->UnRef();
+     memset(pDvdVideoPicture, 0, sizeof(DVDVideoPicture));
+     return true;
+   }
+diff -Naur xbmc-pvr-20111231-git5559867/xbmc/cores/dvdplayer/DVDCodecs/Video/GstDecoder.cpp xbmc-pvr-20111231-git5559867.edit//xbmc/cores/dvdplayer/DVDCodecs/Video/GstDecoder.cpp
+--- xbmc-pvr-20111231-git5559867/xbmc/cores/dvdplayer/DVDCodecs/Video/GstDecoder.cpp	1970-01-01 01:00:00.000000000 +0100
++++ xbmc-pvr-20111231-git5559867.edit//xbmc/cores/dvdplayer/DVDCodecs/Video/GstDecoder.cpp	2012-01-01 15:38:21.739960698 +0100
+@@ -0,0 +1,245 @@
++/*
++ *      Copyright (C) 2005-2011 Team XBMC
++ *      http://www.xbmc.org
++ *
++ *  This Program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; either version 2, or (at your option)
++ *  any later version.
++ *
++ *  This Program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with XBMC; see the file COPYING.  If not, write to
++ *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
++ *  http://www.gnu.org/copyleft/gpl.html
++ *
++ */
++
++#include "GstDecoder.h"
++#include <gst/app/gstappsrc.h>
++#include <gst/app/gstappsink.h>
++
++CGstDecoder::CGstDecoder(IGstDecoderCallback *callback) : m_callback(callback)
++{
++  m_loop      = NULL;
++  m_pipeline  = NULL;
++}
++
++CGstDecoder::~CGstDecoder()
++{
++  if (m_pipeline)
++  {
++    gst_object_unref(m_pipeline);
++    m_pipeline = NULL;
++  }
++}
++
++GstElement *CGstDecoder::Open(GstCaps *sourceCapabilities)
++{
++  m_loop = g_main_loop_new (NULL, FALSE);
++  if (m_loop == NULL)
++    return false;
++
++  gchar *capsString = gst_caps_to_string(sourceCapabilities);
++
++  DBG("The capabilities from source are %s", capsString);
++
++  gchar *pipelineString = g_strdup_printf(
++      "appsrc caps=\"%s\" name=\"AppSrc\" stream-type=seekable format=time block=(boolean)true ! "
++      "decodebin2 ! ffmpegcolorspace ! "
++      "appsink caps=\"video/x-raw-yuv,format=(fourcc){I420,NV12}\" name=\"AppSink\" max-buffers=3",
++      capsString);
++
++  DBG("Entire pipeline is %s", pipelineString);
++
++  m_pipeline = gst_parse_launch(pipelineString, NULL);
++  g_free(capsString);
++  g_free(pipelineString);
++
++  if (m_pipeline == NULL)
++    return NULL;
++
++  GstBus *bus = gst_element_get_bus(m_pipeline);
++  gst_bus_add_watch (bus, (GstBusFunc)BusCallback, this);
++  gst_object_unref (bus);
++
++  GstElement *AppSrc = gst_bin_get_by_name(GST_BIN(m_pipeline), "AppSrc");
++  m_AppSrc = AppSrc;
++
++  if (AppSrc)
++  {
++    g_signal_connect(AppSrc, "need-data", G_CALLBACK (OnNeedData), this);
++    g_signal_connect(AppSrc, "enough-data", G_CALLBACK (OnEnoughData), this);
++    g_signal_connect(AppSrc, "seek-data", G_CALLBACK (OnSeekData), this);
++  }
++  else
++    ERR("Failure to hook up to AppSrc");
++
++  GstElement *AppSink = gst_bin_get_by_name(GST_BIN(m_pipeline), "AppSink");
++  m_AppSink = AppSink;
++
++  if (AppSink)
++  {
++    g_object_set(G_OBJECT(AppSink), "emit-signals", TRUE, "sync", FALSE, NULL);
++    g_signal_connect(AppSink, "crop", G_CALLBACK(CGstDecoder::OnCrop), this);
++    g_signal_connect(AppSink, "new-buffer", G_CALLBACK(CGstDecoder::OnDecodedBuffer), this);
++    gst_object_unref(AppSink);
++  }
++  else
++    ERR("Failure to hook up to AppSink");
++
++  Create();
++
++  return AppSrc;
++}
++
++void CGstDecoder::StopThread(bool bWait)
++{
++  g_main_loop_quit(m_loop);
++  CThread::StopThread(bWait);
++}
++
++void CGstDecoder::Reset(double dts, double pts)
++{
++  GstClockTime time = pts * 1000.0;
++  DBG("Seeking to: %"GST_TIME_FORMAT, GST_TIME_ARGS(time));
++  gst_element_seek(m_AppSrc, 1.0, GST_FORMAT_TIME, GST_SEEK_FLAG_FLUSH,
++      GST_SEEK_TYPE_SET, time, GST_SEEK_TYPE_NONE, 0);
++}
++
++void CGstDecoder::Process()
++{
++  gst_element_set_state(m_pipeline, GST_STATE_PLAYING);
++
++  g_main_loop_run(m_loop);
++
++  gst_element_set_state(m_pipeline, GST_STATE_NULL);
++}
++
++void CGstDecoder::OnCrop(GstElement *appsink, gint top, gint left, gint width, gint height, void *data)
++{
++  CGstDecoder *decoder = (CGstDecoder *)data;
++  if (decoder->m_callback)
++    decoder->m_callback->OnCrop(top, left, width, height);
++}
++
++void CGstDecoder::OnDecodedBuffer(GstElement *appsink, void *data)
++{
++  CGstDecoder *decoder = (CGstDecoder *)data;
++
++  GstBuffer *buffer = gst_app_sink_pull_buffer(GST_APP_SINK(appsink));
++  if (buffer)
++  {
++    DBG("got buffer: %"GST_TIME_FORMAT, GST_TIME_ARGS(GST_BUFFER_TIMESTAMP(buffer)));
++
++    if (decoder->m_callback)
++      decoder->m_callback->OnDecodedBuffer(buffer);
++    else
++      gst_buffer_unref(buffer);
++  }
++  else
++    DBG("Null Buffer");
++}
++
++void CGstDecoder::OnNeedData(GstElement *appsrc, guint size, void *data)
++{
++  CGstDecoder *decoder = (CGstDecoder *)data;
++
++  if (decoder->m_callback)
++    decoder->m_callback->OnNeedData();
++}
++
++/* This callback is called when appsrc has enough data and we can stop sending.
++ * We remove the idle handler from the mainloop */
++void CGstDecoder::OnEnoughData (GstElement *appsrc, void *data)
++{
++  CGstDecoder *decoder = (CGstDecoder *)data;
++
++  if (decoder->m_callback)
++    decoder->m_callback->OnEnoughData();
++}
++
++gboolean CGstDecoder::OnSeekData(GstElement *appsrc, guint64 arg, void *data)
++{
++  return TRUE;
++}
++
++gboolean CGstDecoder::BusCallback(GstBus *bus, GstMessage *msg, gpointer data)
++{
++  CGstDecoder *decoder = (CGstDecoder *)data;
++  gchar  *str;
++
++  switch (GST_MESSAGE_TYPE(msg))
++  {
++    case GST_MESSAGE_EOS:
++      DBG("End of stream");
++      g_main_loop_quit(decoder->m_loop);
++      break;
++
++    case GST_MESSAGE_ERROR:
++      GError *error;
++
++      gst_message_parse_error (msg, &error, &str);
++      g_free (str);
++
++      ERR("Error - %s %s", str, error->message);
++      g_error_free (error);
++
++      g_main_loop_quit(decoder->m_loop);
++      break;
++
++    case GST_MESSAGE_WARNING:
++      GError *warning;
++
++      gst_message_parse_error (msg, &warning, &str);
++      g_free (str);
++
++      ERR("Warning - %s %s", str, warning->message);
++      g_error_free (warning);
++      break;
++
++    case GST_MESSAGE_INFO:
++      GError *info;
++
++      gst_message_parse_error (msg, &info, &str);
++      g_free (str);
++
++      DBG("Info - %s %s", str, info->message);
++      g_error_free (info);
++      break;
++
++    case GST_MESSAGE_STATE_CHANGED:
++    {
++      /* dump graph for pipeline state changes */
++      GstState old_state, new_state;
++      gchar *state_transition_name;
++
++      gst_message_parse_state_changed (msg, &old_state, &new_state, NULL);
++
++      state_transition_name = g_strdup_printf ("%s_%s",
++          gst_element_state_get_name (old_state),
++          gst_element_state_get_name (new_state));
++
++      gchar *dump_name = g_strconcat ("xbmc.", state_transition_name, NULL);
++      DBG("dumping: %s", dump_name);
++      GST_DEBUG_BIN_TO_DOT_FILE_WITH_TS (GST_BIN (decoder->m_pipeline),
++          GST_DEBUG_GRAPH_SHOW_ALL, dump_name);
++      DBG("done");
++
++      g_free (dump_name);
++      g_free (state_transition_name);
++
++      break;
++    }
++
++    default:
++      DBG("%"GST_PTR_FORMAT, msg);
++      break;
++  }
++
++  return TRUE;
++}
+diff -Naur xbmc-pvr-20111231-git5559867/xbmc/cores/dvdplayer/DVDCodecs/Video/GstDecoder.h xbmc-pvr-20111231-git5559867.edit//xbmc/cores/dvdplayer/DVDCodecs/Video/GstDecoder.h
+--- xbmc-pvr-20111231-git5559867/xbmc/cores/dvdplayer/DVDCodecs/Video/GstDecoder.h	1970-01-01 01:00:00.000000000 +0100
++++ xbmc-pvr-20111231-git5559867.edit//xbmc/cores/dvdplayer/DVDCodecs/Video/GstDecoder.h	2012-01-01 15:38:21.739960698 +0100
+@@ -0,0 +1,86 @@
++#pragma once
++/*
++ *      Copyright (C) 2005-2011 Team XBMC
++ *      http://www.xbmc.org
++ *
++ *  This Program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; either version 2, or (at your option)
++ *  any later version.
++ *
++ *  This Program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with XBMC; see the file COPYING.  If not, write to
++ *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
++ *  http://www.gnu.org/copyleft/gpl.html
++ *
++ */
++
++#include <gst/gst.h>
++#include <queue>
++#include "threads/Thread.h"
++
++static inline int debug_enabled(void)
++{
++  static int enabled = -1;
++  if (enabled == -1)
++  {
++    char *str = getenv("XBMC_DEBUG");
++    enabled = str && strstr(str, "decoder");
++  }
++  return enabled;
++}
++
++#define DBG(fmt, ...) do { \
++    if (debug_enabled()) \
++		printf("%"GST_TIME_FORMAT"\t%s:%d\t"fmt"\n", \
++		    GST_TIME_ARGS(gst_util_get_timestamp()), \
++		    __PRETTY_FUNCTION__, __LINE__, ##__VA_ARGS__); \
++  } while (0)
++
++#define ERR(fmt, ...) do { \
++    printf("%"GST_TIME_FORMAT"\t%s:%d\tERROR: "fmt"\n", \
++        GST_TIME_ARGS(gst_util_get_timestamp()), \
++        __PRETTY_FUNCTION__, __LINE__, ##__VA_ARGS__); \
++  } while (0)
++
++class IGstDecoderCallback
++{
++public:
++  virtual void OnCrop(gint top, gint left, gint width, gint height) = 0;
++  virtual void OnDecodedBuffer(GstBuffer *buffer) = 0;
++  virtual void OnNeedData() = 0;
++  virtual void OnEnoughData() = 0;
++};
++
++class CGstDecoder : public CThread
++{
++public:
++  CGstDecoder(IGstDecoderCallback *callback);
++  ~CGstDecoder();
++
++  GstElement *Open(GstCaps *sourceCapabilities);
++  virtual void StopThread(bool bWait = true);
++  virtual void Reset(double dts, double pts);
++
++protected:
++  virtual void Process();
++
++private:
++  static void OnCrop(GstElement *appsink, gint top, gint left, gint width, gint height, void *data);
++  static void OnDecodedBuffer(GstElement *appsink, void *data);
++  static void OnNeedData(GstElement *appsrc, guint size, void *data);
++  static void OnEnoughData(GstElement *appsrc, void *data);
++  static gboolean OnSeekData(GstElement *appsrc, guint64 arg, void *data);
++  static gboolean BusCallback(GstBus *bus, GstMessage *msg, gpointer data);
++
++  GstElement *m_pipeline;
++  GMainLoop *m_loop;
++  GstElement *m_AppSrc, *m_AppSink;
++
++  IGstDecoderCallback *m_callback;
++};
+diff -Naur xbmc-pvr-20111231-git5559867/xbmc/cores/dvdplayer/DVDCodecs/Video/Makefile.in xbmc-pvr-20111231-git5559867.edit//xbmc/cores/dvdplayer/DVDCodecs/Video/Makefile.in
+--- xbmc-pvr-20111231-git5559867/xbmc/cores/dvdplayer/DVDCodecs/Video/Makefile.in	2011-12-31 09:31:36.000000000 +0100
++++ xbmc-pvr-20111231-git5559867.edit//xbmc/cores/dvdplayer/DVDCodecs/Video/Makefile.in	2012-01-01 15:38:21.739960698 +0100
+@@ -32,6 +32,12 @@
+ 
+ endif
+ 
++ifeq (@USE_GSTREAMER@,1)
++SRCS += GstDecoder.cpp \
++        DVDVideoCodecGStreamer.cpp \
++
++endif
++
+ LIB=Video.a
+ 
+ include @abs_top_srcdir@/Makefile.include
+diff -Naur xbmc-pvr-20111231-git5559867/xbmc/cores/dvdplayer/DVDPlayerVideo.cpp xbmc-pvr-20111231-git5559867.edit//xbmc/cores/dvdplayer/DVDPlayerVideo.cpp
+--- xbmc-pvr-20111231-git5559867/xbmc/cores/dvdplayer/DVDPlayerVideo.cpp	2011-12-31 09:31:36.000000000 +0100
++++ xbmc-pvr-20111231-git5559867.edit//xbmc/cores/dvdplayer/DVDPlayerVideo.cpp	2012-01-01 15:38:21.739960698 +0100
+@@ -1059,6 +1059,10 @@
+         flags |= CONF_FLAGS_FORMAT_XVBA_YV12;
+         formatstr = "XVBA";
+         break;
++      case DVDVideoPicture::FMT_EGLIMG:
++        flags |= CONF_FLAGS_FORMAT_EGLIMG;
++        formatstr = "EGLIMG";
++        break;
+     }
+ 
+     if(m_bAllowFullscreen)
+diff -Naur xbmc-pvr-20111231-git5559867/xbmc/cores/VideoRenderers/BaseRenderer.h xbmc-pvr-20111231-git5559867.edit//xbmc/cores/VideoRenderers/BaseRenderer.h
+--- xbmc-pvr-20111231-git5559867/xbmc/cores/VideoRenderers/BaseRenderer.h	2011-11-18 15:44:51.000000000 +0100
++++ xbmc-pvr-20111231-git5559867.edit//xbmc/cores/VideoRenderers/BaseRenderer.h	2012-01-01 15:38:21.731960698 +0100
+@@ -32,8 +32,9 @@
+   BYTE *   plane[MAX_PLANES];
+   int      planesize[MAX_PLANES];
+   unsigned stride[MAX_PLANES];
+-  unsigned width;
+-  unsigned height;
++  unsigned cropX, cropY;          /* crop position */
++  unsigned cropWidth, cropHeight; /* crop dimensions */
++  unsigned width, height;         /* original dimensions */
+   unsigned flags;
+ 
+   unsigned cshift_x; /* this is the chroma shift used */
+diff -Naur xbmc-pvr-20111231-git5559867/xbmc/cores/VideoRenderers/LinuxRendererGLES.cpp xbmc-pvr-20111231-git5559867.edit//xbmc/cores/VideoRenderers/LinuxRendererGLES.cpp
+--- xbmc-pvr-20111231-git5559867/xbmc/cores/VideoRenderers/LinuxRendererGLES.cpp	2011-12-10 08:40:23.000000000 +0100
++++ xbmc-pvr-20111231-git5559867.edit//xbmc/cores/VideoRenderers/LinuxRendererGLES.cpp	2012-01-01 15:38:21.735960698 +0100
+@@ -51,6 +51,41 @@
+ #include "DVDCodecs/Video/DVDVideoCodecVideoToolBox.h"
+ #include <CoreVideo/CoreVideo.h>
+ #endif
++#include <EGL/eglext.h>
++
++static inline int debug_enabled(void)
++{
++  static int enabled = -1;
++  if (enabled == -1)
++  {
++    char *str = getenv("XBMC_DEBUG");
++    enabled = str && strstr(str, "render");
++  }
++  return enabled;
++}
++
++#ifdef HAVE_LIBGSTREAMER
++#include <gst/gst.h>
++#define DBG(fmt, ...) do { \
++    if (debug_enabled()) \
++    printf("%"GST_TIME_FORMAT"\t%s:%d\t"fmt"\n", \
++        GST_TIME_ARGS(gst_util_get_timestamp()), \
++        __PRETTY_FUNCTION__, __LINE__, ##__VA_ARGS__); \
++  } while (0)
++#else
++#define DBG(fmt, ...) do { \
++    if (debug_enabled()) \
++    printf("%s:%d\t"fmt"\n", __PRETTY_FUNCTION, __LINE__, ##__VA_ARGS__); \
++  } while (0)
++#endif
++
++/* for debug */
++#undef VerifyGLState
++#define VerifyGLState()  do { \
++    GLenum err = glGetError(); \
++    if (err!=GL_NO_ERROR) \
++    printf("%s:%d: fail: GL ERROR: %d\n", __FILE__, __LINE__, err); \
++} while (0)
+ 
+ using namespace Shaders;
+ 
+@@ -67,7 +102,7 @@
+ 
+ CLinuxRendererGLES::CLinuxRendererGLES()
+ {
+-  m_textureTarget = GL_TEXTURE_2D;
++  memset(m_buffers, 0, sizeof(m_buffers));
+   for (int i = 0; i < NUM_BUFFERS; i++)
+   {
+     m_eventTexturesDone[i] = new CEvent(false,true);
+@@ -102,13 +137,40 @@
+ 
+   m_dllSwScale = new DllSwScale;
+   m_sw_context = NULL;
++
++  glEGLImageTargetTexture2DOES = (PFNGLEGLIMAGETARGETTEXTURE2DOESPROC)
++      eglGetProcAddress("glEGLImageTargetTexture2DOES");
++
++#if 0
++  if (m_hasEglImage)
++  {
++    const char *exts = (const char *)glGetString(GL_EXTENSIONS);
++    if (!(strstr(exts, "GL_OES_EGL_image_external") &&
++        strstr(exts, "GL_TI_image_external_raw_videoPre")))  // note: using pre-finalized API..
++      m_hasEglImage = false;
++  }
++#endif
++
++  m_textureTarget = GL_TEXTURE_2D;
++}
++
++void CLinuxRendererGLES::UnRefBuf(int index)
++{
++  YUVBUFFER &buf = m_buffers[index];
++  if (buf.eglImageHandle)
++  {
++    buf.eglImageHandle->UnRef();
++    buf.eglImageHandle = NULL;
++  }
+ }
+ 
+ CLinuxRendererGLES::~CLinuxRendererGLES()
+ {
+   UnInit();
+-  for (int i = 0; i < NUM_BUFFERS; i++)
++  for (int i = 0; i < NUM_BUFFERS; i++) {
++    UnRefBuf(i);
+     delete m_eventTexturesDone[i];
++  }
+ 
+   if (m_rgbBuffer != NULL) {
+     delete [] m_rgbBuffer;
+@@ -127,7 +189,7 @@
+ 
+ void CLinuxRendererGLES::ManageTextures()
+ {
+-  m_NumYV12Buffers = 2;
++  m_NumYV12Buffers = NUM_BUFFERS;
+   //m_iYV12RenderBuffer = 0;
+   return;
+ }
+@@ -263,15 +325,18 @@
+   YUVFIELDS& fields =  buf.fields;
+ 
+   // calculate the source rectangle
+-  for(int field = 0; field < 3; field++)
++  for(int field = 0; field < (buf.eglImageHandle ? 1 : 3); field++)
+   {
+     for(int plane = 0; plane < num_planes; plane++)
+     {
+       YUVPLANE& p = fields[field][plane];
+ 
+-      p.rect = m_sourceRect;
+-      p.width  = im->width;
+-      p.height = im->height;
++      p.rect.x1 = im->cropX;
++      p.rect.y1 = im->cropY;
++      p.rect.x2 = im->cropX + im->cropWidth;
++      p.rect.y2 = im->cropY + im->cropHeight;
++      p.width   = im->cropWidth;
++      p.height  = im->cropHeight;
+ 
+       if(field != FIELD_FULL)
+       {
+@@ -302,7 +367,8 @@
+         p.rect.y2 /= 1 << im->cshift_y;
+       }
+ 
+-      if (m_textureTarget == GL_TEXTURE_2D)
++      if ((m_textureTarget == GL_TEXTURE_2D) ||
++          (m_textureTarget == GL_TEXTURE_EXTERNAL_OES))
+       {
+         p.height  /= p.texheight;
+         p.rect.y1 /= p.texheight;
+@@ -328,7 +394,7 @@
+   // OpenGL ES does not support strided texture input. Make a copy without stride
+   if(stride != width)
+   {
+-    pixelVector = (char *)malloc(width * height * width);
++    pixelVector = (char *)malloc(width * height);
+     
+     const char *src = (const char *)data;
+     char *dst = pixelVector;
+@@ -423,10 +489,15 @@
+ 
+   if (CONF_FLAGS_FORMAT_MASK(m_iFlags) != CONF_FLAGS_FORMAT_OMXEGL)
+   {
+-    if (!buf.fields[FIELD_FULL][0].id) return;
++    if (!buf.fields[FIELD_FULL][0].id)
++{printf("fail 1\n");
++      return;
++}
+   }
+   if (buf.image.flags==0)
++{printf("fail 2\n");
+     return;
++}
+ 
+   ManageDisplay();
+   ManageTextures();
+@@ -505,7 +576,7 @@
+     m_resolution = RES_DESKTOP;
+ 
+   m_iYV12RenderBuffer = 0;
+-  m_NumYV12Buffers = 2;
++  m_NumYV12Buffers = NUM_BUFFERS;
+ 
+   // setup the background colour
+   m_clearColour = (float)(g_advancedSettings.m_videoBlackBarColour & 0xff) / 0xff;
+@@ -625,9 +696,17 @@
+       // Try GLSL shaders if supported and user requested auto or GLSL.
+       if (glCreateProgram)
+       {
+-        // create regular progressive scan shader
+-        m_pYUVShader = new YUV2RGBProgressiveShader(false, m_iFlags);
+-        CLog::Log(LOGNOTICE, "GL: Selecting Single Pass YUV 2 RGB shader");
++        if (CONF_FLAGS_FORMAT_MASK(m_iFlags) == CONF_FLAGS_FORMAT_EGLIMG)
++        {
++          m_pYUVShader = new EGLImageExternalShader();
++          CLog::Log(LOGNOTICE, "GL: Selecting eglImage shader");
++        }
++        else
++        {
++          // create regular progressive scan shader
++          m_pYUVShader = new YUV2RGBProgressiveShader(false, m_iFlags);
++          CLog::Log(LOGNOTICE, "GL: Selecting Single Pass YUV 2 RGB shader");
++        }
+ 
+         if (m_pYUVShader && m_pYUVShader->CompileAndLink())
+         {
+@@ -676,6 +755,12 @@
+     m_textureCreate = &CLinuxRendererGLES::CreateBYPASSTexture;
+     m_textureDelete = &CLinuxRendererGLES::DeleteBYPASSTexture;
+   }
++  else if (CONF_FLAGS_FORMAT_MASK(m_iFlags) == CONF_FLAGS_FORMAT_EGLIMG)
++  {
++    m_textureUpload = &CLinuxRendererGLES::UploadEGLIMAGETexture;
++    m_textureCreate = &CLinuxRendererGLES::CreateEGLIMAGETexture;
++    m_textureDelete = &CLinuxRendererGLES::DeleteEGLIMAGETexture;
++  }
+   else
+   {
+     // default to YV12 texture handlers
+@@ -720,7 +805,7 @@
+     return;
+ 
+   // obtain current field, if interlaced
+-  if( flags & RENDER_FLAG_TOP)
++  if (flags & RENDER_FLAG_TOP)
+     m_currentField = FIELD_TOP;
+ 
+   else if (flags & RENDER_FLAG_BOT)
+@@ -772,10 +857,13 @@
+ 
+ void CLinuxRendererGLES::RenderSinglePass(int index, int field)
+ {
+-  YV12Image &im     = m_buffers[index].image;
+-  YUVFIELDS &fields = m_buffers[index].fields;
++  YUVBUFFER &buf    = m_buffers[index];
++  YV12Image &im     = buf.image;
++  YUVFIELDS &fields = buf.fields;
+   YUVPLANES &planes = fields[field];
+ 
++  DBG("render %d: %f", index, buf.pts);
++
+   if (m_reloadShaders)
+   {
+     m_reloadShaders = 0;
+@@ -784,20 +872,29 @@
+ 
+   glDisable(GL_DEPTH_TEST);
+ 
++  /* note: with eglimageexternal, we have just a single YUV texture,
++   * rather than one texture per plane.  So what is referred below
++   * as the 'Y' texture is actually the 'YUV' texture, and 'U' & 'V'
++   * textures are unused.
++   */
++
+   // Y
+   glActiveTexture(GL_TEXTURE0);
+   glEnable(m_textureTarget);
+   glBindTexture(m_textureTarget, planes[0].id);
+ 
+-  // U
+-  glActiveTexture(GL_TEXTURE1);
+-  glEnable(m_textureTarget);
+-  glBindTexture(m_textureTarget, planes[1].id);
++  if (!buf.eglImageHandle)
++  {
++    // U
++    glActiveTexture(GL_TEXTURE1);
++    glEnable(m_textureTarget);
++    glBindTexture(m_textureTarget, planes[1].id);
+ 
+-  // V
+-  glActiveTexture(GL_TEXTURE2);
+-  glEnable(m_textureTarget);
+-  glBindTexture(m_textureTarget, planes[2].id);
++    // V
++    glActiveTexture(GL_TEXTURE2);
++    glEnable(m_textureTarget);
++    glBindTexture(m_textureTarget, planes[2].id);
++  }
+ 
+   glActiveTexture(GL_TEXTURE0);
+   VerifyGLState();
+@@ -812,9 +909,10 @@
+     m_pYUVShader->SetField(0);
+ 
+   m_pYUVShader->SetMatrices(g_matrices.GetMatrix(MM_PROJECTION), g_matrices.GetMatrix(MM_MODELVIEW));
+-  m_pYUVShader->Enable();
++  if (!m_pYUVShader->Enable())
++    printf("FAAAAAIIIILLLL!!\n");
+ 
+-  GLubyte idx[4] = {0, 1, 3, 2};        //determines order of triangle strip
++  const GLubyte idx[4] = {0, 1, 3, 2};        //determines order of triangle strip
+   GLfloat m_vert[4][3];
+   GLfloat m_tex[3][4][2];
+ 
+@@ -825,13 +923,19 @@
+ 
+   glVertexAttribPointer(vertLoc, 3, GL_FLOAT, 0, 0, m_vert);
+   glVertexAttribPointer(Yloc, 2, GL_FLOAT, 0, 0, m_tex[0]);
+-  glVertexAttribPointer(Uloc, 2, GL_FLOAT, 0, 0, m_tex[1]);
+-  glVertexAttribPointer(Vloc, 2, GL_FLOAT, 0, 0, m_tex[2]);
++  if (!buf.eglImageHandle)
++  {
++    glVertexAttribPointer(Uloc, 2, GL_FLOAT, 0, 0, m_tex[1]);
++    glVertexAttribPointer(Vloc, 2, GL_FLOAT, 0, 0, m_tex[2]);
++  }
+ 
+   glEnableVertexAttribArray(vertLoc);
+   glEnableVertexAttribArray(Yloc);
+-  glEnableVertexAttribArray(Uloc);
+-  glEnableVertexAttribArray(Vloc);
++  if (!buf.eglImageHandle)
++  {
++    glEnableVertexAttribArray(Uloc);
++    glEnableVertexAttribArray(Vloc);
++  }
+ 
+   // Setup vertex position values
+   m_vert[0][0] = m_vert[3][0] = m_destRect.x1;
+@@ -841,7 +945,7 @@
+   m_vert[0][2] = m_vert[1][2] = m_vert[2][2] = m_vert[3][2] = 0.0f;
+ 
+   // Setup texture coordinates
+-  for (int i=0; i<3; i++)
++  for (int i = 0; i < (buf.eglImageHandle ? 1 : 3); i++)
+   {
+     m_tex[i][0][0] = m_tex[i][3][0] = planes[i].rect.x1;
+     m_tex[i][0][1] = m_tex[i][1][1] = planes[i].rect.y1;
+@@ -858,14 +962,17 @@
+ 
+   glDisableVertexAttribArray(vertLoc);
+   glDisableVertexAttribArray(Yloc);
+-  glDisableVertexAttribArray(Uloc);
+-  glDisableVertexAttribArray(Vloc);
++  if (!buf.eglImageHandle)
++  {
++    glDisableVertexAttribArray(Uloc);
++    glDisableVertexAttribArray(Vloc);
+ 
+-  glActiveTexture(GL_TEXTURE1);
+-  glDisable(m_textureTarget);
++    glActiveTexture(GL_TEXTURE1);
++    glDisable(m_textureTarget);
+ 
+-  glActiveTexture(GL_TEXTURE2);
+-  glDisable(m_textureTarget);
++    glActiveTexture(GL_TEXTURE2);
++    glDisable(m_textureTarget);
++  }
+ 
+   glActiveTexture(GL_TEXTURE0);
+   glDisable(m_textureTarget);
+@@ -877,6 +984,9 @@
+ 
+ void CLinuxRendererGLES::RenderMultiPass(int index, int field)
+ {
++// XXX for debugging
++abort();
++
+   // TODO: Multipass rendering does not currently work! FIX!
+   CLog::Log(LOGERROR, "GLES: MULTIPASS rendering was called! But it doesnt work!!!");
+   return;
+@@ -1301,6 +1411,99 @@
+ }
+ 
+ //********************************************************************************************************
++// eglImage Texture creation, deletion, copying + clearing
++//********************************************************************************************************
++
++void CLinuxRendererGLES::UploadEGLIMAGETexture(int index)
++{
++  YUVBUFFER &buf    = m_buffers[index];
++  YV12Image &im     = buf.image;
++  YUVFIELDS &fields = buf.fields;
++  YUVPLANE  &plane  = fields[0][0];   /* for eglimageexternal, use only one texture */
++
++  DBG("upload %d: %f", index, buf.pts);
++
++#if defined(HAVE_LIBOPENMAX)
++  if (!(im.flags&IMAGE_FLAG_READY) || buf.openMaxBuffer)
++#else
++  if (!(im.flags&IMAGE_FLAG_READY))
++#endif
++  {
++    m_eventTexturesDone[index]->Set();
++    return;
++  }
++
++  glEnable(m_textureTarget);
++  glBindTexture(m_textureTarget, plane.id);
++  glEGLImageTargetTexture2DOES(m_textureTarget, buf.eglImageHandle->Get());
++
++  VerifyGLState();
++
++  m_eventTexturesDone[index]->Set();
++
++  CalculateTextureSourceRects(index, 1);
++
++  glDisable(m_textureTarget);
++}
++
++void CLinuxRendererGLES::DeleteEGLIMAGETexture(int index)
++{
++  YUVBUFFER &buf    = m_buffers[index];
++  YUVFIELDS &fields = buf.fields;
++  YUVPLANE  &plane  = fields[0][0];   /* for eglimageexternal, use only one texture */
++
++  if (plane.id == 0)
++    return;
++
++  /* finish up all textures, and delete them */
++  g_graphicsContext.BeginPaint();  //FIXME
++
++  if (glIsTexture(plane.id))
++    glDeleteTextures(1, &plane.id);
++
++  plane.id = 0;
++
++  UnRefBuf(index);
++
++  g_graphicsContext.EndPaint();
++}
++
++bool CLinuxRendererGLES::CreateEGLIMAGETexture(int index)
++{
++  YUVBUFFER &buf    = m_buffers[index];
++  YUVFIELDS &fields = buf.fields;
++  YUVPLANE  &plane  = fields[0][0];   /* for eglimageexternal, use only one texture */
++
++  /* only use single-pass for egl-image-external */
++  m_renderQuality = RQ_SINGLEPASS;
++  m_textureTarget = GL_TEXTURE_EXTERNAL_OES;
++
++  DeleteEGLIMAGETexture(index);
++
++  glEnable(m_textureTarget);
++
++  if (!glIsTexture(plane.id))
++  {
++    glGenTextures(1, &plane.id);
++    VerifyGLState();
++  }
++
++  glBindTexture(m_textureTarget, plane.id);
++
++  // glTexImage2D(m_textureTarget, 0, GL_RGBA, plane.texwidth, plane.texheight, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
++
++  glTexParameteri(m_textureTarget, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
++  glTexParameteri(m_textureTarget, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
++  glTexParameteri(m_textureTarget, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
++  glTexParameteri(m_textureTarget, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
++  VerifyGLState();
++
++  m_eventTexturesDone[index]->Set();
++
++  return true;
++}
++
++//********************************************************************************************************
+ // YV12 Texture creation, deletion, copying + clearing
+ //********************************************************************************************************
+ void CLinuxRendererGLES::UploadYV12Texture(int source)
+@@ -1548,7 +1751,7 @@
+       }
+     }
+ 
+-    for(int p = 0; p < 3; p++)
++    for(int p = 0; p < MAX_PLANES; p++)
+     {
+       YUVPLANE &plane = planes[p];
+       if (plane.texwidth * plane.texheight == 0)
+@@ -1741,7 +1944,8 @@
+ {
+   for (int i = 0 ; i<m_NumYV12Buffers ; i++)
+   {
+-    YUVFIELDS &fields = m_buffers[i].fields;
++    YUVBUFFER &buf = m_buffers[i];
++    YUVFIELDS &fields = buf.fields;
+ 
+     for (int f = FIELD_FULL; f<=FIELD_BOT ; f++)
+     {
+@@ -1750,7 +1954,7 @@
+       glTexParameteri(m_textureTarget, GL_TEXTURE_MAG_FILTER, method);
+       VerifyGLState();
+ 
+-      if (!(m_renderMethod & RENDER_SW))
++      if (!((m_renderMethod & RENDER_SW) || buf.eglImageHandle))
+       {
+         glBindTexture(m_textureTarget, fields[f][1].id);
+         glTexParameteri(m_textureTarget, GL_TEXTURE_MIN_FILTER, method);
+@@ -1874,5 +2078,46 @@
+ }
+ #endif
+ 
++/* for decoders using eglImage:
++ */
++void CLinuxRendererGLES::AddProcessor(DVDVideoPicture *picture)
++{
++  int index = NextYV12Texture();
++  YUVBUFFER &buf = m_buffers[index];
++  YV12Image &im  = buf.image;
++  YUVFIELDS &fields = buf.fields;
++  YUVPLANE  &plane  = fields[0][0];   /* for eglimageexternal, use only one texture */
++
++  DBG("add: %p", picture->eglImageHandle);
++  UnRefBuf(index);
++
++  im.cropX      = picture->iDisplayX;
++  im.cropY      = picture->iDisplayY;
++  im.cropHeight = picture->iDisplayHeight;
++  im.cropWidth  = picture->iDisplayWidth;
++  im.width      = m_sourceWidth;
++  im.height     = m_sourceHeight;
++  im.cshift_x   = 1;
++  im.cshift_y   = 1;
++  buf.pts       = picture->pts;
++  buf.eglImageHandle = picture->eglImageHandle->Ref();
++
++  plane.texwidth  = im.width;
++  plane.texheight = im.height;
++
++  if(m_renderMethod & RENDER_POT)
++  {
++    plane.texwidth  = NP2(plane.texwidth);
++    plane.texheight = NP2(plane.texheight);
++  }
++
++  DBG("add %d: %f", index, buf.pts);
++
++  // some sanity checking for now.. I plan to move the eglImage related
++  // stuff into the union, but need to be sure that no one is still using
++  // the data/iLineSize fields..
++  if (picture->data[0] || picture->iLineSize[0])
++    printf("warning: data/iLineSize is not zero!\n");
++}
+ 
+ #endif
+diff -Naur xbmc-pvr-20111231-git5559867/xbmc/cores/VideoRenderers/LinuxRendererGLES.h xbmc-pvr-20111231-git5559867.edit//xbmc/cores/VideoRenderers/LinuxRendererGLES.h
+--- xbmc-pvr-20111231-git5559867/xbmc/cores/VideoRenderers/LinuxRendererGLES.h	2011-10-18 17:28:35.000000000 +0200
++++ xbmc-pvr-20111231-git5559867.edit//xbmc/cores/VideoRenderers/LinuxRendererGLES.h	2012-01-01 15:38:21.735960698 +0100
+@@ -24,6 +24,11 @@
+ 
+ #if HAS_GLES == 2
+ 
++#include <GLES2/gl2.h>
++#include <GLES2/gl2ext.h>
++#include <EGL/egl.h>
++#include <EGL/eglext.h>
++
+ #include "xbmc/guilib/FrameBufferObject.h"
+ #include "xbmc/guilib/Shader.h"
+ #include "settings/VideoSettings.h"
+@@ -39,7 +44,7 @@
+ namespace Shaders { class BaseVideoFilterShader; }
+ class COpenMaxVideo;
+ 
+-#define NUM_BUFFERS 3
++#define NUM_BUFFERS 5
+ 
+ 
+ #undef ALIGN
+@@ -160,6 +165,9 @@
+ #ifdef HAVE_VIDEOTOOLBOXDECODER
+   virtual void         AddProcessor(CDVDVideoCodecVideoToolBox* vtb, DVDVideoPicture *picture);
+ #endif
++  /* for eglImage case: */
++  void AddProcessor(DVDVideoPicture *picture);
++
+ protected:
+   virtual void Render(DWORD flags, int index);
+ 
+@@ -169,6 +177,7 @@
+   virtual void LoadShaders(int field=FIELD_FULL);
+   void SetTextureFilter(GLenum method);
+   void UpdateVideoFilter();
++  void UnRefBuf(int index);
+ 
+   // textures
+   void (CLinuxRendererGLES::*m_textureUpload)(int index);
+@@ -179,6 +188,10 @@
+   void DeleteYV12Texture(int index);
+   bool CreateYV12Texture(int index);
+ 
++  void UploadEGLIMAGETexture(int index);
++  void DeleteEGLIMAGETexture(int index);
++  bool CreateEGLIMAGETexture(int index);
++
+   void UploadCVRefTexture(int index);
+   void DeleteCVRefTexture(int index);
+   bool CreateCVRefTexture(int index);
+@@ -242,13 +255,15 @@
+     YV12Image image;
+     unsigned  flipindex; /* used to decide if this has been uploaded */
+ 
++    double pts; // for debugging A/V sync in rendering
++    EGLImageHandle *eglImageHandle;
++
+ #ifdef HAVE_LIBOPENMAX
+     OpenMaxVideoBuffer *openMaxBuffer;
+ #endif
+ #ifdef HAVE_VIDEOTOOLBOXDECODER
+   struct __CVBuffer *cvBufferRef;
+ #endif
+-
+   };
+ 
+   typedef YUVBUFFER          YUVBUFFERS[NUM_BUFFERS];
+@@ -261,6 +276,8 @@
+                 , unsigned width,  unsigned height
+                 , int stride, void* data );
+ 
++  PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES;
++
+   Shaders::BaseYUV2RGBShader     *m_pYUVShader;
+   Shaders::BaseVideoFilterShader *m_pVideoFilterShader;
+   ESCALINGMETHOD m_scalingMethod;
+diff -Naur xbmc-pvr-20111231-git5559867/xbmc/cores/VideoRenderers/RenderFlags.h xbmc-pvr-20111231-git5559867.edit//xbmc/cores/VideoRenderers/RenderFlags.h
+--- xbmc-pvr-20111231-git5559867/xbmc/cores/VideoRenderers/RenderFlags.h	2011-12-31 09:31:36.000000000 +0100
++++ xbmc-pvr-20111231-git5559867.edit//xbmc/cores/VideoRenderers/RenderFlags.h	2012-01-01 15:38:21.735960698 +0100
+@@ -82,4 +82,5 @@
+ #define CONF_FLAGS_FORMAT_XVBA   0x011000
+ #define CONF_FLAGS_FORMAT_XVBA_YV12 0x012000
+ #define CONF_FLAGS_FORMAT_BYPASS 0x100000
++#define CONF_FLAGS_FORMAT_EGLIMG 0x200000
+ #endif
+diff -Naur xbmc-pvr-20111231-git5559867/xbmc/cores/VideoRenderers/RenderManager.cpp xbmc-pvr-20111231-git5559867.edit//xbmc/cores/VideoRenderers/RenderManager.cpp
+--- xbmc-pvr-20111231-git5559867/xbmc/cores/VideoRenderers/RenderManager.cpp	2011-12-31 09:31:36.000000000 +0100
++++ xbmc-pvr-20111231-git5559867.edit//xbmc/cores/VideoRenderers/RenderManager.cpp	2012-01-01 15:38:21.735960698 +0100
+@@ -625,7 +625,7 @@
+   else
+     PresentSingle(clear, flags, alpha);
+ 
+-  m_overlays.Render();
++//XXX  m_overlays.Render();
+ }
+ 
+ void CXBMCRenderManager::Present()
+@@ -787,6 +787,8 @@
+   else if(pic.format == DVDVideoPicture::FMT_CVBREF)
+     m_pRenderer->AddProcessor(pic.vtb, &pic);
+ #endif
++  else if(pic.format == DVDVideoPicture::FMT_EGLIMG)
++    m_pRenderer->AddProcessor(&pic);
+ #ifdef HAVE_LIBVA
+   else if(pic.format == DVDVideoPicture::FMT_VAAPI)
+     m_pRenderer->AddProcessor(*pic.vaapi);
+diff -Naur xbmc-pvr-20111231-git5559867/xbmc/cores/VideoRenderers/VideoShaders/YUV2RGBShader.cpp xbmc-pvr-20111231-git5559867.edit//xbmc/cores/VideoRenderers/VideoShaders/YUV2RGBShader.cpp
+--- xbmc-pvr-20111231-git5559867/xbmc/cores/VideoRenderers/VideoShaders/YUV2RGBShader.cpp	2011-12-31 09:31:36.000000000 +0100
++++ xbmc-pvr-20111231-git5559867.edit//xbmc/cores/VideoRenderers/VideoShaders/YUV2RGBShader.cpp	2012-01-01 15:38:21.739960698 +0100
+@@ -265,6 +265,62 @@
+ }
+ #endif
+ 
++
++//////////////////////////////////////////////////////////////////////
++// EGLImageExternalShader - YUV2RGB GL_OES_EGL_image_external extension
++// NOTE: this is a bit ugly, because don't have separate Y/U/V textures
++// (we just hijack the Y texture for now), and don't really have all
++// these other parameters (CSC matrix, etc..)
++//////////////////////////////////////////////////////////////////////
++
++EGLImageExternalShader::EGLImageExternalShader()
++{
++#ifdef HAS_GL
++#  error "Is this supported in GL??"
++#elif HAS_GLES == 2
++
++  m_width   = 1;
++  m_height  = 1;
++  m_hYTex   = -1;
++  m_hVertex = -1;
++  m_hYcoord = -1;
++  m_hProj   = -1;
++  m_hModel  = -1;
++  m_hAlpha  = -1;
++
++  VertexShader()->LoadSource("yuv2rgb_vertex_egl_image_external_gles.glsl", m_defines);
++  PixelShader()->LoadSource("yuv2rgb_egl_image_external_gles.glsl", m_defines);
++#endif
++}
++
++void EGLImageExternalShader::OnCompiledAndLinked()
++{
++  m_hAlpha  = glGetUniformLocation(ProgramHandle(), "m_alpha");
++  m_hProj   = glGetUniformLocation(ProgramHandle(), "m_proj");
++  m_hModel  = glGetUniformLocation(ProgramHandle(), "m_model");
++  m_hVertex = glGetAttribLocation(ProgramHandle(),  "m_attrpos");
++  m_hYcoord = glGetAttribLocation(ProgramHandle(),  "m_attrcord");
++  m_hYTex   = glGetUniformLocation(ProgramHandle(), "m_samp");
++
++printf("m_hVertex=%d, m_hYcoord=%d, m_hYTex=%d\n", m_hVertex, m_hYcoord, m_hYTex);
++printf("m_hAlpha=%d, m_hProj=%d, m_hModel=%d", m_hAlpha, m_hProj, m_hModel);
++
++  VerifyGLState();
++}
++
++bool EGLImageExternalShader::OnEnabled()
++{
++  // set shader attributes once enabled
++  glUniform1i(m_hYTex, 0);
++  glUniformMatrix4fv(m_hProj,  1, GL_FALSE, m_proj);
++  glUniformMatrix4fv(m_hModel, 1, GL_FALSE, m_model);
++  glUniform1f(m_hAlpha, m_alpha);
++
++  VerifyGLState();
++  return true;
++}
++
++
+ //////////////////////////////////////////////////////////////////////
+ // YUV2RGBProgressiveShader - YUV2RGB with no deinterlacing
+ // Use for weave deinterlacing / progressive
+diff -Naur xbmc-pvr-20111231-git5559867/xbmc/cores/VideoRenderers/VideoShaders/YUV2RGBShader.h xbmc-pvr-20111231-git5559867.edit//xbmc/cores/VideoRenderers/VideoShaders/YUV2RGBShader.h
+--- xbmc-pvr-20111231-git5559867/xbmc/cores/VideoRenderers/VideoShaders/YUV2RGBShader.h	2011-10-07 07:11:37.000000000 +0200
++++ xbmc-pvr-20111231-git5559867.edit//xbmc/cores/VideoRenderers/VideoShaders/YUV2RGBShader.h	2012-01-01 15:38:21.739960698 +0100
+@@ -164,6 +164,36 @@
+   };
+ #endif
+ 
++  class EGLImageExternalShader : public BaseYUV2RGBShader, public CGLSLShaderProgram
++  {
++  public:
++    EGLImageExternalShader();
++    virtual void SetWidth(int w)     { m_width  = w; }
++    virtual void SetHeight(int h)    { m_height = h; }
++    virtual GLint GetVertexLoc() { return m_hVertex; }
++    virtual GLint GetYcoordLoc() { return m_hYcoord; }
++
++    virtual void SetMatrices(GLfloat *p, GLfloat *m) { m_proj = p; m_model = m; }
++    virtual void SetAlpha(GLfloat alpha) { m_alpha = alpha; }
++
++  protected:
++    void OnCompiledAndLinked();
++    bool OnEnabled();
++
++    string m_defines;
++    int   m_width;
++    int   m_height;
++    GLint m_hYTex;
++    GLint m_hVertex;
++    GLint m_hYcoord;
++    GLint m_hProj;
++    GLint m_hModel;
++    GLint m_hAlpha;
++    GLfloat *m_proj;
++    GLfloat *m_model;
++    GLfloat  m_alpha;
++  };
++
+   class YUV2RGBProgressiveShader : public BaseYUV2RGBGLSLShader
+   {
+   public:
+diff -Naur xbmc-pvr-20111231-git5559867/xbmc/linux/PlatformDefs.h xbmc-pvr-20111231-git5559867.edit//xbmc/linux/PlatformDefs.h
+--- xbmc-pvr-20111231-git5559867/xbmc/linux/PlatformDefs.h	2011-12-31 09:31:36.000000000 +0100
++++ xbmc-pvr-20111231-git5559867.edit//xbmc/linux/PlatformDefs.h	2012-01-01 15:38:21.739960698 +0100
+@@ -148,7 +148,7 @@
+ #define ZeroMemory(dst,size) memset(dst, 0, size)
+ 
+ #define VOID    void
+-#define byte    unsigned char
++typedef unsigned char byte;
+ #define __int8    char
+ #define __int16   short
+ #define __int32   int
+diff -Naur xbmc-pvr-20111231-git5559867/xbmc/system.h xbmc-pvr-20111231-git5559867.edit//xbmc/system.h
+--- xbmc-pvr-20111231-git5559867/xbmc/system.h	2011-10-21 12:50:48.000000000 +0200
++++ xbmc-pvr-20111231-git5559867.edit//xbmc/system.h	2012-01-01 15:38:21.739960698 +0100
+@@ -270,6 +270,8 @@
+   #else
+     #include <GLES2/gl2.h>
+     #include <GLES2/gl2ext.h>
++    #include <EGL/egl.h>
++    #include <EGL/eglext.h>
+   #endif
+ #endif
+ 
