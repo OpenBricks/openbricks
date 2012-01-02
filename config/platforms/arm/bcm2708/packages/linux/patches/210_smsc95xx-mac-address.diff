@@ -1,0 +1,100 @@
+From: Sebastien Jan <s-jan@ti.com>
+Date: Mon, 21 Jun 2010 18:04:24 +0000 (+0200)
+Subject: smsc95xx: Add module parameter to override MAC address
+X-Git-Tag: Ubuntu-2.6.35-903.8~39
+X-Git-Url: http://kernel.ubuntu.com/git?p=ubuntu%2Fubuntu-maverick.git;a=commitdiff_plain;h=10f38b455e75b85f72e98786e5518cf7b0324634;hp=f62e143182cc123fdfdf9bb88952a938af7d86e8
+
+smsc95xx: Add module parameter to override MAC address
+
+Define a new module parameter 'macaddr' to override the MAC address
+fetched either from eeprom, or randomly generated.
+
+The expected MAC address shall be in the 01:23:45:67:89:AB format.
+
+Signed-off-by: Sebastien Jan <s-jan@ti.com>
+---
+
+diff --git a/drivers/net/usb/smsc95xx.c b/drivers/net/usb/smsc95xx.c
+index 12a3c88..a3c8fe6 100644
+--- a/drivers/net/usb/smsc95xx.c
++++ b/drivers/net/usb/smsc95xx.c
+@@ -46,6 +46,7 @@
+ #define SMSC95XX_INTERNAL_PHY_ID	(1)
+ #define SMSC95XX_TX_OVERHEAD		(8)
+ #define SMSC95XX_TX_OVERHEAD_CSUM	(12)
++#define MAC_ADDR_LEN			(6)
+ 
+ struct smsc95xx_priv {
+ 	u32 mac_cr;
+@@ -63,6 +64,10 @@ static int turbo_mode = true;
+ module_param(turbo_mode, bool, 0644);
+ MODULE_PARM_DESC(turbo_mode, "Enable multiple frames per Rx transaction");
+ 
++static char *macaddr = ":";
++module_param(macaddr, charp, 0);
++MODULE_PARM_DESC(macaddr, "MAC address");
++
+ static int smsc95xx_read_reg(struct usbnet *dev, u32 index, u32 *data)
+ {
+ 	u32 *buf = kmalloc(4, GFP_KERNEL);
+@@ -637,8 +642,59 @@ static int smsc95xx_ioctl(struct net_device *netdev, struct ifreq *rq, int cmd)
+ 	return generic_mii_ioctl(&dev->mii, if_mii(rq), cmd, NULL);
+ }
+ 
++/* Check the macaddr module parameter for a MAC address */
++static int smsc95xx_is_macaddr_param(struct usbnet *dev, u8 *dev_mac)
++{
++	int i, j, got_num, num;
++	u8 mtbl[MAC_ADDR_LEN];
++
++	if (macaddr[0] == ':')
++		return 0;
++
++	i = 0;
++	j = 0;
++	num = 0;
++	got_num = 0;
++	while (j < MAC_ADDR_LEN) {
++		if (macaddr[i] && macaddr[i] != ':') {
++			got_num++;
++			if ('0' <= macaddr[i] && macaddr[i] <= '9')
++				num = num * 16 + macaddr[i] - '0';
++			else if ('A' <= macaddr[i] && macaddr[i] <= 'F')
++				num = num * 16 + 10 + macaddr[i] - 'A';
++			else if ('a' <= macaddr[i] && macaddr[i] <= 'f')
++				num = num * 16 + 10 + macaddr[i] - 'a';
++			else
++				break;
++			i++;
++		} else if (got_num == 2) {
++			mtbl[j++] = (u8) num;
++			num = 0;
++			got_num = 0;
++			i++;
++		} else {
++			break;
++		}
++	}
++
++	if (j == MAC_ADDR_LEN) {
++		netif_dbg(dev, ifup, dev->net, "Overriding MAC address with: "
++		"%02x:%02x:%02x:%02x:%02x:%02x\n", mtbl[0], mtbl[1], mtbl[2],
++						mtbl[3], mtbl[4], mtbl[5]);
++		for (i = 0; i < MAC_ADDR_LEN; i++)
++			dev_mac[i] = mtbl[i];
++		return 1;
++	} else {
++		return 0;
++	}
++}
++
+ static void smsc95xx_init_mac_address(struct usbnet *dev)
+ {
++	/* Check module parameters */
++	if (smsc95xx_is_macaddr_param(dev, dev->net->dev_addr))
++		return;
++
+ 	/* try reading mac address from EEPROM */
+ 	if (smsc95xx_read_eeprom(dev, EEPROM_MAC_OFFSET, ETH_ALEN,
+ 			dev->net->dev_addr) == 0) {
+
