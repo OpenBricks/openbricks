@@ -1,0 +1,66 @@
+Fix handling of events when the X and Y valuators are not set. This fixes cursor
+warping to (0,0) on Wacom button press events.
+
+Index: xorg-server/dix/getevents.c
+===================================================================
+--- xorg-server.orig/dix/getevents.c	2011-08-24 12:56:49.905650624 +0300
++++ xorg-server/dix/getevents.c	2011-08-24 12:56:49.925650626 +0300
+@@ -1185,31 +1185,37 @@
+             }
+         }
+ 
+-        if (valuator_mask_isset(&mask, 0))
++        if (valuator_mask_isset(&mask, 0) || valuator_mask_isset(&mask, 1))
+         {
+-            x = valuator_mask_get(&mask, 0);
+-            pDev->last.untransformed_x = x;
+-        } else
+-            x = pDev->last.untransformed_x;
+-        if (valuator_mask_isset(&mask, 1))
+-        {
+-            y = valuator_mask_get(&mask, 1);
+-            pDev->last.untransformed_y = y;
+-        } else
+-            y = pDev->last.untransformed_y;
++            if (valuator_mask_isset(&mask, 0))
++            {
++                x = valuator_mask_get(&mask, 0);
++                pDev->last.untransformed_x = x;
++            } else
++                x = pDev->last.untransformed_x;
++            if (valuator_mask_isset(&mask, 1))
++            {
++                y = valuator_mask_get(&mask, 1);
++                pDev->last.untransformed_y = y;
++            } else
++                y = pDev->last.untransformed_y;
+ 
+-        transformAbsolute(pDev, &mask, &x, &y);
++            transformAbsolute(pDev, &mask, &x, &y);
+ 
+-        if (x != pDev->last.valuators[0])
+-            valuator_mask_set(&mask, 0, x);
+-        else
+-            valuator_mask_unset(&mask, 0);
+-        if (y != pDev->last.valuators[1])
+-            valuator_mask_set(&mask, 1, y);
+-        else
+-            valuator_mask_unset(&mask, 1);
++            if (x != pDev->last.valuators[0])
++                valuator_mask_set(&mask, 0, x);
++            else
++                valuator_mask_unset(&mask, 0);
++            if (y != pDev->last.valuators[1])
++                valuator_mask_set(&mask, 1, y);
++            else
++                valuator_mask_unset(&mask, 1);
+ 
+-        moveAbsolute(pDev, &x, &y, &mask);
++            moveAbsolute(pDev, &x, &y, &mask);
++        } else {
++            x = pDev->last.valuators[0];
++            y = pDev->last.valuators[1];
++        }
+     } else {
+         if (flags & POINTER_ACCELERATE) {
+             /* FIXME: Pointer acceleration only requires X and Y values. This

@@ -1,0 +1,42 @@
+From 4ce5d1cab01b911ab9672dbd1e773faace62e243 Mon Sep 17 00:00:00 2001
+From: Sam Spilsbury <sam.spilsbury@canonical.com>
+Date: Tue, 13 Sep 2011 19:17:56 +0800
+Subject: [PATCH] Fix SendEvent requests coming from extensions which set 0x80
+ being invalid.
+
+Some (broken?) extension libraries set the SendEvent "magic" bit in the
+event->type field before sending the request down the wire, so when we
+did a range check on event->type it is possible that it could have been
+invalid (this is at least the case for XShape). As such, we should remove 0x80
+from the bitfield before doing a range check on the event. This is safe
+since we will re-set 0x80 on the bitfield after checking the event
+before writing it to the client.
+---
+ dix/events.c |   11 +++++++++++
+ 1 files changed, 11 insertions(+), 0 deletions(-)
+
+diff --git a/dix/events.c b/dix/events.c
+index 8a4c6b9..cf24869 100644
+--- a/dix/events.c
++++ b/dix/events.c
+@@ -5241,6 +5241,17 @@ ProcSendEvent(ClientPtr client)
+ 
+     REQUEST_SIZE_MATCH(xSendEventReq);
+ 
++    /* libXext and other extension libraries may set the bit indicating
++     * that this event came from a SendEvent request so remove it
++     * since otherwise the event type may fail the range checks
++     * and cause an invalid BadValue error to be returned.
++     *
++     * This is safe to do since we later add the SendEvent bit (0x80)
++     * back in once we send the event to the client */
++
++    if (stuff->event.u.u.type & 0x80)
++	stuff->event.u.u.type &= ~(0x80);
++
+     /* The client's event type must be a core event type or one defined by an
+ 	extension. */
+ 
+-- 
+1.7.5.4
+
