@@ -1,0 +1,42 @@
+From: Ville Syrjala <syrjala@sci.fi>
+Subject: [PATCH xserver] composite: Update borderClip in compAllocPixmap()
+ Previously the parent constrained borderClip was copied over
+ when compRedirectWindow() is called. That is insufficient eg. in
+ case the window was already redirected, but not yet realized. So
+ copy the borderClip over in compAllocPixmap() instead.
+
+ Example:
+ Window 1 is below an automatically redirect window 2. Window 2 is
+ unmapped and moved outside the extents of window 1. Window 2 is
+ then mapped again, and MarkOverlappedWindows() uses the up to
+ date borderSize of window 2 to mark windows, which leaves
+ window 1 unmarked. Then exposures are calculated using the stale
+ borderClip of window 2, which causes the window below window 2,
+ to be exposed through an apparent hole in window 1.
+Bug-Ubuntu: https://bugs.launchpad.net/bugs/759203
+
+Fixes: https://bugs.freedesktop.org/show_bug.cgi?id=22566
+
+Signed-off-by: Ville Syrjala <syrjala at sci.fi>
+---
+ composite/compalloc.c |   11 +++++++----
+ 1 files changed, 7 insertions(+), 4 deletions(-)
+
+Index: xorg-server-1.10.4/composite/compalloc.c
+===================================================================
+--- xorg-server-1.10.4.orig/composite/compalloc.c
++++ xorg-server-1.10.4/composite/compalloc.c
+@@ -617,6 +617,13 @@
+ 	DamageRegister (&pWin->drawable, cw->damage);
+ 	cw->damageRegistered = TRUE;
+     }
++
++    /* Make sure our borderClip is up to date */
++    RegionUninit(&cw->borderClip);
++    RegionCopy(&cw->borderClip, &pWin->borderClip);
++    cw->borderClipX = pWin->drawable.x;
++    cw->borderClipY = pWin->drawable.y;
++
+     return TRUE;
+ }
+ 

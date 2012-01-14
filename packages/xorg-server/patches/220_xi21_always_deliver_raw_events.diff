@@ -1,0 +1,283 @@
+Index: xorg-server/Xi/exevents.c
+===================================================================
+--- xorg-server.orig/Xi/exevents.c	2011-08-24 12:52:44.135647124 +0300
++++ xorg-server/Xi/exevents.c	2011-08-24 12:57:20.855651066 +0300
+@@ -896,32 +896,6 @@
+     return DEFAULT;
+ }
+ 
+-static void
+-ProcessRawEvent(RawDeviceEvent *ev, DeviceIntPtr device)
+-{
+-    GrabPtr grab = device->deviceGrab.grab;
+-
+-    if (grab)
+-        DeliverGrabbedEvent((InternalEvent*)ev, device, FALSE);
+-    else { /* deliver to all root windows */
+-        xEvent *xi;
+-        int i;
+-
+-        i = EventToXI2((InternalEvent*)ev, (xEvent**)&xi);
+-        if (i != Success)
+-        {
+-            ErrorF("[Xi] %s: XI2 conversion failed in ProcessRawEvent (%d)\n",
+-                    device->name, i);
+-            return;
+-        }
+-
+-        for (i = 0; i < screenInfo.numScreens; i++)
+-            DeliverEventsToWindow(device, screenInfo.screens[i]->root, xi, 1,
+-                                  GetEventFilter(device, xi), NULL);
+-        free(xi);
+-    }
+-}
+-
+ /**
+  * Main device event processing function.
+  * Called from when processing the events from the event queue.
+@@ -949,7 +923,7 @@
+         ev->any.type == ET_RawButtonRelease ||
+         ev->any.type == ET_RawMotion)
+     {
+-        ProcessRawEvent(&ev->raw_event, device);
++        DeliverRawEvent(&ev->raw_event, device);
+         return;
+     }
+ 
+Index: xorg-server/dix/events.c
+===================================================================
+--- xorg-server.orig/dix/events.c	2011-08-24 12:56:49.815650623 +0300
++++ xorg-server/dix/events.c	2011-08-24 12:57:20.635651065 +0300
+@@ -2105,6 +2105,216 @@
+     return nondeliveries;
+ }
+ 
++/* @return the core event type or 0 if the event is not a core event */
++static inline int
++core_get_type(const xEvent *event)
++{
++    int type = event->u.u.type;
++
++    return ((type & EXTENSION_EVENT_BASE) || type == GenericEvent) ? 0 : type;
++}
++
++/* @return the XI2 event type or 0 if the event is not a XI2 event */
++static inline int
++xi2_get_type(const xEvent *event)
++{
++    xGenericEvent* e = (xGenericEvent*)event;
++
++    return (e->type != GenericEvent || e->extension != IReqCode) ? 0 : e->evtype;
++}
++
++enum EventDeliveryState {
++    EVENT_DELIVERED,     /**< Event has been delivered to a client  */
++    EVENT_NOT_DELIVERED, /**< Event was not delivered to any client */
++    EVENT_SKIP,          /**< Event can be discarded by the caller  */
++    EVENT_REJECTED,      /**< Event was rejected for delivery to the client */
++};
++
++/**
++ * Compare the two version numbers comprising of major.minor.
++ *
++ * @return A value less than 0 if a is less than b, 0 if a is equal to b,
++ * or a value greater than 0
++ */
++static inline int
++version_compare(uint16_t a_major, uint16_t a_minor,
++                uint16_t b_major, uint16_t b_minor)
++{
++    int a, b;
++
++    a = a_major << 16 | a_minor;
++    b = b_major << 16 | b_minor;
++
++    return (a - b);
++}
++
++/**
++ * Try delivery on each client in inputclients, provided the event mask
++ * accepts it and there is no interfering core grab..
++ */
++static enum EventDeliveryState
++DeliverEventToInputClients(DeviceIntPtr dev, InputClients *inputclients,
++                           WindowPtr win, xEvent *events,
++                           int count, Mask filter, GrabPtr grab,
++                           ClientPtr *client_return, Mask *mask_return)
++{
++    int attempt;
++    enum EventDeliveryState rc = EVENT_NOT_DELIVERED;
++
++    for (; inputclients; inputclients = inputclients->next)
++    {
++        Mask mask;
++        ClientPtr client = rClient(inputclients);
++
++        if (IsInterferingGrab(client, dev, events))
++            continue;
++
++        mask = GetEventMask(dev, events, inputclients);
++
++        if (XaceHook(XACE_RECEIVE_ACCESS, client, win,
++                    events, count))
++            /* do nothing */;
++        else if ( (attempt = TryClientEvents(client, dev,
++                        events, count,
++                        mask, filter, grab)) )
++        {
++            if (attempt > 0)
++            {
++                rc = EVENT_DELIVERED;
++                *client_return = client;
++                *mask_return = mask;
++                /* Success overrides non-success, so if we've been
++                 * successful on one client, return that */
++            } else if (rc == EVENT_NOT_DELIVERED)
++                rc = EVENT_REJECTED;
++        }
++    }
++
++    return rc;
++}
++
++/**
++ * Get the list of clients that should be tried for event delivery on the
++ * given window.
++ *
++ * @return 1 if the client list should be traversed, zero if the event
++ * should be skipped.
++ */
++static Bool
++GetClientsForDelivery(DeviceIntPtr dev, WindowPtr win,
++                      xEvent *events, Mask filter, InputClients **clients)
++{
++    int rc = 0;
++
++    if (core_get_type(events) != 0)
++        *clients = (InputClients *)wOtherClients(win);
++    else if (xi2_get_type(events) != 0)
++    {
++        OtherInputMasks *inputMasks = wOtherInputMasks(win);
++        /* Has any client selected for the event? */
++        if (!GetWindowXI2Mask(dev, win, events))
++            goto out;
++        *clients = inputMasks->inputClients;
++    } else {
++        OtherInputMasks *inputMasks = wOtherInputMasks(win);
++        /* Has any client selected for the event? */
++        if (!inputMasks ||
++            !(inputMasks->inputEvents[dev->id] & filter))
++            goto out;
++
++        *clients = inputMasks->inputClients;
++    }
++
++    rc = 1;
++out:
++    return rc;
++}
++
++/**
++ * Filter out raw events for XI 2.0 and XI 2.1 clients.
++ *
++ * If there is a grab on the device, 2.0 clients only get raw events if they
++ * have the grab. 2.1+ clients get raw events in all cases.
++ *
++ * @return TRUE if the event should be discarded, FALSE otherwise.
++ */
++static BOOL
++FilterRawEvents(const ClientPtr client, const GrabPtr grab)
++{
++    XIClientPtr client_xi_version;
++    int cmp;
++
++    /* device not grabbed -> don't filter */
++    if (!grab)
++        return FALSE;
++
++    client_xi_version = dixLookupPrivate(&client->devPrivates, XIClientPrivateKey);
++
++    cmp = version_compare(client_xi_version->major_version,
++                          client_xi_version->minor_version, 2, 0);
++    /* XI 2.0: if device is grabbed, skip
++       XI 2.1: if device is grabbed by us, skip, we've already delivered */
++    return (cmp == 0) ? TRUE : SameClient(grab, client);
++}
++
++/**
++ * Deliver a raw event to the grab owner (if any) and to all root windows.
++ *
++ * Raw event delivery differs between XI 2.0 and XI 2.1.
++ * XI 2.0: events delivered to the grabbing client (if any) OR to all root
++ * windows
++ * XI 2.1: events delivered to all root windows, regardless of grabbing
++ * state.
++ */
++void
++DeliverRawEvent(RawDeviceEvent *ev, DeviceIntPtr device)
++{
++    GrabPtr grab = device->deviceGrab.grab;
++    xEvent *xi;
++    int i;
++    int filter;
++
++    i = EventToXI2((InternalEvent*)ev, (xEvent**)&xi);
++    if (i != Success)
++    {
++        ErrorF("[Xi] %s: XI2 conversion failed in %s (%d)\n",
++                __func__, device->name, i);
++        return;
++    }
++
++    if (grab)
++        DeliverGrabbedEvent((InternalEvent*)ev, device, FALSE);
++
++    filter = GetEventFilter(device, xi);
++
++    for (i = 0; i < screenInfo.numScreens; i++)
++    {
++        WindowPtr root;
++        InputClients *inputclients;
++
++        root = screenInfo.screens[i]->root;
++        if (!GetClientsForDelivery(device, root, xi, filter, &inputclients))
++            continue;
++
++        for (; inputclients; inputclients = inputclients->next)
++        {
++            ClientPtr c; /* unused */
++            Mask m;      /* unused */
++            InputClients ic = *inputclients;
++
++            /* Because we run through the list manually, terminate the list
++             * after our current client */
++            ic.next = NULL;
++
++            if (!FilterRawEvents(rClient(&ic), grab))
++                DeliverEventToInputClients(device, &ic, root, xi, 1,
++                                           filter, NULL, &c, &m);
++        }
++    }
++
++    free(xi);
++}
++
+ /* If the event goes to dontClient, don't send it and return 0.  if
+    send works,  return 1 or if send didn't work, return 2.
+    Only works for core events.
+Index: xorg-server/include/dix.h
+===================================================================
+--- xorg-server.orig/include/dix.h	2011-08-24 12:56:49.825650624 +0300
++++ xorg-server/include/dix.h	2011-08-24 12:57:20.695651065 +0300
+@@ -387,6 +387,11 @@
+     Mask /* filter */,
+     GrabPtr /* grab */);
+ 
++extern _X_EXPORT void DeliverRawEvent(
++    RawDeviceEvent* /* ev */,
++    DeviceIntPtr /* dev */
++);
++
+ extern int DeliverDeviceEvents(
+     WindowPtr /* pWin */,
+     InternalEvent* /* event */,
