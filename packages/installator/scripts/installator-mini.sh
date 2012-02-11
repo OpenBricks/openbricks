@@ -132,7 +132,7 @@ LABEL geexbox
   MENU LABEL Start $DISTRO ...
   MENU DEFAULT
   KERNEL /boot/vmlinuz
-  APPEND initrd=/boot/initrd root=UUID=${ID_FS_UUID} rootfs=flat quiet loglevel=3
+  APPEND initrd=/boot/initrd root=UUID=${ID_FS_UUID} rootfs=flat quiet loglevel=3 rw
 
 MENU SEPARATOR
 
