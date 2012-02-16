@@ -6,6 +6,8 @@ RESULT_FILE="$ROOT/$BUILD_NOARCH/checkurl-result-$(date +%Y%M%d%H%M).txt"
 NB_FAILED=0
 NB_URL_OK=0
 NB_NO_URL=0
+NB_REPO=0
+NB_NO_DISTRO=0
 
 for i in $PACKAGES/* ; do
   j=${i#$PACKAGES/}
@@ -13,17 +15,36 @@ for i in $PACKAGES/* ; do
   if [ -n "$PKG_URL" ]; then
     echo "###"
     echo "Checking for $j : $PKG_URL"
-    if wget --no-check-certificate --passive-ftp --spider -nv -q $PKG_URL ; then
-      echo "OK"
-      NB_URL_OK=$(($NB_URL_OK+1))
-    elif wget -nv -q $PKG_URL -O /dev/null; then
-      echo "OK"
-      NB_URL_OK=$(($NB_URL_OK+1))
+
+    if [ -n "$PKG_URL_PROTO" ]; then
+      echo Repository URL, skipped...
+      NB_REPO=$(($NB_REPO+1))
     else
-      echo "Failed"
-      mkdir -p $ROOT/$BUILD_NOARCH
-      echo "$j : $PKG_URL failed" >> $RESULT_FILE
-      NB_FAILED=$(($NB_FAILED+1))
+      for url in $PKG_URL ; do
+        PKG_FNAME=`basename $url`
+
+        if wget -nv -q --spider $DISTRO_SRCS/$PKG_FNAME -O /dev/null; then
+          echo FOUND
+        else
+          echo "Warning : $PKG_FNAME not on $DISTRO_SRCS"
+          NB_NO_DISTRO=$(($NB_NO_DISTRO+1))
+          mkdir -p $ROOT/$BUILD_NOARCH
+          echo "$j : $PKG_FNAME from $url not on $DISTRO_SRCS" >> $RESULT_FILE
+        fi
+
+        if wget --no-check-certificate --passive-ftp --spider -nv -q $url ; then
+          echo "OK"
+          NB_URL_OK=$(($NB_URL_OK+1))
+        elif wget -nv -q $url -O /dev/null; then
+          echo "OK"
+          NB_URL_OK=$(($NB_URL_OK+1))
+        else
+          echo "Failed"
+          mkdir -p $ROOT/$BUILD_NOARCH
+          echo "$j : $url failed" >> $RESULT_FILE
+          NB_FAILED=$(($NB_FAILED+1))
+        fi
+      done
     fi
   else
     NB_NO_URL=$(($NB_NO_URL+1))
@@ -35,8 +56,10 @@ echo "##                                RESULTS                                #
 if [ -f $RESULT_FILE ] ; then
   echo "## Found $NB_FAILED invalid url(s), please check $RESULT_FILE  ##"
 else
-  echo "##                        Good day, no url to fix ;)                      ##"
+  echo "##                        Good day, no url to fix ;)                     ##"
 fi
 echo "##                        $NB_URL_OK urls are valid                             ##"
-echo "##                         $NB_NO_URL packages without url                       ##"
+echo "##                        $NB_NO_URL packages without url                       ##"
+echo "##                        $NB_REPO packages fetch repositories                  ##"
+echo "##     $NB_NO_DISTRO packages are not on $DISTRO_SRCS           ##"
 echo "###########################################################################"
