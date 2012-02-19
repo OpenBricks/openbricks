@@ -61,6 +61,9 @@ for arg in $(cat /proc/cmdline); do
     ip=*)
     IP="${arg#ip=}"
       ;;
+    external-persistent)
+      EXTERNAL_PERSISTENT=1
+      ;;
     initshell)
       echo "Dropping to shell as requested"
       exec sh
@@ -90,6 +93,31 @@ if [ -n "$ROOT" ]; then
     dbg_echo -n "[$i] Trying root=$ROOT as requested..."
     if mount -o $ROOT_MODE $ROOT /mnt >/dev/null 2>&1; then
       if [ "$ROOTFS" = flat ]; then
+        dbg_echo "found."
+        FOUND_ROOTFS=yes
+        break
+      elif [ "$EXTERNAL_PERSISTENT" = 1 ] ; then
+        FSTYPE=`grep "$ROOT" /proc/mounts | cut -d" " -f3` 
+        mkdir -p /cache
+        mkdir -p /persistent-tmp
+        mkdir -p /persistent
+        mount -t tmpfs tmpfs /cache
+        mount -t tmpfs tmpfs /persistent
+        mount -o loop,rw,noatime -t ext2 /mnt/$PERSISTENT /persistent-tmp
+        mkdir -p /persistent-tmp/root
+        cp -R /persistent-tmp/* /persistent
+        ln -sf ../persistent/root /persistent/root
+        mkdir -p /persistent/etc
+        echo "$ROOT /data $FSTYPE rw 0 0" >/persistent/etc/fstab
+        echo "/data/$PERSISTENT /persistent  ext2 rw,noatime 0 0" >>/persistent/etc/fstab
+        cp /mnt/$ROOTFS /cache/rootfs
+        sync
+        umount /persistent-tmp
+        ROOTFS=/rootfs
+        mount -r /mnt
+        umount /mnt || umount -l /mnt
+        mount --move /cache /mnt         
+        mount -t squashfs /mnt/$ROOTFS /squashfs >/dev/null 2>&1
         dbg_echo "found."
         FOUND_ROOTFS=yes
         break
@@ -207,7 +235,8 @@ else
       unset DATA
     fi
   fi
-  [ -z "$DATA" ] && mount -t tmpfs none /rw
+  [ -z "$DATA" -a -z "$EXTERNAL_PERSISTENT" ] && mount -t tmpfs none /rw
+  [ "$EXTERNAL_PERSISTENT" = 1 ] && mount --move /persistent /rw
   if ! mount -t aufs -o br=/rw:/squashfs none /newroot; then
     echo "Cannot mount aufs, dropping to shell"
     exec sh
