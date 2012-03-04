@@ -12,7 +12,7 @@ do
     url=`echo $line | cut -d \   -f 5`
 
     echo -n "Downloading $url... "
-    wget --no-check-certificate --passive-ftp --dns-timeout=5 --connect-timeout=5 --read-timeout=5 --tries=1 -c -q $url
+    wget --no-check-certificate --passive-ftp --dns-timeout=5 --connect-timeout=5 --read-timeout=5 --tries=1 -c -q $url || wget -c -q $url
     if [ $? = 0 ]
     then
       echo OK
