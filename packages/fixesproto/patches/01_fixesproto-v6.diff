@@ -1,0 +1,232 @@
+commit d3c77f3f3af8ce7f584ca632ee0e704452cc544d
+Author: Christopher James Halse Rogers <christopher.halse.rogers@canonical.com>
+Date:   Fri Jan 27 17:32:53 2012 +1100
+
+    fixesproto v6: Pointer barrier improvements.
+    
+    Adds a velocity-gated pointer barrier, events to notify a client when barriers
+    are hit, and a mechanism for clients to temporarily allow movement through
+    a barrier.
+    
+    Signed-off-by: Christopher James Halse Rogers <christopher.halse.rogers@canonical.com>
+
+diff --git a/fixesproto.txt b/fixesproto.txt
+index 5903ac9..1f4fa3e 100644
+--- a/fixesproto.txt
++++ b/fixesproto.txt
+@@ -650,6 +650,93 @@ DestroyPointerBarrier
+ 
+ 	Errors: Barrier 
+ 
++************* XFIXES VERSION 6 OR BETTER ***********
++
++13. Pointer Barriers Expansion
++
++This update extends pointer barriers to optionally allow the pointer through
++when a threshold is reached.  This can be useful for desktop environments that
++wish to use a large region of the screen, such as an entire edge, to provide a
++casual target while allowing determined movement to pass through.
++
++13.1 Types
++
++	BarrierEvent:			{Hit, ThresholdExceeded}
++	BarrierEventID:			CARD32
++
++13.2 Events
++
++BarrierNotify
++
++		subtype:		BarrierEvent
++		window:			WINDOW
++		event-id:		BarrierEventID
++		barrier:		BARRIER
++		timestamp:		Timestamp
++		velocity:		CARD32
++		x, y:			INT16
++
++13.3 Requests
++
++SelectBarrierInput
++
++		window:			WINDOW
++		event-mask:		SETofBarrierEvent
++
++
++	This request directs barrier events to the named window.  Subtype
++	indicates the trigger of the event, which is Hit when the barrier has
++	prevented pointer movement and ThresholdExceeded when the barrier has
++	been hit but has not prevented pointer movement due to the threshold
++	being exceeded.
++	
++	Barrier is the barrier on which the event was triggered. (x,y) contain
++	the coordinates of the pointer after restriction by any	applicable
++	barriers, and velocity is the unrestricted instantaneous velocity
++	of the pointer perpendicular to the barrier.
++
++	event-id is an identifier for this barrier event. A barrier event
++	begins when the pointer is first restricted by the barrier, and ends
++	with the first mouse event that is not restricted by the barrier.
++
++	In the case of multiple overlapping barriers an event is sent for each.
++
++CreatePointerBarrierVelocity
++
++		barrier:		    BARRIER
++		drawable:		    DRAWABLE
++		x1, y2, x2, y2:		    INT16
++		directions:		    CARD32
++		threshold:		    CARD32
++		devices:		    LISTofDEVICEID
++
++	Creates a pointer barrier along the line specified by the given
++	coordinates on the screen associated with the given drawable. This
++	has identical semantics to CreatePointerBarrier, except that the
++	barrier created will not block the pointer if the threshold
++	velocity is exceeded. The velocity is measured in px/sec perpendicular
++	to the barrier.  
++
++	Once the pointer has been stopped by the barrier it will remain blocked
++	for the duration of the barrier event.
++	
++	Errors: IDChoice, Window, Value, Device
++
++BarrierReleasePointer
++
++		barrier:		BARRIER
++		event-id:		BarrierEventID
++
++	Temporarily allow the pointer to pass through a pointer barrier.
++	This disables the barrier for as long as event-id is valid - that is,
++	as long as the pointer remains in contact with the barrier.
++
++	Requests to release the pointer for an event-id which is not current
++	are silently ignored.
++
++	Errors: Barrier
++
++
+ 99. Future compatibility
+ 
+ This extension is not expected to remain fixed.  Future changes will
+diff --git a/xfixesproto.h b/xfixesproto.h
+index fcf409a..9189c19 100644
+--- a/xfixesproto.h
++++ b/xfixesproto.h
+@@ -532,6 +532,63 @@ typedef struct {
+ 
+ #define sz_xXFixesDestroyPointerBarrierReq 8
+ 
++/*************** Version 6.0 ******************/
++
++#define BarrierEventID CARD32
++
++typedef struct {
++  CARD8   type;
++  CARD8   subtype;
++  CARD16  sequenceNumber B16;
++  Window  window; B32;
++  BarrierEventID event_id B32;
++  Barrier barrier;
++  Time    timestamp B32;
++  CARD32  velocity B32;
++  INT16   x B16;
++  INT16   y B16;
++} xXFixesBarrierNotifyEvent;
++
++typedef struct {
++    CARD8   reqType;
++    CARD8   xfixesReqType;
++    CARD16  length B16;
++    Barrier barrier B32;
++    Window  window B32;
++    INT16   x1 B16;
++    INT16   y1 B16;
++    INT16   x2 B16;
++    INT16   y2 B16;
++    CARD32  directions;
++    CARD32  velocity;
++    CARD16  pad B16;
++    CARD16  num_devices B16;
++    /* array of CARD16 devices */
++} xXFixesCreatePointerBarrierVelocityReq;
++
++#define sz_xXFixesCreatePointerBarrierVelocityReq 32
++
++typedef struct {
++    CARD8   reqType;
++    CARD8   xfixesReqType;
++    CARD16  length B16;
++    Window  window B32;
++    CARD32  eventMask B32;
++} xXFixesSelectBarrierInputReq;
++
++#define sz_xXFixesSelectBarrierInputReq	12
++
++typedef struct {
++    CARD8   reqType;
++    CARD8   xfixesReqType;
++    CARD16  length B16;
++    Barrier barrier B32;
++    BarrierEventID event_id B32;
++} xXFixesBarrierReleasePointerReq;
++
++#define sz_xXFixesBarrierReleasePointerReq	12
++
++#undef BarrierEventID
+ #undef Barrier
+ #undef Region
+ #undef Picture
+diff --git a/xfixeswire.h b/xfixeswire.h
+index 432349a..0230595 100644
+--- a/xfixeswire.h
++++ b/xfixeswire.h
+@@ -48,7 +48,7 @@
+ #define _XFIXESWIRE_H_
+ 
+ #define XFIXES_NAME	"XFIXES"
+-#define XFIXES_MAJOR	5
++#define XFIXES_MAJOR	6
+ #define XFIXES_MINOR	0
+ 
+ /*************** Version 1 ******************/
+@@ -89,8 +89,12 @@
+ /*************** Version 5 ******************/
+ #define X_XFixesCreatePointerBarrier	    31
+ #define X_XFixesDestroyPointerBarrier	    32
++/*************** Version 6 ******************/
++#define X_XFixesCreatePointerBarrierVelocity 33
++#define X_XFixesSelectBarrierInput          34
++#define X_XFixesBarrierReleasePointer       35
+ 
+-#define XFixesNumberRequests		    (X_XFixesDestroyPointerBarrier+1)
++#define XFixesNumberRequests		    (X_XFixesBarrierReleasePointer+1)
+ 
+ /* Selection events share one event number */
+ #define XFixesSelectionNotify		    0
+@@ -111,8 +115,6 @@
+ 
+ #define XFixesDisplayCursorNotifyMask	    (1L << 0)
+ 
+-#define XFixesNumberEvents		    (2)
+-
+ /* errors */
+ #define BadRegion			    0
+ #define BadBarrier			    1
+@@ -136,4 +138,17 @@
+ #define BarrierNegativeX		    (1L << 2)
+ #define BarrierNegativeY		    (1L << 3)
+ 
++/*************** Version 6 ******************/
++
++#define XFixesBarrierNotify                 2
++
++#define XFixesBarrierHitNotify			0
++#define XFixesBarrierThresholdExceededNotify	1
++
++#define XFixesBarrierHitNotifyMask			(1L << 0)
++#define XFixesBarrierThresholdExceededNotifyMask	(1L << 1)
++
++#define XFixesNumberEvents		    (XFixesBarrierNotify+1)
++
++
+ #endif	/* _XFIXESWIRE_H_ */
