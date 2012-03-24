@@ -12,14 +12,14 @@ all: binaries
 
 config silentoldconfig oldconfig menuconfig xconfig gconfig: .stamps/kconfiginit build/config/Kconfig.version build/config/Kconfig.arch build/config/Kconfig.platform build/config/Kconfig.machine build/config/Kconfig.flavours build/config/Kconfig.packages build/config/Kconfig.use
 	scripts/checkdeps $@
-	-$(MAKE) -C build/build.host/bst-kconfig* $@
+	scripts/kconfiggenerate $@
 	scripts/kconfig2options
 
 %_defconfig:
 	scripts/loadcfg $*
 
 cleanconfig:
-	rm -f build/build.host/bst-kconfig*/.config
+	rm -f build/build.host/kconfig-frontends-*/.config
 
 build/config/Kconfig.version: $(SCRIPTS) VERSION
 	scripts/version2kconfig
