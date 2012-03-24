@@ -4,20 +4,28 @@
 
 cd $BUILD/$1*
 
-pkg_uses $1 icu && ICU_CONFIG=ON || ICU_CONFIG=OFF
+setup_toolchain host
 
-cmake \
-  -DCMAKE_FIND_ROOT_PATH=$LIB_PREFIX \
-  -DCMAKE_INSTALL_PREFIX=/usr \
-  -DENABLE_STATIC=ON \
-  -DENABLE_DEBUG=OFF \
-  -DWITH_DOXYGEN=OFF \
-  -DWITH_MPI=OFF \
-  -DWITH_XSLTPROC=OFF \
-  -DWITH_ICU=${ICU_CONFIG} \
-  .
+cd tools/build/v2/engine
+sh build.sh
+cp bin.*/bjam $ROOT/$TOOLCHAIN/bin
 
-make
-make_install
-mv .install/usr/include/boost-*/boost .install/usr/include
-mv .install/usr/lib/boost-*/* .install/usr/lib
+cd -
+
+# pkg_uses $1 icu && ICU_CONFIG=ON || ICU_CONFIG=OFF
+
+sh bootstrap.sh --prefix=/usr \
+                --with-bjam=$ROOT/$TOOLCHAIN/bin/bjam \
+                --with-python=$ROOT/$TOOLCHAIN/bin/python \
+
+GCC_VERSION=`$TARGET_CC -v 2>&1  | tail -n 1 |awk '{print $3}'`
+echo "using gcc : $GCC_VERSION : $TARGET_CC  : <compileflags>\"$CFLAGS\" <linkflags>\"$LDFLAGS\" ;"  > tools/build/v2/user-config.jam
+
+bjam -d2 --toolset=gcc  link=shared \
+                        --prefix=.install/usr \
+                        --layout=system \
+                        --with-thread \
+                        --with-iostreams \
+                        --with-system \
+                        --with-regex -sICU_PATH="$SYSROOT_PREFIX/usr" \
+                        install
