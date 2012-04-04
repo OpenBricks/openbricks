@@ -1,0 +1,584 @@
+From 5e832833f9382b84b29d87e6d4ac2ec19040ea4d Mon Sep 17 00:00:00 2001
+From: Rob Clark <rob@ti.com>
+Date: Tue, 15 Nov 2011 13:50:41 -0600
+Subject: [PATCH 2/2] video support for dri2
+
+To allow the potential use of overlays to display video content, a few
+extra parameters are required:
+
+ + source buffer in different format (for example, various YUV formats)
+   and size as compared to destination drawable
+ + multi-planar formats where discontiguous buffers are used for
+   different planes.  For example, luma and chroma split across
+   multiple memory banks or with different tiled formats.
+ + flipping between multiple back buffers, perhaps not in order (to
+   handle video formats with B-frames)
+ + cropping during swap.. in case of video, perhaps the required hw
+   buffers are larger than the visible picture to account for codec
+   borders (for example, reference frames where a block/macroblock
+   moves past the edge of the visible picture, but back again in
+   subsequent frames).
+
+Current solutions use the GPU to do a scaled/colorconvert into a DRI2
+buffer from the client context.  The goal of this protocol change is
+to push the decision to use overlay or GPU blit to the xorg driver.
+
+In many cases, an overlay will avoid several passes through memory
+(blit/scale/colorconvert to DRI back-buffer on client side, blit to
+front and fake-front, and then whatever compositing is done by the
+window manager).  On the other hand, overlays can often be handled
+directly by the scanout engine in the display hardware, with the GPU
+switched off.
+
+The disadvantages of overlays are that they are (usually) a limited
+resource, sometimes with scaling constraints, and certainly with
+limitations about transformational effects.
+
+The goal of combining video and dri2 is to have the best of both worlds,
+to have the flexibility of GPU blitting (ie. no limited number of video
+ports, no constraint about transformational effects), while still having
+the power consumption benefits of overlays (reduced memory bandwidth
+usage and ability to shut off the GPU) when the UI is relatively
+static other than the playing video.
+
+And even when GPU blitting is used, DRI2DriverXV allows to save one or
+two copies: (1) no need for maintainence of DRI2BufferFakeFrontLeft, and
+(2) in case that a pointer swap is not possible for switching back and
+front buffer (for example, Window redirected to a pixmap with extra
+padding around edges for window decorations), the colorconvert/scale
+blit can be combined with the copy to the front buffer.
+
+See:
+https://wiki.linaro.org/OfficeofCTO/MemoryManagement?action=AttachFile&do=get&target=linux-video.pdf
+
+ChangeLog:
+v1: initial version
+v2: add attributes, remove DRI2GetVideoBuffers/DRI2ATTACH_VIDEO and
+    instead use attributes to specify unscaled width/height
+v3: support for variable length attributes and CSC matrix
+v4: add header file changes
+
+Note: I'm not entirely sure how to handle the wire representation of
+float matrix for CSC.  OTOH, since DRI2 is a local-only protocol, I'm
+not sure if it is necessary to precisely define this.  Thoughts?
+---
+ dri2proto.h   |   91 +++++++++++++++++++-
+ dri2proto.txt |  275 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++-
+ dri2tokens.h  |    1 +
+ 3 files changed, 362 insertions(+), 5 deletions(-)
+
+diff --git a/dri2proto.h b/dri2proto.h
+index cd82afb..5d25da5 100644
+--- a/dri2proto.h
++++ b/dri2proto.h
+@@ -35,7 +35,7 @@
+ 
+ #define DRI2_NAME			"DRI2"
+ #define DRI2_MAJOR			1
+-#define DRI2_MINOR			3
++#define DRI2_MINOR			4
+ 
+ #define DRI2NumberErrors		0
+ #define DRI2NumberEvents		2
+@@ -54,6 +54,11 @@
+ #define X_DRI2WaitMSC			10
+ #define X_DRI2WaitSBC			11
+ #define X_DRI2SwapInterval		12
++#define X_DRI2GetBuffersVid		13
++#define X_DRI2SwapBuffersVid	14
++#define X_DRI2SetAttribute		15
++#define X_DRI2GetAttribute		16
++#define X_DRI2GetFormats		17
+ 
+ /*
+  * Events
+@@ -164,6 +169,17 @@ typedef struct {
+ #define sz_xDRI2GetBuffersReq   12
+ 
+ typedef struct {
++    CARD8   reqType;
++    CARD8   dri2ReqType;
++    CARD16  length B16;
++    CARD32  drawable B32;
++    CARD32  width B32;
++    CARD32  height B32;
++    CARD32  count B32;
++} xDRI2GetBuffersVidReq;
++#define sz_xDRI2GetBuffersVidReq   20
++
++typedef struct {
+     BYTE    type;   /* X_Reply */
+     BYTE    pad1;
+     CARD16  sequenceNumber B16;
+@@ -217,6 +233,25 @@ typedef struct {
+ #define sz_xDRI2SwapBuffersReq  32
+ 
+ typedef struct {
++    CARD8   reqType;
++    CARD8   dri2ReqType;
++    CARD16  length B16;
++    CARD32  drawable B32;
++    CARD32  target_msc_hi B32;
++    CARD32  target_msc_lo B32;
++    CARD32  divisor_hi B32;
++    CARD32  divisor_lo B32;
++    CARD32  remainder_hi B32;
++    CARD32  remainder_lo B32;
++    CARD32  source B32;
++    CARD32  x1 B32;
++    CARD32  y1 B32;
++    CARD32  x2 B32;
++    CARD32  y2 B32;
++} xDRI2SwapBuffersVidReq;
++#define sz_xDRI2SwapBuffersVidReq  52
++
++typedef struct {
+     BYTE    type;   /* X_Reply */
+     BYTE    pad1;
+     CARD16  sequenceNumber B16;
+@@ -286,6 +321,60 @@ typedef struct {
+ #define sz_xDRI2SwapIntervalReq 12
+ 
+ typedef struct {
++    CARD8   reqType;
++    CARD8   dri2ReqType;
++    CARD16  length B16;
++    CARD32  drawable B32;
++    CARD32  attribute B32;
++} xDRI2SetAttributeReq;
++#define sz_xDRI2SetAttributeReq 12
++
++typedef struct {
++    CARD8   reqType;
++    CARD8   dri2ReqType;
++    CARD16  length B16;
++    CARD32  drawable B32;
++    CARD32  attribute B32;
++} xDRI2GetAttributeReq;
++#define sz_xDRI2GetAttributeReq 12
++
++typedef struct {
++    BYTE    type;   /* X_Reply */
++    BYTE    pad1;
++    CARD16  sequenceNumber B16;
++    CARD32  length B32;
++    CARD32  pad2 B32;
++    CARD32  pad3 B32;
++    CARD32  pad4 B32;
++    CARD32  pad5 B32;
++    CARD32  pad6 B32;
++    CARD32  pad7 B32;
++} xDRI2GetAttributeReply;
++#define sz_xDRI2GetAttributeReply 32
++
++typedef struct {
++    CARD8   reqType;
++    CARD8   dri2ReqType;
++    CARD16  length B16;
++    CARD32  drawable B32;
++} xDRI2GetFormatsReq;
++#define sz_xDRI2GetFormatsReq 8
++
++typedef struct {
++    BYTE    type;   /* X_Reply */
++    BYTE    pad1;
++    CARD16  sequenceNumber B16;
++    CARD32  length B32;
++    CARD32  pad2 B32;
++    CARD32  pad3 B32;
++    CARD32  pad4 B32;
++    CARD32  pad5 B32;
++    CARD32  pad6 B32;
++    CARD32  pad7 B32;
++} xDRI2GetFormatsReply;
++#define sz_xDRI2GetFormatsReply 32
++
++typedef struct {
+     CARD8 type;
+     CARD8 pad;
+     CARD16 sequenceNumber B16;
+diff --git a/dri2proto.txt b/dri2proto.txt
+index dea8b82..987b772 100644
+--- a/dri2proto.txt
++++ b/dri2proto.txt
+@@ -163,7 +163,8 @@ and DRI2InvalidateBuffers.
+ 6. Protocol Types
+ 
+ DRI2DRIVER { DRI2DriverDRI
+-	     DRI2DriverVDPAU }
++	     DRI2DriverVDPAU,
++	     DRI2DriverXV }
+ 
+ 	These values describe the type of driver the client will want
+ 	to load.  The server sends back the name of the driver to use
+@@ -184,6 +185,11 @@ DRI2ATTACHMENT { DRI2BufferFrontLeft
+ 	These values describe various attachment points for DRI2
+ 	buffers.
+ 
++	In the case of video driver (DRI2DriverXV) the attachment,
++	other than DRI2BufferFrontLeft, just indicates buffer
++	number and has no other special significance.  There is no
++	automatic maintenance of DRI2BufferFakeFrontLeft.
++
+ DRI2BUFFER { attachment: CARD32
+     	     name: CARD32
+ 	     pitch: CARD32
+@@ -193,7 +199,7 @@ DRI2BUFFER { attachment: CARD32
+ 	The DRI2BUFFER describes an auxillary rendering buffer
+ 	associated with an X drawable.  'attachment' describes the
+ 	attachment point for the buffer, 'name' is the name of the
+-	underlying kernel buffer,
++	underlying kernel buffer.
+ 
+ 
+ DRI2ATTACH_FORMAT { attachment: CARD32
+@@ -201,7 +207,8 @@ DRI2ATTACH_FORMAT { attachment: CARD32
+ 
+ 	The DRI2ATTACH_FORMAT describes an attachment and the associated
+ 	format.  'attachment' describes the attachment point for the buffer,
+-	'format' describes an opaque, device-dependent format for the buffer.
++	'format' describes an opaque, device-dependent format for the buffer,
++	or a fourcc for non-device-dependent formats.
+ 
+ 			     ⚙ ⚙ ⚙  ⚙ ⚙ ⚙
+ 
+@@ -327,6 +334,9 @@ The name of this extension is "DRI2".
+ ┌───
+     DRI2SwapBuffers
+ 	drawable: DRAWABLE
++	target_msc: two CARD32s
++	divisor: two CARD32s
++	remainder: two CARD32s
+       ▶	
+ 	count: two CARD32s
+ └───
+@@ -342,6 +352,31 @@ The name of this extension is "DRI2".
+ 	later.
+ 
+ ┌───
++    DRI2SwapBuffersVid
++	drawable: DRAWABLE
++	target_msc: two CARD32s
++	divisor: two CARD32s
++	remainder: two CARD32s
++	source: CARD32
++	x1: CARD32
++	y1: CARD32
++	x2: CARD32
++	y2: CARD32
++      ▶
++	count: two CARD32s
++└───
++	Errors: Window
++
++	Schedule a swap of the front and back buffers with the display
++	server.
++
++	Returns the swap count value when the swap will actually occur (e.g.
++	the last queued swap count + (pending swap count * swap interval)).
++
++	This request is only available with protocol version 1.4 or
++	later.
++
++┌───
+     DRI2GetBuffersWithFormat
+ 	drawable: DRAWABLE
+ 	attachments: LISTofDRI2ATTACH_FORMAT
+@@ -367,6 +402,41 @@ The name of this extension is "DRI2".
+ 	later.
+ 
+ ┌───
++    DRI2GetBuffersVid
++	drawable: DRAWABLE
++	width, height: CARD32
++	attachments: LISTofDRI2ATTACH_FORMAT
++      ▶
++	width, height: CARD32
++	buffers: LISTofDRI2BUFFER
++└───
++	Errors: Window
++
++	Get buffers for the provided attachment points with the specified
++	formats for the given drawable.  Like DRI2GetBuffersWithFormat,
++	but allows the client to specify a buffer size that differs from
++	the target drawable, for example to deal with decoded video which
++	is scaled as it is blit to the front buffer (or rendered via hw
++	overlay).
++
++	The DRI2BufferFrontLeft attachment point cannot be requested.  But
++	for video buffers, the client can dynamically allocate more buffers
++	by just requesting new attachment point id's.  Or release a buffer
++	by requesting it with 0,0 size.  If the same attachment point is
++	re-requested, then the previous buffer is deallocated and a new
++	buffer is allocated.  This allows for dynamic resolution changes
++	during playback.
++
++	This request is only available with protocol version 1.4 or
++	later.
++
++:	Note: originally I was not going to add a new DRI2GetBuffers variant,
++:	but instead use attributes to communicate width/height.  But the
++:	problem is that the client blindly picks up DRI2_MINOR from dri2proto.h
++:	and so there is otherwise no reliable way for the server to know if
++:	client supports extra_buffers..
++
++┌───
+     DRI2GetMSC
+ 	drawable: DRAWABLE
+       ▶
+@@ -440,6 +510,89 @@ The name of this extension is "DRI2".
+ 	DRI2SwapBuffers requests to swap at most once per interval frames,
+ 	which is useful useful for limiting the frame rate.
+ 
++┌───
++    DRI2SetAttribute
++	drawable: DRAWABLE
++	attribute: ATOM
++	value: LISTofCARD32
++      ▶
++└───
++	Errors: Window, Match, Value
++
++	The DRI2SetAttribute request sets the value of a drawable attribute.
++	The drawable attribute is identified by the attribute atom.  The
++	following strings are guaranteed to generate valid atoms using the
++	InternAtom request.
++
++	String                Size     Type
++	-----------------------------------------------------------------
++
++	"XV_CSC_MATRIX"       48       4x3 matrix of floats
++	"XV_OSD"              4        XID
++
++	If the given attribute doesn't match an attribute supported by the
++	drawable a Match error is generated.  The supplied encoding
++	must be one of the encodings listed for the adaptor, otherwise an
++	Encoding error is generated.
++
++	The XV_CSC_MATRIX attribute is defined to match the VDPAU
++	VdpCSCMatrix:
++
++	    ┌   ┐   ┌                 ┐   ┌     ┐
++	    │ R │   │ m00 m01 m02 m03 │   │  Y  │
++	    │ G │ = │ m10 m11 m12 m13 │ * │  Cb │
++	    │ B │   │ m20 m21 m22 m23 │   │  Cr │
++	    └   ┘   └                 ┘   │ 1.0 │
++	                                  └     ┘
++
++	If the adaptor doesn't support the specified CSC matrix, the closest
++	values supported are assumed.  The DRI2GetAttribute request can be used
++	to query the resulting values.
++
++	The "XV_OSD" attribute specifies the XID of a drawable containing
++	ARGB data to be non-destructively overlayed over the video.  This
++	could be used to implement subtiles, on-screen-menus, etc.  Note
++	that a DRI2DriverDRI driver could be connected to this drawable, to
++	enable GPU rendered OSD content, or alternatively normal indirect
++	X11 draw primitives can be used.
++
++	This request is only available with protocol version 1.4 or
++	later.
++
++┌───
++    DRI2GetAttribute
++	drawable: DRAWABLE
++	attribute: ATOM
++      ▶
++	value: LISTofCARD32
++└───
++	Errors: Window, Match
++
++	The DRI2GetAttribute request returns the current value of the
++	attribute identified by the given atom.  If the given atom
++	doesn't match an attribute supported by the adaptor a Match
++	error is generated.
++
++	This request is only available with protocol version 1.4 or
++	later.
++
++┌───
++    DRI2GetFormats
++	drawable: DRAWABLE
++      ▶
++	formats: LISTofCARD32
++└───
++	Errors: Window
++
++	Query the driver for supported formats, which can be used with
++	DRI2GetBuffersWithFormat.  The 'format' describes an opaque,
++	device-dependent format for the buffer,	or a fourcc for
++	non-device-dependent formats.  For device-dependent formats, use
++	at least one '\0' or non 7-bit ascii character.
++
++	This request is only available with protocol version 1.4 or
++	later.
++
+ 			     ⚙ ⚙ ⚙  ⚙ ⚙ ⚙
+ 
+ 9. Extension Events
+@@ -579,7 +732,7 @@ A.1 Common Types
+ 	later.
+ 
+ ┌───
+-    DRI2BUFFER
++    DRI2BUFFER  (in response to DRI2GetBuffers & DRI2GetBuffersWithFormat)
+ 	4	CARD32	attachment
+ 	4	CARD32	name
+ 	4	CARD32	pitch
+@@ -591,6 +744,29 @@ A.1 Common Types
+ 	attached to a given drawable.
+ 
+ ┌───
++    DRI2BUFFER  (in response to DRI2GetBuffersVid)
++	4	CARD32	attachment
++	4	CARD32	name
++	4	CARD32	pitch
++	4	CARD32	cpp
++	4	CARD32	flags
++	4	n	extra names length
++	8n	LISTof	extra name, pitch
++└───
++	A DRI2 buffer specifies the attachment, the kernel memory manager
++	name and the pitch for a buffer attached to a given drawable.
++	Note that cpp is unused (it is a bit difficult to represent values
++	like 1.5 bytes/pixel as an integer).
++
++	In case of multi-planar video formats, 'extra names' will give the
++	list of additional buffer names (and their pitch) if there is one
++	buffer per plane.  For example, I420 has one Y plane in with a 8bit
++	luma value per pixel, followed by one U plane subsampled 2x2 (with
++	one 8bit U value per 2x2 pixel block), followed by one V plane
++	subsampled 2x2.  This could either be represented as a single buffer
++	name, or three separate buffer names, one each for Y, U, and V.
++
++┌───
+     DRI2ATTACH_FORMAT
+ 	4	CARD32	attachment
+ 	4	CARD32	format
+@@ -713,6 +889,28 @@ A.2 Protocol Requests
+ └───
+ 
+ ┌───
++    DRI2GetBuffersVid
++	1	CARD8			major opcode
++	1	3			DRI2 opcode
++	2	3			length
++	4	DRAWABLE		drawable
++	4	CARD32			width
++	4	CARD32			height
++	4	n			number of attachments
++	4n	LISTofDRI2ATTACHMENTS	attachments
++      ▶
++	1	1			Reply
++        1				unused
++	2	CARD16			sequence number
++	4	0			reply length
++	4	CARD32			width of drawable
++	4	CARD32			height of drawable
++	4	CARD32			buffer count
++	12				unused
++	5n	LISTofDRI2BUFFER	buffers
++└───
++
++┌───
+     DRI2SwapBuffers
+ 	1	CARD8			major opcode
+ 	1	7			DRI2 opcode
+@@ -735,6 +933,33 @@ A.2 Protocol Requests
+ └───
+ 
+ ┌───
++    DRI2SwapBuffersVid
++	1	CARD8			major opcode
++	1	7			DRI2 opcode
++	2	8			length
++	4	DRAWABLE		drawable
++	4	CARD32			target_msc_hi
++	4	CARD32			target_msc_lo
++	4	CARD32			divisor_hi
++	4	CARD32			divisor_lo
++	4	CARD32			remainder_hi
++	4	CARD32			remainder_lo
++	4	DRI2ATTACHMENT		source
++	4	CARD32			x1
++	4	CARD32			y1
++	4	CARD32			x2
++	4	CARD32			y2
++      ▶	
++	1	1			Reply
++        1				unused
++	2	CARD16			sequence number
++	4	0			reply length
++	4	CARD32			swap_hi
++	4	CARD32			swap_lo
++	5n	LISTofDRI2BUFFER	buffers
++└───
++
++┌───
+     DRI2GetMSC
+ 	1	CARD8			major opcode
+ 	1	7			DRI2 opcode
+@@ -809,6 +1034,48 @@ A.2 Protocol Requests
+      ▶
+ └───
+ 
++┌───
++    DRI2SetAttribute
++	1	CARD8			major opcode
++	1	7			DRI2 opcode
++	2	8			length
++	4	DRAWABLE		drawable
++	4	ATOM			attribute
++	4n	LISTofCARD32		value
++      ▶
++└───
++
++┌───
++    DRI2GetAttribute
++	1	CARD8			major opcode
++	1	7			DRI2 opcode
++	2	8			length
++	4	DRAWABLE		drawable
++	4	ATOM			attribute
++      ▶
++	1	1			Reply
++	1				unused
++	2	CARD16			sequence number
++	4	0			reply length
++	24				unused
++	4n	LISTofCARD32		value
++└───
++
++┌───
++    DRI2GetFormats
++	1	CARD8			major opcode
++	1	7			DRI2 opcode
++	2	8			length
++	4	DRAWABLE		drawable
++      ▶
++	1	1			Reply
++	1				unused
++	2	CARD16			sequence number
++	4	0			reply length
++	24				unused
++	4n	LISTofCARD32		formats
++└───
++
+ A.3 Protocol Events
+ 
+ The DRI2 extension specifies DRI2_BufferSwapComplete and
+diff --git a/dri2tokens.h b/dri2tokens.h
+index 16c9008..032791f 100644
+--- a/dri2tokens.h
++++ b/dri2tokens.h
+@@ -47,6 +47,7 @@
+ 
+ #define DRI2DriverDRI			0
+ #define DRI2DriverVDPAU			1
++#define DRI2DriverXV			2
+ 
+ /* Event sub-types for the swap complete event */
+ #define DRI2_EXCHANGE_COMPLETE		0x1
+-- 
+1.7.5.1
+
