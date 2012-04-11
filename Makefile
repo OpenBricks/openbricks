@@ -15,7 +15,7 @@ config silentoldconfig oldconfig menuconfig xconfig gconfig: .stamps/kconfiginit
 	scripts/kconfiggenerate $@
 	scripts/kconfig2options
 
-%_defconfig:
+%_defconfig: config/defconfigs/%.conf
 	scripts/loadcfg $*
 
 cleanconfig:
