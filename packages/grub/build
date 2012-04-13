@@ -2,48 +2,35 @@
 
 . config/options
 
-$SCRIPTS/build linux
-$SCRIPTS/unpack font-misc-misc
+cd $BUILD/$1*
 
-export CFLAGS="$CFLAGS -O2"
-HEADERS="`kernel_path`/arch/x86/include"
-COMMAND_LINE_SIZE=`cat ${HEADERS}/asm/setup.h | grep "^#define COMMAND_LINE_SIZE" | cut -d\  -f3`
-export TARGET_CPPFLAGS="-DCOMMAND_LINE_SIZE=${COMMAND_LINE_SIZE} ${TARGET_CPPFLAGS}"
+# Strip out -fPIC for host (grub 1.99 wont compile with fPIC)
+export HOST_CFLAGS="`echo $HOST_CFLAGS | sed -e "s%-fPIC%%"`"
+export HOST_CXXFLAGS="`echo $HOST_CXXFLAGS | sed -e "s%-fPIC%%"`"
+export CFLAGS="$HOST_CXXFLAGS"
+export HOST_LDFLAGS="`echo $HOST_LDFLAGS | sed -e "s%-lm%%"`"
 
-cd $BUILD/$1-r*
-
-mkdir -p host-build
-cd host-build
+mkdir -p objdir-host
+cd objdir-host
 do_configure host \
-             --enable-grub-mkfont \
-
-make grub-mkfont
+	--disable-werror \
+	--enable-grub-mkfont \
+	--with-platform=efi \
+	--target=${TARGET_ARCH} \
+	--program-prefix=""
+make
+make_install toolchain
 cd ..
 
-export ac_cv_prog_FREETYPE=$LIB_PREFIX/bin/freetype-config
+export TARGET_CFLAGS="" # Disable else take the bad CFLAGS to compile
+mkdir -p objdir-target
+cd objdir-target
 do_configure target \
-            --disable-grub-mkfont \
-            --disable-werror \
-
+	--disable-grub-mkfont \
+	--disable-werror \
+	--with-platform=efi \
+	--target=${TARGET_ARCH} \
+	--program-prefix=""
 make
-
-BIN_FILES="grub-mkimage grub-mkelfimage grub-fstest grub-editenv grub-mkrescue"
-SBIN_FILES="grub-install grub-mkconfig grub-mkdevicemap grub-probe grub-setup"
-LIB_GRUB_FILES="grub-mkconfig_lib update-grub_lib"
-LIB_GRUB_ARCH_FILES="boot.img cdboot.img diskboot.img kernel.img lnxboot.img pxeboot.img biosdisk.mod chain.mod multiboot.mod reboot.mod halt.mod vbe.mod vbetest.mod vbeinfo.mod play.mod serial.mod ata.mod vga.mod memdisk.mod pci.mod lspci.mod aout.mod bsd.mod pxe.mod pxecmd.mod datetime.mod date.mod datehook.mod lsmmap.mod ata_pthru.mod hdparm.mod usb.mod uhci.mod ohci.mod usbtest.mod usbms.mod usb_keyboard.mod efiemu.mod mmap.mod acpi.mod drivemap.mod boot.mod  linux16.mod linux.mod xnu.mod cpuid.mod at_keyboard.mod vga_text.mod fshelp.mod fat.mod ufs1.mod ufs2.mod ext2.mod ntfs.mod ntfscomp.mod minix.mod hfs.mod jfs.mod iso9660.mod xfs.mod affs.mod sfs.mod hfsplus.mod reiserfs.mod cpio.mod tar.mod udf.mod      afs.mod afs_be.mod befs.mod befs_be.mod part_amiga.mod part_apple.mod part_msdos.mod part_sun.mod part_acorn.mod part_gpt.mod raid.mod raid5rec.mod raid6rec.mod mdraid.mod dm_nv.mod lvm.mod scsi.mod minicmd.mod extcmd.mod hello.mod handler.mod ls.mod cmp.mod cat.mod help.mod search.mod loopback.mod fs_file.mod fs_uuid.mod configfile.mod echo.mod terminfo.mod test.mod blocklist.mod hexdump.mod read.mod sleep.mod loadenv.mod crc.mod parttool.mod msdospart.mod memrw.mod normal.mod sh.mod gptsync.mod true.mod probe.mod password.mod keystatus.mod video.mod videotest.mod bitmap.mod tga.mod jpeg.mod png.mod     font.mod gfxterm.mod video_fb.mod gzio.mod bufio.mod elf.mod xnu_uuid.mod setjmp.mod  moddep.lst command.lst fs.lst partmap.lst parttool.lst handler.lst build_env.mk config.h grub_script.tab.h"
-
-mkdir -p __build/bin __build/sbin __build/lib/grub/i386-pc
-cp $BIN_FILES __build/bin/
-cp $SBIN_FILES __build/sbin/
-cp $LIB_GRUB_FILES __build/lib/grub/
-cp $LIB_GRUB_ARCH_FILES __build/lib/grub/i386-pc/
-
-if [ -f ../font-misc-misc*/8x13.bdf ]; then
-  mkdir -p __build/lib/grub/fonts
-  ./host-build/grub-mkfont -o __build/lib/grub/fonts/8x13.pf2 ../font-misc-misc*/8x13.bdf
-fi
-
-mkdir -p .install/usr/share
-# mod files have to be stripped (debugging symbols) in any case, otherwise grub isn't installable anymore
-find __build -name "*.mod" -exec $HOST_STRIP -d {} \;
-tar cf - -C __build "." | lzma -9 -c > .install/usr/share/grub-i386-pc.tar.lzma
+make_install
+cd ..
