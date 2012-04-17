@@ -23,6 +23,7 @@ set_default_advanced_settings () {
   <gui>
     <algorithmdirtyregions>1</algorithmdirtyregions>
   </gui>
+  <fullscreen>true</fullscreen>
 </advancedsettings>
 EOF
 }
