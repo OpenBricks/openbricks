@@ -5,7 +5,7 @@
 # See http://wiki.xbmc.org/index.php?title=Advancedsettings.xml for details #
 #############################################################################
 
-USERDATA="$HOME/.xbmc/userdata"
+USERDATA="/root/.xbmc/userdata"
 ADV_SETTINGS="$USERDATA/advancedsettings.xml"
 SOURCES="$USERDATA/sources.xml"
 
