@@ -4,6 +4,8 @@ ARCHS = $(wildcard config/platforms/*/meta)
 PLATFORMS = $(wildcard config/platforms/*/*/meta)
 MACHINES = $(wildcard config/platforms/*/*/machines/*/meta)
 SCRIPTS = $(wildcard scripts/*2kconfig)
+DEFCONFIGS = $(patsubst %,%_defconfig, $(shell scripts/loadcfg list))
+
 
 all: binaries
 
@@ -15,8 +17,8 @@ config silentoldconfig oldconfig menuconfig xconfig gconfig: .stamps/kconfiginit
 	scripts/kconfiggenerate $@
 	scripts/kconfig2options
 
-%_defconfig: config/defconfigs/%.conf
-	scripts/loadcfg $*
+$(DEFCONFIGS):
+	scripts/loadcfg $(subst _defconfig,,$@)
 
 cleanconfig:
 	rm -f build/build.host/kconfig-frontends-*/.config
