@@ -2,6 +2,9 @@
 
 . config/options
 
+$SCRIPTS/clean $1
+$SCRIPTS/unpack $1
+
 cd $BUILD/$1*
 
 export HOST_CC=$HOST_CC
@@ -11,6 +14,7 @@ export X11_INCLUDES=
 export EXTRA_LIB_PATH=
 export DRI_DRIVER_INSTALL_DIR="$XORG_PATH_DRI"
 export DRI_DRIVER_SEARCH_DIR="$XORG_PATH_DRI"
+export ac_cv_prog_PYTHON2="$ROOT/$TOOLCHAIN/bin/python"
 
 # DRI: Direct Rendering Interface
 pkg_uses $1 intel     && DRI_DRIVERS="${DRI_DRIVERS}i915,i965,"
@@ -36,11 +40,30 @@ fi
 # EGL: Embedded Graphics Library (native platform graphics interface)
 EGL_DISPLAYS="x11,drm"
 
+# build the internal compiler
+setup_toolchain host
+do_configure
+make \
+  CC="$HOST_CC" \
+  CXX="$HOST_CXX" \
+  CFLAGS="$HOST_CFLAGS" \
+  CXXFLAGS="$HOST_CXXFLAGS" \
+  LDFLAGS="$HOST_LDFLAGS" \
+  -C src/glsl builtin_compiler
+
+cp -PR src/glsl/builtin_compiler $ROOT/$TOOLCHAIN/bin
+cp src/glsl/Makefile src/glsl/Makefile.orig
+sed -e "s#\.\/builtin_compiler#$ROOT/$TOOLCHAIN/bin/builtin_compiler#g" \
+  -i src/glsl/Makefile
+make -C src/glsl clean
+
+setup_toolchain target
+
 # LLVM Hack
 sed -i 's%LLVM_LIBS=".*"%LLVM_LIBS="-lLLVM-$LLVM_VERSION"%' configure
 
 GCC_NO_GOLD=1 GCC_NO_LTO=1 \
-do_configure \
+do_configure target \
   --disable-debug \
   --disable-selinux \
   --enable-glx-tls \
@@ -64,19 +87,7 @@ do_configure \
   $VDPAU \
   $XVMC \
 
-# build internal compiler
-make \
-  CC="$HOST_CC" \
-  CXX="$HOST_CXX" \
-  CFLAGS="$HOST_CFLAGS" \
-  CXXFLAGS="$HOST_CXXFLAGS" \
-  LDFLAGS="$HOST_LDFLAGS" \
-  -C src/glsl builtin_compiler
 
-cp -PR src/glsl/builtin_compiler $ROOT/$TOOLCHAIN/bin
-sed -e "s#\.\/builtin_compiler#$ROOT/$TOOLCHAIN/bin/builtin_compiler#g" \
-  -i src/glsl/Makefile
-make -C src/glsl clean
 
 # now build Mesa for target
 make
