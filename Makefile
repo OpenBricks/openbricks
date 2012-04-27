@@ -4,7 +4,7 @@ ARCHS = $(wildcard config/platforms/*/meta)
 PLATFORMS = $(wildcard config/platforms/*/*/meta)
 MACHINES = $(wildcard config/platforms/*/*/machines/*/meta)
 SCRIPTS = $(wildcard scripts/*2kconfig)
-DEFCONFIGS = $(patsubst %,%_defconfig, $(shell scripts/loadcfg list))
+DEFCONFIGS = $(patsubst config/defconfigs/%.conf,%_defconfig,$(wildcard config/defconfigs/*conf))
 
 
 all: binaries
