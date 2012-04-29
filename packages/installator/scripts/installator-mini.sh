@@ -171,12 +171,12 @@ fi
 
 menuentry "Start $DISTRO $ARCH $VERSION" {
   search --no-floppy --fs-uuid --set=root ${ID_FS_UUID}
-  linux /boot/vmlinuz root=UUID=${ID_FS_UUID} rootfstype=${target_fs} quiet loglevel=3 rw
+  linux /boot/vmlinuz root=UUID=${ID_FS_UUID} rootfstype=${target_fs} rootfs=flat quiet loglevel=3 rw
   initrd /boot/initrd
 }
 menuentry "Start in debuging mode" {
   search --no-floppy --fs-uuid --set=root ${ID_FS_UUID}
-  linux /boot/vmlinuz root=UUID=${ID_FS_UUID} rootfstype=${target_fs} emergency
+  linux /boot/vmlinuz root=UUID=${ID_FS_UUID} rootfstype=${target_fs} rootfs=flat emergency
   initrd /boot/initrd
 }
 EOF
