@@ -12,6 +12,11 @@ SOURCES="$USERDATA/sources.xml"
 set_default_advanced_settings () {
   [ -f "$ADV_SETTINGS" ] && return
 
+FULLSCREEN=true
+if dmesg | grep "OMAP4 Panda board" -q ; then 
+  FULLSCREEN=false
+fi
+
 
   cat > "$ADV_SETTINGS" << EOF
 <advancedsettings>
@@ -23,7 +28,7 @@ set_default_advanced_settings () {
   <gui>
     <algorithmdirtyregions>1</algorithmdirtyregions>
   </gui>
-  <fullscreen>true</fullscreen>
+  <fullscreen>$FULLSCREEN</fullscreen>
 </advancedsettings>
 EOF
 }
