@@ -13,8 +13,16 @@ set_default_advanced_settings () {
   [ -f "$ADV_SETTINGS" ] && return
 
 FULLSCREEN=true
+ALGORITHMDIRTY=1
+NOFLIPTIMEOUT=-1
 if dmesg | grep "OMAP4 Panda board" -q ; then 
   FULLSCREEN=false
+fi
+
+if grep Snowball /proc/cpuinfo -q ; then 
+  FULLSCREEN=false
+  ALGORITHMDIRTY=3
+  NOFLIPTIMEOUT=500
 fi
 
 
@@ -26,7 +34,8 @@ fi
     <clienttimeout>10</clienttimeout>
   </samba>
   <gui>
-    <algorithmdirtyregions>1</algorithmdirtyregions>
+    <algorithmdirtyregions>$ALGORITHMDIRTY</algorithmdirtyregions>
+    <nofliptimeout>$NOFLIPTIMEOUT</nofliptimeout>
   </gui>
   <fullscreen>$FULLSCREEN</fullscreen>
 </advancedsettings>
