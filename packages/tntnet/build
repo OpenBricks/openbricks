@@ -1,52 +1,40 @@
 #!/bin/sh
 
 . config/options
+get_meta $1
+
+cd $BUILD/${PKG_NAME}-${PKG_VERSION}
 
 require_cxx $1
 
-cd $BUILD/$1*/
-
-mkdir -p objdir-host
-cd objdir-host
-export ac_cv_path_CXXTOOLS_CONFIG="$ROOT/$TOOLCHAIN/bin/cxxtools-host-config"
-export local_ldflags="-lcxxtools"
-# copy include dirs, otherwise out-of-dir build fails
-mkdir -p framework/common sdk/tools/common
-cp -PR ../framework/common/tnt framework/common
-cp -PR ../sdk/tools/common/tnt sdk/tools/common
+mkdir -p objdir-host && cd objdir-host
 do_configure host \
-            CPPFLAGS=$($ac_cv_path_CXXTOOLS_CONFIG --cxxflags) \
             --disable-static \
             --enable-shared \
             --with-server=no \
-            --with-ssl=no \
-            --with-epoll=no \
-            --with-sendfile=yes \
             --with-cgi=no \
             --with-sdk=yes \
             --with-demos=no \
+            --with-epoll=yes \
+            --with-ssl=no \
+            --with-stressjob=no
 
 make
-make_install
+make_install toolchain
+
 cd ..
 
-mkdir -p objdir-target
-cd objdir-target
-unset ac_cv_path_CXXTOOLS_CONFIG local_cppflags local_ldflags
-# copy include dirs, otherwise out-of-dir build fails
-mkdir -p framework/common sdk/tools/common etc
-cp -PR ../framework/common/tnt framework/common
-cp -PR ../sdk/tools/common/tnt sdk/tools/common
+mkdir -p objdir-target && cd objdir-target
 do_configure target \
             --disable-static \
             --enable-shared \
             --with-server=no \
-            --with-ssl=no \
-            --with-epoll=no \
-            --with-sendfile=yes \
             --with-cgi=no \
-            --with-sdk=no \
-            --with-demos=no
+            --with-sdk=yes \
+            --with-demos=no \
+            --with-epoll=yes \
+            --with-stressjob=no
+
 make
 make_install
-sed -i "s:\(['= ]\)/usr:\\1$LIB_PREFIX:g" .install/usr/bin/tntnet-config
+
