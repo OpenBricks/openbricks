@@ -1,12 +1,39 @@
 #!/bin/sh
 
+# Usage: isset <variable>
+isset() {
+  local var="$1"
+
+  set | grep -q "^${var}="
+  return $?
+}
+
+# Usage: value=`valueof <variable>`
+valueof() {
+  local tmp=
+  local var="$1"
+
+  eval tmp="\$$var"
+  echo "$tmp"
+}
+
 if [ -f /root/.xbmc/userdata/addon_data/geexbox.addon.network/settings.xml ] ; then
   while read i ; do
     echo $i| grep "setting " | sed -e 's%<setting id="%%'\
                                    -e 's%" value%%' \
-                                   -e 's% />%%' >>/etc/network2
+                                   -e 's% />%%' >> /tmp/network
   done < /root/.xbmc/userdata/addon_data/geexbox.addon.network/settings.xml
-  mv /etc/network /etc/network-$(date +%Y%M%d%H%M)
-  mv /etc/network2 /etc/network
+
+  # update /etc/network with the new values (only for the keys actually defined)
+  . /tmp/network
+  for key in `cat /etc/network | grep -v '^#' | cut -f1 -d=`; do
+    if isset ${key}; then
+      val=`valueof ${key}`
+      sed -e "s%^${key}=.*%${key}=\"${val}\"%" -i /etc/network
+    fi
+  done
+  rm -f /tmp/network
+
   systemctl restart connman.service
+  systemctl restart telnetd.socket
 fi

@@ -1,16 +1,27 @@
 #!/bin/sh
 
 . /etc/network
-. /etc/network-backend
 
-[ "$NET_B" != connman ] && exit 1
+[ "$NETWORK_BACKEND" = connman ] || exit 1 
 
 profile=/var/lib/connman/default.profile
+settings=/var/lib/connman/settings
 
+rm -rf /var/lib/connman
 mkdir -p /var/lib/connman
 
 hostname="`cat /etc/hostname`"
-echo "127.0.0.1 localhost $hostname" > /etc/hosts 
+echo "127.0.0.1 localhost $hostname" > /etc/hosts
+
+TIMESERVERS=`echo $TIMESERVERS | tr ' ' ';'`
+[ -n "$TIMESERVERS" ] && TIMESERVERS="Timeservers=${TIMESERVERS}"
+
+cat > $settings <<EOF
+[global]
+OfflineMode=false
+$TIMESERVERS
+
+EOF
 
 [ -z "$IFACE" ] && IFACE=eth0 || IFACE=`echo $IFACE | tr '[A-Z]' '[a-z]'`
 [ -f /sys/class/net/$IFACE/address ] && \
@@ -41,12 +52,17 @@ if [ "$NETWORK" = "WLAN" ]; then
    echo "Favorite=true" >> $profile
    [ "$SECURITY" = "RSN" ] && echo "Security=rsn" >> $profile
    echo "AutoConnect=true" >> $profile
+   echo "[WiFi]" >> $settings
+   echo "Enable=true" >> $settings
 else 
   echo "[ethernet_`echo $IFACE | sed 's/://g'`_cable]" > $profile
+  echo "[Wired]" >> $settings
+  echo "Enable=true" >> $settings
 fi
 
 if [ -z "$ADDRESS" ]; then
   echo "IPv4.method=dhcp" >> $profile
+  [ -n "$DNS_SERVER" ] && echo "Nameservers=`echo ${DNS_SERVER} | tr ' ' ';'`" >> $profile
   exit 0
 fi
 
@@ -57,6 +73,6 @@ echo "IPv4.method=manual" >> $profile
 echo "IPv4.local_address=$ip" >> $profile
 [ -n "$prefix" ] && echo "IPv4.netmask_prefixlen=$prefix" >> $profile
 [ -n "$GATEWAY" ] && echo "IPv4.gateway=$GATEWAY" >> $profile
-[ -n "$DNS_SERVER" ] && echo "Nameservers=$DNS_SERVER;" >> $profile
+[ -n "$DNS_SERVER" ] && echo "Nameservers=`echo ${DNS_SERVER} | tr ' ' ';'`" >> $profile
 
 exit 0
