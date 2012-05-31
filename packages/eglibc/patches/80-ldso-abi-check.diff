@@ -1,0 +1,242 @@
+Index: eglibc-2.15~pre4/elf/dl-load.c
+===================================================================
+--- eglibc-2.15~pre4.orig/elf/dl-load.c	2011-11-21 17:09:24.900770886 +0000
++++ eglibc-2.15~pre4/elf/dl-load.c	2011-11-23 21:15:23.655868090 +0000
+@@ -1645,6 +1645,207 @@
+     _dl_debug_printf_c ("\t\t(%s)\n", what);
+ }
+ 
++#ifdef __arm__
++/* Read an unsigned leb128 value from P, store the value in VAL, return
++   P incremented past the value.  We assume that a word is large enough to
++   hold any value so encoded; if it is smaller than a pointer on some target,
++   pointers should not be leb128 encoded on that target.  */
++static const unsigned char *
++read_uleb128 (const unsigned char *p, unsigned long *val)
++{
++  unsigned int shift = 0;
++  unsigned char byte;
++  unsigned long result;
++
++  result = 0;
++  do
++    {
++      byte = *p++;
++      result |= (byte & 0x7f) << shift;
++      shift += 7;
++    }
++  while (byte & 0x80);
++
++  *val = result;
++  return p;
++}
++
++
++#define ATTR_TAG_FILE          1
++#define ABI_VFP_args          28
++#define VFP_ARGS_IN_VFP_REGS   1
++
++/* Check consistency of ABI in the ARM attributes. Search through the
++   section headers looking for the ARM attributes section, then
++   check the VFP_ARGS attribute. */
++static int
++check_arm_attributes_hfabi(int fd, ElfW(Ehdr) *ehdr, bool *is_hf)
++{
++  unsigned int i;
++  ElfW(Shdr) *shdrs;
++  int sh_size = ehdr->e_shentsize * ehdr->e_shnum;
++
++  /* Load in the section headers so we can look for the attributes
++   * section */
++  shdrs = alloca(sh_size);
++  __lseek (fd, ehdr->e_shoff, SEEK_SET);
++  if ((size_t) __libc_read (fd, (void *) shdrs, sh_size) != sh_size)
++    return -1;
++
++  for (i = 0; i < ehdr->e_shnum; i++)
++    {        
++      if (SHT_ARM_ATTRIBUTES == shdrs[i].sh_type)
++        {
++	  /* We've found a likely section. Load the contents and
++	   * check the tags */
++	  unsigned char *contents = alloca(shdrs[i].sh_size);
++	  unsigned char *p = contents;
++	  unsigned char * end;
++
++	  __lseek (fd, shdrs[i].sh_offset, SEEK_SET);
++	  if ((size_t) __libc_read (fd, (void *) contents, shdrs[i].sh_size) != shdrs[i].sh_size)
++	    return -1;
++
++	  /* Sanity-check the attribute section details. Make sure
++	   * that it's the "aeabi" section, that's all we care
++	   * about. */
++	  if (*p == 'A')
++            {
++	      unsigned long len = shdrs[i].sh_size - 1;
++	      unsigned long namelen;
++	      p++;
++                
++	      while (len > 0)
++                {
++		  unsigned long section_len = p[0] | p[1] << 8 | p[2] << 16 | p[3] << 24;
++		  if (section_len > len)
++                    {
++		      _dl_debug_printf_c ("    invalid section len %lu, max remaining %lu\n", section_len, len);
++		      section_len = len;
++                    }
++
++		  p += 4;                    
++		  len -= section_len;
++		  section_len -= 4;
++
++		  if (0 != strcmp((char *)p, "aeabi"))
++                    {
++		      _dl_debug_printf_c ("    ignoring unknown attr section %s\n", p);
++		      p += section_len;
++		      continue;
++                    }
++		  namelen = strlen((char *)p) + 1;
++		  p += namelen;
++		  section_len -= namelen;
++                    
++		  /* We're in a valid section. Walk through this
++		   * section looking for the tag we care about
++		   * (ABI_VFP_args) */
++		  while (section_len > 0)
++                    {
++		      unsigned long tag, val;
++		      unsigned long size;
++
++		      end = p;
++		      tag = (*p++);
++
++		      size = p[0] | p[1] << 8 | p[2] << 16 | p[3] << 24;
++		      if (size > section_len)
++                        {
++			  _dl_debug_printf_c ("    invalid subsection length %lu, max allowed %lu\n", size, section_len);
++			  size = section_len;
++                        }
++		      p += 4;
++                        
++		      section_len -= size;
++		      end += size;
++		      if (ATTR_TAG_FILE != tag)
++                        {
++			  /* ignore, we don't care */
++			  _dl_debug_printf_c ("    ignoring unknown subsection with type %u length %lu\n", tag, size);
++			  p = end;
++			  continue;
++                        }
++		      while (p < end)
++                        {
++			  p = read_uleb128 (p, &tag);
++			  /* Handle the different types of tag. */
++			  if ( (tag == 4) || (tag == 5) || (tag == 67) )
++                            {
++			      /* Special cases for string values */
++			      namelen = strlen((char *)p) + 1;
++			      p += namelen;
++                            }
++			  else
++                            {
++			      p = read_uleb128 (p, &val);
++                            }
++			  if ( (tag == ABI_VFP_args) && (val == VFP_ARGS_IN_VFP_REGS) )
++                            {
++			      *is_hf = 1;
++			      return 0;
++                            }
++                        }
++                    }
++                }
++            }                
++        }            
++    }
++    
++  return 0;
++}
++
++
++/* ARM-specific checks. Currently only checks for consistency of ABI
++   in terms of passing VFP args. */
++static int
++arm_specific_checks(int fd, const char *name, ElfW(Ehdr) *ehdr)
++{
++  static int all_hf = -1; /* unset */
++  bool is_hf = false;
++  int ret;
++
++  ret = check_arm_attributes_hfabi(fd, ehdr, &is_hf);
++  if (ret != 0)
++    return ret;
++
++#ifdef __ARM_PCS_VFP
++  if (!is_hf)
++    _exit(1);
++#else
++  if (is_hf)
++    _exit(1);
++#endif
++
++  if (all_hf == -1)
++    {
++      if (is_hf)
++	all_hf = 1;
++      else
++	all_hf = 0;
++    }
++  else if (all_hf == 1 && !is_hf)
++    return EINVAL;
++  else if (all_hf == 0 && is_hf)
++    return EINVAL;
++  return 0;
++}
++#endif
++
++
++/* Run any architecture-specific checks that might be needed for the
++   current architecture. */
++static int
++arch_specific_checks(int fd, const char *name, ElfW(Ehdr) *ehdr)
++{
++#ifdef __arm__
++    return arm_specific_checks(fd, name, ehdr);
++#endif
++
++  return 0;
++}
++
++
+ /* Open a file and verify it is an ELF file for this architecture.  We
+    ignore only ELF files for other architectures.  Non-ELF files and
+    ELF files with different header information cause fatal errors since
+@@ -1843,6 +2044,7 @@
+ 
+       /* Check .note.ABI-tag if present.  */
+       for (ph = phdr; ph < &phdr[ehdr->e_phnum]; ++ph)
++      {
+ 	if (ph->p_type == PT_NOTE && ph->p_filesz >= 32 && ph->p_align >= 4)
+ 	  {
+ 	    ElfW(Addr) size = ph->p_filesz;
+@@ -1891,6 +2093,21 @@
+ 	    break;
+ 	  }
+     }
++      if (-1 != fd)
++	{
++	  int error = arch_specific_checks(fd, name, ehdr);
++	  if (EINVAL == error)
++	    {
++	      goto close_and_out;
++	    }
++	  if (0 != error)
++	    {
++	      errstring = N_("Unable to run arch-specific checks\n");
++	      goto call_lose;
++	    }
++	}
++
++    }
+ 
+   return fd;
+ }
