@@ -1,26 +1,75 @@
 #!/bin/sh
 
 #
-# Samba/CIFS AutoMount Utility
+# Samba AutoMounter
 #
 
-. /etc/network
+. /etc/funcs
 
-# umount any previously mounted share
-for DIR in /mnt/shares/*/*; do
-  [ -d "$DIR" ] && rmdir "$DIR"
-done
+MOUNT_POINT=/mnt/shares
 
-automount_samba static  >/dev/null 2>&1 &
-automount_samba dynamic >/dev/null 2>&1 &
+mount_samba () {
+  user=$1
+  pass=$2
+  name=$3
+  ip=$4
+  shift 4
+  while [ $# -gt 0 ]; do
+    dir="$MOUNT_POINT/$name/$1"
+    logger -t automount_smb "Trying to mount: $name/$1"
+    if [ ! -e "$dir" ]; then
+      mkdir -p "$dir"
+      mount "//$ip/$1" "$dir" -t cifs -o "ro,iocharset=utf8,user=$user,pass=$pass" || mount.cifs "//$name/$1" "$dir" -o "ro,iocharset=utf8,ip=$ip,username=$user,passwd=$pass" || rmdir -p "$dir"
+    fi
+    shift
+  done
+}
 
-if [ -n "$NET_RESCAN_DELAY" -a "$NET_RESCAN_DELAY" -gt 0 ]; then
-  CRONTAB=/var/spool/cron/crontabs/root
-  CRONTAB_TMP=/tmp/crontab.root.tmp
-  [ -f $CRONTAB ] && \
-    cat $CRONTAB | grep -v "automount_samba dynamic" >$CRONTAB_TMP
-  echo -e "*/$NET_RESCAN_DELAY * * * *\t/usr/bin/automount_samba dynamic > /dev/null 2>&1" >> $CRONTAB_TMP
-  cat $CRONTAB_TMP >$CRONTAB && rm $CRONTAB_TMP
+do_static_mount () {
+  for STATIC_SMB in `sed -n "s/^STATIC_SMB=\"\(.*\)\"/\1/p" /etc/network`; do
+  (
+      USER=`echo $STATIC_SMB | sed "s/<%>.*//"`
+      PASS=`echo $STATIC_SMB | sed -e "s/.*<%>//" -e "s/<@>.*//"`
+        IP=`echo $STATIC_SMB | sed -e "s/.*<@>//" -e "s/<&>.*//"`
+      NAME=`echo $STATIC_SMB | sed -e "s/.*<&>//" -e "s/<#>.*//"`
+    MOUNTS="`echo $STATIC_SMB | sed "s/.*$NAME<#>//" | sed "s/<#>/ /g"`"
+    mount_samba "$USER" "$PASS" "$NAME" "$IP" $MOUNTS
+  )&
+  done
+}
+
+do_dynamic_mount () {
+  . /etc/network
+  OPT="-N"
+  test -n "$SMB_USER" && OPT="-U$SMB_USER%$SMB_PWD"
+  saveifs=$IFS
+  smbtree "$OPT" | while read mounts; do
+  (
+    IFS=/
+    mount_samba "$SMB_USER" "$SMB_PWD" $mounts
+    IFS=$saveifs
+  )&
+  done
+}
+
+if [ ! -n "`ps | grep -v grep | grep $0`" ]; then
+  logger -t automount_smb "Process \"$0\" already running, exiting..."
+  exit 1
 fi
+
+wait_for_network
+if [ "$?" = 1 ]; then
+  logger -t automount_smb "No network connection available, exiting..."
+  exit 2
+fi
+
+if [ "$1" = static ]; then               
+  do_static_mount                                                            
+elif [ "$1" = dynamic ]; then                      
+  do_dynamic_mount                             
+else                                                             
+  do_static_mount                                                
+  do_dynamic_mount                                               
+fi 
 
 exit 0

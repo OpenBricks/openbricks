@@ -10,13 +10,23 @@ MOUNT_POINT=/mnt/nfs
 
 mount_nfs () {
   MNT="$MOUNT_POINT/$2"
+   logger -t automount_nfs "Trying to mount: $2"
   if [ ! -e "$MNT" ]; then
     mkdir -p "$MNT"
   fi
   mount -t nfs -o ro,udp,rsize=32768,soft,noatime,nolock "$1" "$MNT" >/dev/null 2>&1 || rmdir -p "$MNT"
 }
 
+if [ ! -n "`ps | grep -v grep | grep $0`" ]; then
+  logger -t automount_nfs "Process \"$0\" already running, exiting..."
+  exit 1
+fi
+
 wait_for_network
+if [ "$?" = 1 ]; then
+  logger -t automount_nfs "No network connection available, exiting..."
+  exit 2
+fi
 
 IFS='
 '
