@@ -4,7 +4,23 @@
 
 [ "$NETWORK_BACKEND" = udhcpc ] || exit 1
 
-[ -n "$SSID" ] && iwconfig $IFACE essid $SSID key $PASSPHRASE
+[ -n "$SSID" -a $SECURITY = "WEP" ] && iwconfig $IFACE essid $SSID key $PASSPHRASE
+if [ -n "$SSID" -a $SECURITY = "PSK" ] ; then
+  cat > /etc/wpa_supplicant/wpa_supplicant.conf <<EOF
+update_config=1
+ctrl_interface=/var/run/wpa_supplicant
+
+network={
+ssid="$SSID"
+proto=WPA RSN
+key_mgmt=WPA-PSK
+psk="$PASSPHRASE"
+}
+EOF
+
+  systemctl stop wpa_supplicant.service
+  /usr/sbin/wpa_supplicant -c /etc/wpa_supplicant/wpa_supplicant.conf -i $IFACE &
+fi
 
 ifconfig $IFACE up
 udhcpc -s /bin/assign-ip -i $IFACE
