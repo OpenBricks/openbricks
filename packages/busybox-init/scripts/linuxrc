@@ -58,6 +58,9 @@ for arg in $(cat /proc/cmdline); do
     nfsroot=*)
       NFSROOT="${arg#nfsroot=}"
       ;;
+    smbroot=*)
+      SMBROOT="${arg#smbroot=}"
+      ;;
     ip=*)
     IP="${arg#ip=}"
       ;;
@@ -140,6 +143,8 @@ if [ -n "$ROOT" ]; then
   unset FOUND_ROOTFS
 fi
 
+
+## nfsroot
 if [ -n "$NFSROOT" ] ; then
   dbg_echo -n "Trying nfsroot=$NFSROOT as requested..."
   ROOT=/mnt
@@ -161,6 +166,36 @@ if [ -n "$NFSROOT" ] ; then
   [ -n "$FOUND_ROOTFS" ] || unset ROOT
   unset FOUND_ROOTFS
 fi
+
+## smbroot
+if [ -n "$SMBROOT" ] ; then
+  dbg_echo -n "Trying smbroot=$SMBROOT as requested..."
+  ROOT=/mnt
+  if [ -z "$IP" ] ; then
+    ifconfig eth0 up >/dev/null 2>&1
+    udhcpc -s /bin/assign-ip >/dev/null 2>&1
+  fi
+  s=`echo $SMBROOT | cut -d: -f1`
+  u=`echo $SMBROOT | cut -d: -f2`
+  p=`echo $SMBROOT | cut -d: -f3`
+  [ -n "$u" -a -n "$p" ] && OP="-o user=$u,password=$p" || OP=""
+  if mount $s $OP /mnt >/dev/null 2>&1; then
+    dbg_echo -n " ... $SMBROOT is mounted ..."
+    if mount -t squashfs /mnt/rootfs /squashfs >/dev/null 2>&1; then
+      dbg_echo "found."
+      FOUND_ROOTFS=yes
+    else
+      dbg_echo -n "failed, cannot mount squashfs."
+      umount /mnt
+    fi
+  else
+    dbg_echo -n "failed, cannot mount $SMBROOT."
+  fi
+  [ -n "$FOUND_ROOTFS" ] || unset ROOT
+  unset FOUND_ROOTFS
+fi
+
+
 
 # ...otherwise just scan the block devices for rootfs
 if [ -z "$ROOT" ]; then
