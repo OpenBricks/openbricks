@@ -1,0 +1,1487 @@
+diff -Nru vdr-1.7.28.orig/config.h vdr-1.7.28/config.h
+--- vdr-1.7.28.orig/config.h	2012-04-15 12:45:32.000000000 +0200
++++ vdr-1.7.28/config.h	2012-06-03 20:01:56.585354989 +0200
+@@ -36,6 +36,8 @@
+ // plugins to work with newer versions of the core VDR as long as no
+ // VDR header files have changed.
+ 
++#define LIEMIKUUTIO  134
++ 
+ #define MAXPRIORITY       99
+ #define MINPRIORITY       (-MAXPRIORITY)
+ #define LIVEPRIORITY      0                  // priority used when selecting a device for live viewing
+diff -Nru vdr-1.7.28.orig/cutter.c vdr-1.7.28/cutter.c
+--- vdr-1.7.28.orig/cutter.c	2012-06-02 15:46:55.000000000 +0200
++++ vdr-1.7.28/cutter.c	2012-06-03 20:01:56.585354989 +0200
+@@ -8,6 +8,7 @@
+  */
+ 
+ #include "cutter.h"
++#include "interface.h"
+ #include "menu.h"
+ #include "recording.h"
+ #include "remux.h"
+@@ -204,7 +205,7 @@
+ bool cCutter::error = false;
+ bool cCutter::ended = false;
+ 
+-bool cCutter::Start(const char *FileName)
++bool cCutter::Start(const char *FileName, const char *TargetFileName, bool Overwrite)
+ {
+   cMutexLock MutexLock(&mutex);
+   if (!cuttingThread) {
+@@ -218,11 +219,16 @@
+      if (cMark *First = FromMarks.First())
+         Recording.SetStartTime(Recording.Start() + (int(First->Position() / Recording.FramesPerSecond() + 30) / 60) * 60);
+ 
+-     const char *evn = Recording.PrefixFileName('%');
+-     if (evn && RemoveVideoFile(evn) && MakeDirs(evn, true)) {
++     cString evn = (TargetFileName && *TargetFileName) ? Recording.UpdateFileName(TargetFileName) : Recording.PrefixFileName('%');
++     if (!Overwrite && *evn && (access(*evn, F_OK) == 0) && !Interface->Confirm(tr("File already exists - overwrite?"))) {
++        do {
++           evn = PrefixVideoFileName(*evn, '%');
++        } while (*evn && (access(*evn, F_OK) == 0));
++        }
++     if (*evn && RemoveVideoFile(*evn) && MakeDirs(*evn, true)) {
+         // XXX this can be removed once RenameVideoFile() follows symlinks (see videodir.c)
+         // remove a possible deleted recording with the same name to avoid symlink mixups:
+-        char *s = strdup(evn);
++        char *s = strdup(*evn);
+         char *e = strrchr(s, '.');
+         if (e) {
+            if (strcmp(e, ".rec") == 0) {
+diff -Nru vdr-1.7.28.orig/cutter.h vdr-1.7.28/cutter.h
+--- vdr-1.7.28.orig/cutter.h	2012-02-16 13:05:33.000000000 +0100
++++ vdr-1.7.28/cutter.h	2012-06-03 20:01:56.585354989 +0200
+@@ -24,7 +24,7 @@
+   static bool error;
+   static bool ended;
+ public:
+-  static bool Start(const char *FileName);
++  static bool Start(const char *FileName, const char *TargetFileName = NULL, bool Overwrite = true);
+   static void Stop(void);
+   static bool Active(const char *FileName = NULL);
+          ///< Returns true if the cutter is currently active.
+diff -Nru vdr-1.7.28.orig/filetransfer.c vdr-1.7.28/filetransfer.c
+--- vdr-1.7.28.orig/filetransfer.c	1970-01-01 01:00:00.000000000 +0100
++++ vdr-1.7.28/filetransfer.c	2012-06-03 20:01:56.586355001 +0200
+@@ -0,0 +1,278 @@
++/*
++ * filetransfer.c: The video file transfer facilities
++ *
++ * See the main source file 'vdr.c' for copyright information and
++ * how to reach the author.
++ *
++ * $Id: $
++ */
++
++#include "videodir.h"
++#include "filetransfer.h"
++
++static cString StripLastDirectory(const char *DirName)
++{
++  if (DirName && *DirName) {
++     cString s(DirName);
++     int l = strlen(*s);
++     const char *p = *s + l;
++     while (l > 0) {
++           if (*p-- == '/')
++              break;
++           l--;
++           }
++     if (l)
++        s = s.Truncate(l);
++     return s;
++     }
++  return NULL;
++}
++
++// --- cCopyingThread --------------------------------------------------------
++
++class cCopyingThread : public cThread {
++private:
++  const char *error;
++  bool deleteSource;
++  cString source;
++  cString target;
++protected:
++  virtual void Action(void);
++public:
++  cCopyingThread(const char *SourceName, const char *ToFileName, bool DeleteSource = false);
++  virtual ~cCopyingThread();
++  const char *Error(void) { return error; }
++  };
++
++cCopyingThread::cCopyingThread(const char *SourceName, const char *TargetName, bool DeleteSource)
++:cThread("copying"),
++ error(NULL),
++ deleteSource(DeleteSource),
++ source(SourceName),
++ target(TargetName)
++{
++  // add missing directory delimiters
++  const char *delim = "/";
++  if (!endswith(*source, delim))
++     source = cString::sprintf("%s%s", *source, delim);
++  if (!endswith(*target, delim))
++     target = cString::sprintf("%s%s", *target, delim);
++
++  Start();
++}
++
++cCopyingThread::~cCopyingThread()
++{
++  Cancel(3);
++}
++
++void cCopyingThread::Action(void)
++{
++  SetPriority(19);
++  SetIOPriority(7);
++
++  if (strcmp(*source, *target)) {
++     // validate target directory
++     if (strstr(*target, *source)) {
++        error = "invalid target";
++        return;
++        }
++
++     // recordings methods require the last directory delimiter to be stripped off
++     cString recname = target;
++     recname.Truncate(strlen(*recname) - 1);
++     Recordings.AddByName(*recname, false);
++
++     RemoveFileOrDir(*target);
++     if (!MakeDirs(*target, true)) {
++        error = "MakeDirs";
++        return;
++        }
++
++     if (deleteSource && EntriesOnSameFileSystem(*source, *target)) {
++        if (rename(*source, *target) == -1) {
++           error = "rename";
++           return;
++           }
++        // delete all empty source directories
++        recname = source;
++        recname.Truncate(strlen(*recname) - 1);
++        recname = StripLastDirectory(*recname);
++        do {
++           if (!RemoveEmptyDirectories(*recname, true))
++              break;
++           recname = StripLastDirectory(*recname);
++           }
++        while (strcmp(*recname, VideoDirectory));
++        }
++     else {
++        int required = DirSizeMB(*source);
++        int available = FreeDiskSpaceMB(*target);
++
++        // validate free space
++        if (required < available) {
++           cReadDir d(*source);
++           struct dirent *e;
++           bool success = true;
++
++           // allocate copying buffer
++           const int len = 1024 * 1024;
++           char *buffer = MALLOC(char, len);
++           if (!buffer) {
++              error = "MALLOC";
++              return;
++              }
++
++           // loop through all files, but skip all sub-directories
++           while (Running() && (e = d.Next()) != NULL) {
++                 // skip generic entries
++                 if (strcmp(e->d_name, ".") && strcmp(e->d_name, "..") && strcmp(e->d_name, "lost+found")) {
++                    cString sourceFile = cString::sprintf("%s%s", *source, e->d_name);
++                    cString targetFile = cString::sprintf("%s%s", *target, e->d_name);
++
++                    // copy only regular files
++                    struct stat sts;
++                    if (!stat(*sourceFile, &sts) && S_ISREG(sts.st_mode)) {
++                       int r = -1, w = -1;
++                       cUnbufferedFile *inputFile = cUnbufferedFile::Create(*sourceFile, O_RDONLY | O_LARGEFILE);
++                       cUnbufferedFile *outputFile = cUnbufferedFile::Create(*targetFile, O_RDWR | O_CREAT | O_LARGEFILE);
++
++                       // validate files
++                       if (!inputFile || !outputFile) {
++                          success = false;
++                          break;
++                          }
++
++                       // do actual copy
++                       do {
++                         r = inputFile->Read(buffer, len);
++                         if (r > 0)
++                            w = outputFile->Write(buffer, r);
++                         else
++                            w = 0;
++                       } while (Running() && r > 0 && w > 0);
++                       DELETENULL(inputFile);
++                       DELETENULL(outputFile);
++
++                       // validate result
++                       if (!Running() || r < 0 || w < 0) {
++                          success = false;
++                          break;
++                          }
++                       }
++                   }
++                }
++
++           // release allocated buffer
++           free(buffer);
++
++           // delete all created target files and directories
++           if (!success) {
++              target = StripLastDirectory(*target);
++              RemoveFileOrDir(*target, true);
++              target = StripLastDirectory(*target);
++              RemoveEmptyDirectories(*target, true);
++              error = "copy failed";
++              return;
++              }
++           }
++        else {
++           // delete all created empty target directories
++           recname = target;
++           recname.Truncate(strlen(*recname) - 1);
++           recname = StripLastDirectory(*recname);
++           do {
++              if (!RemoveEmptyDirectories(*recname, true))
++                 break;
++              recname = StripLastDirectory(*recname);
++              }
++           while (strcmp(*recname, VideoDirectory));
++           error = "insufficient free space";
++           return;
++           }
++        }
++
++     if (deleteSource) {
++        // Recordings' methods require the last directory delimiter to be stripped off
++        source.Truncate(strlen(*source) - 1);
++        cRecording *recording = Recordings.GetByName(*source);
++        if (recording->Delete())
++           Recordings.DelByName(*source, false);
++        }
++     else
++        Recordings.TouchUpdate();
++     }
++}
++
++// --- cFileTransfer ----------------------------------------------------------------
++
++cMutex cFileTransfer::mutex;
++char *cFileTransfer::copiedVersionName = NULL;
++cCopyingThread *cFileTransfer::copyingThread = NULL;
++bool cFileTransfer::error = false;
++bool cFileTransfer::ended = false;
++
++bool cFileTransfer::Start(cRecording *Recording, const char *FileName, bool CopyOnly)
++{
++  cMutexLock MutexLock(&mutex);
++  if (!copyingThread) {
++     cString NewName = NewVideoFileName(Recording->FileName(), FileName);
++     error = false;
++     ended = false;
++     if (strlen(*NewName)) {
++        copiedVersionName = strdup(*NewName);
++        copyingThread = new cCopyingThread(Recording->FileName(), copiedVersionName, !CopyOnly);
++        return true;
++        }
++     }
++  return false;
++}
++
++void cFileTransfer::Stop(void)
++{
++  cMutexLock MutexLock(&mutex);
++  bool Interrupted = copyingThread && copyingThread->Active();
++  const char *Error = copyingThread ? copyingThread->Error() : NULL;
++  DELETENULL(copyingThread);
++  if ((Interrupted || Error)) {
++     if (Interrupted)
++        isyslog("file transfer has been interrupted");
++     if (Error)
++        esyslog("ERROR: '%s' during file transfer", Error);
++     RemoveVideoFile(copiedVersionName); //XXX what if this file is currently being replayed?
++     Recordings.DelByName(copiedVersionName);
++     free(copiedVersionName);
++     copiedVersionName = NULL;
++     }
++}
++
++bool cFileTransfer::Active(void)
++{
++  cMutexLock MutexLock(&mutex);
++  if (copyingThread) {
++     if (copyingThread->Active())
++        return true;
++     error = copyingThread->Error();
++     Stop();
++     free(copiedVersionName);
++     copiedVersionName = NULL;
++     ended = true;
++     }
++  return false;
++}
++
++bool cFileTransfer::Error(void)
++{
++  cMutexLock MutexLock(&mutex);
++  bool result = error;
++  error = false;
++  return result;
++}
++
++bool cFileTransfer::Ended(void)
++{
++  cMutexLock MutexLock(&mutex);
++  bool result = ended;
++  ended = false;
++  return result;
++}
+diff -Nru vdr-1.7.28.orig/filetransfer.h vdr-1.7.28/filetransfer.h
+--- vdr-1.7.28.orig/filetransfer.h	1970-01-01 01:00:00.000000000 +0100
++++ vdr-1.7.28/filetransfer.h	2012-06-03 20:01:56.586355001 +0200
+@@ -0,0 +1,33 @@
++/*
++ * filetransfer.h: The video file transfer facilities
++ *
++ * See the main source file 'vdr.c' for copyright information and
++ * how to reach the author.
++ *
++ * $Id: $
++ */
++
++#ifndef __FILETRANSFER_H
++#define __FILETRANSFER_H
++
++#include "recording.h"
++#include "thread.h"
++
++class cCopyingThread;
++
++class cFileTransfer {
++private:
++  static cMutex mutex;
++  static char *copiedVersionName;
++  static cCopyingThread *copyingThread;
++  static bool error;
++  static bool ended;
++public:
++  static bool Start(cRecording *Recording, const char *NewName, bool CopyOnly = false);
++  static void Stop(void);
++  static bool Active(void);
++  static bool Error(void);
++  static bool Ended(void);
++  };
++
++#endif //__FILETRANSFER_H
+diff -Nru vdr-1.7.28.orig/HISTORY-liemikuutio vdr-1.7.28/HISTORY-liemikuutio
+--- vdr-1.7.28.orig/HISTORY-liemikuutio	1970-01-01 01:00:00.000000000 +0100
++++ vdr-1.7.28/HISTORY-liemikuutio	2012-06-03 20:01:56.586355001 +0200
+@@ -0,0 +1,165 @@
++-----------------------------------
++Liemikuutio for Video Disc Recorder
++
++Maintainer: Rolf Ahrenberg
++-----------------------------------
++
++2006-01-08: Version 1.0
++
++- Based on enAIO with these original patches:
++  Simple recordings sorting by Walter@VDRPortal
++  Alternate rename recordings by Ralf MÃƒÅ’ller
++  Menu selection by Peter Dittmann
++  Recording length by Tobias Faust
++
++2006-01-15: Version 1.1
++
++- Removed patches already found in vdr-1.3.39.
++
++2006-01-25: Version 1.2
++
++- Added "Main menu command position" feature.
++
++2006-02-05: Version 1.3
++
++- Improved menu selection response.
++
++2006-04-18: Version 1.4
++
++- Added Estonian translation (Thanks to Arthur Konovalov).
++
++2006-04-30: Version 1.5
++
++- Added progress bar view into "What's on now?" menu.
++
++2006-06-06: Version 1.6
++
++- Added French translation (Thanks to ECLiPSE).
++
++2006-06-14: Version 1.7
++
++- Fixed RENR crash.
++
++2006-07-14: Version 1.8
++
++- Fixed RENR/OSD bug.
++
++2006-08-27: Version 1.9
++
++- Some modifications to the recording length and rename recordings
++  patches (Thanks to Firefly).
++- Added k1_k3_jumps_20s patch by Petri Hintukainen.
++
++2006-08-29: Version 1.10
++
++- The cRecording:Title() method now defaults to original formatting.
++
++2006-09-04: Version 1.11
++
++- Removed unused variable from cRecording::Title() method (Thanks to
++  C.Y.M.).
++- Some modifications to the rename recordings patch (Thanks to Firefly).
++
++2006-09-13: Version 1.12
++
++- More modifications to the rename recordings patch (Thanks to Firefly).
++
++2006-10-01: Version 1.13
++
++- Removed unnecessary syslog printing (Thanks to Firefly).
++
++2007-08-14: Version 1.14
++
++- Updated for vdr-1.5.7.
++
++2007-10-16: Version 1.15
++
++- Added recmenu play patch (Thanks to Ville SkyttÃ¤).
++- Updated French translation (Thanks to ECLiPSE).
++
++2007-11-04: Version 1.16
++
++- Updated for vdr-1.5.11.
++
++2007-12-08: Version 1.17
++
++- Added binary skip patch.
++- Removed k1_k3_jumps_20s patch.
++
++2008-02-17: Version 1.18
++
++- Updated for vdr-1.5.15.
++
++2008-03-02: Version 1.19
++
++- Modified binary skip to use kPrev and kNext keys and the skip is now
++  always shortened after a direction change (Thanks to Timo Eskola).
++- Readded k1_k3_jumps_20s patch.
++
++2008-04-04: Version 1.20
++
++- Added bitrate information into rename menu.
++- Readded the path editing support of rename recordings patch (Thanks
++  to Firefly).
++
++2008-05-08: Version 1.21
++
++- Fixed rename recordings (Thanks to Firefly).
++- Added a DVB subtitles hack for old recordings (Thanks to Anssi Hannula).
++
++2009-01-08: Version 1.22
++
++- Updated for vdr-1.7.3.
++
++2009-01-25: Version 1.23
++
++- Updated for vdr-1.7.4.
++
++2009-02-27: Version 1.24
++
++- Fixed compilation under gcc-4.4.
++
++2009-04-05: Version 1.25
++
++- Fixed the length detection of recordings (Thanks to Thomas GÃ¼nther).
++
++2009-04-17: Version 1.26
++
++- Fixed the length detection of audio recordings (Thanks to Thomas GÃ¼nther).
++
++2009-04-26: Version 1.27
++
++- Fixed the length detection of empty recordings (Thanks to Thomas GÃ¼nther).
++
++2009-07-12: Version 1.28
++
++- Fixed the TS/PES detection of recording marks.
++
++2009-11-23: Version 1.29
++
++- Updated Estonian translation (Thanks to Arthur Konovalov).
++
++2010-02-01: Version 1.30
++
++- Updated for vdr-1.7.12.
++
++2011-09-04: Version 1.31
++
++- Updated for vdr-1.7.21.
++- Removed progress bar view form "What's on now?" menu.
++- Removed "Main menu command position" and recordings length/sorting features.
++- Changed renaming functionality to support different filesystems and binded it to key '0'.
++
++2011-10-19: Version 1.32
++
++- Refactored renaming functionality to support both background moving and copying.
++- Removed main menu command position changes completely.
++
++2011-11-16: Version 1.33
++
++- Updated the filetransfer patch.
++
++2012-03-03: Version 1.34
++
++- Updated the filetransfer patch.
++- Removed the DVB subtitles hack for old recordings.
+diff -Nru vdr-1.7.28.orig/Makefile vdr-1.7.28/Makefile
+--- vdr-1.7.28.orig/Makefile	2012-04-15 15:21:31.000000000 +0200
++++ vdr-1.7.28/Makefile	2012-06-03 20:01:56.586355001 +0200
+@@ -41,8 +41,8 @@
+ SILIB    = $(LSIDIR)/libsi.a
+ 
+ OBJS = audio.o channels.o ci.o config.o cutter.o device.o diseqc.o dvbdevice.o dvbci.o\
+-       dvbplayer.o dvbspu.o dvbsubtitle.o eit.o eitscan.o epg.o filter.o font.o i18n.o interface.o keys.o\
+-       lirc.o menu.o menuitems.o nit.o osdbase.o osd.o pat.o player.o plugin.o\
++       dvbplayer.o dvbspu.o dvbsubtitle.o eit.o eitscan.o epg.o filetransfer.o filter.o font.o i18n.o\
++       interface.o keys.o lirc.o menu.o menuitems.o nit.o osdbase.o osd.o pat.o player.o plugin.o\
+        receiver.o recorder.o recording.o remote.o remux.o ringbuffer.o sdt.o sections.o shutdown.o\
+        skinclassic.o skinlcars.o skins.o skinsttng.o sourceparams.o sources.o spu.o status.o svdrp.o themes.o thread.o\
+        timers.o tools.o transfer.o vdr.o videodir.o
+diff -Nru vdr-1.7.28.orig/menu.c vdr-1.7.28/menu.c
+--- vdr-1.7.28.orig/menu.c	2012-05-12 15:08:23.000000000 +0200
++++ vdr-1.7.28/menu.c	2012-06-03 20:01:56.588355025 +0200
+@@ -18,6 +18,7 @@
+ #include "config.h"
+ #include "cutter.h"
+ #include "eitscan.h"
++#include "filetransfer.h"
+ #include "i18n.h"
+ #include "interface.h"
+ #include "plugin.h"
+@@ -2180,6 +2181,167 @@
+   SetText(cString::sprintf("%d\t\t%d\t%s", totalEntries, newEntries, name));
+ }
+ 
++// --- cMenuEditRecording ----------------------------------------------------
++
++class cMenuEditRecording : public cOsdMenu {
++private:
++  char name[MaxFileName];
++  cMenuEditStrItem *file;
++  cOsdItem *marksItem, *resumeItem;
++  bool isResume, isMarks;
++  cRecording *recording;
++  void SetHelpKeys(void);
++  eOSState SetFolder(void);
++public:
++  cMenuEditRecording(cRecording *Recording);
++  virtual eOSState ProcessKey(eKeys Key);
++};
++
++cMenuEditRecording::cMenuEditRecording(cRecording *Recording)
++:cOsdMenu(tr("Edit recording"), 14)
++{
++  cMarks marks;
++
++  file = NULL;
++  recording = Recording;
++
++  if (recording) {
++     Utf8Strn0Cpy(name, recording->Name(), sizeof(name));
++     Add(file = new cMenuEditStrItem(tr("File"), name, sizeof(name)));
++
++     Add(new cOsdItem("", osUnknown, false));
++
++     Add(new cOsdItem(cString::sprintf("%s:\t%s", tr("Date"), *DayDateTime(recording->Start())), osUnknown, false));
++
++     cChannel *channel = Channels.GetByChannelID(((cRecordingInfo *)recording->Info())->ChannelID());
++     if (channel)
++        Add(new cOsdItem(cString::sprintf("%s:\t%s", tr("Channel"), *ChannelString(channel, 0)), osUnknown, false));
++
++     int recLen = recording->LengthInSeconds();
++     if (recLen >= 0)
++        Add(new cOsdItem(cString::sprintf("%s:\t%d:%02d:%02d", tr("Length"), recLen / 3600, recLen / 60 % 60, recLen % 60), osUnknown, false));
++     else
++        recLen = 0;
++
++     int dirSize = DirSizeMB(recording->FileName());
++     cString bitRate = recLen ? cString::sprintf(" (%.2f MBit/s)", 8.0 * dirSize / recLen) : cString("");
++     Add(new cOsdItem(cString::sprintf("%s:\t%s", tr("Format"), recording->IsPesRecording() ? tr("PES") : tr("TS")), osUnknown, false));
++     Add(new cOsdItem((dirSize > 9999) ? cString::sprintf("%s:\t%.2f GB%s", tr("Size"), dirSize / 1024.0, *bitRate) : cString::sprintf("%s:\t%d MB%s", tr("Size"), dirSize, *bitRate), osUnknown, false));
++
++     Add(new cOsdItem("", osUnknown, false));
++
++     isMarks = marks.Load(recording->FileName(), recording->FramesPerSecond(), recording->IsPesRecording()) && marks.Count();
++     marksItem = new cOsdItem(tr("Delete marks information?"), osUser1, isMarks);
++     Add(marksItem);
++
++     cResumeFile ResumeFile(recording->FileName(), recording->IsPesRecording());
++     isResume = (ResumeFile.Read() != -1);
++     resumeItem = new cOsdItem(tr("Delete resume information?"), osUser2, isResume);
++     Add(resumeItem);
++     }
++
++  SetHelpKeys();
++}
++
++void cMenuEditRecording::SetHelpKeys(void)
++{
++  SetHelp(tr("Button$Folder"), tr("Button$Cut"), tr("Button$Copy"), tr("Button$Rename/Move"));
++}
++
++eOSState cMenuEditRecording::SetFolder(void)
++{
++  cMenuFolder *mf = (cMenuFolder *)SubMenu();
++  if (mf) {
++     cString Folder = mf->GetFolder();
++     char *p = strrchr(name, FOLDERDELIMCHAR);
++     if (p)
++        p++;
++     else
++        p = name;
++     if (!isempty(*Folder))
++        strn0cpy(name, cString::sprintf("%s%c%s", *Folder, FOLDERDELIMCHAR, p), sizeof(name));
++     else if (p != name)
++        memmove(name, p, strlen(p) + 1);
++     SetCurrent(file);
++     Display();
++     }
++  return CloseSubMenu();
++}
++
++eOSState cMenuEditRecording::ProcessKey(eKeys Key)
++{
++  eOSState state = cOsdMenu::ProcessKey(Key);
++
++  if (state == osUnknown) {
++     switch (Key) {
++       case kRed:
++            return AddSubMenu(new cMenuFolder(tr("Select folder"), &Folders, name));
++            break;
++       case kGreen:
++            if (!cCutter::Active()) {
++               if (!isMarks)
++                  Skins.Message(mtError, tr("No editing marks defined!"));
++               else if (!cCutter::Start(recording->FileName(), strcmp(recording->Name(), name) ? *NewVideoFileName(recording->FileName(), name) : NULL, false))
++                  Skins.Message(mtError, tr("Can't start editing process!"));
++               else
++                  Skins.Message(mtInfo, tr("Editing process started"));
++               }
++            else
++               Skins.Message(mtError, tr("Editing process already active!"));
++            return osContinue;
++       case kYellow:
++       case kBlue:
++            if (strcmp(recording->Name(), name)) {
++               if (!cFileTransfer::Active()) {
++                  if (cFileTransfer::Start(recording, name, (Key == kYellow)))
++                     Skins.Message(mtInfo, tr("File transfer started"));
++                  else
++                     Skins.Message(mtError, tr("Can't start file transfer!"));
++                  }
++               else
++                  Skins.Message(mtError, tr("File transfer already active!"));
++               }
++            return osRecordings;
++       default:
++            break;
++       }
++     return osContinue;
++     }
++  else if (state == osEnd && HasSubMenu())
++     state = SetFolder();
++  else if (state == osUser1) {
++     if (isMarks && Interface->Confirm(tr("Delete marks information?"))) {
++        cMarks marks;
++        marks.Load(recording->FileName(), recording->FramesPerSecond(), recording->IsPesRecording());
++        cMark *mark = marks.First();
++        while (mark) {
++              cMark *nextmark = marks.Next(mark);
++              marks.Del(mark);
++              mark = nextmark;
++              }
++        marks.Save();
++        isMarks = false;
++        marksItem->SetSelectable(isMarks);
++        SetCurrent(First());
++        Display();
++        }
++     return osContinue;
++     }
++  else if (state == osUser2) {
++     if (isResume && Interface->Confirm(tr("Delete resume information?"))) {
++        cResumeFile ResumeFile(recording->FileName(), recording->IsPesRecording());
++        ResumeFile.Delete();
++        isResume = false;
++        resumeItem->SetSelectable(isResume);
++        SetCurrent(First());
++        Display();
++        }
++     return osContinue;
++     }
++
++  return state;
++}
++
+ // --- cMenuRecordings -------------------------------------------------------
+ 
+ cMenuRecordings::cMenuRecordings(const char *Base, int Level, bool OpenSubMenus)
+@@ -2417,6 +2579,19 @@
+   return osContinue;
+ }
+ 
++eOSState cMenuRecordings::Edit(void)
++{
++  if (HasSubMenu() || Count() == 0)
++     return osContinue;
++  cMenuRecordingItem *ri = (cMenuRecordingItem *)Get(Current());
++  if (ri && !ri->IsDirectory()) {
++     cRecording *recording = GetRecording(ri);
++     if (recording)
++        return AddSubMenu(new cMenuEditRecording(recording));
++     }
++  return osContinue;
++}
++
+ eOSState cMenuRecordings::ProcessKey(eKeys Key)
+ {
+   bool HadSubMenu = HasSubMenu();
+@@ -2431,6 +2606,7 @@
+        case kYellow: return Delete();
+        case kInfo:
+        case kBlue:   return Info();
++       case k0:      return Edit();
+        case k1...k9: return Commands(Key);
+        case kNone:   if (Recordings.StateChanged(recordingsState))
+                         Set(true);
+@@ -3300,6 +3476,7 @@
+   replaying = false;
+   stopReplayItem = NULL;
+   cancelEditingItem = NULL;
++  cancelFileTransferItem = NULL;
+   stopRecordingItem = NULL;
+   recordControlsState = 0;
+   Set();
+@@ -3394,6 +3571,19 @@
+      result = true;
+      }
+ 
++  // File transfer control:
++  bool FileTransferActive = cFileTransfer::Active();
++  if (FileTransferActive && !cancelFileTransferItem) {
++     // TRANSLATORS: note the leading blank!
++     Add(cancelFileTransferItem = new cOsdItem(tr(" Cancel file transfer"), osCancelTransfer));
++     result = true;
++     }
++  else if (cancelFileTransferItem && !FileTransferActive) {
++     Del(cancelFileTransferItem->Index());
++     cancelFileTransferItem = NULL;
++     result = true;
++     }
++
+   // Record control:
+   if (cRecordControls::StateChanged(recordControlsState)) {
+      while (stopRecordingItem) {
+@@ -3442,6 +3632,12 @@
+                           return osEnd;
+                           }
+                        break;
++    case osCancelTransfer:
++                       if (Interface->Confirm(tr("Cancel file transfer?"))) {
++                          cFileTransfer::Stop();
++                          return osEnd;
++                          }
++                       break;
+     case osPlugin:     {
+                          cMenuPluginItem *item = (cMenuPluginItem *)Get(Current());
+                          if (item) {
+@@ -4401,6 +4597,10 @@
+ 
+ // --- cReplayControl --------------------------------------------------------
+ 
++#define REPLAYCONTROLSKIPLIMIT   9    // s
++#define REPLAYCONTROLSKIPSECONDS 90   // s
++#define REPLAYCONTROLSKIPTIMEOUT 5000 // ms
++
+ cReplayControl *cReplayControl::currentReplayControl = NULL;
+ cString cReplayControl::fileName;
+ 
+@@ -4413,6 +4613,9 @@
+   lastCurrent = lastTotal = -1;
+   lastPlay = lastForward = false;
+   lastSpeed = -2; // an invalid value
++  lastSkipKey = kNone;
++  lastSkipSeconds = REPLAYCONTROLSKIPSECONDS;
++  lastSkipTimeout.Set(0);
+   timeoutShow = 0;
+   timeSearchActive = false;
+   cRecording Recording(fileName);
+@@ -4732,7 +4935,7 @@
+      if (!cCutter::Active()) {
+         if (!marks.Count())
+            Skins.Message(mtError, tr("No editing marks defined!"));
+-        else if (!cCutter::Start(fileName))
++        else if (!cCutter::Start(fileName, NULL, false))
+            Skins.Message(mtError, tr("Can't start editing process!"));
+         else
+            Skins.Message(mtInfo, tr("Editing process started"));
+@@ -4821,6 +5024,32 @@
+     case kGreen:   SkipSeconds(-60); break;
+     case kYellow|k_Repeat:
+     case kYellow:  SkipSeconds( 60); break;
++    case k1|k_Repeat:
++    case k1:       SkipSeconds(-20); break;
++    case k3|k_Repeat:
++    case k3:       SkipSeconds( 20); break;
++    case kPrev|k_Repeat:
++    case kPrev:    if (lastSkipTimeout.TimedOut()) {
++                      lastSkipSeconds = REPLAYCONTROLSKIPSECONDS;
++                      lastSkipKey = kPrev;
++                   }
++                   else if (RAWKEY(lastSkipKey) != kPrev && lastSkipSeconds > (2 * REPLAYCONTROLSKIPLIMIT)) {
++                      lastSkipSeconds /= 2;
++                      lastSkipKey = kNone;
++                   }
++                   lastSkipTimeout.Set(REPLAYCONTROLSKIPTIMEOUT);
++                   SkipSeconds(-lastSkipSeconds); break;
++    case kNext|k_Repeat:
++    case kNext:    if (lastSkipTimeout.TimedOut()) {
++                      lastSkipSeconds = REPLAYCONTROLSKIPSECONDS;
++                      lastSkipKey = kNext;	
++                   }
++                   else if (RAWKEY(lastSkipKey) != kNext && lastSkipSeconds > (2 * REPLAYCONTROLSKIPLIMIT)) {
++                      lastSkipSeconds /= 2;
++                      lastSkipKey = kNone;
++                   }
++                   lastSkipTimeout.Set(REPLAYCONTROLSKIPTIMEOUT);
++                   SkipSeconds(lastSkipSeconds); break;
+     case kStop:
+     case kBlue:    Hide();
+                    Stop();
+@@ -4830,12 +5059,8 @@
+       switch (int(Key)) {
+         // Editing:
+         case kMarkToggle:      MarkToggle(); break;
+-        case kPrev|k_Repeat:
+-        case kPrev:
+         case kMarkJumpBack|k_Repeat:
+         case kMarkJumpBack:    MarkJump(false); break;
+-        case kNext|k_Repeat:
+-        case kNext:
+         case kMarkJumpForward|k_Repeat:
+         case kMarkJumpForward: MarkJump(true); break;
+         case kMarkMoveBack|k_Repeat:
+diff -Nru vdr-1.7.28.orig/menu.h vdr-1.7.28/menu.h
+--- vdr-1.7.28.orig/menu.h	2012-05-12 13:48:04.000000000 +0200
++++ vdr-1.7.28/menu.h	2012-06-03 20:01:56.588355025 +0200
+@@ -101,6 +101,7 @@
+   bool replaying;
+   cOsdItem *stopReplayItem;
+   cOsdItem *cancelEditingItem;
++  cOsdItem *cancelFileTransferItem;
+   cOsdItem *stopRecordingItem;
+   int recordControlsState;
+   static cOsdObject *pluginOsdObject;
+@@ -204,6 +205,7 @@
+   eOSState Delete(void);
+   eOSState Info(void);
+   eOSState Commands(eKeys Key = kNone);
++  eOSState Edit(void);
+ protected:
+   cRecording *GetRecording(cMenuRecordingItem *Item);
+ public:
+@@ -261,6 +263,9 @@
+   int lastCurrent, lastTotal;
+   bool lastPlay, lastForward;
+   int lastSpeed;
++  int lastSkipSeconds;
++  eKeys lastSkipKey;
++  cTimeMs lastSkipTimeout;
+   time_t timeoutShow;
+   bool timeSearchActive, timeSearchHide;
+   int timeSearchTime, timeSearchPos;
+diff -Nru vdr-1.7.28.orig/osdbase.c vdr-1.7.28/osdbase.c
+--- vdr-1.7.28.orig/osdbase.c	2012-04-23 11:41:22.000000000 +0200
++++ vdr-1.7.28/osdbase.c	2012-06-03 20:01:56.589355038 +0200
+@@ -77,6 +77,7 @@
+ {
+   isMenu = true;
+   digit = 0;
++  key_nr = -1;
+   hasHotkeys = false;
+   displayMenuItems = 0;
+   title = NULL;
+@@ -126,7 +127,7 @@
+         digit = -1; // prevents automatic hotkeys - input already has them
+      if (digit >= 0) {
+         digit++;
+-        buffer = cString::sprintf(" %c %s", (digit < 10) ? '0' + digit : ' ' , s);
++        buffer = cString::sprintf(" %2d%s %s", digit, (digit > 9) ? "" : " ", s);
+         s = buffer;
+         }
+      }
+@@ -472,20 +473,60 @@
+      }
+ }
+ 
++#define MENUKEY_TIMEOUT 1500
++
+ eOSState cOsdMenu::HotKey(eKeys Key)
+ {
+-  for (cOsdItem *item = First(); item; item = Next(item)) {
++  bool match = false;
++  bool highlight = false;
++  int  item_nr;
++  int  i;
++
++  if (Key == kNone) {
++     if (lastActivity.TimedOut())
++        Key = kOk;
++     else
++        return osContinue;
++     }
++  else
++     lastActivity.Set(MENUKEY_TIMEOUT);
++  for (cOsdItem *item = Last(); item; item = Prev(item)) {
+       const char *s = item->Text();
+-      if (s && (s = skipspace(s)) != NULL) {
+-         if (*s == Key - k1 + '1') {
++      i = 0;
++      item_nr = 0;
++      if (s && (s = skipspace(s)) != '\0' && '0' <= s[i] && s[i] <= '9') {
++         do {
++            item_nr = item_nr * 10 + (s[i] - '0');
++            }
++         while ( !((s[++i] == '\t')||(s[i] == ' ')) && (s[i] != '\0') && ('0' <= s[i]) && (s[i] <= '9'));
++         if ((Key == kOk) && (item_nr == key_nr)) {
+             current = item->Index();
+             RefreshCurrent();
+             Display();
+             cRemote::Put(kOk, true);
++            key_nr = -1;
+             break;
+             }
++         else if (Key != kOk) {
++            if (!highlight && (item_nr == (Key - k0))) {
++               highlight = true;
++               current = item->Index();
++               }
++            if (!match && (key_nr == -1) && ((item_nr / 10) == (Key - k0))) {
++               match = true;
++               key_nr = (Key - k0);
++               }
++            else if (((key_nr == -1) && (item_nr == (Key - k0))) || (!match && (key_nr >= 0) && (item_nr == (10 * key_nr + Key - k0)))) {
++               current = item->Index();
++               cRemote::Put(kOk, true);
++               key_nr = -1;
++               break;
++               }
++            }
+          }
+       }
++  if ((!match) && (Key != kNone))
++     key_nr = -1;
+   return osContinue;
+ }
+ 
+@@ -524,8 +565,8 @@
+         }
+      }
+   switch (int(Key)) {
+-    case k0:      return osUnknown;
+-    case k1...k9: return hasHotkeys ? HotKey(Key) : osUnknown;
++    case kNone:
++    case k0...k9: return hasHotkeys ? HotKey(Key) : osUnknown;
+     case kUp|k_Repeat:
+     case kUp:   CursorUp();   break;
+     case kDown|k_Repeat:
+diff -Nru vdr-1.7.28.orig/osdbase.h vdr-1.7.28/osdbase.h
+--- vdr-1.7.28.orig/osdbase.h	2012-04-23 11:40:07.000000000 +0200
++++ vdr-1.7.28/osdbase.h	2012-06-03 20:01:56.589355038 +0200
+@@ -30,6 +30,7 @@
+                 osStopRecord,
+                 osStopReplay,
+                 osCancelEdit,
++                osCancelTransfer,
+                 osSwitchDvb,
+                 osBack,
+                 osEnd,
+@@ -97,6 +98,8 @@
+   char *status;
+   int digit;
+   bool hasHotkeys;
++  int key_nr;
++  cTimeMs lastActivity;
+   void DisplayHelp(bool Force = false);
+ protected:
+   void SetDisplayMenu(void);
+diff -Nru vdr-1.7.28.orig/po/de_DE.po vdr-1.7.28/po/de_DE.po
+--- vdr-1.7.28.orig/po/de_DE.po	2012-06-03 11:14:47.000000000 +0200
++++ vdr-1.7.28/po/de_DE.po	2012-06-03 20:12:01.682865928 +0200
+@@ -1359,3 +1359,70 @@
+ 
+ msgid "free"
+ msgstr "frei"
++
++msgid "Edit recording"
++msgstr "Aufnahme bearbeiten"
++
++msgid "Button$Cut"
++msgstr "Schneiden"
++
++msgid "Button$Copy"
++msgstr "Kopieren"
++
++msgid "Button$Rename/Move"
++msgstr "Umbenennen/Bewegen"
++
++msgid "Date"
++msgstr "Datum"
++
++msgid "Length"
++msgstr "Länge"
++
++msgid "Format"
++msgstr "Format"
++
++msgid "PES"
++msgstr "PES"
++
++msgid "TS"
++msgstr "TS"
++
++msgid "Size"
++msgstr "Größe"
++
++msgid "Delete marks information?"
++msgstr "Gespeicherte Schnittmarken löschen?"
++
++msgid "Delete resume information?"
++msgstr "Gespeicherten Zeitpunkt der letzten Wiedergabe löschen?"
++
++msgid "File transfer started"
++msgstr "Dateiübertragung gestartet"
++
++msgid "Can't start file transfer!"
++msgstr "Dateiübertragung kann nicht gestartet werden!"
++
++msgid "File transfer already active!"
++msgstr "Dateiübertragung bereits aktiv!"
++ 
++#. TRANSLATORS: note the leading blank!
++msgid " Cancel file transfer"
++msgstr " Dateiübertragung beenden"
++
++msgid "Cancel file transfer?"
++msgstr "Dateiübertragung beenden?"
++
++msgid "Transfering file - shut down anyway?"
++msgstr "Übertrage Datei - trotzdem ausschalten?"
++
++msgid "Transfering file - restart anyway?"
++msgstr "Übertrage Datei - trotzdem neustarten?"
++
++msgid "File transfer failed!"
++msgstr "Dateiübertragung fehlgeschlagen!"
++
++msgid "File transfer finished"
++msgstr "Dateiübertragung fertiggestellt"
++
++msgid "File already exists - overwrite?"
++msgstr "Datei besteht bereits - überschreiben?"
+diff -Nru vdr-1.7.28.orig/po/fi_FI.po vdr-1.7.28/po/fi_FI.po
+--- vdr-1.7.28.orig/po/fi_FI.po	2012-06-02 15:13:22.000000000 +0200
++++ vdr-1.7.28/po/fi_FI.po	2012-06-03 20:06:30.438755308 +0200
+@@ -1362,3 +1362,70 @@
+ 
+ msgid "free"
+ msgstr "vapaana"
++
++msgid "Edit recording"
++msgstr "Muokkaa tallennetta"
++
++msgid "Button$Cut"
++msgstr "Leikkaa"
++
++msgid "Button$Copy"
++msgstr "Kopioi"
++
++msgid "Button$Rename/Move"
++msgstr "NimeÃ¤/SiirrÃ¤"
++
++msgid "Date"
++msgstr "PÃ¤ivÃ¤ys"
++
++msgid "Length"
++msgstr "Pituus"
++
++msgid "Format"
++msgstr "Tiedostomuoto"
++
++msgid "PES"
++msgstr "PES"
++
++msgid "TS"
++msgstr "TS"
++
++msgid "Size"
++msgstr "Koko"
++
++msgid "Delete marks information?"
++msgstr "Poista tallenteen merkinnÃ¤t?"
++
++msgid "Delete resume information?"
++msgstr "Poista tallenteen paluutiedot?"
++
++msgid "File transfer started"
++msgstr "Tiedoston siirto aloitettu"
++
++msgid "Can't start file transfer!"
++msgstr "Tiedoston siirron aloitus epÃ¤onnistui!"
++
++msgid "File transfer already active!"
++msgstr "Tiedoston siirto on jo kÃ¤ynnissÃ¤!"
++ 
++#. TRANSLATORS: note the leading blank!
++msgid " Cancel file transfer"
++msgstr " Peru tiedoston siirto"
++
++msgid "Cancel file transfer?"
++msgstr "Perutaanko tiedoston siirto?"
++
++msgid "Transfering file - shut down anyway?"
++msgstr "Tiedoston siirto kesken - sammutetaanko?"
++
++msgid "Transfering file - restart anyway?"
++msgstr "Tiedoston siirto kesken - kÃ¤ynnistetÃ¤Ã¤nkÃ¶ uudelleen?"
++
++msgid "File transfer failed!"
++msgstr "Tiedoston siirto epÃ¤onnistui!"
++
++msgid "File transfer finished"
++msgstr "Tiedoston siirto valmis"
++
++msgid "File already exists - overwrite?"
++msgstr "Tiedosto on jo olemassa - ylikirjoitetaanko?"
+diff -Nru vdr-1.7.28.orig/recording.c vdr-1.7.28/recording.c
+--- vdr-1.7.28.orig/recording.c	2012-06-03 11:51:27.000000000 +0200
++++ vdr-1.7.28/recording.c	2012-06-03 20:01:56.590355051 +0200
+@@ -936,6 +936,16 @@
+   return NULL;
+ }
+ 
++const char *cRecording::UpdateFileName(const char *FileName)
++{
++  if (FileName && *FileName) {
++     free(fileName);
++     fileName = strdup(FileName);
++     return fileName;
++     }
++  return NULL;
++}
++
+ int cRecording::HierarchyLevels(void) const
+ {
+   const char *s = name;
+@@ -1226,7 +1236,7 @@
+      }
+ }
+ 
+-void cRecordings::DelByName(const char *FileName)
++void cRecordings::DelByName(const char *FileName, bool RemoveRecording)
+ {
+   LOCK_THREAD;
+   cRecording *recording = GetByName(FileName);
+@@ -1234,7 +1244,7 @@
+      cThreadLock DeletedRecordingsLock(&DeletedRecordings);
+      Del(recording, false);
+      char *ext = strrchr(recording->fileName, '.');
+-     if (ext) {
++     if (ext && RemoveRecording) {
+         strncpy(ext, DELEXT, strlen(ext));
+         if (access(recording->FileName(), F_OK) == 0) {
+            recording->deleted = time(NULL);
+diff -Nru vdr-1.7.28.orig/recording.h vdr-1.7.28/recording.h
+--- vdr-1.7.28.orig/recording.h	2012-06-03 11:49:09.000000000 +0200
++++ vdr-1.7.28/recording.h	2012-06-03 20:01:56.591355064 +0200
+@@ -117,6 +117,7 @@
+   const char *Title(char Delimiter = ' ', bool NewIndicator = false, int Level = -1) const;
+   const cRecordingInfo *Info(void) const { return info; }
+   const char *PrefixFileName(char Prefix);
++  const char *UpdateFileName(const char *FileName);
+   int HierarchyLevels(void) const;
+   void ResetResume(void) const;
+   double FramesPerSecond(void) const { return framesPerSecond; }
+@@ -188,7 +189,7 @@
+   void ResetResume(const char *ResumeFileName = NULL);
+   cRecording *GetByName(const char *FileName);
+   void AddByName(const char *FileName, bool TriggerUpdate = true);
+-  void DelByName(const char *FileName);
++  void DelByName(const char *FileName, bool RemoveRecording = true);
+   void UpdateByName(const char *FileName);
+   int TotalFileSizeMB(void);
+   double MBperMinute(void);
+diff -Nru vdr-1.7.28.orig/shutdown.c vdr-1.7.28/shutdown.c
+--- vdr-1.7.28.orig/shutdown.c	2008-02-24 11:29:00.000000000 +0100
++++ vdr-1.7.28/shutdown.c	2012-06-03 20:01:56.591355064 +0200
+@@ -17,6 +17,7 @@
+ #include "channels.h"
+ #include "config.h"
+ #include "cutter.h"
++#include "filetransfer.h"
+ #include "i18n.h"
+ #include "interface.h"
+ #include "menu.h"
+@@ -166,6 +167,10 @@
+      if (!Interactive || !Interface->Confirm(tr("Editing - shut down anyway?")))
+         return false;
+      }
++  if (cFileTransfer::Active()) {
++     if (!Interactive || !Interface->Confirm(tr("Transfering file - shut down anyway?")))
++        return false;
++     }
+ 
+   cTimer *timer = Timers.GetNextActiveTimer();
+   time_t Next = timer ? timer->StartTime() : 0;
+@@ -209,6 +214,10 @@
+      if (!Interactive || !Interface->Confirm(tr("Editing - restart anyway?")))
+         return false;
+      }
++  if (cFileTransfer::Active()) {
++     if (!Interactive || !Interface->Confirm(tr("Transfering file - restart anyway?")))
++        return false;
++     }
+ 
+   cTimer *timer = Timers.GetNextActiveTimer();
+   time_t Next  = timer ? timer->StartTime() : 0;
+diff -Nru vdr-1.7.28.orig/svdrp.c vdr-1.7.28/svdrp.c
+--- vdr-1.7.28.orig/svdrp.c	2012-05-12 13:55:18.000000000 +0200
++++ vdr-1.7.28/svdrp.c	2012-06-03 20:01:56.591355064 +0200
+@@ -31,6 +31,7 @@
+ #include "cutter.h"
+ #include "device.h"
+ #include "eitscan.h"
++#include "filetransfer.h"
+ #include "keys.h"
+ #include "menu.h"
+ #include "plugin.h"
+@@ -193,6 +194,11 @@
+   "    After a CLRE command, no further EPG processing is done for 10\n"
+   "    seconds, so that data sent with subsequent PUTE commands doesn't\n"
+   "    interfere with data from the broadcasters.",
++  "CPYR <number> <new name>\n"
++  "    Copy the recording with the given number. Before a recording can be\n"
++  "    copied, an LSTR command must have been executed in order to retrieve\n"
++  "    the recording numbers. The numbers don't change during subsequent CPYR\n"
++  "    commands.",
+   "DELC <number>\n"
+   "    Delete channel.",
+   "DELR <number>\n"
+@@ -256,6 +262,11 @@
+   "    used to easily activate or deactivate a timer.",
+   "MOVC <number> <to>\n"
+   "    Move a channel to a new position.",
++  "MOVR <number> <new name>\n"
++  "    Move the recording with the given number. Before a recording can be\n"
++  "    moved, an LSTR command must have been executed in order to retrieve\n"
++  "    the recording numbers. The numbers don't change during subsequent MOVR\n"
++  "    commands.",
+   "NEWC <settings>\n"
+   "    Create a new channel. Settings must be in the same format as returned\n"
+   "    by the LSTC command.",
+@@ -611,6 +622,32 @@
+      }
+ }
+ 
++void cSVDRP::CmdCPYR(const char *Option)
++{
++  if (*Option) {
++     char *tail;
++     int n = strtol(Option, &tail, 10);
++     cRecording *recording = Recordings.Get(n - 1);
++     if (recording && tail && tail != Option) {
++        char *oldName = strdup(recording->Name());
++        tail = skipspace(tail);
++        if (!cFileTransfer::Active()) {
++           if (cFileTransfer::Start(recording, tail, true))
++              Reply(250, "Copying recording \"%s\" to \"%s\"", oldName, tail);
++           else
++              Reply(554, "Can't start file transfer");
++           }
++        else
++           Reply(554, "File transfer already active");
++        free(oldName);
++        }
++     else
++        Reply(550, "Recording \"%d\" not found%s", n, Recordings.Count() ? "" : " (use LSTR before copying)");
++     }
++  else
++     Reply(501, "Invalid Option \"%s\"", Option);
++}
++
+ void cSVDRP::CmdDELC(const char *Option)
+ {
+   if (*Option) {
+@@ -1289,6 +1326,32 @@
+      Reply(501, "Missing channel number");
+ }
+ 
++void cSVDRP::CmdMOVR(const char *Option)
++{
++  if (*Option) {
++     char *tail;
++     int n = strtol(Option, &tail, 10);
++     cRecording *recording = Recordings.Get(n - 1);
++     if (recording && tail && tail != Option) {
++        char *oldName = strdup(recording->Name());
++        tail = skipspace(tail);
++        if (!cFileTransfer::Active()) {
++           if (cFileTransfer::Start(recording, tail))
++              Reply(250, "Moving recording \"%s\" to \"%s\"", oldName, tail);
++           else
++              Reply(554, "Can't start file transfer");
++           }
++        else
++           Reply(554, "File transfer already active");
++        free(oldName);
++        }
++     else
++        Reply(550, "Recording \"%d\" not found%s", n, Recordings.Count() ? "" : " (use LSTR before moving)");
++     }
++  else
++     Reply(501, "Invalid Option \"%s\"", Option);
++}
++
+ void cSVDRP::CmdNEWC(const char *Option)
+ {
+   if (*Option) {
+@@ -1618,6 +1681,7 @@
+   s = skipspace(s);
+   if      (CMD("CHAN"))  CmdCHAN(s);
+   else if (CMD("CLRE"))  CmdCLRE(s);
++  else if (CMD("CPYR"))  CmdCPYR(s);
+   else if (CMD("DELC"))  CmdDELC(s);
+   else if (CMD("DELR"))  CmdDELR(s);
+   else if (CMD("DELT"))  CmdDELT(s);
+@@ -1633,6 +1697,7 @@
+   else if (CMD("MODC"))  CmdMODC(s);
+   else if (CMD("MODT"))  CmdMODT(s);
+   else if (CMD("MOVC"))  CmdMOVC(s);
++  else if (CMD("MOVR"))  CmdMOVR(s);
+   else if (CMD("NEWC"))  CmdNEWC(s);
+   else if (CMD("NEWT"))  CmdNEWT(s);
+   else if (CMD("NEXT"))  CmdNEXT(s);
+diff -Nru vdr-1.7.28.orig/svdrp.h vdr-1.7.28/svdrp.h
+--- vdr-1.7.28.orig/svdrp.h	2012-04-26 12:30:06.000000000 +0200
++++ vdr-1.7.28/svdrp.h	2012-06-03 20:01:56.592355076 +0200
+@@ -56,6 +56,7 @@
+   void PrintHelpTopics(const char **hp);
+   void CmdCHAN(const char *Option);
+   void CmdCLRE(const char *Option);
++  void CmdCPYR(const char *Option);
+   void CmdDELC(const char *Option);
+   void CmdDELR(const char *Option);
+   void CmdDELT(const char *Option);
+@@ -71,6 +72,7 @@
+   void CmdMODC(const char *Option);
+   void CmdMODT(const char *Option);
+   void CmdMOVC(const char *Option);
++  void CmdMOVR(const char *Option);
+   void CmdNEWC(const char *Option);
+   void CmdNEWT(const char *Option);
+   void CmdNEXT(const char *Option);
+diff -Nru vdr-1.7.28.orig/vdr.c vdr-1.7.28/vdr.c
+--- vdr-1.7.28.orig/vdr.c	2012-04-26 11:23:41.000000000 +0200
++++ vdr-1.7.28/vdr.c	2012-06-03 20:01:56.592355076 +0200
+@@ -45,6 +45,7 @@
+ #include "dvbdevice.h"
+ #include "eitscan.h"
+ #include "epg.h"
++#include "filetransfer.h"
+ #include "i18n.h"
+ #include "interface.h"
+ #include "keys.h"
+@@ -1225,6 +1226,12 @@
+               else
+                  Skins.Message(mtInfo, tr("Editing process finished"));
+               }
++           if (!cFileTransfer::Active() && cFileTransfer::Ended()) {
++              if (cFileTransfer::Error())
++                 Skins.Message(mtError, tr("File transfer failed!"));
++              else
++                 Skins.Message(mtInfo, tr("File transfer finished"));
++              }
+            }
+ 
+         // SIGHUP shall cause a restart:
+@@ -1240,7 +1247,7 @@
+               ShutdownHandler.countdown.Cancel();
+            }
+ 
+-        if ((Now - LastInteract) > ACTIVITYTIMEOUT && !cRecordControls::Active() && !cCutter::Active() && !Interface->HasSVDRPConnection() && (Now - cRemote::LastActivity()) > ACTIVITYTIMEOUT) {
++        if ((Now - LastInteract) > ACTIVITYTIMEOUT && !cRecordControls::Active() && !cCutter::Active() && !cFileTransfer::Active() && !Interface->HasSVDRPConnection() && (Now - cRemote::LastActivity()) > ACTIVITYTIMEOUT) {
+            // Handle housekeeping tasks
+ 
+            // Shutdown:
+@@ -1287,6 +1294,7 @@
+ 
+   PluginManager.StopPlugins();
+   cRecordControls::Shutdown();
++  cFileTransfer::Stop();
+   cCutter::Stop();
+   delete Menu;
+   cControl::Shutdown();
+diff -Nru vdr-1.7.28.orig/videodir.c vdr-1.7.28/videodir.c
+--- vdr-1.7.28.orig/videodir.c	2012-04-22 17:03:10.000000000 +0200
++++ vdr-1.7.28/videodir.c	2012-06-03 20:01:56.593355088 +0200
+@@ -224,6 +224,22 @@
+   return NULL;
+ }
+ 
++cString NewVideoFileName(const char *FileName, const char *NewDirName)
++{
++  char *NewDir = ExchangeChars(strdup(NewDirName), true);
++  if (NewDir) {
++     const char *p = FileName + strlen(FileName); // p points at the terminating 0
++     while (p-- > FileName) {
++           if (*p == '/')
++              break;
++           }
++     cString NewName = cString::sprintf("%s/%s%s", VideoDirectory, NewDir, p);
++     free(NewDir);
++     return NewName;
++     }
++  return NULL;
++}
++
+ void RemoveEmptyVideoDirectories(void)
+ {
+   cVideoDirectory Dir;
+diff -Nru vdr-1.7.28.orig/videodir.h vdr-1.7.28/videodir.h
+--- vdr-1.7.28.orig/videodir.h	2012-04-22 17:07:56.000000000 +0200
++++ vdr-1.7.28/videodir.h	2012-06-03 20:01:56.593355088 +0200
+@@ -22,6 +22,7 @@
+ bool VideoFileSpaceAvailable(int SizeMB);
+ int VideoDiskSpace(int *FreeMB = NULL, int *UsedMB = NULL); // returns the used disk space in percent
+ cString PrefixVideoFileName(const char *FileName, char Prefix);
++cString NewVideoFileName(const char *FileName, const char *NewDirName);
+ void RemoveEmptyVideoDirectories(void);
+ bool IsOnVideoDirectoryFileSystem(const char *FileName);
+ 
