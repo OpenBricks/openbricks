@@ -169,7 +169,7 @@ fi
 
 ## smbroot
 if [ -n "$SMBROOT" ] ; then
-  dbg_echo -n "Trying smbroot=$SMBROOT as requested..."
+  dbg_echo "Trying smbroot=$SMBROOT as requested..."
   ROOT=/mnt
   if [ -z "$IP" ] ; then
     ifconfig eth0 up >/dev/null 2>&1
@@ -180,14 +180,42 @@ if [ -n "$SMBROOT" ] ; then
   p=`echo $SMBROOT | cut -d: -f3`
   [ -n "$u" -a -n "$p" ] && OP="-o user=$u,password=$p" || OP=""
   if mount $s $OP /mnt >/dev/null 2>&1; then
-    dbg_echo -n " ... $SMBROOT is mounted ..."
+    dbg_echo " ... $SMBROOT is mounted ..."
     [ -z "$ROOTFS" ] && ROOTFS=/rootfs
     mkdir -p /cache
-    dbg_echo -n " ... copying $ROOTFS to ram ..."
+    dbg_echo " ... copying $ROOTFS to ram ..."
     mount -t tmpfs tmpfs /cache
     cp /mnt/$ROOTFS /cache/rootfs
-    dbg_echo -n " ... Done ..."
+    dbg_echo " ... Done ..."
     ROOTFS=/rootfs
+    if [ "$EXTERNAL_PERSISTENT" = 1 ] ; then
+      dbg_echo " ... External persistent enabled  ..."
+      FSTYPE=`grep "$s" /proc/mounts | cut -d" " -f3` 
+      mkdir -p /persistent
+      mount -t tmpfs tmpfs /persistent
+
+      ## Create our own directory in server
+      for d in bin boot root etc firmware lib sbin sys usr var video ; do
+        mkdir -p /mnt/geexbox/$d
+      done
+
+      ## Restore
+      for d in bin boot etc firmware lib sbin sys usr var ; do
+        cp -R /mnt/geexbox/$d /persistent/
+      done
+      
+      ## link
+      mkdir -p /persistent/persistent /persistent/data /persistent/etc
+
+      if [ -z "$OP" ] ; then
+        echo "$s /data $FSTYPE iocharset=utf8 0 0" >/persistent/etc/fstab
+      else
+        echo "$s /data $FSTYPE iocharset=utf8,user=$u,password=$p 0 0" >/persistent/etc/fstab
+      fi
+      echo "/data/geexbox /persistent none bind 0 0" >>/persistent/etc/fstab
+      echo "/data/geexbox/root /root none bind 0 0" >>/persistent/etc/fstab        
+    fi
+
     umount /mnt
     mount --move /cache /mnt
     if mount -t squashfs /mnt/rootfs /squashfs >/dev/null 2>&1; then
@@ -203,8 +231,6 @@ if [ -n "$SMBROOT" ] ; then
   [ -n "$FOUND_ROOTFS" ] || unset ROOT
   unset FOUND_ROOTFS
 fi
-
-
 
 # ...otherwise just scan the block devices for rootfs
 if [ -z "$ROOT" ]; then
