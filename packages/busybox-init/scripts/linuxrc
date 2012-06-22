@@ -5,6 +5,55 @@ dbg_echo () {
   return
 }
 
+# external_persistent "device/share" "fstype" "mount option" "casper-rw file"
+external_persistent () {
+  dbg_echo " ... External persistent enabled  ..."
+  [ -z $4 ] && CASPER=geexbox || CASPER="$4"
+
+  # create directory
+  mkdir /persistent
+  mount -t tmpfs tmpfs /persistent
+  mkdir /persistent/persistent /persistent/data /persistent/etc
+
+  if [ "$2" = "cifs" -o "$2" = "nfs" ] ; then
+    PERSISTENT_TMP=/mnt/geexbox
+    MNT_OPTION_PERSISTENT="none bind"
+  else
+    # ntfs
+    PERSISTENT_TMP=/persistent-tmp
+    MNT_OPTION_PERSISTENT="ext2 rw,noatime"
+    mkdir /persistent-tmp
+    mount -t ext2 -o rw,noatime /mnt/$4 /persistent-tmp
+  fi
+
+  # create our own directory
+  for d in bin boot root etc firmware lib sbin sys usr var video ; do
+    mkdir -p $PERSISTENT_TMP/$d
+  done
+
+  # restore
+  for d in bin boot etc firmware lib sbin sys usr var ; do
+    cp -R $PERSISTENT_TMP/$d /persistent
+  done
+
+  # fstab
+  echo "$1 /data $2 $3 0 0" >/persistent/etc/fstab
+  echo "/data/$CASPER /persistent $MNT_OPTION_PERSISTENT 0 0" >>/persistent/etc/fstab
+  echo "/persistent/root /root none bind 0 0" >>/persistent/etc/fstab
+
+  # umount /persistent-tmp if needed
+  [ "$2" = "ntfs" ] && sync && umount /persistent-tmp
+}
+
+# do_cache file 
+do_cache () {
+  mkdir -p /cache
+  dbg_echo " ... copying $1 to ram ..."
+  mount -t tmpfs tmpfs /cache
+  cp /mnt/$1 /cache/rootfs
+  dbg_echo " ... Done ..."
+}
+
 # install busybox symlinks
 /bin/busybox --install -s
 
@@ -100,24 +149,9 @@ if [ -n "$ROOT" ]; then
         FOUND_ROOTFS=yes
         break
       elif [ "$EXTERNAL_PERSISTENT" = 1 ] ; then
-        FSTYPE=`grep "$ROOT" /proc/mounts | cut -d" " -f3` 
-        mkdir -p /cache
-        mkdir -p /persistent-tmp
-        mkdir -p /persistent
-        mount -t tmpfs tmpfs /cache
-        mount -t tmpfs tmpfs /persistent
-        mount -o loop,rw,noatime -t ext2 /mnt/$PERSISTENT /persistent-tmp
-        mkdir -p /persistent-tmp/root
-        for d in bin boot etc firmware lib sbin sys usr var ; do
-          cp -R /persistent-tmp/$d /persistent/
-        done
-        ln -sf /persistent/root /persistent/root
-        mkdir -p /persistent/etc
-        echo "$ROOT /data $FSTYPE rw 0 0" >/persistent/etc/fstab
-        echo "/data/$PERSISTENT /persistent  ext2 rw,noatime 0 0" >>/persistent/etc/fstab
-        cp /mnt/$ROOTFS /cache/rootfs
-        sync
-        umount /persistent-tmp
+        FSTYPE=`grep "$ROOT" /proc/mounts | cut -d" " -f3`
+        do_cache $ROOTFS       
+        external_persistent $ROOT $FSTYPE "rw,noatime" $PERSISTENT
         ROOTFS=/rootfs
         mount -r /mnt
         umount /mnt || umount -l /mnt
@@ -153,6 +187,14 @@ if [ -n "$NFSROOT" ] ; then
     udhcpc -s /bin/assign-ip >/dev/null 2>&1
   fi
   if mount -o nolock,$ROOT_MODE_PART $NFSROOT /mnt >/dev/null 2>&1; then
+    do_cache $ROOTFS
+    if [ "$EXTERNAL_PERSISTENT" = 1 -a "$ROOT_MODE" = rw ] ; then
+      FSTYPE=`grep "$s" /proc/mounts | cut -d" " -f3`
+      external_persistent $NFSROOT nfs "nolock,rw"
+    fi
+    ROOTFS=/rootfs
+    umount /mnt
+    mount --move /cache /mnt
     if mount -t squashfs /mnt/rootfs /squashfs >/dev/null 2>&1; then
       dbg_echo "found."
       FOUND_ROOTFS=yes
@@ -181,41 +223,15 @@ if [ -n "$SMBROOT" ] ; then
   [ -n "$u" -a -n "$p" ] && OP="-o user=$u,password=$p" || OP=""
   if mount $s $OP /mnt >/dev/null 2>&1; then
     dbg_echo " ... $SMBROOT is mounted ..."
-    [ -z "$ROOTFS" ] && ROOTFS=/rootfs
-    mkdir -p /cache
-    dbg_echo " ... copying $ROOTFS to ram ..."
-    mount -t tmpfs tmpfs /cache
-    cp /mnt/$ROOTFS /cache/rootfs
-    dbg_echo " ... Done ..."
-    ROOTFS=/rootfs
+    do_cache $ROOTFS
     if [ "$EXTERNAL_PERSISTENT" = 1 ] ; then
-      dbg_echo " ... External persistent enabled  ..."
-      FSTYPE=`grep "$s" /proc/mounts | cut -d" " -f3` 
-      mkdir -p /persistent
-      mount -t tmpfs tmpfs /persistent
-
-      ## Create our own directory in server
-      for d in bin boot root etc firmware lib sbin sys usr var video ; do
-        mkdir -p /mnt/geexbox/$d
-      done
-
-      ## Restore
-      for d in bin boot etc firmware lib sbin sys usr var ; do
-        cp -R /mnt/geexbox/$d /persistent/
-      done
-      
-      ## link
-      mkdir -p /persistent/persistent /persistent/data /persistent/etc
-
-      if [ -z "$OP" ] ; then
-        echo "$s /data $FSTYPE iocharset=utf8 0 0" >/persistent/etc/fstab
+      FSTYPE=`grep "$s" /proc/mounts | cut -d" " -f3`
+      if [ -n "$OP" ] ; then
+        external_persistent $s $FSTYPE "iocharset=utf8,user=$u,password=$p"
       else
-        echo "$s /data $FSTYPE iocharset=utf8,user=$u,password=$p 0 0" >/persistent/etc/fstab
+        external_persistent $s $FSTYPE "iocharset=utf8"
       fi
-      echo "/data/geexbox /persistent none bind 0 0" >>/persistent/etc/fstab
-      echo "/data/geexbox/root /root none bind 0 0" >>/persistent/etc/fstab        
     fi
-
     umount /mnt
     mount --move /cache /mnt
     if mount -t squashfs /mnt/rootfs /squashfs >/dev/null 2>&1; then
@@ -296,7 +312,7 @@ else
   fi
 
   # setup aufs
-  if [ -n "$PERSISTENT" ]; then
+  if [ -n "$PERSISTENT" -a -z "$EXTERNAL_PERSISTENT" ]; then
    DATA=/mnt/$PERSISTENT
    PERSISTENT_OPT="-o loop -t ext2"
    [ ! -f "$DATA" ] && unset DATA && unset PERSISTENT_OPT
@@ -347,3 +363,4 @@ if ! exec /bin/busybox switch_root /newroot $INIT $INIT_ARGS; then
   /bin/busybox mount -t sysfs none /sys
   exec sh
 fi
+
