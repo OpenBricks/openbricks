@@ -177,60 +177,35 @@ if [ -n "$ROOT" ]; then
   unset FOUND_ROOTFS
 fi
 
-
-## nfsroot
-if [ -n "$NFSROOT" ] ; then
-  dbg_echo -n "Trying nfsroot=$NFSROOT as requested..."
-  ROOT=/mnt
+## smbroot or nfsroot
+if [ -n "$SMBROOT" -o -n "$NFSROOT" ] ; then
+  # network up
   if [ -z "$IP" ] ; then
     ifconfig eth0 up >/dev/null 2>&1
     udhcpc -s /bin/assign-ip >/dev/null 2>&1
   fi
-  if mount -o nolock,$ROOT_MODE_PART $NFSROOT /mnt >/dev/null 2>&1; then
+
+  if [ -n "$SMBROOT" ] ; then
+    s=`echo $SMBROOT | cut -d: -f1`
+    u=`echo $SMBROOT | cut -d: -f2`
+    p=`echo $SMBROOT | cut -d: -f3`
+    [ -n "$u" -a -n "$p" ] && OP="-o user=$u,password=$p" || OP=""
+    NET=$s
+  else
+    NET=$NFSROOT
+    OP="-o nolock,$ROOT_MODE_PART"
+  fi
+  
+  dbg_echo "Trying $NET as requested..."
+  ROOT=/mnt
+  
+  if mount $NET $OP /mnt >/dev/null 2>&1; then
+    dbg_echo " ... $NET is mounted ..."
     do_cache $ROOTFS
     if [ "$EXTERNAL_PERSISTENT" = 1 -a "$ROOT_MODE" = rw ] ; then
-      FSTYPE=`grep "$s" /proc/mounts | cut -d" " -f3`
-      external_persistent $NFSROOT nfs "nolock,rw"
-    fi
-    ROOTFS=/rootfs
-    umount /mnt
-    mount --move /cache /mnt
-    if mount -t squashfs /mnt/rootfs /squashfs >/dev/null 2>&1; then
-      dbg_echo "found."
-      FOUND_ROOTFS=yes
-    else
-      dbg_echo -n "failed, cannot mount squashfs."
-      umount /mnt
-    fi
-  else
-    dbg_echo -n "failed, cannot mount $NFSROOT."
-  fi
-  [ -n "$FOUND_ROOTFS" ] || unset ROOT
-  unset FOUND_ROOTFS
-fi
-
-## smbroot
-if [ -n "$SMBROOT" ] ; then
-  dbg_echo "Trying smbroot=$SMBROOT as requested..."
-  ROOT=/mnt
-  if [ -z "$IP" ] ; then
-    ifconfig eth0 up >/dev/null 2>&1
-    udhcpc -s /bin/assign-ip >/dev/null 2>&1
-  fi
-  s=`echo $SMBROOT | cut -d: -f1`
-  u=`echo $SMBROOT | cut -d: -f2`
-  p=`echo $SMBROOT | cut -d: -f3`
-  [ -n "$u" -a -n "$p" ] && OP="-o user=$u,password=$p" || OP=""
-  if mount $s $OP /mnt >/dev/null 2>&1; then
-    dbg_echo " ... $SMBROOT is mounted ..."
-    do_cache $ROOTFS
-    if [ "$EXTERNAL_PERSISTENT" = 1 ] ; then
-      FSTYPE=`grep "$s" /proc/mounts | cut -d" " -f3`
-      if [ -n "$OP" ] ; then
-        external_persistent $s $FSTYPE "iocharset=utf8,user=$u,password=$p"
-      else
-        external_persistent $s $FSTYPE "iocharset=utf8"
-      fi
+      [ -n "$NFSROOT" ] && external_persistent $NFSROOT nfs "nolock,rw"
+      [ -n "$SMBROOT" -a -n "$OP" ] && external_persistent $s cifs "iocharset=utf8,user=$u,password=$p"
+      [ -n "$SMBROOT" -a -z "$OP" ] && external_persistent $s cifs "iocharset=utf8"
     fi
     umount /mnt
     mount --move /cache /mnt
@@ -242,7 +217,7 @@ if [ -n "$SMBROOT" ] ; then
       umount /mnt
     fi
   else
-    dbg_echo -n "failed, cannot mount $SMBROOT."
+    dbg_echo -n "failed, cannot mount $NET."
   fi
   [ -n "$FOUND_ROOTFS" ] || unset ROOT
   unset FOUND_ROOTFS
