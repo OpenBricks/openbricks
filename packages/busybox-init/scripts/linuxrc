@@ -17,11 +17,13 @@ external_persistent () {
 
   if [ "$2" = "cifs" -o "$2" = "nfs" ] ; then
     PERSISTENT_TMP=/mnt/geexbox
-    MNT_OPTION_PERSISTENT="none bind"
+    MNT_OPTION_PERSISTENT="bind"
+    MNT_TYPE_PERSISTENT="none"
   else
     # ntfs
     PERSISTENT_TMP=/persistent-tmp
-    MNT_OPTION_PERSISTENT="ext2 rw,noatime"
+    MNT_OPTION_PERSISTENT="rw,noatime"
+    MNT_TYPE_PERSISTENT="ext2"
     mkdir /persistent-tmp
     mount -t ext2 -o rw,noatime /mnt/$4 /persistent-tmp
   fi
@@ -36,13 +38,61 @@ external_persistent () {
     cp -R $PERSISTENT_TMP/$d /persistent
   done
 
-  # fstab
-  echo "$1 /data $2 $3 0 0" >/persistent/etc/fstab
-  echo "/data/$CASPER /persistent $MNT_OPTION_PERSISTENT 0 0" >>/persistent/etc/fstab
-  echo "/persistent/root /root none bind 0 0" >>/persistent/etc/fstab
+  # create *.mount files
+
+   mkdir -p /persistent/lib/systemd/system
+   mkdir -p /persistent/etc/systemd/system/remote-fs.target.wants
+   cat > /persistent/lib/systemd/system/data.mount << EOF
+[unit]
+Description=Mount data
+
+[Mount]
+What=$1
+Where=/data
+Type=$2
+Options=$3
+
+[Install]
+WantedBy=remote-fs.target
+EOF
+
+  cat > /persistent/lib/systemd/system/persistent.mount << EOF
+[unit]
+Description=Mount persistent
+After=data.mount
+
+[Mount]
+What=/data/$CASPER
+Where=/persistent
+Type=$MNT_TYPE_PERSISTENT
+Options=$MNT_OPTION_PERSISTENT
+
+[Install]
+WantedBy=remote-fs.target
+EOF
+
+  cat > /persistent/lib/systemd/system/root.mount << EOF
+[unit]
+Description=Mount root
+After=persistent.mount
+
+[Mount]
+What=/persistent/root
+Where=/root
+Type=none
+Options=bind
+
+[Install]
+WantedBy=remote-fs.target
+EOF
+
+  ln -s /lib/systemd/system/data.mount /persistent/etc/systemd/system/remote-fs.target.wants/data.mount
+  ln -s /lib/systemd/system/persistent.mount /persistent/etc/systemd/system/remote-fs.target.wants/persistent.mount
+  ln -s /lib/systemd/system/root.mount /persistent/etc/systemd/system/remote-fs.target.wants/root.mount
 
   # umount /persistent-tmp if needed
   [ "$2" = "ntfs" ] && sync && umount /persistent-tmp
+
 }
 
 # do_cache file 
