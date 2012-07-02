@@ -7,6 +7,7 @@
 
 USERDATA="/root/.xbmc/userdata"
 ADV_SETTINGS="$USERDATA/advancedsettings.xml"
+GUI_SETTINGS="$USERDATA/guisettings.xml"
 SOURCES="$USERDATA/sources.xml"
 
 set_default_advanced_settings () {
@@ -31,6 +32,22 @@ fi
   </samba>
   <fullscreen>$FULLSCREEN</fullscreen>
 </advancedsettings>
+EOF
+}
+
+set_default_gui_settings () {
+  [ -f "$GUI_SETTINGS" ] && return
+  [ "x$TZ" = "x" ] && TZ=$( ls -l /etc/localtime | sed 's/.*\/usr\/share\/zoneinfo\///')
+  [ "x$TZ" = "x" ] || TZ_COUNTRY_CODE=$( grep $TZ /usr/share/zoneinfo/zone.tab | cut -f1|head -n 1)
+  [ "x$TZ_COUNTRY_CODE" = "x" ] || TZ_COUNTRY=$( grep $TZ_COUNTRY_CODE /usr/share/zoneinfo/iso3166.tab | cut -f2|head -n 1)
+
+  cat > "$GUI_SETTINGS" << EOF
+<settings>
+  <locale>
+    <timezone>$TZ</timezone>
+    <timezonecountry>$TZ_COUNTRY</timezonecountry>
+  </locale>
+</settings>
 EOF
 }
 
@@ -66,6 +83,7 @@ EOF
 
 mkdir -p "$USERDATA"
 set_default_advanced_settings
+set_default_gui_settings
 set_default_sources
 
 # remote
