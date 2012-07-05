@@ -1,0 +1,461 @@
+From 82e749002f8fc1cba1cf37e7e73b26778aeef8e2 Mon Sep 17 00:00:00 2001
+From: Rob Clark <rob@ti.com>
+Date: Mon, 23 Apr 2012 11:39:23 -0500
+Subject: [PATCH 7/8] WIP: dri2video (v3)
+
+---
+ src/omap_dri2.c |  336 ++++++++++++++++++++++++++++++++++++++++++++++++++-----
+ 1 file changed, 309 insertions(+), 27 deletions(-)
+
+diff --git a/src/omap_dri2.c b/src/omap_dri2.c
+index 1e4edd3..f9af707 100644
+--- a/src/omap_dri2.c
++++ b/src/omap_dri2.c
+@@ -37,7 +37,7 @@
+ #include "dri2.h"
+ 
+ /* any point to support earlier? */
+-#if DRI2INFOREC_VERSION < 4
++#if DRI2INFOREC_VERSION < 7
+ #	error "Requires newer DRI2"
+ #endif
+ 
+@@ -61,6 +61,14 @@ typedef struct {
+ 	 */
+ 	int refcnt;
+ 
++	/**
++	 * For multi-planar formats, extra buffer info..
++	 */
++	int extraCount;
++	PixmapPtr *extraPix;
++	unsigned int *extraNames;
++	unsigned int *extraPitches;
++
+ } OMAPDRI2BufferRec, *OMAPDRI2BufferPtr;
+ 
+ #define OMAPBUF(p)	((OMAPDRI2BufferPtr)(p))
+@@ -202,6 +210,34 @@ createpix(DrawablePtr pDraw)
+ 
+ /* ************************************************************************* */
+ 
++static OMAPDRI2BufferPtr
++createbuf(DrawablePtr pDraw, PixmapPtr pPixmap, int attachment, int format)
++{
++	ScreenPtr pScreen = pDraw->pScreen;
++	ScrnInfoPtr pScrn = xf86Screens[pScreen->myNum];
++	OMAPDRI2BufferPtr buf = calloc(1, sizeof(*buf));
++	int ret;
++
++	if (!buf) {
++		return NULL;
++	}
++
++	DRIBUF(buf)->attachment = attachment;
++	DRIBUF(buf)->pitch = exaGetPixmapPitch(pPixmap);
++	DRIBUF(buf)->cpp = pPixmap->drawable.bitsPerPixel / 8;
++	DRIBUF(buf)->format = format;
++	buf->refcnt = 1;
++	buf->pPixmap = pPixmap;
++
++	ret = omap_bo_get_name(OMAPPixmapBo(pPixmap), &DRIBUF(buf)->name);
++	if (ret) {
++		ERROR_MSG("could not get buffer name: %d", ret);
++		return NULL;
++	}
++
++	return buf;
++}
++
+ /**
+  * Create Buffer.
+  *
+@@ -219,18 +255,12 @@ OMAPDRI2CreateBuffer(DrawablePtr pDraw, unsigned int attachment,
+ 	ScreenPtr pScreen = pDraw->pScreen;
+ 	ScrnInfoPtr pScrn = xf86Screens[pScreen->myNum];
+ 	OMAPPtr pOMAP = OMAPPTR(pScrn);
+-	OMAPDRI2BufferPtr buf = calloc(1, sizeof(*buf));
++	OMAPDRI2BufferPtr buf;
+ 	PixmapPtr pPixmap;
+-	struct omap_bo *bo;
+-	int ret;
+ 
+ 	DEBUG_MSG("pDraw=%p, attachment=%d, format=%08x",
+ 			pDraw, attachment, format);
+ 
+-	if (!buf) {
+-		return NULL;
+-	}
+-
+ 	if (attachment == DRI2BufferFrontLeft) {
+ 		pPixmap = draw2pix(pDraw);
+ 
+@@ -259,31 +289,95 @@ OMAPDRI2CreateBuffer(DrawablePtr pDraw, unsigned int attachment,
+ 		pPixmap = createpix(pDraw);
+ 	}
+ 
+-	bo = OMAPPixmapBo(pPixmap);
++	buf = createbuf(pDraw, pPixmap, attachment, format);
+ 
+-	DRIBUF(buf)->attachment = attachment;
+-	DRIBUF(buf)->pitch = exaGetPixmapPitch(pPixmap);
+-	DRIBUF(buf)->cpp = pPixmap->drawable.bitsPerPixel / 8;
+-	DRIBUF(buf)->format = format;
+-	buf->refcnt = 1;
+-	buf->pPixmap = pPixmap;
++	if (attachment == DRI2BufferThirdLeft) {
++		OMAPDRI2DrawablePtr pPriv = OMAPDRI2GetDrawable(pDraw);
++		pPriv->pThirdBuffer = DRIBUF(buf);
++	}
+ 
+-	ret = omap_bo_get_name(bo, &DRIBUF(buf)->name);
+-	if (ret) {
+-		ERROR_MSG("could not get buffer name: %d", ret);
+-		/* TODO cleanup */
++	return DRIBUF(buf);
++}
++
++static DRI2BufferPtr
++OMAPDRI2CreateBufferVid(DrawablePtr pDraw, unsigned int attachment,
++		unsigned int format, unsigned int width, unsigned int height)
++{
++	ScreenPtr pScreen = pDraw->pScreen;
++	ScrnInfoPtr pScrn = xf86Screens[pScreen->myNum];
++	OMAPDRI2BufferPtr buf;
++	PixmapPtr pPixmap;
++	int bpp, extraCount = 0, ew = width, eh = height;
++
++	DEBUG_MSG("pDraw=%p, attachment=%d, format=%08x",
++			pDraw, attachment, format);
++
++	switch(format) {
++	case fourcc_code('I','4','2','0'):
++	case fourcc_code('Y','V','1','2'):
++		extraCount++;
++		ew /= 2;
++		/* fallthru */
++	case fourcc_code('N','V','1','2'):
++		extraCount++;
++		eh /= 2;
++		bpp = 8;
++		break;
++	case fourcc_code('U','Y','V','Y'):
++	case fourcc_code('Y','U','Y','2'):
++		bpp = 16;
++		break;
++	default:
+ 		return NULL;
+ 	}
+ 
+-	if (attachment == DRI2BufferThirdLeft) {
+-		OMAPDRI2DrawablePtr pPriv = OMAPDRI2GetDrawable(pDraw);
+-		pPriv->pThirdBuffer = DRIBUF(buf);
++	/* main buffer, luma buffer in case of multi-planar.. */
++	pPixmap = pScreen->CreatePixmap(pScreen, width, height, bpp, 0);
++
++	buf = createbuf(pDraw, pPixmap, attachment, format);
++
++	if (extraCount > 0) {
++		int i, ret;
++
++		buf->extraPix = malloc(extraCount * sizeof(buf->extraPix[0]));
++		buf->extraNames = malloc(extraCount * sizeof(buf->extraNames[0]));
++		buf->extraPitches = malloc(extraCount * sizeof(buf->extraPitches[0]));
++		buf->extraCount = extraCount;
++
++		for (i = 0; i < extraCount; i++) {
++			PixmapPtr p = pScreen->CreatePixmap(pScreen, ew, eh, bpp, 0);
++
++			buf->extraPix[i] = p;
++			buf->extraPitches[i] = exaGetPixmapPitch(p);
++
++			ret = omap_bo_get_name(OMAPPixmapBo(p), &buf->extraNames[i]);
++			if (ret) {
++				ERROR_MSG("could not get buffer name: %d", ret);
++				/* TODO: cleanup.. */
++				return NULL;
++			}
++		}
+ 	}
+ 
+ 	return DRIBUF(buf);
+ }
+ 
+ /**
++ * An ugly approach to avoid changing DRI2BufferPtr and cause ABI breakage
++ * between driver and xserver.  This only needs to be implemented by drivers
++ * supporting planar formats with one buffer per plane.
++ */
++static unsigned int
++OMAPDRI2GetExtraBufferNames(DrawablePtr pDraw, DRI2BufferPtr buffer,
++		unsigned int **names, unsigned int **pitches)
++{
++	OMAPDRI2BufferPtr buf = OMAPBUF(buffer);
++	*names = buf->extraNames;
++	*pitches = buf->extraPitches;
++	return buf->extraCount;
++}
++
++/**
+  * Destroy Buffer
+  */
+ static void
+@@ -295,7 +389,8 @@ OMAPDRI2DestroyBuffer(DrawablePtr pDraw, DRI2BufferPtr buffer)
+ 	 */
+ 	ScreenPtr pScreen = buf->pPixmap->drawable.pScreen;
+ 	ScrnInfoPtr pScrn = xf86Screens[pScreen->myNum];
+-
++	int i;
++	
+ 	if (--buf->refcnt > 0)
+ 		return;
+ 
+@@ -308,6 +403,14 @@ OMAPDRI2DestroyBuffer(DrawablePtr pDraw, DRI2BufferPtr buffer)
+ 
+ 	pScreen->DestroyPixmap(buf->pPixmap);
+ 
++	for (i = 0; i < buf->extraCount; i++) {
++		pScreen->DestroyPixmap(buf->extraPix[i]);
++	}
++
++	free(buf->extraPix);
++	free(buf->extraNames);
++	free(buf->extraPitches);
++
+ 	free(buf);
+ }
+ 
+@@ -335,12 +438,19 @@ OMAPDRI2CopyRegion(DrawablePtr pDraw, RegionPtr pRegion,
+ 	DEBUG_MSG("pDraw=%p, pDstBuffer=%p (%p), pSrcBuffer=%p (%p)",
+ 			pDraw, pDstBuffer, pSrcDraw, pSrcBuffer, pDstDraw);
+ 
++	if (pDstBuffer->attachment == DRI2BufferFakeFrontLeft) {
++		/* I think we don't need this.. it should be handled
++		 * on client side (I think)..
++		 */
++		return;
++	}
++
+ 	pGC = GetScratchGC(pDstDraw->depth, pScreen);
+ 	if (!pGC) {
+ 		return;
+ 	}
+ 
+-	pCopyClip = REGION_CREATE(pScreen, NULL, 0);
++	pCopyClip = RegionCreate(NULL, 0);
+ 	RegionCopy(pCopyClip, pRegion);
+ 	(*pGC->funcs->ChangeClip) (pGC, CT_REGION, pCopyClip, 0);
+ 	ValidateGC(pDstDraw, pGC);
+@@ -565,6 +675,121 @@ OMAPDRI2ScheduleSwap(ClientPtr client, DrawablePtr pDraw,
+ 	return TRUE;
+ }
+ 
++static int OMAPDRI2PutTextureImage(
++		PixmapPtr pSrcPix, BoxPtr pSrcBox,
++		PixmapPtr pOsdPix, BoxPtr pOsdBox,
++		PixmapPtr pDstPix, BoxPtr pDstBox,
++		void *closure)
++{
++	ScreenPtr pScreen = pDstPix->drawable.pScreen;
++	ScrnInfoPtr pScrn = xf86Screens[pScreen->myNum];
++	OMAPPtr pOMAP = OMAPPTR(pScrn);
++	OMAPDRISwapCmd *cmd = closure;
++	OMAPDRI2BufferPtr src = OMAPBUF(cmd->pSrcBuffer);
++	Bool ret;
++
++	ret = pOMAP->pOMAPEXA->PutTextureImage(pSrcPix, pSrcBox,
++			pOsdPix, pOsdBox, pDstPix, pDstBox,
++			src->extraCount, src->extraPix,
++			cmd->pSrcBuffer->format);
++	if (ret) {
++		return Success;
++	}
++	DEBUG_MSG("PutTextureImage failed");
++
++	return BadImplementation;
++}
++
++
++/**
++ * Schedule a video buffer swap
++ *
++ * Drivers should queue an event for the frame count that satisfies the
++ * parameters passed in.  If the event is in the future (i.e. the conditions
++ * aren't currently satisfied), the server may block the client at the next
++ * GLX request using DRI2WaitSwap. When the event arrives, drivers should call
++ * \c DRI2SwapComplete, which will handle waking the client and returning
++ * the appropriate data.
++ *
++ * The DDX is responsible for doing an overlay buffer flip/exchange, or
++ * scaling/colorconvert blit when the corresponding event arrives.
++ *
++ * If the target drawable is resized/damaged, or the osd pixmap is changed/
++ * damaged, ScheduleSwapVid can be re-invoked by the core with the same
++ * source buffer to repair the dri2 video drawable.
++ */
++static Bool
++OMAPDRI2ScheduleSwapVid(ClientPtr client, DrawablePtr pDraw,
++		DRI2BufferPtr pDstBuffer, DRI2BufferPtr pSrcBuffer,
++		BoxPtr pSrcBox, DrawablePtr osd,
++		CARD64 *target_msc, CARD64 divisor, CARD64 remainder,
++		DRI2SwapEventPtr func, void *data)
++{
++	ScreenPtr pScreen = pDraw->pScreen;
++	ScrnInfoPtr pScrn = xf86Screens[pScreen->myNum];
++	OMAPDRISwapCmd *cmd = calloc(1, sizeof(*cmd));
++	OMAPPtr pOMAP = OMAPPTR(pScrn);
++	RegionPtr pCopyClip;
++	GCPtr pGC;
++	BoxRec dstbox = {
++			.x1 = pDraw->x, .y1 = pDraw->y,
++			.x2 = pDraw->x + pDraw->width, .y2 = pDraw->y + pDraw->height
++	};
++	BoxRec osdbox = {
++			.x1 = 0, .y1 = 0,
++			.x2 = osd ? osd->width : 0, .y2 = osd ? osd->height : 0,
++	};
++
++	cmd->client = client;
++	cmd->pScreen = pScreen;
++	cmd->draw_id = pDraw->id;
++	cmd->pSrcBuffer = pSrcBuffer;
++	cmd->pDstBuffer = pDstBuffer;
++	cmd->func = func;
++	cmd->data = data;
++
++	DEBUG_MSG("%d -> %d", pSrcBuffer->attachment, pDstBuffer->attachment);
++
++	/* obtain extra ref on buffers to avoid them going away while we await
++	 * the page flip event:
++	 */
++	OMAPDRI2ReferenceBuffer(pSrcBuffer);
++	OMAPDRI2ReferenceBuffer(pDstBuffer);
++	pOMAP->pending_swaps++;
++
++	pGC = GetScratchGC(pDraw->depth, pScreen);
++	if (!pGC) {
++		return FALSE;
++	}
++
++	pCopyClip = RegionCreate(&dstbox, 1);
++	(*pGC->funcs->ChangeClip) (pGC, CT_REGION, pCopyClip, 0);
++	ValidateGC(pDraw, pGC);
++
++	/* someday, support overlay too.. */
++	if (has_video(pOMAP)) {
++		cmd->type = DRI2_BLIT_COMPLETE;
++		if (OMAPVidCopyArea(dri2draw(pDraw, pSrcBuffer), pSrcBox,
++				osd, &osdbox, dri2draw(pDraw, pDstBuffer), &dstbox,
++				OMAPDRI2PutTextureImage, cmd, pCopyClip) == Success) {
++			OMAPDRI2SwapComplete(cmd);
++			return TRUE;
++		}
++	}
++
++	// XXX for RGB formats, we should be able to fall back to
++	// generic composite operation..
++
++
++	/* drop extra refcnt we obtained prior to swap:
++	 */
++	OMAPDRI2DestroyBuffer(pDraw, cmd->pSrcBuffer);
++	OMAPDRI2DestroyBuffer(pDraw, cmd->pDstBuffer);
++	pOMAP->pending_swaps--;
++
++	return FALSE;
++}
++
+ /**
+  * Request a DRM event when the requested conditions will be satisfied.
+  *
+@@ -585,6 +810,37 @@ OMAPDRI2ScheduleWaitMSC(ClientPtr client, DrawablePtr pDraw, CARD64 target_msc,
+ 	return FALSE;
+ }
+ 
++#define ATOM(a) MakeAtom(a, sizeof(a) - 1, TRUE)
++
++static int
++OMAPDRI2SetAttribute(DrawablePtr pDraw, Atom attribute,
++		int len, const CARD32 *val)
++{
++	/* just for testing.. bogus colorspace conversion matrix.. */
++	if (attribute == ATOM("XV_CSC_MATRIX")) {
++		return Success;
++	}
++	return BadMatch;
++}
++
++static int
++OMAPDRI2GetAttribute(DrawablePtr pDraw, Atom attribute,
++		int *len, const CARD32 **val)
++{
++	/* just for testing.. bogus colorspace conversion matrix.. */
++	if (attribute == ATOM("XV_CSC_MATRIX")) {
++		static const CARD32 csc[] = {
++				0x00, 0x01, 0x02, 0x03,
++				0x10, 0x11, 0x12, 0x13,
++				0x20, 0x21, 0x22, 0x23,
++		};
++		*val = csc;
++		*len = sizeof(csc) / 4;
++		return Success;
++	}
++	return BadMatch;
++}
++
+ /**
+  * The DRI2 ScreenInit() function.. register our handler fxns w/ DRI2 core
+  */
+@@ -593,20 +849,46 @@ OMAPDRI2ScreenInit(ScreenPtr pScreen)
+ {
+ 	ScrnInfoPtr pScrn = xf86Screens[pScreen->myNum];
+ 	OMAPPtr pOMAP = OMAPPTR(pScrn);
++	const char *driverNames[] = {
++			[DRI2DriverDRI] = "omap",
++			[DRI2DriverXV]  = has_video(pOMAP) ? "omap" : NULL,
++	};
+ 	DRI2InfoRec info = {
+-			.version			= 6,
++			.version			= 7,
+ 			.fd 				= pOMAP->drmFD,
+-			.driverName			= "omap",
++			.numDrivers			= 3,
++			.driverNames		= driverNames,
++			.driverName			= driverNames[DRI2DriverDRI],
+ 			.deviceName			= pOMAP->deviceName,
+ 			.CreateBuffer		= OMAPDRI2CreateBuffer,
++			.CreateBufferVid	= OMAPDRI2CreateBufferVid,
+ 			.DestroyBuffer		= OMAPDRI2DestroyBuffer,
+ 			.CopyRegion			= OMAPDRI2CopyRegion,
+ 			.ScheduleSwap		= OMAPDRI2ScheduleSwap,
++			.ScheduleSwapVid	= OMAPDRI2ScheduleSwapVid,
+ 			.ScheduleWaitMSC	= OMAPDRI2ScheduleWaitMSC,
+ 			.GetMSC				= OMAPDRI2GetMSC,
+ 			.AuthMagic			= drmAuthMagic,
++			.GetExtraBufferNames= OMAPDRI2GetExtraBufferNames,
++			.SetAttribute		= OMAPDRI2SetAttribute,
++			.GetAttribute		= OMAPDRI2GetAttribute,
+ 	};
+-	int minor = 1, major = 0;
++	int minor = 1, major = 0, nformats = 0;
++	static unsigned int formats[MAX_FORMATS + 4];
++
++	if (has_video(pOMAP)) {
++		/* add supported video formats: */
++		nformats = pOMAP->pOMAPEXA->GetFormats(formats);
++	}
++
++	/* add supported non-video formats: */
++	formats[nformats++] = 24;
++	formats[nformats++] = 32;
++	formats[nformats++] = fourcc_code('X','R','2','4');
++	formats[nformats++] = fourcc_code('A','R','2','4');
++
++	info.formats = formats;
++	info.numFormats = nformats;
+ 
+ 	if (xf86LoaderCheckSymbol("DRI2Version")) {
+ 		DRI2Version(&major, &minor);
+-- 
+1.7.9.5
+

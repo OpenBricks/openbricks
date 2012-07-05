@@ -1,0 +1,224 @@
+From c26130ba2edad4cbceaa40177759d06db02333f1 Mon Sep 17 00:00:00 2001
+From: Rob Clark <rob@ti.com>
+Date: Sat, 16 Jun 2012 18:13:30 -0500
+Subject: [PATCH 4/8] dri2: don't keep fb_id
+
+When the client re-requests buffers, the front buffer is always destroyed
+and recreated, and if that is drmModeRmFB()'ing the front buffer, that
+causes problems.  This was hidden by a bug that we didn't exchange the
+fb_id so we were always flipping to the same front buffer.
+
+Signed-off-by: Rob Clark <rob@ti.com>
+---
+ src/drmmode_display.c |   50 ++++++++++++++++++++++++++++++++++++++++++-------
+ src/omap_dri2.c       |   44 ++++++-------------------------------------
+ src/omap_driver.h     |    2 +-
+ 3 files changed, 50 insertions(+), 46 deletions(-)
+
+diff --git a/src/drmmode_display.c b/src/drmmode_display.c
+index cebd200..473cfa7 100644
+--- a/src/drmmode_display.c
++++ b/src/drmmode_display.c
+@@ -1156,11 +1156,20 @@ drmmode_remove_fb(ScrnInfoPtr pScrn)
+  * Page Flipping
+  */
+ 
++typedef struct {
++	drmmode_ptr mode;
++	uint32_t old_fb_id;
++	void *priv;
++} drmmode_flipdata_rec, *drmmode_flipdata_ptr;
++
+ static void
+ page_flip_handler(int fd, unsigned int sequence, unsigned int tv_sec,
+ 		unsigned int tv_usec, void *user_data)
+ {
+-	OMAPDRI2SwapComplete(user_data);
++	drmmode_flipdata_ptr flipdata = user_data;
++	OMAPDRI2SwapComplete(flipdata->priv);
++	drmModeRmFB(flipdata->mode->fd, flipdata->old_fb_id);
++	free(flipdata);
+ }
+ 
+ static drmEventContext event_context = {
+@@ -1169,14 +1178,37 @@ static drmEventContext event_context = {
+ };
+ 
+ Bool
+-drmmode_page_flip(DrawablePtr draw, uint32_t fb_id, void *priv)
++drmmode_page_flip(DrawablePtr pDraw, PixmapPtr back, void *priv)
+ {
+-	ScrnInfoPtr scrn = xf86Screens[draw->pScreen->myNum];
+-	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(scrn);
++	ScrnInfoPtr pScrn = xf86Screens[pDraw->pScreen->myNum];
++	xf86CrtcConfigPtr config = XF86_CRTC_CONFIG_PTR(pScrn);
+ 	drmmode_crtc_private_ptr crtc = config->crtc[0]->driver_private;
+ 	drmmode_ptr mode = crtc->drmmode;
++	drmmode_flipdata_ptr flipdata;
++	uint32_t old_fb_id;
+ 	int ret, i;
+ 
++	old_fb_id = mode->fb_id;
++	ret = drmModeAddFB(mode->fd, pDraw->width, pDraw->height,
++			pDraw->depth, pDraw->bitsPerPixel, exaGetPixmapPitch(back),
++			omap_bo_handle(OMAPPixmapBo(back)), &mode->fb_id);
++	if (ret) {
++		DEBUG_MSG("add fb failed, cannot flip: %s", strerror(errno));
++		return FALSE;
++	}
++
++	flipdata = calloc(1, sizeof(*flipdata));
++	if (!flipdata) {
++		WARNING_MSG("flip queue: data alloc failed.");
++		goto error;
++	}
++
++	flipdata->priv = priv;
++	flipdata->mode = mode;
++	flipdata->old_fb_id = old_fb_id;
++
++	DEBUG_MSG("flip: %d -> %d", mode->fb_id, old_fb_id);
++
+ 	/* if we can flip, we must be fullscreen.. so flip all CRTC's.. */
+ 	for (i = 0; i < config->num_crtc; i++) {
+ 		crtc = config->crtc[i]->driver_private;
+@@ -1185,15 +1217,19 @@ drmmode_page_flip(DrawablePtr draw, uint32_t fb_id, void *priv)
+ 			continue;
+ 
+ 		ret = drmModePageFlip(mode->fd, crtc->mode_crtc->crtc_id,
+-				fb_id, DRM_MODE_PAGE_FLIP_EVENT, priv);
++				mode->fb_id, DRM_MODE_PAGE_FLIP_EVENT, flipdata);
+ 		if (ret) {
+-			xf86DrvMsg(scrn->scrnIndex, X_WARNING,
+-					"flip queue failed: %s\n", strerror(errno));
++			WARNING_MSG("flip queue failed: %s", strerror(errno));
+ 			return FALSE;
+ 		}
+ 	}
+ 
+ 	return TRUE;
++
++error:
++	drmModeRmFB(mode->fd, mode->fb_id);
++	mode->fb_id = old_fb_id;
++	return FALSE;
+ }
+ 
+ /*
+diff --git a/src/omap_dri2.c b/src/omap_dri2.c
+index d4d0f16..f8a5dae 100644
+--- a/src/omap_dri2.c
++++ b/src/omap_dri2.c
+@@ -55,13 +55,6 @@ typedef struct {
+ 	PixmapPtr pPixmap;
+ 
+ 	/**
+-	 * The drm_framebuffer id for the buffer.. or 0 if the buffer cannot be
+-	 * directly scanned out by the hw (in which case we need to fall back to
+-	 * blitting)
+-	 */
+-	uint32_t fb_id;
+-
+-	/**
+ 	 * The DRI2 buffers are reference counted to avoid crashyness when the
+ 	 * client detaches a dri2 drawable while we are still waiting for a
+ 	 * page_flip event.
+@@ -194,31 +187,11 @@ OMAPDRI2CreateBuffer(DrawablePtr pDraw, unsigned int attachment,
+ 		return NULL;
+ 	}
+ 
+-	/* Q: how to know across OMAP generations what formats that the display
+-	 * can support directly?
+-	 * A: attempt to create a drm_framebuffer, and if that fails then the
+-	 * hw must not support.. if buf->fb_id==0 then fall back to blitting
+-	 */
+-	if (canflip(pDraw)) {
+-		int ret = drmModeAddFB(pOMAP->drmFD, pDraw->width, pDraw->height,
+-				pDraw->depth, pDraw->bitsPerPixel, DRIBUF(buf)->pitch,
+-				omap_bo_handle(bo), &buf->fb_id);
+-		if (ret) {
+-			/* to-bad, so-sad, we can't flip */
+-			WARNING_MSG("could not create fb: %d", ret);
+-			buf->fb_id = 0;
+-		}
+-	}
+-
+ 	return DRIBUF(buf);
+ }
+ 
+ /**
+  * Destroy Buffer
+- *
+- * TODO: depending on how flipping ends up working, we may need a refcnt or
+- * something like this to defer destroying a buffer that is currently being
+- * scanned out..
+  */
+ static void
+ OMAPDRI2DestroyBuffer(DrawablePtr pDraw, DRI2BufferPtr buffer)
+@@ -229,17 +202,12 @@ OMAPDRI2DestroyBuffer(DrawablePtr pDraw, DRI2BufferPtr buffer)
+ 	 */
+ 	ScreenPtr pScreen = buf->pPixmap->drawable.pScreen;
+ 	ScrnInfoPtr pScrn = xf86Screens[pScreen->myNum];
+-	OMAPPtr pOMAP = OMAPPTR(pScrn);
+ 
+ 	if (--buf->refcnt > 0)
+ 		return;
+ 
+ 	DEBUG_MSG("pDraw=%p, buffer=%p", pDraw, buffer);
+ 
+-	if (buf->fb_id) {
+-		drmModeRmFB(pOMAP->drmFD, buf->fb_id);
+-	}
+-
+ 	pScreen->DestroyPixmap(buf->pPixmap);
+ 
+ 	free(buf);
+@@ -403,7 +371,6 @@ OMAPDRI2ScheduleSwap(ClientPtr client, DrawablePtr pDraw,
+ 	ScrnInfoPtr pScrn = xf86Screens[pScreen->myNum];
+ 	OMAPPtr pOMAP = OMAPPTR(pScrn);
+ 	OMAPDRI2BufferPtr src = OMAPBUF(pSrcBuffer);
+-	OMAPDRI2BufferPtr dst = OMAPBUF(pDstBuffer);
+ 	OMAPDRISwapCmd *cmd = calloc(1, sizeof(*cmd));
+ 
+ 	cmd->client = client;
+@@ -413,6 +380,7 @@ OMAPDRI2ScheduleSwap(ClientPtr client, DrawablePtr pDraw,
+ 	cmd->pDstBuffer = pDstBuffer;
+ 	cmd->func = func;
+ 	cmd->data = data;
++	cmd->type = DRI2_FLIP_COMPLETE;
+ 
+ 	DEBUG_MSG("%d -> %d", pSrcBuffer->attachment, pDstBuffer->attachment);
+ 
+@@ -423,11 +391,11 @@ OMAPDRI2ScheduleSwap(ClientPtr client, DrawablePtr pDraw,
+ 	OMAPDRI2ReferenceBuffer(pDstBuffer);
+ 	pOMAP->pending_flips++;
+ 
+-	if (src->fb_id && dst->fb_id) {
+-		DEBUG_MSG("can flip:  %d -> %d", src->fb_id, dst->fb_id);
+-		cmd->type = DRI2_FLIP_COMPLETE;
+-		drmmode_page_flip(pDraw, src->fb_id, cmd);
+-	} else if (canexchange(pDraw, pSrcBuffer, pDstBuffer)) {
++	/* if we can flip, do so: */
++	if (canflip(pDraw) && drmmode_page_flip(pDraw, src->pPixmap, cmd))
++		return TRUE;
++
++	if (canexchange(pDraw, pSrcBuffer, pDstBuffer)) {
+ 		/* we can get away w/ pointer swap.. yah! */
+ 		cmd->type = DRI2_EXCHANGE_COMPLETE;
+ 		OMAPDRI2SwapComplete(cmd);
+diff --git a/src/omap_driver.h b/src/omap_driver.h
+index d715f89..7837e48 100644
+--- a/src/omap_driver.h
++++ b/src/omap_driver.h
+@@ -222,7 +222,7 @@ void drmmode_screen_init(ScrnInfoPtr pScrn);
+ void drmmode_screen_fini(ScrnInfoPtr pScrn);
+ void drmmode_adjust_frame(ScrnInfoPtr pScrn, int x, int y);
+ void drmmode_remove_fb(ScrnInfoPtr pScrn);
+-Bool drmmode_page_flip(DrawablePtr draw, uint32_t fb_id, void *priv);
++Bool drmmode_page_flip(DrawablePtr pDraw, PixmapPtr back, void *priv);
+ void drmmode_wait_for_event(ScrnInfoPtr pScrn);
+ Bool drmmode_cursor_init(ScreenPtr pScreen);
+ 
+-- 
+1.7.9.5
+
