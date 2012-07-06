@@ -1,7 +1,7 @@
-Index: gstreamer0.10-0.10.31.2/gst/gstregistry.c
+Index: trunk/gst/gstregistry.c
 ===================================================================
---- gstreamer0.10-0.10.31.2.orig/gst/gstregistry.c	2011-01-06 20:35:59.000000000 +0100
-+++ gstreamer0.10-0.10.31.2/gst/gstregistry.c	2011-01-08 17:05:28.959841191 +0100
+--- trunk.orig/gst/gstregistry.c
++++ trunk/gst/gstregistry.c
 @@ -121,6 +121,10 @@
  #include <stdio.h>
  #include <string.h>
@@ -13,31 +13,30 @@ Index: gstreamer0.10-0.10.31.2/gst/gstregistry.c
  /* For g_stat () */
  #include <glib/gstdio.h>
  
-@@ -1493,6 +1497,10 @@
+@@ -1503,6 +1507,9 @@
     * path, and the plugins installed in the user's home directory */
    plugin_path = g_getenv ("GST_PLUGIN_SYSTEM_PATH");
    if (plugin_path == NULL) {
 +#if defined(__linux__) && defined (__i386__)
 +    struct utsname uts;
 +#endif
-+    char *plugindir = PLUGINDIR;
-     char *home_plugins;
+     char *home_plugins, *backwards_compat_plugins;
  
      GST_DEBUG ("GST_PLUGIN_SYSTEM_PATH not set");
-@@ -1506,8 +1514,14 @@
-     g_free (home_plugins);
- 
-     /* add the main (installed) library path */
--    GST_DEBUG ("scanning main plugins %s", PLUGINDIR);
--    changed |= gst_registry_scan_path_internal (&context, PLUGINDIR);
+@@ -1522,6 +1529,16 @@
+     /* finally, look in the /usr/lib backwards-compatibility path. */
+     backwards_compat_plugins = g_build_filename ("/usr/lib",
+         "gstreamer-" GST_MAJORMINOR, NULL);
 +#if defined(__linux__) && defined (__i386__)
 +    uname(&uts);
 +    if (!strcmp("x86_64", uts.machine)
 +         && !access("/usr/lib32/gstreamer-0.10", R_OK|X_OK))
-+       plugindir = "/usr/lib32/gstreamer-0.10";
++    {
++       g_free (backwards_compat_plugins);
++       backwards_compat_plugins = g_build_filename ("/usr/lib32",
++           "gstreamer-" GST_MAJORMINOR, NULL);
++    }
 +#endif
-+    GST_DEBUG ("scanning main plugins %s", plugindir);
-+    changed |= gst_registry_scan_path_internal (&context, plugindir);
- 
- #ifdef G_OS_WIN32
-     {
+     GST_DEBUG ("scanning plugins %s", backwards_compat_plugins);
+     changed |= gst_registry_scan_path_internal (&context, backwards_compat_plugins);
+     g_free (backwards_compat_plugins);
