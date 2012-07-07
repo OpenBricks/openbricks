@@ -1,0 +1,54 @@
+diff --git a/xbmc/cores/gstplayer/GstPlayer.cpp b/xbmc/cores/gstplayer/GstPlayer.cpp
+index 0157323..9f16ec9 100644
+--- a/xbmc/cores/gstplayer/GstPlayer.cpp
++++ b/xbmc/cores/gstplayer/GstPlayer.cpp
+@@ -1060,7 +1060,48 @@ bool CGstPlayer::CanSeek()
+ 
+ void CGstPlayer::Seek(bool bPlus, bool bLargeStep)
+ {
+-  CLog::Log(LOGNOTICE, "---[%s]---", __FUNCTION__);
++  CLog::Log(LOGNOTICE, "---[%s]--- %d, %d", __FUNCTION__, bPlus, bLargeStep);
++  /* TODO: add chapter support? */
++  __int64 seek;
++  if (g_advancedSettings.m_videoUseTimeSeeking &&
++      GetTotalTime() > 2*g_advancedSettings.m_videoTimeSeekForwardBig)
++  {
++    if (bLargeStep)
++      seek = bPlus ? g_advancedSettings.m_videoTimeSeekForwardBig :
++          g_advancedSettings.m_videoTimeSeekBackwardBig;
++    else
++      seek = bPlus ? g_advancedSettings.m_videoTimeSeekForward :
++          g_advancedSettings.m_videoTimeSeekBackward;
++    seek *= 1000;
++    seek += GetTime();
++  }
++  else
++  {
++    float percent;
++    if (bLargeStep)
++      percent = bPlus ? g_advancedSettings.m_videoPercentSeekForwardBig :
++          g_advancedSettings.m_videoPercentSeekBackwardBig;
++    else
++      percent = bPlus ? g_advancedSettings.m_videoPercentSeekForward :
++          g_advancedSettings.m_videoPercentSeekBackward;
++    seek = (__int64)(GetTime()*(GetPercentage()+percent)/100);
++  }
++
++  GstEvent *seek_event;
++
++  m_clock = seek;
++  if (m_playbin){
++    seek_event = gst_event_new_seek(1.0, GST_FORMAT_TIME,
++        (GstSeekFlags)(GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_KEY_UNIT),
++        GST_SEEK_TYPE_SET, seek*1000000,
++        GST_SEEK_TYPE_NONE, GST_CLOCK_TIME_NONE);
++    gst_element_send_event(m_playbin, seek_event);
++  }
++
++  CLog::Log(LOGNOTICE, "---[%s finish]---%lld", __FUNCTION__, seek);
++  g_infoManager.m_performingSeek = false;
++  m_callback.OnPlayBackSeek((int)seek, (int)(seek - GetTime()));
++  CLog::Log(LOGNOTICE, "---[%s nretun]---%lld", __FUNCTION__, seek);
+ }
+ 
+ void CGstPlayer::SetVolume(long nVolume)

@@ -1,0 +1,852 @@
+diff --git a/system/shaders/yuv2rgb_egl_image_external_gles.glsl b/system/shaders/yuv2rgb_egl_image_external_gles.glsl
+new file mode 100644
+index 0000000..6914f88
+--- /dev/null
++++ b/system/shaders/yuv2rgb_egl_image_external_gles.glsl
+@@ -0,0 +1,46 @@
++/*
++ *      Copyright (C) 2010 Team XBMC
++ *      http://www.xbmc.org
++ *
++ *  This Program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; either version 2, or (at your option)
++ *  any later version.
++ *
++ *  This Program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with XBMC; see the file COPYING.  If not, write to
++ *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
++ *  http://www.gnu.org/copyleft/gpl.html
++ *
++ */
++
++/*
++ * The texture object uses the GL_TEXTURE_EXTERNAL_OES texture target, which
++ * is defined by the GL_OES_EGL_image_external OpenGL ES extension. This
++ * limits how the texture may be used. Each time the texture is bound it
++ * must be bound to the GL_TEXTURE_EXTERNAL_OES target rather than the
++ * GL_TEXTURE_2D target. Additionally, any OpenGL ES 2.0 shader that samples
++ * from the texture must declare its use of this extension using, for example,
++ * an "#extension GL_OES_EGL_image_external : require" directive. Such shaders
++ * must also access the texture using the samplerExternalOES GLSL sampler type.
++ */
++
++#extension GL_OES_EGL_image_external : require
++
++precision mediump float;
++
++uniform samplerExternalOES m_samp;
++varying vec2   m_cord;
++uniform float  m_alpha;
++
++void main()
++{
++  vec4 rgb = texture2D(m_samp, m_cord);
++  rgb.a = m_alpha;
++  gl_FragColor = rgb;
++}
+diff --git a/system/shaders/yuv2rgb_vertex_egl_image_external_gles.glsl b/system/shaders/yuv2rgb_vertex_egl_image_external_gles.glsl
+new file mode 100644
+index 0000000..c3f1f14
+--- /dev/null
++++ b/system/shaders/yuv2rgb_vertex_egl_image_external_gles.glsl
+@@ -0,0 +1,33 @@
++/*
++ *      Copyright (C) 2010 Team XBMC
++ *      http://www.xbmc.org
++ *
++ *  This Program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; either version 2, or (at your option)
++ *  any later version.
++ *
++ *  This Program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with XBMC; see the file COPYING.  If not, write to
++ *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
++ *  http://www.gnu.org/copyleft/gpl.html
++ *
++ */
++
++attribute vec4 m_attrpos;
++attribute vec2 m_attrcord;
++varying vec2 m_cord;
++uniform mat4 m_proj;
++uniform mat4 m_model;
++
++void main ()
++{
++  mat4 mvp    = m_proj * m_model;
++  gl_Position = mvp * m_attrpos;
++  m_cord      = m_attrcord;
++}
+diff --git a/xbmc/cores/VideoRenderers/BaseRenderer.h b/xbmc/cores/VideoRenderers/BaseRenderer.h
+index af51852..7373a69 100644
+--- a/xbmc/cores/VideoRenderers/BaseRenderer.h
++++ b/xbmc/cores/VideoRenderers/BaseRenderer.h
+@@ -32,8 +32,9 @@
+   BYTE *   plane[MAX_PLANES];
+   int      planesize[MAX_PLANES];
+   unsigned stride[MAX_PLANES];
+-  unsigned width;
+-  unsigned height;
++  unsigned cropX, cropY;          /* crop position */
++  unsigned cropWidth, cropHeight; /* crop dimensions */
++  unsigned width, height;         /* original dimensions */
+   unsigned flags;
+ 
+   unsigned cshift_x; /* this is the chroma shift used */
+diff --git a/xbmc/cores/VideoRenderers/LinuxRendererGLES.cpp b/xbmc/cores/VideoRenderers/LinuxRendererGLES.cpp
+index d27ddd1..498c63b 100644
+--- a/xbmc/cores/VideoRenderers/LinuxRendererGLES.cpp
++++ b/xbmc/cores/VideoRenderers/LinuxRendererGLES.cpp
+@@ -55,6 +55,9 @@
+ #include "osx/DarwinUtils.h"
+ #endif
+ 
++
++#include <EGL/eglext.h>
++
+ using namespace Shaders;
+ 
+ CLinuxRendererGLES::YUVBUFFER::YUVBUFFER()
+@@ -70,7 +73,7 @@
+ 
+ CLinuxRendererGLES::CLinuxRendererGLES()
+ {
+-  m_textureTarget = GL_TEXTURE_2D;
++  memset(m_buffers, 0, sizeof(m_buffers));
+   for (int i = 0; i < NUM_BUFFERS; i++)
+   {
+     m_eventTexturesDone[i] = new CEvent(false,true);
+@@ -105,13 +108,30 @@
+ 
+   m_dllSwScale = new DllSwScale;
+   m_sw_context = NULL;
++
++  glEGLImageTargetTexture2DOES = (PFNGLEGLIMAGETARGETTEXTURE2DOESPROC)
++      eglGetProcAddress("glEGLImageTargetTexture2DOES");
++
++  m_textureTarget = GL_TEXTURE_2D;
++}
++
++void CLinuxRendererGLES::UnRefBuf(int index)
++{
++  YUVBUFFER &buf = m_buffers[index];
++  if (buf.eglImageHandle)
++  {
++    buf.eglImageHandle->UnRef();
++    buf.eglImageHandle = NULL;
++  }
+ }
+ 
+ CLinuxRendererGLES::~CLinuxRendererGLES()
+ {
+   UnInit();
+-  for (int i = 0; i < NUM_BUFFERS; i++)
++  for (int i = 0; i < NUM_BUFFERS; i++) {
++    UnRefBuf(i);
+     delete m_eventTexturesDone[i];
++  }
+ 
+   if (m_rgbBuffer != NULL) {
+     delete [] m_rgbBuffer;
+@@ -130,7 +150,7 @@
+ 
+ void CLinuxRendererGLES::ManageTextures()
+ {
+-  m_NumYV12Buffers = 2;
++  m_NumYV12Buffers = NUM_BUFFERS;
+   //m_iYV12RenderBuffer = 0;
+   return;
+ }
+@@ -264,17 +284,36 @@ void CLinuxRendererGLES::CalculateTextureSourceRects(int source, int num_planes)
+   YUVBUFFER& buf    =  m_buffers[source];
+   YV12Image* im     = &buf.image;
+   YUVFIELDS& fields =  buf.fields;
++  int cropX, cropY, cropWidth, cropHeight;
++
++  cropX      = im->cropX;
++  cropY      = im->cropY;
++  cropWidth  = im->cropWidth;
++  cropHeight = im->cropHeight;
++
++  //CLog::Log(LOGDEBUG, "GL: crop: %d,%d - %dx%d",  cropX, cropY, cropWidth, cropHeight);
++
++  /* if we have bogus crop coords, fallback to no cropping */
++  if ((cropWidth == 0) || (cropHeight == 0))
++  {
++    cropX = cropY = 0;
++    cropWidth = m_sourceWidth;
++    cropHeight = m_sourceHeight;
++  }
+ 
+   // calculate the source rectangle
+-  for(int field = 0; field < 3; field++)
++  for(int field = 0; field < (buf.eglImageHandle ? 1 : 3); field++)
+   {
+     for(int plane = 0; plane < num_planes; plane++)
+     {
+       YUVPLANE& p = fields[field][plane];
+ 
+-      p.rect = m_sourceRect;
+-      p.width  = im->width;
+-      p.height = im->height;
++      p.rect.x1 = cropX;
++      p.rect.y1 = cropY;
++      p.rect.x2 = cropX + cropWidth;
++      p.rect.y2 = cropY + cropHeight;
++      p.width   = cropWidth;
++      p.height  = cropHeight;
+ 
+       if(field != FIELD_FULL)
+       {
+@@ -305,7 +344,8 @@ void CLinuxRendererGLES::CalculateTextureSourceRects(int source, int num_planes)
+         p.rect.y2 /= 1 << im->cshift_y;
+       }
+ 
+-      if (m_textureTarget == GL_TEXTURE_2D)
++      if ((m_textureTarget == GL_TEXTURE_2D) ||
++          (m_textureTarget == GL_TEXTURE_EXTERNAL_OES))
+       {
+         p.height  /= p.texheight;
+         p.rect.y1 /= p.texheight;
+@@ -508,7 +548,7 @@ unsigned int CLinuxRendererGLES::PreInit()
+     m_resolution = RES_DESKTOP;
+ 
+   m_iYV12RenderBuffer = 0;
+-  m_NumYV12Buffers = 2;
++  m_NumYV12Buffers = NUM_BUFFERS;
+ 
+   // setup the background colour
+   m_clearColour = (float)(g_advancedSettings.m_videoBlackBarColour & 0xff) / 0xff;
+@@ -631,9 +671,17 @@ void CLinuxRendererGLES::LoadShaders(int field)
+       // Try GLSL shaders if supported and user requested auto or GLSL.
+       if (glCreateProgram)
+       {
+-        // create regular progressive scan shader
+-        m_pYUVShader = new YUV2RGBProgressiveShader(false, m_iFlags);
+-        CLog::Log(LOGNOTICE, "GL: Selecting Single Pass YUV 2 RGB shader");
++        if (CONF_FLAGS_FORMAT_MASK(m_iFlags) == CONF_FLAGS_FORMAT_EGLIMG)
++        {
++          m_pYUVShader = new EGLImageExternalShader();
++          CLog::Log(LOGNOTICE, "GL: Selecting eglImage shader");
++        }
++        else
++        {
++          // create regular progressive scan shader
++          m_pYUVShader = new YUV2RGBProgressiveShader(false, m_iFlags);
++          CLog::Log(LOGNOTICE, "GL: Selecting Single Pass YUV 2 RGB shader");
++        }
+ 
+         if (m_pYUVShader && m_pYUVShader->CompileAndLink())
+         {
+@@ -682,6 +730,12 @@ void CLinuxRendererGLES::LoadShaders(int field)
+     m_textureCreate = &CLinuxRendererGLES::CreateBYPASSTexture;
+     m_textureDelete = &CLinuxRendererGLES::DeleteBYPASSTexture;
+   }
++  else if (CONF_FLAGS_FORMAT_MASK(m_iFlags) == CONF_FLAGS_FORMAT_EGLIMG)
++  {
++    m_textureUpload = &CLinuxRendererGLES::UploadEGLIMAGETexture;
++    m_textureCreate = &CLinuxRendererGLES::CreateEGLIMAGETexture;
++    m_textureDelete = &CLinuxRendererGLES::DeleteEGLIMAGETexture;
++  }
+   else
+   {
+     // default to YV12 texture handlers
+@@ -778,8 +832,9 @@ void CLinuxRendererGLES::Render(DWORD flags, int index)
+ 
+ void CLinuxRendererGLES::RenderSinglePass(int index, int field)
+ {
+-  YV12Image &im     = m_buffers[index].image;
+-  YUVFIELDS &fields = m_buffers[index].fields;
++  YUVBUFFER &buf    = m_buffers[index];
++  YV12Image &im     = buf.image;
++  YUVFIELDS &fields = buf.fields;
+   YUVPLANES &planes = fields[field];
+ 
+   if (m_reloadShaders)
+@@ -790,20 +845,29 @@ void CLinuxRendererGLES::RenderSinglePass(int index, int field)
+ 
+   glDisable(GL_DEPTH_TEST);
+ 
++  /* note: with eglimageexternal, we have just a single YUV texture,
++   * rather than one texture per plane.  So what is referred below
++   * as the 'Y' texture is actually the 'YUV' texture, and 'U' & 'V'
++   * textures are unused.
++   */
++
+   // Y
+   glActiveTexture(GL_TEXTURE0);
+   glEnable(m_textureTarget);
+   glBindTexture(m_textureTarget, planes[0].id);
+ 
+-  // U
+-  glActiveTexture(GL_TEXTURE1);
+-  glEnable(m_textureTarget);
+-  glBindTexture(m_textureTarget, planes[1].id);
++  if (!buf.eglImageHandle)
++  {
++    // U
++    glActiveTexture(GL_TEXTURE1);
++    glEnable(m_textureTarget);
++    glBindTexture(m_textureTarget, planes[1].id);
+ 
+-  // V
+-  glActiveTexture(GL_TEXTURE2);
+-  glEnable(m_textureTarget);
+-  glBindTexture(m_textureTarget, planes[2].id);
++    // V
++    glActiveTexture(GL_TEXTURE2);
++    glEnable(m_textureTarget);
++    glBindTexture(m_textureTarget, planes[2].id);
++  }
+ 
+   glActiveTexture(GL_TEXTURE0);
+   VerifyGLState();
+@@ -831,13 +895,19 @@ void CLinuxRendererGLES::RenderSinglePass(int index, int field)
+ 
+   glVertexAttribPointer(vertLoc, 3, GL_FLOAT, 0, 0, m_vert);
+   glVertexAttribPointer(Yloc, 2, GL_FLOAT, 0, 0, m_tex[0]);
+-  glVertexAttribPointer(Uloc, 2, GL_FLOAT, 0, 0, m_tex[1]);
+-  glVertexAttribPointer(Vloc, 2, GL_FLOAT, 0, 0, m_tex[2]);
++  if (!buf.eglImageHandle)
++  {
++    glVertexAttribPointer(Uloc, 2, GL_FLOAT, 0, 0, m_tex[1]);
++    glVertexAttribPointer(Vloc, 2, GL_FLOAT, 0, 0, m_tex[2]);
++  }
+ 
+   glEnableVertexAttribArray(vertLoc);
+   glEnableVertexAttribArray(Yloc);
+-  glEnableVertexAttribArray(Uloc);
+-  glEnableVertexAttribArray(Vloc);
++  if (!buf.eglImageHandle)
++  {
++    glEnableVertexAttribArray(Uloc);
++    glEnableVertexAttribArray(Vloc);
++  }
+ 
+   // Setup vertex position values
+   m_vert[0][0] = m_vert[3][0] = m_destRect.x1;
+@@ -847,7 +917,7 @@ void CLinuxRendererGLES::RenderSinglePass(int index, int field)
+   m_vert[0][2] = m_vert[1][2] = m_vert[2][2] = m_vert[3][2] = 0.0f;
+ 
+   // Setup texture coordinates
+-  for (int i=0; i<3; i++)
++  for (int i = 0; i < (buf.eglImageHandle ? 1 : 3); i++)
+   {
+     m_tex[i][0][0] = m_tex[i][3][0] = planes[i].rect.x1;
+     m_tex[i][0][1] = m_tex[i][1][1] = planes[i].rect.y1;
+@@ -864,14 +934,17 @@ void CLinuxRendererGLES::RenderSinglePass(int index, int field)
+ 
+   glDisableVertexAttribArray(vertLoc);
+   glDisableVertexAttribArray(Yloc);
+-  glDisableVertexAttribArray(Uloc);
+-  glDisableVertexAttribArray(Vloc);
++  if (!buf.eglImageHandle)
++  {
++    glDisableVertexAttribArray(Uloc);
++    glDisableVertexAttribArray(Vloc);
+ 
+-  glActiveTexture(GL_TEXTURE1);
+-  glDisable(m_textureTarget);
++    glActiveTexture(GL_TEXTURE1);
++    glDisable(m_textureTarget);
+ 
+-  glActiveTexture(GL_TEXTURE2);
+-  glDisable(m_textureTarget);
++    glActiveTexture(GL_TEXTURE2);
++    glDisable(m_textureTarget);
++  }
+ 
+   glActiveTexture(GL_TEXTURE0);
+   glDisable(m_textureTarget);
+@@ -1307,6 +1380,97 @@ bool CLinuxRendererGLES::RenderCapture(CRenderCapture* capture)
+ }
+ 
+ //********************************************************************************************************
++// eglImage Texture creation, deletion, copying + clearing
++//********************************************************************************************************
++
++void CLinuxRendererGLES::UploadEGLIMAGETexture(int index)
++{
++  YUVBUFFER &buf    = m_buffers[index];
++  YV12Image &im     = buf.image;
++  YUVFIELDS &fields = buf.fields;
++  YUVPLANE  &plane  = fields[0][0];   /* for eglimageexternal, use only one texture */
++
++#if defined(HAVE_LIBOPENMAX)
++  if (!(im.flags&IMAGE_FLAG_READY) || buf.openMaxBuffer)
++#else
++  if (!(im.flags&IMAGE_FLAG_READY))
++#endif
++  {
++    m_eventTexturesDone[index]->Set();
++    return;
++  }
++
++  glEnable(m_textureTarget);
++  glBindTexture(m_textureTarget, plane.id);
++  glEGLImageTargetTexture2DOES(m_textureTarget, buf.eglImageHandle->Get());
++
++  VerifyGLState();
++
++  m_eventTexturesDone[index]->Set();
++
++  CalculateTextureSourceRects(index, 1);
++
++  glDisable(m_textureTarget);
++}
++
++void CLinuxRendererGLES::DeleteEGLIMAGETexture(int index)
++{
++  YUVBUFFER &buf    = m_buffers[index];
++  YUVFIELDS &fields = buf.fields;
++  YUVPLANE  &plane  = fields[0][0];   /* for eglimageexternal, use only one texture */
++
++  if (plane.id == 0)
++    return;
++
++  /* finish up all textures, and delete them */
++  g_graphicsContext.BeginPaint();  //FIXME
++
++  if (glIsTexture(plane.id))
++    glDeleteTextures(1, &plane.id);
++
++  plane.id = 0;
++
++  UnRefBuf(index);
++
++  g_graphicsContext.EndPaint();
++}
++
++bool CLinuxRendererGLES::CreateEGLIMAGETexture(int index)
++{
++  YUVBUFFER &buf    = m_buffers[index];
++  YUVFIELDS &fields = buf.fields;
++  YUVPLANE  &plane  = fields[0][0];   /* for eglimageexternal, use only one texture */
++
++  /* only use single-pass for egl-image-external */
++  m_renderQuality = RQ_SINGLEPASS;
++  m_textureTarget = GL_TEXTURE_EXTERNAL_OES;
++
++  DeleteEGLIMAGETexture(index);
++
++  glEnable(m_textureTarget);
++
++  if (!glIsTexture(plane.id))
++  {
++    glGenTextures(1, &plane.id);
++    VerifyGLState();
++  }
++
++  glBindTexture(m_textureTarget, plane.id);
++
++  // glTexImage2D(m_textureTarget, 0, GL_RGBA, plane.texwidth, plane.texheight, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
++
++  glTexParameteri(m_textureTarget, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
++  glTexParameteri(m_textureTarget, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
++  glTexParameteri(m_textureTarget, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
++  glTexParameteri(m_textureTarget, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
++  VerifyGLState();
++
++  m_eventTexturesDone[index]->Set();
++
++  return true;
++}
++
++//********************************************************************************************************
+ // YV12 Texture creation, deletion, copying + clearing
+ //********************************************************************************************************
+ void CLinuxRendererGLES::UploadYV12Texture(int source)
+@@ -1554,7 +1718,7 @@ bool CLinuxRendererGLES::CreateYV12Texture(int index)
+       }
+     }
+ 
+-    for(int p = 0; p < 3; p++)
++    for(int p = 0; p < MAX_PLANES; p++)
+     {
+       YUVPLANE &plane = planes[p];
+       if (plane.texwidth * plane.texheight == 0)
+@@ -1747,7 +1911,8 @@ void CLinuxRendererGLES::SetTextureFilter(GLenum method)
+ {
+   for (int i = 0 ; i<m_NumYV12Buffers ; i++)
+   {
+-    YUVFIELDS &fields = m_buffers[i].fields;
++    YUVBUFFER &buf = m_buffers[i];
++    YUVFIELDS &fields = buf.fields;
+ 
+     for (int f = FIELD_FULL; f<=FIELD_BOT ; f++)
+     {
+@@ -1756,7 +1921,7 @@ void CLinuxRendererGLES::SetTextureFilter(GLenum method)
+       glTexParameteri(m_textureTarget, GL_TEXTURE_MAG_FILTER, method);
+       VerifyGLState();
+ 
+-      if (!(m_renderMethod & RENDER_SW))
++      if (!((m_renderMethod & RENDER_SW) || buf.eglImageHandle))
+       {
+         glBindTexture(m_textureTarget, fields[f][1].id);
+         glTexParameteri(m_textureTarget, GL_TEXTURE_MIN_FILTER, method);
+@@ -1884,5 +2049,43 @@ void CLinuxRendererGLES::AddProcessor(CDVDVideoCodecVideoToolBox* vtb, DVDVideoP
+ }
+ #endif
+ 
++/* for decoders using eglImage:
++ */
++void CLinuxRendererGLES::AddProcessor(DVDVideoPicture *picture)
++{
++  int index = NextYV12Texture();
++  YUVBUFFER &buf = m_buffers[index];
++  YV12Image &im  = buf.image;
++  YUVFIELDS &fields = buf.fields;
++  YUVPLANE  &plane  = fields[0][0];   /* for eglimageexternal, use only one texture */
++
++  UnRefBuf(index);
++
++  im.cropX      = picture->iDisplayX;
++  im.cropY      = picture->iDisplayY;
++  im.cropHeight = picture->iDisplayHeight;
++  im.cropWidth  = picture->iDisplayWidth;
++  im.width      = m_sourceWidth;
++  im.height     = m_sourceHeight;
++  im.cshift_x   = 1;
++  im.cshift_y   = 1;
++  buf.pts       = picture->pts;
++  buf.eglImageHandle = picture->eglImageHandle->Ref();
++
++  plane.texwidth  = im.width;
++  plane.texheight = im.height;
++
++  if(m_renderMethod & RENDER_POT)
++  {
++    plane.texwidth  = NP2(plane.texwidth);
++    plane.texheight = NP2(plane.texheight);
++  }
++
++  // some sanity checking for now.. I plan to move the eglImage related
++  // stuff into the union, but need to be sure that no one is still using
++  // the data/iLineSize fields..
++  if (picture->data[0] || picture->iLineSize[0])
++    printf("warning: data/iLineSize is not zero!\n");
++}
+ 
+ #endif
+diff --git a/xbmc/cores/VideoRenderers/LinuxRendererGLES.h b/xbmc/cores/VideoRenderers/LinuxRendererGLES.h
+index 3c7852a..5b74f30 100644
+--- a/xbmc/cores/VideoRenderers/LinuxRendererGLES.h
++++ b/xbmc/cores/VideoRenderers/LinuxRendererGLES.h
+@@ -24,6 +24,11 @@
+ 
+ #if HAS_GLES == 2
+ 
++#include <GLES2/gl2.h>
++#include <GLES2/gl2ext.h>
++#include <EGL/egl.h>
++#include <EGL/eglext.h>
++
+ #include "xbmc/guilib/FrameBufferObject.h"
+ #include "xbmc/guilib/Shader.h"
+ #include "settings/VideoSettings.h"
+@@ -39,7 +44,7 @@
+ namespace Shaders { class BaseVideoFilterShader; }
+ class COpenMaxVideo;
+ 
+-#define NUM_BUFFERS 3
++#define NUM_BUFFERS 5
+ 
+ 
+ #undef ALIGN
+@@ -160,6 +165,9 @@ class CLinuxRendererGLES : public CBaseRenderer
+ #ifdef HAVE_VIDEOTOOLBOXDECODER
+   virtual void         AddProcessor(CDVDVideoCodecVideoToolBox* vtb, DVDVideoPicture *picture);
+ #endif
++  /* for eglImage case: */
++  void AddProcessor(DVDVideoPicture *picture);
++
+ protected:
+   virtual void Render(DWORD flags, int index);
+ 
+@@ -169,6 +177,7 @@ class CLinuxRendererGLES : public CBaseRenderer
+   virtual void LoadShaders(int field=FIELD_FULL);
+   void SetTextureFilter(GLenum method);
+   void UpdateVideoFilter();
++  void UnRefBuf(int index);
+ 
+   // textures
+   void (CLinuxRendererGLES::*m_textureUpload)(int index);
+@@ -179,6 +188,10 @@ class CLinuxRendererGLES : public CBaseRenderer
+   void DeleteYV12Texture(int index);
+   bool CreateYV12Texture(int index);
+ 
++  void UploadEGLIMAGETexture(int index);
++  void DeleteEGLIMAGETexture(int index);
++  bool CreateEGLIMAGETexture(int index);
++
+   void UploadCVRefTexture(int index);
+   void DeleteCVRefTexture(int index);
+   bool CreateCVRefTexture(int index);
+@@ -242,6 +255,9 @@ class CLinuxRendererGLES : public CBaseRenderer
+     YV12Image image;
+     unsigned  flipindex; /* used to decide if this has been uploaded */
+ 
++    double pts; // for debugging A/V sync in rendering
++    EGLImageHandle *eglImageHandle;
++
+ #ifdef HAVE_LIBOPENMAX
+     OpenMaxVideoBuffer *openMaxBuffer;
+ #endif
+@@ -261,6 +277,8 @@ class CLinuxRendererGLES : public CBaseRenderer
+                 , unsigned width,  unsigned height
+                 , int stride, void* data );
+ 
++  PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES;
++
+   Shaders::BaseYUV2RGBShader     *m_pYUVShader;
+   Shaders::BaseVideoFilterShader *m_pVideoFilterShader;
+   ESCALINGMETHOD m_scalingMethod;
+diff --git a/xbmc/cores/VideoRenderers/RenderFlags.h b/xbmc/cores/VideoRenderers/RenderFlags.h
+index f663380..1ab788c 100644
+--- a/xbmc/cores/VideoRenderers/RenderFlags.h
++++ b/xbmc/cores/VideoRenderers/RenderFlags.h
+@@ -80,4 +80,5 @@
+ #define CONF_FLAGS_FORMAT_OMXEGL 0x040000
+ #define CONF_FLAGS_FORMAT_CVBREF 0x080000
+ #define CONF_FLAGS_FORMAT_BYPASS 0x100000
++#define CONF_FLAGS_FORMAT_EGLIMG 0x200000
+ #endif
+diff --git a/xbmc/cores/VideoRenderers/RenderManager.cpp b/xbmc/cores/VideoRenderers/RenderManager.cpp
+index af12cbd..1846a22 100644
+--- a/xbmc/cores/VideoRenderers/RenderManager.cpp
++++ b/xbmc/cores/VideoRenderers/RenderManager.cpp
+@@ -794,6 +794,8 @@ int CXBMCRenderManager::AddVideoPicture(DVDVideoPicture& pic)
+   else if(pic.format == DVDVideoPicture::FMT_CVBREF)
+     m_pRenderer->AddProcessor(pic.vtb, &pic);
+ #endif
++  else if(pic.format == DVDVideoPicture::FMT_EGLIMG)
++    m_pRenderer->AddProcessor(&pic);
+ #ifdef HAVE_LIBVA
+   else if(pic.format == DVDVideoPicture::FMT_VAAPI)
+     m_pRenderer->AddProcessor(*pic.vaapi);
+diff --git a/xbmc/cores/VideoRenderers/VideoShaders/YUV2RGBShader.cpp b/xbmc/cores/VideoRenderers/VideoShaders/YUV2RGBShader.cpp
+index fa9f68a..f46d3c4 100644
+--- a/xbmc/cores/VideoRenderers/VideoShaders/YUV2RGBShader.cpp
++++ b/xbmc/cores/VideoRenderers/VideoShaders/YUV2RGBShader.cpp
+@@ -263,6 +263,62 @@ bool BaseYUV2RGBGLSLShader::OnEnabled()
+ }
+ #endif
+ 
++
++//////////////////////////////////////////////////////////////////////
++// EGLImageExternalShader - YUV2RGB GL_OES_EGL_image_external extension
++// NOTE: this is a bit ugly, because don't have separate Y/U/V textures
++// (we just hijack the Y texture for now), and don't really have all
++// these other parameters (CSC matrix, etc..)
++//////////////////////////////////////////////////////////////////////
++
++EGLImageExternalShader::EGLImageExternalShader()
++{
++#ifdef HAS_GL
++#  error "Is this supported in GL??"
++#elif HAS_GLES == 2
++
++  m_width   = 1;
++  m_height  = 1;
++  m_hYTex   = -1;
++  m_hVertex = -1;
++  m_hYcoord = -1;
++  m_hProj   = -1;
++  m_hModel  = -1;
++  m_hAlpha  = -1;
++
++  VertexShader()->LoadSource("yuv2rgb_vertex_egl_image_external_gles.glsl", m_defines);
++  PixelShader()->LoadSource("yuv2rgb_egl_image_external_gles.glsl", m_defines);
++#endif
++}
++
++void EGLImageExternalShader::OnCompiledAndLinked()
++{
++  m_hAlpha  = glGetUniformLocation(ProgramHandle(), "m_alpha");
++  m_hProj   = glGetUniformLocation(ProgramHandle(), "m_proj");
++  m_hModel  = glGetUniformLocation(ProgramHandle(), "m_model");
++  m_hVertex = glGetAttribLocation(ProgramHandle(),  "m_attrpos");
++  m_hYcoord = glGetAttribLocation(ProgramHandle(),  "m_attrcord");
++  m_hYTex   = glGetUniformLocation(ProgramHandle(), "m_samp");
++
++printf("m_hVertex=%d, m_hYcoord=%d, m_hYTex=%d\n", m_hVertex, m_hYcoord, m_hYTex);
++printf("m_hAlpha=%d, m_hProj=%d, m_hModel=%d", m_hAlpha, m_hProj, m_hModel);
++
++  VerifyGLState();
++}
++
++bool EGLImageExternalShader::OnEnabled()
++{
++  // set shader attributes once enabled
++  glUniform1i(m_hYTex, 0);
++  glUniformMatrix4fv(m_hProj,  1, GL_FALSE, m_proj);
++  glUniformMatrix4fv(m_hModel, 1, GL_FALSE, m_model);
++  glUniform1f(m_hAlpha, m_alpha);
++
++  VerifyGLState();
++  return true;
++}
++
++
+ //////////////////////////////////////////////////////////////////////
+ // YUV2RGBProgressiveShader - YUV2RGB with no deinterlacing
+ // Use for weave deinterlacing / progressive
+diff --git a/xbmc/cores/VideoRenderers/VideoShaders/YUV2RGBShader.h b/xbmc/cores/VideoRenderers/VideoShaders/YUV2RGBShader.h
+index bcc3a17..b6e2d49 100644
+--- a/xbmc/cores/VideoRenderers/VideoShaders/YUV2RGBShader.h
++++ b/xbmc/cores/VideoRenderers/VideoShaders/YUV2RGBShader.h
+@@ -164,6 +164,36 @@ void CalculateYUVMatrix(TransformMatrix &matrix
+   };
+ #endif
+ 
++  class EGLImageExternalShader : public BaseYUV2RGBShader, public CGLSLShaderProgram
++  {
++  public:
++    EGLImageExternalShader();
++    virtual void SetWidth(int w)     { m_width  = w; }
++    virtual void SetHeight(int h)    { m_height = h; }
++    virtual GLint GetVertexLoc() { return m_hVertex; }
++    virtual GLint GetYcoordLoc() { return m_hYcoord; }
++
++    virtual void SetMatrices(GLfloat *p, GLfloat *m) { m_proj = p; m_model = m; }
++    virtual void SetAlpha(GLfloat alpha) { m_alpha = alpha; }
++
++  protected:
++    void OnCompiledAndLinked();
++    bool OnEnabled();
++
++    string m_defines;
++    int   m_width;
++    int   m_height;
++    GLint m_hYTex;
++    GLint m_hVertex;
++    GLint m_hYcoord;
++    GLint m_hProj;
++    GLint m_hModel;
++    GLint m_hAlpha;
++    GLfloat *m_proj;
++    GLfloat *m_model;
++    GLfloat  m_alpha;
++  };
++
+   class YUV2RGBProgressiveShader : public BaseYUV2RGBGLSLShader
+   {
+   public:
+diff --git a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodec.h b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodec.h
+index e4bd9c9..8f5100e 100644
+--- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodec.h
++++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodec.h
+@@ -22,6 +22,7 @@
+  */
+ 
+ #include "system.h"
++#include "threads/SingleLock.h"
+ 
+ #include <vector>
+ 
+@@ -34,6 +35,7 @@
+ 
+ namespace DXVA { class CSurfaceContext; }
+ namespace VAAPI { struct CHolder; }
++class CDVDVideoCodec;
+ class CVDPAU;
+ class COpenMax;
+ class COpenMaxVideo;
+@@ -43,6 +45,20 @@
+   struct __CVBuffer;
+ #endif
+ 
++class EGLImageHandle
++{
++public:
++  EGLImageHandle()
++  {
++  }
++  virtual ~EGLImageHandle()
++  {
++  }
++  virtual EGLImageKHR Get() = 0;
++  virtual EGLImageHandle * Ref() = 0;
++  virtual void UnRef() = 0;
++};
++
+ // should be entirely filled by all codecs
+ struct DVDVideoPicture
+ {
+@@ -77,6 +93,11 @@ struct DVDVideoPicture
+ #endif
+   };
+ 
++  // XXX move this into union, and use instead of data/iLineSize!!
++    struct {
++      EGLImageHandle *eglImageHandle;
++    };
++
+   unsigned int iFlags;
+ 
+   double       iRepeatPicture;
+@@ -96,6 +117,7 @@ struct DVDVideoPicture
+ 
+   unsigned int iWidth;
+   unsigned int iHeight;
++  unsigned int iDisplayX, iDisplayY;
+   unsigned int iDisplayWidth;  // width of the picture without black bars
+   unsigned int iDisplayHeight; // height of the picture without black bars
+ 
+@@ -109,6 +131,7 @@ struct DVDVideoPicture
+     FMT_VAAPI,
+     FMT_OMXEGL,
+     FMT_CVBREF,
++    FMT_EGLIMG,
+   } format;
+ };
+ 
+@@ -185,6 +208,8 @@ class CDVDVideoCodec
+    */ 
+   virtual bool ClearPicture(DVDVideoPicture* pDvdVideoPicture)
+   {
++    if (pDvdVideoPicture->eglImageHandle)
++      pDvdVideoPicture->eglImageHandle->UnRef();
+     memset(pDvdVideoPicture, 0, sizeof(DVDVideoPicture));
+     return true;
+   }
+diff --git a/xbmc/cores/dvdplayer/DVDPlayerVideo.cpp b/xbmc/cores/dvdplayer/DVDPlayerVideo.cpp
+index e28faaf..4852885 100644
+--- a/xbmc/cores/dvdplayer/DVDPlayerVideo.cpp
++++ b/xbmc/cores/dvdplayer/DVDPlayerVideo.cpp
+@@ -1052,6 +1052,10 @@ int CDVDPlayerVideo::OutputPicture(const DVDVideoPicture* src, double pts)
+         flags |= CONF_FLAGS_FORMAT_CVBREF;
+         formatstr = "BGRA";
+         break;
++      case DVDVideoPicture::FMT_EGLIMG:
++        flags |= CONF_FLAGS_FORMAT_EGLIMG;
++        formatstr = "EGLIMG";
++        break;
+     }
+ 
+     if(m_bAllowFullscreen)
+diff --git a/xbmc/system.h b/xbmc/system.h
+index b10ebae..4eba449 100644
+--- a/xbmc/system.h
++++ b/xbmc/system.h
+@@ -267,6 +267,8 @@
+   #else
+     #include <GLES2/gl2.h>
+     #include <GLES2/gl2ext.h>
++    #include <EGL/egl.h>
++    #include <EGL/eglext.h>
+   #endif
+ #endif
+ 

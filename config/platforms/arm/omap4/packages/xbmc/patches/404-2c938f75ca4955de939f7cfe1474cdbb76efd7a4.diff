@@ -1,0 +1,67 @@
+diff --git a/xbmc/cores/playercorefactory/PlayerCoreConfig.h b/xbmc/cores/playercorefactory/PlayerCoreConfig.h
+index b4d741e..0665679 100644
+--- a/xbmc/cores/playercorefactory/PlayerCoreConfig.h
++++ b/xbmc/cores/playercorefactory/PlayerCoreConfig.h
+@@ -24,6 +24,10 @@
+ #include "cores/IPlayer.h"
+ #include "PlayerCoreFactory.h"
+ #include "cores/dvdplayer/DVDPlayer.h"
++#if HAVE_LIBGSTREAMER
++#include "cores/gstplayer/GstPlayer.h" 
++#endif
++
+ #include "cores/paplayer/PAPlayer.h"
+ #include "cores/ExternalPlayer/ExternalPlayer.h"
+ #include "utils/log.h"
+@@ -72,6 +76,9 @@ class CPlayerCoreConfig
+     {
+       case EPC_MPLAYER:
+       case EPC_DVDPLAYER: pPlayer = new CDVDPlayer(callback); break;
++#if HAVE_LIBGSTREAMER
++      case EPC_GSTPLAYER: pPlayer = new CGstPlayer(callback); break;
++#endif
+       case EPC_PAPLAYER: pPlayer = new PAPlayer(callback); break;
+       case EPC_EXTPLAYER: pPlayer = new CExternalPlayer(callback); break;
+       default: return NULL;
+diff --git a/xbmc/cores/playercorefactory/PlayerCoreFactory.cpp b/xbmc/cores/playercorefactory/PlayerCoreFactory.cpp
+index 3aaf546..c1e28d1 100644
+--- a/xbmc/cores/playercorefactory/PlayerCoreFactory.cpp
++++ b/xbmc/cores/playercorefactory/PlayerCoreFactory.cpp
+@@ -273,8 +273,11 @@ bool CPlayerCoreFactory::LoadConfiguration(TiXmlElement* pConfig, bool clear)
+     s_vecCoreConfigs.push_back(dvdplayer);
+ 
+      // Don't remove this, its a placeholder for the old MPlayer core, it would break scripts
+-    CPlayerCoreConfig* mplayer = new CPlayerCoreConfig("oldmplayercore", EPC_DVDPLAYER, NULL);
+-    s_vecCoreConfigs.push_back(mplayer);
++
++#if HAVE_LIBGSTREAMER
++    CPlayerCoreConfig* gstplayer = new CPlayerCoreConfig("GstPlayer", EPC_GSTPLAYER, NULL);
++    s_vecCoreConfigs.push_back(gstplayer);
++#endif
+ 
+     CPlayerCoreConfig* paplayer = new CPlayerCoreConfig("PAPlayer", EPC_PAPLAYER, NULL);
+     paplayer->m_bPlaysAudio = true;
+@@ -304,6 +307,9 @@ bool CPlayerCoreFactory::LoadConfiguration(TiXmlElement* pConfig, bool clear)
+ 
+       EPLAYERCORES eCore = EPC_NONE;
+       if (type == "dvdplayer" || type == "mplayer") eCore = EPC_DVDPLAYER;
++#if HAVE_LIBGSTREAMER
++      if (type == "gstplayer") eCore = EPC_GSTPLAYER;
++#endif      
+       if (type == "paplayer" ) eCore = EPC_PAPLAYER;
+       if (type == "externalplayer" ) eCore = EPC_EXTPLAYER;
+ 
+diff --git a/xbmc/cores/playercorefactory/PlayerCoreFactory.h b/xbmc/cores/playercorefactory/PlayerCoreFactory.h
+index 04ac1dc..3c9f03b 100644
+--- a/xbmc/cores/playercorefactory/PlayerCoreFactory.h
++++ b/xbmc/cores/playercorefactory/PlayerCoreFactory.h
+@@ -35,6 +35,9 @@ enum EPLAYERCORES
+ {
+   EPC_NONE,
+   EPC_DVDPLAYER,
++#if HAVE_LIBGSTREAMER
++  EPC_GSTPLAYER,
++#endif
+   EPC_MPLAYER,
+   EPC_PAPLAYER,
+   EPC_EXTPLAYER

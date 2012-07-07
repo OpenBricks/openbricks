@@ -1,0 +1,378 @@
+diff --git a/configure.in b/configure.in
+index 755fc21..cb4bcf7 100755
+--- a/configure.in
++++ b/configure.in
+@@ -1468,7 +1468,7 @@ if test "x$use_gstreamer" != "xno"; then
+     AC_SUBST(gstreamer_req, 0.10.0)
+     AC_SUBST(gstreamer_plugins_base_req, 0.10.0)
+     PKG_CHECK_MODULES(GSTREAMER, gstreamer-0.10 >= $gstreamer_req, HAVE_GSTREAMER=1, HAVE_GSTREAMER=0)
+-    PKG_CHECK_MODULES(GSTREAMER_BASE, gstreamer-base-0.10 >= $gstreamer_req, HAVE_GSTREAMER_BASE=1, HAVE_GSTREAMER_BASE=0)
++    PKG_CHECK_MODULES(GSTREAMER_BASE, gstreamer-base-0.10 >= $gstreamer_req gstreamer-video-0.10 gstreamer-dmabuf-0.10, HAVE_GSTREAMER_BASE=1, HAVE_GSTREAMER_BASE=0)
+     PKG_CHECK_MODULES(GSTREAMER_PLUGINS_BASE, gstreamer-plugins-base-0.10 >= $gstreamer_plugins_base_req, HAVE_GSTREAMER_PLUGINS_BASE=1, HAVE_GSTREAMER_PLUGINS_BASE=0)
+     HAVE_GSTREAMER_APP=1
+     AC_CHECK_LIB([gstapp-0.10], main, , HAVE_GSTREAMER_APP=0)
+diff --git a/xbmc/cores/gstplayer/GstPlayer.cpp b/xbmc/cores/gstplayer/GstPlayer.cpp
+index 40385c4..0157323 100644
+--- a/xbmc/cores/gstplayer/GstPlayer.cpp
++++ b/xbmc/cores/gstplayer/GstPlayer.cpp
+@@ -56,15 +56,264 @@
+ #include "utils/StringUtils.h"
+ #include "Util.h"
+ #include <gst/app/gstappsink.h>
++#include <gst/dmabuf/dmabuf.h>
++#include <gst/video/video-crop.h>
+ 
+ #include "../dvdplayer/DVDCodecs/Video/DVDVideoCodec.h"
+ 
+ 
+-
+- 
+ #include "GstPlayer.h"
+ 
+ 
++/******************************************************************************
++ * stuff related to eglImage..
++ */
++#include "windowing/WindowingFactory.h"
++#include <EGL/egl.h>
++
++static bool has_ti_raw_video = false;
++//static int has_dmabuf; // ???
++extern "C" {
++/* ************************************************************************* */
++static PFNEGLCREATEIMAGEKHRPROC eglCreateImageKHR;
++static PFNEGLDESTROYIMAGEKHRPROC eglDestroyImageKHR;
++
++/* store the eglImage in buffer private qdata, to avoid needing to
++ * destroy and re-create the eglImage
++ *
++ * TODO this could also be useful for an eglsink, gst-clutter, or really any
++ * app that wants to render via eglImage, so perhaps we should move it into
++ * gst-plugins-base or somewhere common..
++ */
++
++#define GST_TYPE_EGL_BUF      \
++  (gst_egl_buf_get_type ())
++#define GST_EGL_BUF(obj)      \
++  (G_TYPE_CHECK_INSTANCE_CAST((obj),GST_TYPE_EGL_BUF, GstEGLBuf))
++#define GST_IS_EGL_BUF(obj)     \
++  (G_TYPE_CHECK_INSTANCE_TYPE((obj),GST_TYPE_EGL_BUF))
++
++GType gst_egl_buf_get_type (void);
++
++typedef struct _GstEGLBuf      GstEGLBuf;
++typedef struct _GstEGLBufClass GstEGLBufClass;
++
++struct _GstEGLBuf
++{
++  GstMiniObject parent;
++  EGLImageKHR egl_img;
++  EGLDisplay egl_dpy;
++};
++
++struct _GstEGLBufClass
++{
++  GstMiniObjectClass parent_class;
++};
++
++#define GST_EGL_BUF_QUARK gst_egl_buf_quark_get_type()
++static GST_BOILERPLATE_QUARK(GstEGLBuf, gst_egl_buf_quark);
++
++#define EGL_BUF_QUARK egl_buf_quark_get_type()
++static GST_BOILERPLATE_QUARK(EGLBuf, egl_buf_quark);
++
++static void
++set_egl_buf (GstBuffer * buf, GstEGLBuf * eglbuf)
++{
++  gst_buffer_set_qdata (buf, GST_EGL_BUF_QUARK,
++      gst_structure_id_new (GST_EGL_BUF_QUARK,
++          EGL_BUF_QUARK, GST_TYPE_EGL_BUF, eglbuf, NULL));
++}
++
++static GstEGLBuf *
++get_egl_buf (GstBuffer * buf)
++{
++  const GstStructure *s;
++  const GValue *val;
++
++  s = gst_buffer_get_qdata (buf, GST_EGL_BUF_QUARK);
++  if (s == NULL)
++    return NULL;
++
++  val = gst_structure_id_get_value (s, EGL_BUF_QUARK);
++  if (val == NULL)
++    return NULL;
++
++  return GST_EGL_BUF (gst_value_get_mini_object (val));
++}
++
++static void
++gst_egl_buf_finalize (GstMiniObject * mini_obj)
++{
++  GstEGLBuf *eglbuf = (GstEGLBuf *) mini_obj;
++
++  eglDestroyImageKHR (eglbuf->egl_dpy, eglbuf->egl_img);
++
++  /* not chaining up to GstMiniObject's finalize for now, we know it's empty */
++}
++
++static void
++gst_egl_buf_class_init (GstEGLBufClass * klass)
++{
++  GST_MINI_OBJECT_CLASS (klass)->finalize = gst_egl_buf_finalize;
++}
++
++GST_BOILERPLATE_MINI_OBJECT(GstEGLBuf, gst_egl_buf);
++
++#ifndef EGLIMAGE_FLAGS_YUV_CONFORMANT_RANGE
++// XXX these should come from some egl header??
++#define EGLIMAGE_FLAGS_YUV_CONFORMANT_RANGE (0 << 0)
++#define EGLIMAGE_FLAGS_YUV_FULL_RANGE       (1 << 0)
++#define EGLIMAGE_FLAGS_YUV_BT601            (0 << 1)
++#define EGLIMAGE_FLAGS_YUV_BT709            (1 << 1)
++#endif
++#ifndef EGL_TI_raw_video
++#  define EGL_TI_raw_video 1
++#  define EGL_RAW_VIDEO_TI            0x333A  /* eglCreateImageKHR target */
++#  define EGL_RAW_VIDEO_TI2           0x333B  /* eglCreateImageKHR target */
++#  define EGL_GL_VIDEO_FOURCC_TI        0x3331  /* eglCreateImageKHR attribute */
++#  define EGL_GL_VIDEO_WIDTH_TI         0x3332  /* eglCreateImageKHR attribute */
++#  define EGL_GL_VIDEO_HEIGHT_TI        0x3333  /* eglCreateImageKHR attribute */
++#  define EGL_GL_VIDEO_BYTE_STRIDE_TI     0x3334  /* eglCreateImageKHR attribute */
++#  define EGL_GL_VIDEO_BYTE_SIZE_TI       0x3335  /* eglCreateImageKHR attribute */
++#  define EGL_GL_VIDEO_YUV_FLAGS_TI       0x3336  /* eglCreateImageKHR attribute */
++#endif
++
++GstEGLBuf *
++gst_egl_buf (EGLDisplay egl_dpy, GstBuffer * buf)
++{
++  GstEGLBuf *eglbuf = get_egl_buf (buf);
++  if (!eglbuf) {
++    GstCaps * caps = GST_BUFFER_CAPS (buf);
++    if (caps) {
++      GstStructure * s = gst_caps_get_structure (caps, 0);
++      gint width, height;
++      guint32 format;
++      if (s && gst_structure_get_int (s, "width", &width) &&
++          gst_structure_get_int (s, "height", &height) &&
++          gst_structure_get_fourcc (s, "format", &format)) {
++        GstDmaBuf *dmabuf = gst_buffer_get_dma_buf (buf);
++        EGLImageKHR egl_img;
++        EGLint attr[] = {
++            EGL_GL_VIDEO_FOURCC_TI,      format,
++            EGL_GL_VIDEO_WIDTH_TI,       width,
++            EGL_GL_VIDEO_HEIGHT_TI,      height,
++            EGL_GL_VIDEO_BYTE_SIZE_TI,   GST_BUFFER_SIZE (buf),
++            // TODO: pick proper YUV flags..
++            EGL_GL_VIDEO_YUV_FLAGS_TI,   EGLIMAGE_FLAGS_YUV_CONFORMANT_RANGE |
++            EGLIMAGE_FLAGS_YUV_BT601,
++            EGL_NONE
++        };
++        if (dmabuf) {
++          int fd = gst_dma_buf_get_fd (dmabuf);
++          egl_img = eglCreateImageKHR(egl_dpy, EGL_NO_CONTEXT,
++              EGL_RAW_VIDEO_TI2, (EGLClientBuffer) fd, attr);
++        } else {
++          egl_img = eglCreateImageKHR(egl_dpy, EGL_NO_CONTEXT,
++              EGL_RAW_VIDEO_TI, GST_BUFFER_DATA(buf), attr);
++        }
++
++        if (egl_img) {
++          eglbuf = (GstEGLBuf *)gst_mini_object_new (GST_TYPE_EGL_BUF);
++          eglbuf->egl_dpy = egl_dpy;
++          eglbuf->egl_img = egl_img;
++          set_egl_buf (buf, eglbuf);
++        }
++      }
++    }
++  }
++  return eglbuf;
++}
++
++EGLImageKHR
++gst_egl_buf_egl_image (GstEGLBuf * eglbuf)
++{
++  return eglbuf->egl_img;
++}
++/* ************************************************************************* */
++}
++
++void CGstPlayer::InitEglImage()
++{
++  static bool initialized = false;
++  if (!initialized)
++  {
++    const char *exts = (const char *)glGetString(GL_EXTENSIONS);
++
++    CLog::Log(LOGDEBUG, "EGLIMG: extensions: %s", exts);
++
++    eglCreateImageKHR = (PFNEGLCREATEIMAGEKHRPROC)
++                eglGetProcAddress("eglCreateImageKHR");
++    eglDestroyImageKHR = (PFNEGLDESTROYIMAGEKHRPROC)
++                eglGetProcAddress("eglDestroyImageKHR");
++
++    // check for various extensions for creating egl-images from video:
++    if (strstr(exts, "GL_TI_image_external_raw_video"))
++    {
++      CLog::Log(LOGDEBUG, "EGLIMG: has GL_TI_image_external_raw_video");
++      has_ti_raw_video = true;
++    }
++
++    initialized = true;
++  }
++}
++
++/* TODO: split this into a separate class for dmabuf case.. and use standard extension.. */
++class TIRawVideoEGLImageHandle : public EGLImageHandle
++{
++public:
++  TIRawVideoEGLImageHandle(GstBuffer *buf, gint width, gint height, guint32 format)
++    : EGLImageHandle()
++  {
++    this->eglImage = NULL;
++    this->buf    = gst_buffer_ref(buf);
++    this->width  = width;
++    this->height = height;
++    this->format = format;
++    this->refcnt = 1;
++  }
++
++  virtual ~TIRawVideoEGLImageHandle()
++  {
++    gst_buffer_unref(buf);
++  }
++
++  virtual EGLImageHandle * Ref()
++  {
++    CSingleLock lock(m_monitorLock);
++    refcnt++;
++    return this;
++  }
++
++  void UnRef()
++  {
++    CSingleLock lock(m_monitorLock);
++    --refcnt;
++    if (refcnt == 0)
++      delete this;
++  }
++  virtual EGLImageKHR Get()
++  {
++    if (!eglImage) {
++      GstEGLBuf *eglbuf = gst_egl_buf (g_Windowing.GetEGLDisplay(), buf);
++      if (eglbuf)
++        eglImage = gst_egl_buf_egl_image (eglbuf);
++    }
++    return eglImage;
++  }
++
++private:
++  static CCriticalSection m_monitorLock;
++  int refcnt;
++  int dmabuf_fd;
++  EGLImageKHR eglImage;
++  gint width, height;
++  guint32 format;
++  GstBuffer *buf;
++};
++CCriticalSection TIRawVideoEGLImageHandle::m_monitorLock;
++
++/*****************************************************************************/
++
+ 
+ #define LOAD_TAG(data, tags, tagid) \
+   do {\
+@@ -103,6 +352,7 @@
+   m_cache_level = 100;
+   m_file_cnt = 0;
+   gst_init(NULL, NULL);
++  InitEglImage();
+ }
+ 
+ CGstPlayer::~CGstPlayer()
+@@ -248,6 +498,7 @@ int CGstPlayer::OutputPicture(GstBuffer * gstbuffer)
+     gint width, height;
+     guint32 format;
+     GstStructure * structure = gst_caps_get_structure (caps, 0);
++    GstVideoCrop * crop = gst_buffer_get_video_crop (gstbuffer);
+ 
+     if (structure == NULL ||
+         !gst_structure_get_int (structure, "width", &width) ||
+@@ -257,28 +508,48 @@ int CGstPlayer::OutputPicture(GstBuffer * gstbuffer)
+       CLog::Log(LOGERROR, "Unsupport output format");
+       return -1;
+     }
+-    
+-    pPicture->iDisplayWidth = pPicture->iWidth = width;
+-    pPicture->iDisplayHeight = pPicture->iHeight = height;
+ 
+-    pPicture->iDisplayX = 0;
+-    pPicture->iDisplayY = 0;
++    pPicture->iWidth = width;
++    pPicture->iHeight = height;
++
++    if (crop) {
++      pPicture->iDisplayWidth  = gst_video_crop_width (crop);
++      pPicture->iDisplayHeight = gst_video_crop_height (crop);
++      pPicture->iDisplayX = gst_video_crop_left (crop);
++      pPicture->iDisplayY = gst_video_crop_top (crop);
++    } else {
++      pPicture->iDisplayWidth  = pPicture->iWidth;
++      pPicture->iDisplayHeight = pPicture->iHeight;
++      pPicture->iDisplayX = 0;
++      pPicture->iDisplayY = 0;
++    }
++
++    /* try various ways to create an eglImg from the decoded buffer: */
++    if (has_ti_raw_video) {
++      pPicture->eglImageHandle =
++          new TIRawVideoEGLImageHandle(gstbuffer, width, height, format);
++    }
+ 
+-    if (format==GST_STR_FOURCC("NV12")){
++    if (pPicture->eglImageHandle) {
++      pPicture->format = DVDVideoPicture::FMT_EGLIMG;
++      flags = CONF_FLAGS_FORMAT_EGLIMG;
++    } else if (format==GST_STR_FOURCC("NV12")) {
+       pPicture->data[0] = GST_BUFFER_DATA(gstbuffer);
+       pPicture->data[1] = GST_BUFFER_DATA(gstbuffer)+m_output.width*m_output.height;
+       pPicture->iLineSize[0] = pPicture->iWidth;
+       pPicture->iLineSize[1] = pPicture->iWidth;
++      pPicture->format = DVDVideoPicture::FMT_NV12;
+       flags = CONF_FLAGS_FORMAT_NV12;
+-    }else if (format==GST_STR_FOURCC("I420")){
++    } else if (format==GST_STR_FOURCC("I420")) {
+       pPicture->data[0] = GST_BUFFER_DATA(gstbuffer);
+       pPicture->data[1] = GST_BUFFER_DATA(gstbuffer)+m_output.width*m_output.height;
+       pPicture->data[2] = GST_BUFFER_DATA(gstbuffer)+m_output.width*m_output.height*5/4;
+       pPicture->iLineSize[0] = pPicture->iWidth;
+       pPicture->iLineSize[1] = pPicture->iWidth/2;
+       pPicture->iLineSize[2] = pPicture->iWidth/2;
++      pPicture->format = DVDVideoPicture::FMT_YUV420P;
+       flags = CONF_FLAGS_FORMAT_YV12;
+-    }else{
++    } else {
+       CLog::Log(LOGERROR, "Unsupport output format");
+       return -1;
+     }
+@@ -314,6 +585,9 @@ int CGstPlayer::OutputPicture(GstBuffer * gstbuffer)
+ 
+   g_renderManager.FlipPage(CThread::m_bStop, 0LL, -1, FS_NONE);
+ 
++  if (pPicture->eglImageHandle)
++    pPicture->eglImageHandle->UnRef();
++
+   return result;
+ 
+ #endif
+diff --git a/xbmc/cores/gstplayer/GstPlayer.h b/xbmc/cores/gstplayer/GstPlayer.h
+index dad24a2..5bab985 100644
+--- a/xbmc/cores/gstplayer/GstPlayer.h
++++ b/xbmc/cores/gstplayer/GstPlayer.h
+@@ -173,4 +173,6 @@ class CGstPlayer : public IPlayer, public CThread
+   CStdString      m_username;
+   CStdString      m_password;
+   std::map<CStdString, CStdString> m_requestheaders;
++
++  static void InitEglImage();
+ };

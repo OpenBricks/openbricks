@@ -1,0 +1,1275 @@
+diff --git a/xbmc/cores/gstplayer/GstPlayer.cpp b/xbmc/cores/gstplayer/GstPlayer.cpp
+new file mode 100644
+index 0000000..201730d
+--- /dev/null
++++ b/xbmc/cores/gstplayer/GstPlayer.cpp
+@@ -0,0 +1,1068 @@
++/*
++ *      Copyright (C) 2012 linaro
++ *      http://www.linaro.org
++ *
++ *  This Program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; either version 2, or (at your option)
++ *  any later version.
++ *
++ *  This Program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with XBMC; see the file COPYING.  If not, write to
++ *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
++ *  http://www.gnu.org/copyleft/gpl.html
++ *
++ */
++
++#include "threads/SystemClock.h"
++#include "system.h"
++
++#include "utils/LangCodeExpander.h"
++#include "guilib/LocalizeStrings.h"
++
++#include "utils/URIUtils.h"
++#include "GUIInfoManager.h"
++#include "guilib/GUIWindowManager.h"
++#include "Application.h"
++#include "filesystem/File.h"
++#include "pictures/Picture.h"
++#include "DllSwScale.h"
++#ifdef HAS_VIDEO_PLAYBACK
++#include "cores/VideoRenderers/RenderManager.h"
++#endif
++#ifdef HAS_PERFORMANCE_SAMPLE
++#include "xbmc/utils/PerformanceSample.h"
++#else
++#define MEASURE_FUNCTION
++#endif
++#include "settings/AdvancedSettings.h"
++#include "FileItem.h"
++#include "settings/GUISettings.h"
++#include "GUIUserMessages.h"
++#include "settings/Settings.h"
++#include "utils/log.h"
++#include "utils/TimeUtils.h"
++#include "utils/StreamDetails.h"
++#include "utils/StreamUtils.h"
++#include "utils/Variant.h"
++#include "storage/MediaManager.h"
++#include "dialogs/GUIDialogBusy.h"
++#include "dialogs/GUIDialogKaiToast.h"
++#include "utils/StringUtils.h"
++#include "Util.h"
++#include <gst/app/gstappsink.h>
++
++#include "../dvdplayer/DVDCodecs/Video/DVDVideoCodec.h"
++
++
++
++ 
++#include "GstPlayer.h"
++
++
++
++#define LOAD_TAG(data, tags, tagid) \
++  do {\
++    if ((data)==NULL){\
++      gchar * value;\
++      if (gst_tag_list_get_string ((tags), (tagid), &value)){\
++        (data) = value;\
++      }\
++    }\
++  }while(0)
++
++#define APPEND_STR(string, data, prefix, postfix) \
++  do {\
++    if ((data)){\
++      (string) += (prefix);\
++      (string) += (data);\
++      (string) += (postfix);\
++    }\
++  }while(0)
++
++
++CGstPlayer::CGstPlayer(IPlayerCallback& callback)
++: IPlayer(callback),
++  CThread(),
++  m_ready(true)
++{
++  m_bStop = true;
++  m_paused = false;
++  m_clock = 0;
++  m_lastTime = 0;
++  m_speed = 1;
++  m_playbin = NULL;
++  m_voutput_init = false;
++  m_srcRect.SetRect(0.0f,0.0f,640.0f,480.0f);
++  m_buffering = false;
++  m_cache_level = 100;
++  m_file_cnt = 0;
++  gst_init(NULL, NULL);
++}
++
++CGstPlayer::~CGstPlayer()
++{
++  CloseFile();
++}
++
++bool CGstPlayer::LoadMediaInfo()
++{
++  if (m_playbin){
++    int i;
++    GstQuery *query;
++
++    g_object_get( G_OBJECT(m_playbin), "n-video", &m_mediainfo.video_num, NULL);
++    g_object_get( G_OBJECT(m_playbin), "n-audio", &m_mediainfo.audio_num, NULL);
++
++    g_object_get( G_OBJECT(m_playbin), "current-audio", &m_audio_current, NULL);
++    if (m_audio_current<0) m_audio_current=0;
++    g_object_get( G_OBJECT(m_playbin), "current-video", &m_video_current, NULL);
++    if (m_video_current<0) m_video_current=0;
++
++    query = gst_query_new_seeking (GST_FORMAT_TIME);
++    if(gst_element_query (m_playbin, query))
++      gst_query_parse_seeking (query, NULL, &m_mediainfo.seekable, NULL, NULL);
++    else
++      m_mediainfo.seekable=false;
++    gst_query_unref (query);
++
++    if (m_mediainfo.audio_num){
++      m_mediainfo.audio_info = (MediaAudioInfo*)g_malloc(sizeof(MediaAudioInfo)*m_mediainfo.audio_num);
++      memset(m_mediainfo.audio_info, 0, (sizeof(MediaAudioInfo)*m_mediainfo.audio_num));
++    }
++
++    if (m_mediainfo.video_num){
++      m_mediainfo.video_info = (MediaVideoInfo*)g_malloc(sizeof(MediaVideoInfo)*m_mediainfo.video_num);
++      memset(m_mediainfo.video_info, 0, (sizeof(MediaVideoInfo)*m_mediainfo.video_num));
++    }
++
++    for (i=0;i<m_mediainfo.audio_num;i++)
++    {
++      GstTagList *tags = NULL;
++
++      g_signal_emit_by_name (G_OBJECT (m_playbin), "get-audio-tags", i, &tags);
++
++      if (tags) {
++        MediaAudioInfo * ainfo = &m_mediainfo.audio_info[i];
++
++        LOAD_TAG(ainfo->lang, tags, GST_TAG_LANGUAGE_CODE);
++        LOAD_TAG(ainfo->codec, tags, GST_TAG_CODEC);
++        if (ainfo->codec==NULL){
++          LOAD_TAG(ainfo->codec, tags, GST_TAG_AUDIO_CODEC);
++        }
++
++        gst_tag_list_get_uint(tags, GST_TAG_BITRATE, &ainfo->bitrate);
++
++        LOAD_TAG(m_mediainfo.container_format, tags, GST_TAG_CONTAINER_FORMAT);
++        LOAD_TAG(m_mediainfo.title, tags, GST_TAG_TITLE);
++        LOAD_TAG(m_mediainfo.artist, tags, GST_TAG_ARTIST);
++        LOAD_TAG(m_mediainfo.description, tags, GST_TAG_DESCRIPTION);
++        LOAD_TAG(m_mediainfo.album, tags, GST_TAG_ALBUM);
++        LOAD_TAG(m_mediainfo.genre, tags, GST_TAG_GENRE);
++
++        gst_tag_list_free (tags);
++      }
++    }
++
++    for (i=0;i<m_mediainfo.video_num;i++)
++    {
++      GstTagList *tags = NULL;
++
++      g_signal_emit_by_name (G_OBJECT (m_playbin), "get-video-tags", i, &tags);
++
++      if (tags) {
++        MediaVideoInfo * vinfo = &m_mediainfo.video_info[i];
++
++        LOAD_TAG(vinfo->codec, tags, GST_TAG_CODEC);
++        if (vinfo->codec==NULL){
++          LOAD_TAG(vinfo->codec, tags, GST_TAG_VIDEO_CODEC);
++        }
++        gst_tag_list_get_uint(tags, GST_TAG_BITRATE, &vinfo->bitrate);
++
++        LOAD_TAG(m_mediainfo.container_format, tags, GST_TAG_CONTAINER_FORMAT);
++        LOAD_TAG(m_mediainfo.title, tags, GST_TAG_TITLE);
++        LOAD_TAG(m_mediainfo.artist, tags, GST_TAG_ARTIST);
++        LOAD_TAG(m_mediainfo.description, tags, GST_TAG_DESCRIPTION);
++        LOAD_TAG(m_mediainfo.album, tags, GST_TAG_ALBUM);
++        LOAD_TAG(m_mediainfo.genre, tags, GST_TAG_GENRE);
++
++        gst_tag_list_free (tags);
++      }
++    }
++
++    m_mediainfo.loaded = true;
++    return true;
++  } 
++  return false;
++}
++
++int CGstPlayer::GetAudioStreamCount()
++{
++  return m_mediainfo.audio_num;
++}
++
++void CGstPlayer::GetAudioStreamName(int iStream, CStdString& strStreamName)
++{
++  strStreamName = "";
++  if ((m_playbin) && (m_mediainfo.audio_info) && (iStream<m_mediainfo.audio_num)){
++    if (m_mediainfo.audio_info[iStream].lang){
++      CStdString code = m_mediainfo.audio_info[iStream].lang;
++      if (!g_LangCodeExpander.Lookup(strStreamName, code)) strStreamName = m_mediainfo.audio_info[iStream].lang;
++    }
++    strStreamName += " ";
++    if (m_mediainfo.audio_info[iStream].codec){
++      strStreamName += m_mediainfo.audio_info[iStream].codec;
++    }
++  }else{
++    strStreamName += "Unknown";
++  }
++}
++
++int CGstPlayer::GetAudioStream()
++{
++  return m_audio_current;
++}
++
++
++int CGstPlayer::OutputPicture(GstBuffer * gstbuffer)
++{
++  /* picture buffer is not allowed to be modified in this call */
++  DVDVideoPicture picture;
++  DVDVideoPicture* pPicture = &picture;
++  int result = 0;
++  gint flags;
++  double config_framerate = 30.0;
++
++  memset(pPicture, 0, sizeof(DVDVideoPicture));
++
++#ifdef HAS_VIDEO_PLAYBACK
++
++  GstCaps * caps = GST_BUFFER_CAPS(gstbuffer);
++
++  if (caps){
++    gint width, height;
++    guint32 format;
++    GstStructure * structure = gst_caps_get_structure (caps, 0);
++
++    if (structure == NULL ||
++        !gst_structure_get_int (structure, "width", &width) ||
++        !gst_structure_get_int (structure, "height", &height) ||
++        !gst_structure_get_fourcc (structure, "format", &format)){
++      
++      CLog::Log(LOGERROR, "Unsupport output format");
++      return -1;
++    }
++    
++    pPicture->iDisplayWidth = pPicture->iWidth = width;
++    pPicture->iDisplayHeight = pPicture->iHeight = height;
++
++    if (format==GST_STR_FOURCC("NV12")){
++      pPicture->data[0] = GST_BUFFER_DATA(gstbuffer);
++      pPicture->data[1] = GST_BUFFER_DATA(gstbuffer)+m_output.width*m_output.height;
++      pPicture->iLineSize[0] = pPicture->iWidth;
++      pPicture->iLineSize[1] = pPicture->iWidth;
++      flags = CONF_FLAGS_FORMAT_NV12;
++    }else if (format==GST_STR_FOURCC("I420")){
++      pPicture->data[0] = GST_BUFFER_DATA(gstbuffer);
++      pPicture->data[1] = GST_BUFFER_DATA(gstbuffer)+m_output.width*m_output.height;
++      pPicture->data[2] = GST_BUFFER_DATA(gstbuffer)+m_output.width*m_output.height*5/4;
++      pPicture->iLineSize[0] = pPicture->iWidth;
++      pPicture->iLineSize[1] = pPicture->iWidth/2;
++      pPicture->iLineSize[2] = pPicture->iWidth/2;
++      flags = CONF_FLAGS_FORMAT_YV12;
++    }else{
++      CLog::Log(LOGERROR, "Unsupport output format");
++      return -1;
++    }
++    
++  }else{
++    return -1;
++  }
++
++
++  if ((m_output.width!=pPicture->iWidth) || (m_output.height!=pPicture->iHeight)){
++    if(!g_renderManager.Configure(pPicture->iWidth, pPicture->iHeight, pPicture->iDisplayWidth, pPicture->iDisplayHeight, config_framerate, flags, pPicture->extended_format))
++    {
++      CLog::Log(LOGNOTICE, "Failed to configure renderer");
++      return -1;
++    }
++
++    m_output.width=pPicture->iWidth;
++    m_output.height=pPicture->iHeight;
++  }
++  
++  int index = g_renderManager.AddVideoPicture(*pPicture);
++#if 0
++  // video device might not be done yet
++  while (index < 0 && !CThread::m_bStop &&
++         CDVDClock::GetAbsoluteClock(false) < iCurrentClock + iSleepTime + DVD_MSEC_TO_TIME(500) )
++  {
++    Sleep(1);
++    index = g_renderManager.AddVideoPicture(*pPicture);
++  }
++#endif
++  if (index < 0)
++    return -1;
++
++  g_renderManager.FlipPage(CThread::m_bStop, 0LL, -1, FS_NONE);
++
++  return result;
++
++#endif
++}
++
++
++void CGstPlayer::SetAudioStream(int iStream)
++{
++  if ((m_playbin) && (iStream>=0) && (iStream<m_mediainfo.audio_num)){
++    m_audio_current = iStream;
++    g_object_set( G_OBJECT(m_playbin), "current-audio", iStream, NULL);
++  }
++}
++
++void CGstPlayer::CleanMediaInfo()
++{
++  int i;
++
++  if (m_mediainfo.container_format){
++    g_free(m_mediainfo.container_format);
++    m_mediainfo.container_format = NULL;
++  }
++  if (m_mediainfo.genre){
++    g_free(m_mediainfo.genre);
++    m_mediainfo.genre = NULL;
++  }
++  if (m_mediainfo.title){
++    g_free(m_mediainfo.title);
++    m_mediainfo.title = NULL;
++  }
++  if (m_mediainfo.artist){
++    g_free(m_mediainfo.artist);
++    m_mediainfo.artist = NULL;
++  }
++  if (m_mediainfo.description){
++    g_free(m_mediainfo.description);
++    m_mediainfo.description = NULL;
++  }
++  if (m_mediainfo.album){
++    g_free(m_mediainfo.album);
++    m_mediainfo.album = NULL;
++  }
++  
++
++
++
++  if (m_mediainfo.audio_info){
++    for (i=0;i<m_mediainfo.audio_num;i++){
++      MediaAudioInfo * ainfo = &m_mediainfo.audio_info[i];
++
++      if (ainfo->lang){
++    g_free(ainfo->lang);
++    ainfo->lang = NULL;
++  }
++      if (ainfo->codec){
++    g_free(ainfo->codec);
++    ainfo->codec = NULL;
++  }
++      
++    }
++    g_free(m_mediainfo.audio_info);
++    m_mediainfo.audio_info = NULL;
++  }
++
++  if (m_mediainfo.video_info){
++    for (i=0;i<m_mediainfo.video_num;i++){
++      MediaVideoInfo * vinfo = &m_mediainfo.video_info[i];
++      if (vinfo->codec){
++    g_free(vinfo->codec);
++    vinfo->codec = NULL;
++  }
++    }
++    g_free(m_mediainfo.video_info);
++    m_mediainfo.video_info = NULL;
++  }
++}
++
++void CGstPlayer::OnDecodedBuffer(GstElement *appsink, void *data)
++{
++  CGstPlayer *decoder = (CGstPlayer *)data;
++
++  GstBuffer *buffer = gst_app_sink_pull_buffer(GST_APP_SINK(appsink));
++  if (buffer)
++  {
++      decoder->OutputPicture(buffer);
++      
++      gst_buffer_unref(buffer);
++  }
++  else{
++    CLog::Log(LOGERROR,"GStreamer: OnDecodedBuffer - Null Buffer");
++  }
++}
++
++
++bool CGstPlayer::CreatePlayBin()
++{
++  GstElement *videosink, *audiosink=NULL;
++  m_playbin = gst_element_factory_make("playbin2", "playbin0");
++  if(!m_playbin)
++  {
++    CLog::Log(LOGERROR, "CreatePlayBin - gst_element_factory_make playbin2 failed");
++    return false;
++  }
++
++  //prepare videosink
++  videosink = gst_element_factory_make("appsink", "videosink0");
++  if(!videosink)
++  {
++    CLog::Log(LOGERROR, "CreatePlayBin - gst_element_factory_make appsink failed");
++    return false;
++  }
++
++  {
++    g_object_set(G_OBJECT(videosink), "emit-signals", TRUE, "sync", TRUE, NULL);
++    g_signal_connect(videosink, "new-buffer", G_CALLBACK(OnDecodedBuffer), this);
++  }
++
++  g_object_set(G_OBJECT(m_playbin), "video-sink", videosink, NULL);
++  //GST_PLAY_FLAG_NATIVE_VIDEO | GST_PLAY_FLAG_VIDEO | GST_PLAY_FLAG_AUDIO | GST_PLAY_FLAG_TEXT | GST_PLAY_FLAG_SOFT_VOLUME
++  g_object_set(G_OBJECT(m_playbin), "flags", 0x5F, NULL);
++
++  m_bus = gst_pipeline_get_bus(GST_PIPELINE(m_playbin));
++  if( NULL == m_bus )
++  {
++    CLog::Log(LOGERROR, "%s(): Failed in gst_pipeline_get_bus()!", __FUNCTION__);
++    return false;
++  }
++  return true;
++}
++
++bool CGstPlayer::DestroyPlayBin()
++{
++  gst_object_unref(m_playbin);
++  m_playbin = NULL;
++  gst_object_unref(m_bus);
++  m_bus = NULL;
++  return true;
++}
++
++bool CGstPlayer::OpenFile(const CFileItem& file, const CPlayerOptions &options)
++{
++  if (m_playbin){
++    CloseFile();
++  }
++
++  m_clock = 0;
++  m_bStop = false;
++  m_item = file;
++  m_starttime = (gint64)(options.starttime*1000000000);
++
++  memset(&m_mediainfo, 0, sizeof(MediaInfo));
++
++  m_audio_current = 0;
++  m_video_current = 0;
++
++
++  g_renderManager.PreInit();
++
++  m_buffering = false;
++  m_cache_level = 100;
++
++  m_quit_msg = false;
++  m_cancelled = false;
++
++  if(!CreatePlayBin())
++    return false;
++
++  m_ready.Reset();
++  //CLog::Log(LOGNOTICE, "Player thread create");
++  Create();
++  //if(!m_ready.WaitMSec(2000))
++  {
++    //CLog::Log(LOGNOTICE, "Player thread start timeout");
++    CGUIDialogBusy* dialog = (CGUIDialogBusy*)g_windowManager.GetWindow(WINDOW_DIALOG_BUSY);
++    dialog->Show();
++    while(!m_ready.WaitMSec(10))
++    {
++      g_windowManager.Process(CTimeUtils::GetFrameTime());
++      if(dialog->IsCanceled())
++      {
++        m_cancelled = true;
++        m_ready.Wait();
++        break;
++      }
++    }
++    dialog->Close();
++  }
++
++  //CLog::Log(LOGNOTICE, "Player thread create success");
++  if(m_bStop)
++    return false;
++
++  m_callback.OnPlayBackStarted();
++
++  //CLog::Log(LOGNOTICE, "GxPlayer OpenFile return");
++  return true;
++}
++
++bool CGstPlayer::CloseFile()
++{
++  CLog::Log(LOGNOTICE, "---[%s]---", __FUNCTION__);
++
++  m_bStop = true;
++  m_paused = false;
++  m_quit_msg = true;
++
++  if(m_bus)
++    gst_bus_post(m_bus, gst_message_new_custom(GST_MESSAGE_APPLICATION, NULL, gst_structure_new("quit", NULL)));
++
++  CLog::Log(LOGNOTICE, "CloseFile - Stopping Thread");
++  StopThread();
++
++  if (m_playbin)
++    DestroyPlayBin();    
++  
++  CleanMediaInfo();
++
++  g_renderManager.UnInit();
++
++  m_callback.OnPlayBackStopped();
++  return true;
++}
++
++bool CGstPlayer::IsPlaying() const
++{
++  return !m_bStop;
++}
++
++void CGstPlayer::ResetUrlInfo()
++{
++  m_username.clear();
++  m_password.clear();
++}
++
++CStdString CGstPlayer::ParseAndCorrectUrl(CURL &url)
++{
++  CStdString strProtocol = url.GetTranslatedProtocol();
++  CStdString ret;
++  url.SetProtocol(strProtocol);
++
++  ResetUrlInfo();
++  if(url.IsLocal()) {	//local file
++    CStdString path = url.GetFileName();
++    gchar *fname = NULL;
++    if(url.IsFullPath(path))
++      fname = g_strdup(path.c_str());
++    else {
++      gchar *pwd = g_get_current_dir();
++      fname = g_strdup_printf("%s/%s", pwd, path.c_str());
++      g_free(pwd);
++    }
++    url.SetFileName(CStdString(fname));
++    url.SetProtocol("file");
++    g_free(fname);
++  }
++  else if( strProtocol.Equals("http")
++      ||  strProtocol.Equals("https"))
++  {
++    
++    // replace invalid spaces
++    CStdString strFileName = url.GetFileName();
++    strFileName.Replace(" ", "%20");
++    url.SetFileName(strFileName);
++
++    // get username and password
++    m_username = url.GetUserName();
++    m_password = url.GetPassWord();
++
++  }
++
++  if (m_username.length() > 0 && m_password.length() > 0)
++    ret = url.GetWithoutUserDetails();
++  else
++    ret = url.Get();
++  return ret;
++}
++
++bool CGstPlayer::SetAndWaitPlaybinState(GstState newstate, int timeout)
++{
++  GstStateChangeReturn ret;
++ 
++
++  if (m_playbin){
++    ret = gst_element_set_state(m_playbin, newstate);
++    if (ret==GST_STATE_CHANGE_ASYNC){
++      GstState current, pending;
++      do{
++      ret =  gst_element_get_state(m_playbin, &current, &pending, GST_SECOND);
++        }while((m_cancelled==false)&&(ret==GST_STATE_CHANGE_ASYNC) && (timeout-->=0));
++    }
++
++    if ((ret==GST_STATE_CHANGE_FAILURE)||(ret==GST_STATE_CHANGE_ASYNC)){
++      return false;
++    }else{
++      return true;
++    }
++  }
++  return false;
++  
++}
++
++
++
++
++
++void CGstPlayer::Process()
++{
++  bool ret;
++  GstEvent *seek_event;
++  GstMessage *msg;
++  GstState old, current, pending;
++  bool eos = false;
++  int i;
++  CLog::Log(LOGNOTICE, "Player thread start %p", m_playbin);
++  if (m_playbin) {
++    CURL url = m_item.GetAsUrl();
++    CStdString uri = ParseAndCorrectUrl(url);
++    CLog::Log(LOGNOTICE, "Play uri %s", uri.c_str());
++    g_object_set(G_OBJECT(m_playbin), "uri", uri.c_str(), NULL);
++
++    if ((SetAndWaitPlaybinState(GST_STATE_PAUSED, 60)==false) || (m_cancelled)){
++      m_bStop = true;
++      m_ready.Set();
++      goto finish;
++    }
++    if (m_starttime) {
++      seek_event = gst_event_new_seek(1.0, GST_FORMAT_TIME,
++          (GstSeekFlags)(GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_KEY_UNIT),
++          GST_SEEK_TYPE_SET, m_starttime,
++          GST_SEEK_TYPE_NONE, GST_CLOCK_TIME_NONE);
++      gst_element_send_event(m_playbin, seek_event);
++    }
++    LoadMediaInfo();
++
++    if (SetAndWaitPlaybinState(GST_STATE_PLAYING, 10)==false){
++      
++      m_bStop = true;
++      m_ready.Set();
++      goto finish;
++      }
++
++    g_renderManager.SetViewMode(g_settings.m_currentVideoSettings.m_ViewMode);
++  }
++
++  m_ready.Set();
++
++  while(!m_quit_msg && !eos) {
++    msg = gst_bus_timed_pop(m_bus, 1000000000);
++    if(msg) {
++      if(GST_MESSAGE_SRC(msg) == GST_OBJECT(m_playbin)) { //playbin message
++        switch(msg->type) {
++          case GST_MESSAGE_EOS:
++            {
++              CLog::Log(LOGNOTICE, "Media EOS");
++              eos = true;
++              break;
++            }
++          case GST_MESSAGE_ERROR:
++            {
++              CLog::Log(LOGERROR, "Media Error");
++              eos = true;
++              break;
++            }
++
++          case GST_MESSAGE_STATE_CHANGED:
++            {
++              break;
++            }
++
++          default:
++            break;
++        }
++      }
++      else {
++        if(msg->type == GST_MESSAGE_APPLICATION && GST_MESSAGE_SRC(msg) == NULL) {
++          const GstStructure *s = gst_message_get_structure(msg);
++          const gchar *name = gst_structure_get_name(s);
++          if(!g_strcmp0(name, "pause")) {
++            if(!m_buffering && !m_paused)
++              gst_element_set_state(m_playbin, GST_STATE_PLAYING);
++            else
++              gst_element_set_state(m_playbin, GST_STATE_PAUSED);
++          }
++          else if(!g_strcmp0(name, "quit")) {
++            //will quit by m_quit_msg
++          }
++        }
++        else if(msg->type == GST_MESSAGE_BUFFERING)
++        {
++          gst_message_parse_buffering(msg, &m_cache_level);
++          if(m_cache_level == 0) {
++            m_buffering = true;
++            gst_element_set_state(m_playbin, GST_STATE_PAUSED);
++          }
++          else if(m_cache_level >= 100) {
++            m_buffering = false;
++            if(!m_paused) {
++              gst_element_set_state(m_playbin, GST_STATE_PLAYING);
++            }
++          }
++        }
++      }
++      gst_message_unref(msg);
++    }
++  }
++finish:  
++  CLog::Log(LOGNOTICE, "Player stop begin");
++  gst_bus_set_flushing(m_bus, TRUE);
++
++  if (SetAndWaitPlaybinState(GST_STATE_NULL,30)==false){
++
++    CLog::Log(LOGERROR, "Stop player failed");
++    }
++  m_bStop = true;
++  if(eos)
++    m_callback.OnPlayBackEnded();
++  CLog::Log(LOGNOTICE, "Player thread end");
++}
++
++void CGstPlayer::Pause()
++{
++  CLog::Log(LOGNOTICE, "---[%s]---", __FUNCTION__);
++
++  m_paused = !m_paused;
++  if (m_bus){
++    gst_bus_post(m_bus, gst_message_new_custom(GST_MESSAGE_APPLICATION, NULL, gst_structure_new("pause", NULL)));
++  }
++  if (!m_paused) {
++    m_callback.OnPlayBackResumed();
++  }
++  else {
++    m_callback.OnPlayBackPaused();
++  }
++}
++
++bool CGstPlayer::IsPaused() const
++{
++  return m_paused || m_buffering;
++}
++
++bool CGstPlayer::HasVideo() const
++{
++  return (m_mediainfo.video_num>0);
++}
++
++bool CGstPlayer::HasAudio() const
++{
++  return (m_mediainfo.audio_num>0);
++}
++
++int CGstPlayer::GetCacheLevel() const
++{
++  return m_cache_level;
++}
++
++void CGstPlayer::SwitchToNextLanguage()
++{
++  CLog::Log(LOGNOTICE, "---[%s]---", __FUNCTION__);
++}
++
++void CGstPlayer::ToggleSubtitles()
++{
++  CLog::Log(LOGNOTICE, "---[%s]---", __FUNCTION__);
++}
++
++bool CGstPlayer::CanSeek()
++{
++  return m_mediainfo.seekable;
++}
++
++void CGstPlayer::Seek(bool bPlus, bool bLargeStep)
++{
++  CLog::Log(LOGNOTICE, "---[%s]---", __FUNCTION__);
++}
++
++void CGstPlayer::SetVolume(long nVolume)
++{
++  CLog::Log(LOGNOTICE, "---[%s]--- %ld", __FUNCTION__, nVolume);
++  if(m_playbin)
++  {
++    double linear;
++    if(nVolume <= VOLUME_MINIMUM)
++      linear = 0.0;
++    else
++    {
++      linear = pow(10.0, (double)nVolume/1000.0);
++      linear = cbrt(linear);
++      if(linear > 10.0)
++        linear = 10.0;
++    }
++    g_object_set(G_OBJECT(m_playbin), "volume", linear, NULL);
++  }
++}
++
++void CGstPlayer::GetAudioInfo(CStdString& strAudioInfo)
++{
++  strAudioInfo = "Audio (";
++  if (m_mediainfo.audio_info){
++    MediaAudioInfo * ainfo = &m_mediainfo.audio_info[m_audio_current];
++    APPEND_STR(strAudioInfo, ainfo->codec, "Codec: ", ", ");
++    APPEND_STR(strAudioInfo, ainfo->lang, "Language: ", ", ");
++    if (ainfo->bitrate){
++      CStdString bitstr;
++      bitstr.Format("Bitrate: %d", ainfo->bitrate);
++      strAudioInfo += bitstr;
++    }
++  }
++  strAudioInfo += ")";
++
++}
++
++void CGstPlayer::GetVideoInfo(CStdString& strVideoInfo)
++{
++  strVideoInfo = "Video (";
++  if (m_mediainfo.video_info){
++    MediaVideoInfo * vinfo = &m_mediainfo.video_info[m_video_current];
++    APPEND_STR(strVideoInfo, vinfo->codec, "Codec: ", ", ");
++    if (vinfo->bitrate){
++      CStdString bitstr;
++      bitstr.Format("Bitrate: %d", vinfo->bitrate);
++      strVideoInfo += bitstr;
++    }
++  }
++  strVideoInfo += ")";
++}
++
++void CGstPlayer::GetGeneralInfo(CStdString& strGeneralInfo)
++{
++  strGeneralInfo = "";
++  APPEND_STR(strGeneralInfo, m_mediainfo.title, "Title :", ", ");
++  APPEND_STR(strGeneralInfo, m_mediainfo.artist, "Artist: ", ", ");
++  APPEND_STR(strGeneralInfo, m_mediainfo.genre, "Genre: ", ", ");
++  APPEND_STR(strGeneralInfo, m_mediainfo.album, "Album: ", ", ");
++  APPEND_STR(strGeneralInfo, m_mediainfo.description, "Desc: ", ", ");
++  APPEND_STR(strGeneralInfo, m_mediainfo.container_format, "Format: ", "");
++}
++
++void CGstPlayer::SwitchToNextAudioLanguage()
++{
++  CLog::Log(LOGNOTICE, "---[%s]---", __FUNCTION__);
++}
++
++void CGstPlayer::SeekPercentage(float iPercent)
++{
++  CLog::Log(LOGNOTICE, "---[%s]---", __FUNCTION__);
++  __int64 iTotalMsec = GetTotalTime() * 1000;
++  __int64 iTime = (__int64)(iTotalMsec * iPercent / 100);
++  SeekTime(iTime);
++}
++
++float CGstPlayer::GetPercentage()
++{
++  __int64 iTotalTime = GetTotalTime() * 1000;
++  //CLog::Log(LOGNOTICE, "---[%s]---", __FUNCTION__);
++  if (iTotalTime != 0)
++  {
++    return GetTime() * 100 / (float)iTotalTime;
++  }
++  return 0.0f;
++}
++
++
++void CGstPlayer::SetSinkRenderDelay(GstElement * ele, guint64 renderDelay)
++{
++  if (GST_IS_BIN(ele)){
++    GstIterator *elem_it = NULL;
++    gboolean done = FALSE;
++    elem_it = gst_bin_iterate_sinks (GST_BIN (ele));
++    while (!done) {
++      GstElement *element = NULL;
++
++      switch (gst_iterator_next (elem_it,  ((void **)&element))) {
++        case GST_ITERATOR_OK:
++          if (element ) {
++            g_object_set( G_OBJECT(element), "render-delay", renderDelay, NULL);
++          }
++          gst_object_unref (element);
++          break;
++        case GST_ITERATOR_RESYNC:
++          gst_iterator_resync (elem_it);
++          break;
++        case GST_ITERATOR_ERROR:
++          done = TRUE;
++          break;
++        case GST_ITERATOR_DONE:
++          done = TRUE;
++          break;
++      }
++    }
++    gst_iterator_free (elem_it);
++  }else{
++    g_object_set( G_OBJECT(ele), "render-delay", renderDelay, NULL);
++  }
++}
++
++//This is how much audio is delayed to video, we count the oposite in the dvdplayer
++void CGstPlayer::SetAVDelay(float fValue)
++{
++  if ((m_playbin) && (m_mediainfo.audio_num) && (m_mediainfo.video_num)){
++    GstElement * videosink = NULL;
++    GstElement * audiosink = NULL;
++    guint64 value64=0;
++
++    g_object_get( G_OBJECT(m_playbin), "video-sink", &videosink, NULL);
++    g_object_get( G_OBJECT(m_playbin), "audio-sink", &audiosink, NULL);
++
++    if ((videosink==NULL) || (audiosink==NULL)){
++      goto bail;
++    }
++
++    if (fValue>=0.0){
++      SetSinkRenderDelay(videosink, value64);
++      value64 = (guint64)(fValue*GST_SECOND);
++      SetSinkRenderDelay(audiosink, value64);
++    }else{
++      SetSinkRenderDelay(audiosink, value64);
++      value64 = (guint64)(-fValue*GST_SECOND);
++      SetSinkRenderDelay(videosink, value64);
++    }
++bail:
++    if (videosink){
++      g_object_unref(G_OBJECT(videosink));
++    }
++    if (audiosink){
++      g_object_unref(G_OBJECT(audiosink));
++    }
++  }
++}
++
++float CGstPlayer::GetAVDelay()
++{
++  CLog::Log(LOGNOTICE, "---[%s]---", __FUNCTION__);
++  return 0.0f;
++}
++
++void CGstPlayer::SetSubTitleDelay(float fValue)
++{
++  CLog::Log(LOGNOTICE, "---[%s]---", __FUNCTION__);
++}
++
++float CGstPlayer::GetSubTitleDelay()
++{
++  CLog::Log(LOGNOTICE, "---[%s]---", __FUNCTION__);
++  return 0.0;
++}
++
++void CGstPlayer::SeekTime(__int64 iTime)
++{
++  GstEvent *seek_event;
++  CLog::Log(LOGNOTICE, "---[%s]---%lld", __FUNCTION__, iTime);
++
++  m_clock = iTime;
++  if (m_playbin){
++    seek_event = gst_event_new_seek(1.0, GST_FORMAT_TIME,
++        (GstSeekFlags)(GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_KEY_UNIT),
++        GST_SEEK_TYPE_SET, iTime*1000000,
++        GST_SEEK_TYPE_NONE, GST_CLOCK_TIME_NONE);
++    gst_element_send_event(m_playbin, seek_event);
++  }
++
++  CLog::Log(LOGNOTICE, "---[%s finish]---%lld", __FUNCTION__, iTime);
++  g_infoManager.m_performingSeek = false;
++  m_callback.OnPlayBackSeek((int)iTime, 0);
++  CLog::Log(LOGNOTICE, "---[%s nretun]---%lld", __FUNCTION__, iTime);
++}
++
++// return the time in milliseconds
++__int64 CGstPlayer::GetTime()
++{
++  gint64 elapsed = 0;
++  if (m_playbin) {
++    GstFormat fmt = GST_FORMAT_TIME;
++    if (TRUE==gst_element_query_position(m_playbin, &fmt, &elapsed)){
++      m_clock = elapsed/1000000;
++    }
++  }
++  return m_clock;
++}
++
++// return length in seconds.. this should be changed to return in milleseconds throughout xbmc
++int CGstPlayer::GetTotalTime()
++{
++  int totaltime = 0;
++  if (m_playbin){
++    gint64 duration = 0;
++    GstFormat fmt = GST_FORMAT_TIME;
++    gst_element_query_duration(m_playbin, &fmt, &duration);
++    totaltime = duration/1000000000;
++  }
++  //CLog::Log(LOGNOTICE, "---[%s]--- %d", __FUNCTION__, totaltime);
++  return totaltime;
++}
++
++void CGstPlayer::SetPlaybackRate(int iSpeed, gint64 pos)
++{
++  GstEvent *event;
++  if(iSpeed > 0)
++    event = gst_event_new_seek(iSpeed, GST_FORMAT_TIME,
++        (GstSeekFlags)(GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_KEY_UNIT),
++        GST_SEEK_TYPE_SET, pos,
++        GST_SEEK_TYPE_SET, GST_CLOCK_TIME_NONE);
++  else
++    event = gst_event_new_seek(iSpeed, GST_FORMAT_TIME,
++        (GstSeekFlags)(GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_KEY_UNIT),
++        GST_SEEK_TYPE_SET, 0,
++        GST_SEEK_TYPE_SET, pos);
++  gst_element_send_event(m_playbin, event);
++}
++
++void CGstPlayer::ToFFRW(int iSpeed)
++{
++  gint64 elapsed = 0;
++  GstFormat fmt = GST_FORMAT_TIME;
++  CLog::Log(LOGNOTICE, "---[%s]-%d--", __FUNCTION__, iSpeed);
++  m_speed = iSpeed;
++
++  if (m_playbin){
++    if(gst_element_query_position(m_playbin, &fmt, &elapsed)) {
++      /*
++         if(iSpeed == 1)
++         g_object_set(G_OBJECT(m_playbin), "mute", FALSE, NULL);
++         else
++         g_object_set(G_OBJECT(m_playbin), "mute", TRUE, NULL);
++       */
++      SetPlaybackRate(iSpeed, elapsed);
++      m_callback.OnPlayBackSpeedChanged(iSpeed);
++    }
++  }
++}
++
++
++CStdString CGstPlayer::GetPlayerState()
++{
++  //CLog::Log(LOGNOTICE, "---[%s]---", __FUNCTION__);
++  return "";
++}
++
++bool CGstPlayer::SetPlayerState(CStdString state)
++{
++  CLog::Log(LOGNOTICE, "---[%s]---", __FUNCTION__);
++  return true;
++}
++
++bool CGstPlayer::OnAction(const CAction &action)
++{
++  //CLog::Log(LOGNOTICE, "on action id %d", action.id);
++  return false;
++}
++
++void CGstPlayer::GetVideoRect(CRect& SrcRect, CRect& DestRect)
++{
++  CLog::Log(LOGNOTICE, "---[%s]---", __FUNCTION__);
++  g_renderManager.GetVideoRect(SrcRect, DestRect);
++}
++
+diff --git a/xbmc/cores/gstplayer/GstPlayer.h b/xbmc/cores/gstplayer/GstPlayer.h
+new file mode 100644
+index 0000000..dad24a2
+--- /dev/null
++++ b/xbmc/cores/gstplayer/GstPlayer.h
+@@ -0,0 +1,176 @@
++/*
++ *      Copyright (C) 2012 linaro
++ *      http://www.linaro.org
++ *
++ *  This Program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; either version 2, or (at your option)
++ *  any later version.
++ *
++ *  This Program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with XBMC; see the file COPYING.  If not, write to
++ *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
++ *  http://www.gnu.org/copyleft/gpl.html
++ *
++ */
++
++#pragma once
++#include "cores/IPlayer.h"
++#include "threads/Thread.h"
++#include <gst/gst.h>
++
++typedef struct{
++   gchar * codec;
++   gchar * lang;
++   guint bitrate;
++} MediaAudioInfo;
++
++typedef struct {
++   gchar * codec;
++   guint bitrate;
++} MediaVideoInfo;
++
++typedef struct{
++   bool loaded;
++   gint video_num;
++   gint audio_num;
++   gint sub_num;
++   gchar * container_format;
++   gchar * title;
++   gchar * genre;
++   gchar * artist;
++   gchar * description;
++   gchar * album;
++   gboolean seekable;
++   MediaAudioInfo * audio_info;
++   MediaVideoInfo * video_info;
++} MediaInfo;
++
++class CGstPlayer : public IPlayer, public CThread
++{
++public:
++  CGstPlayer(IPlayerCallback& callback);
++  virtual ~CGstPlayer();
++  virtual void RegisterAudioCallback(IAudioCallback* pCallback) {}
++  virtual void UnRegisterAudioCallback()                        {}
++  virtual bool OpenFile(const CFileItem& file, const CPlayerOptions &options);
++  virtual bool CloseFile();
++  virtual bool IsPlaying() const;
++  virtual void Pause();
++  virtual bool IsPaused() const;
++  virtual bool HasVideo() const;
++  virtual bool HasAudio() const;
++  virtual void ToggleOSD() { }; // empty
++  virtual void SwitchToNextLanguage();
++  virtual void ToggleSubtitles();
++  virtual bool CanSeek();
++  virtual void Seek(bool bPlus, bool bLargeStep);
++  virtual void SeekPercentage(float iPercent);
++  virtual float GetPercentage();
++  virtual void SetVolume(long nVolume);
++  virtual void SetDynamicRangeCompression(long drc) {}
++  virtual void SetContrast(bool bPlus) {}
++  virtual void SetBrightness(bool bPlus) {}
++  virtual void SetHue(bool bPlus) {}
++  virtual void SetSaturation(bool bPlus) {}
++  virtual void GetAudioInfo(CStdString& strAudioInfo);
++  virtual void GetVideoInfo(CStdString& strVideoInfo);
++  virtual void GetGeneralInfo( CStdString& strVideoInfo);
++  virtual void Update(bool bPauseDrawing)                       {}
++  virtual void SwitchToNextAudioLanguage();
++  virtual bool CanRecord() { return false; }
++  virtual bool IsRecording() { return false; }
++  virtual bool Record(bool bOnOff) { return false; }
++  virtual void SetAVDelay(float fValue = 0.0f);
++  virtual float GetAVDelay();
++  virtual bool OnAction(const CAction &action);
++  virtual void GetVideoRect(CRect& SrcRect, CRect& DestRect);
++
++  virtual void SetSubTitleDelay(float fValue = 0.0f);
++  virtual float GetSubTitleDelay();
++
++  virtual void SeekTime(__int64 iTime);
++  virtual __int64 GetTime();
++  virtual int GetTotalTime();
++  virtual void ToFFRW(int iSpeed);
++  virtual void DoAudioWork()                                    {}
++  
++  virtual CStdString GetPlayerState();
++  virtual bool SetPlayerState(CStdString state);
++
++  
++  virtual int GetCacheLevel() const ;
++  virtual bool IsCaching() const { return m_buffering == TRUE; }
++  virtual bool LoadMediaInfo();
++
++  virtual int GetAudioStreamCount();
++  virtual void GetAudioStreamName(int iStream, CStdString &strStreamName);
++  virtual void SetAudioStream(int iStream);
++  virtual int GetAudioStream();
++
++  
++private:
++  virtual void Process();
++  bool CreatePlayBin();
++  bool DestroyPlayBin();
++  void SetPlaybackRate(int iSpeed, gint64 pos);
++  CStdString ParseAndCorrectUrl(CURL &url);
++  void ResetUrlInfo();
++  void SetSinkRenderDelay(GstElement * ele, guint64 renderDelay);
++  void CleanMediaInfo();
++  int OutputPicture(GstBuffer * gstbuffer);
++  bool SetAndWaitPlaybinState(GstState newstate, int timeout);
++
++  CFileItem   m_item;
++
++  CRect m_srcRect;
++  CRect m_destRect;
++  static void OnDecodedBuffer(GstElement *appsink, void *data);
++
++  bool m_buffering;
++  gint m_cache_level;
++
++  bool m_paused;
++  bool m_quit_msg;
++  __int64 m_clock;
++  DWORD m_lastTime;
++  bool m_voutput_init;
++  int m_speed;
++  bool m_cancelled;
++  gint64 m_starttime;
++  CEvent m_ready;
++
++  MediaInfo m_mediainfo;
++  GstBus     *m_bus;
++  GstElement *m_playbin;
++
++  int m_file_cnt;
++
++  int m_audio_current;
++  int m_video_current;
++
++  struct SOutputConfiguration
++  {
++    unsigned int width;
++    unsigned int height;
++    unsigned int dwidth;
++    unsigned int dheight;
++    unsigned int color_format;
++    unsigned int extended_format;
++    unsigned int color_matrix : 4;
++    unsigned int color_range  : 1;
++    unsigned int chroma_position;
++    unsigned int color_primaries;
++    unsigned int color_transfer;
++    double       framerate;
++  } m_output; 
++
++  CStdString      m_username;
++  CStdString      m_password;
++  std::map<CStdString, CStdString> m_requestheaders;
++};
+diff --git a/xbmc/cores/gstplayer/Makefile.in b/xbmc/cores/gstplayer/Makefile.in
+new file mode 100644
+index 0000000..1588fd0
+--- /dev/null
++++ b/xbmc/cores/gstplayer/Makefile.in
+@@ -0,0 +1,12 @@
++INCLUDES=-I../../.. -I. -I.. -I../../ -I../../linux -I../../utils -I../../../guilib -I../../lib -I../dvdplayer/Codecs/ffmpeg
++
++
++CXXFLAGS+=-D__STDC_FORMAT_MACROS 
++
++SRCS=	GstPlayer.cpp 
++
++LIB=	GstPlayer.a
++
++include ../../../Makefile.include
++-include $(patsubst %.cpp,%.P,$(patsubst %.c,%.P,$(SRCS)))
++
+
