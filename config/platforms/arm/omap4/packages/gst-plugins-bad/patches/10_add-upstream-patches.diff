@@ -1,0 +1,493 @@
+diff -Naur gst-plugins-bad-0.10.23+48e4c8f/debian/patches/0200.diff gst-plugins-bad-0.10.23+48e4c8f-new/debian/patches/0200.diff
+--- gst-plugins-bad-0.10.23+48e4c8f/debian/patches/0200.diff	1970-01-01 01:00:00.000000000 +0100
++++ gst-plugins-bad-0.10.23+48e4c8f-new/debian/patches/0200.diff	2012-07-07 11:24:36.669791576 +0200
+@@ -0,0 +1,139 @@
++From 2ebcbeb0b59bbc22cf1ab4d24afd01cb880d2427 Mon Sep 17 00:00:00 2001
++From: Vincent Penquerc'h <vincent.penquerch@collabora.co.uk>
++Date: Tue, 26 Jun 2012 11:59:18 +0000
++Subject: [PATCH] pvrvideosink: get rid of the dependency on dri2_omap_ws.h
++
++---
++ sys/pvr2d/gstpvrbufferpriv.c |    6 +-----
++ sys/pvr2d/gstpvrvideosink.c  |   44 ++++++++++++++++++++++++++++++++++++++----
++ 2 files changed, 41 insertions(+), 9 deletions(-)
++
++diff --git a/sys/pvr2d/gstpvrbufferpriv.c b/sys/pvr2d/gstpvrbufferpriv.c
++index dda1f62..d7bf715 100644
++--- a/sys/pvr2d/gstpvrbufferpriv.c
+++++ b/sys/pvr2d/gstpvrbufferpriv.c
++@@ -34,9 +34,6 @@
++ #include "gstpvrvideosink.h"
++ #include "gstpvrbufferpriv.h"
++ 
++-#define LINUX
++-#include <dri2_omap_ws.h>
++-
++ #define GST_PVR_BUFFER_PRIV_QUARK gst_pvr_buffer_priv_quark_get_type()
++ static GST_BOILERPLATE_QUARK (GstPVRBufferPriv, gst_pvr_buffer_priv_quark);
++ 
++@@ -104,8 +101,7 @@ gst_pvr_buffer_priv (GstPVRVideoSink * sink, GstBuffer * buf)
++ 
++     priv->display_handle =
++         gst_display_handle_ref (sink->dcontext->gst_display_handle);
++-    priv->context =
++-        ((DRI2Display *) priv->display_handle->display_handle)->hContext;
+++    priv->context = sink->dcontext->pvr_context;
++     if (PVR2DImportDmaBuf (priv->context, gst_dma_buf_get_fd (dmabuf),
++             &priv->mem_info)) {
++       GST_ERROR_OBJECT (sink, "could not import bo: %s", strerror (errno));
++diff --git a/sys/pvr2d/gstpvrvideosink.c b/sys/pvr2d/gstpvrvideosink.c
++index 58f8219..0b5a24c 100644
++--- a/sys/pvr2d/gstpvrvideosink.c
+++++ b/sys/pvr2d/gstpvrvideosink.c
++@@ -32,12 +32,13 @@
++ #include <gst/gstinfo.h>
++ 
++ #define LINUX
++-#include <dri2_omap_ws.h>
++ #include <services.h>
++ #include <img_defs.h>
++ #include <servicesext.h>
++ 
+++#include <X11/extensions/dri2.h>
++ #include <unistd.h>
+++#include <fcntl.h>
++ 
++ #define DEFAULT_QUEUE_SIZE 12
++ #define DEFAULT_MIN_QUEUED_BUFS 1
++@@ -550,7 +551,6 @@ static GstDrawContext *
++ gst_pvrvideosink_get_dcontext (GstPVRVideoSink * pvrvideosink)
++ {
++   GstDrawContext *dcontext;
++-  DRI2Display *displayImpl;
++   WSEGLError glerror;
++   const WSEGLCaps *glcaps;
++   PVR2DMISCDISPLAYINFO misc_display_info;
++@@ -560,6 +560,9 @@ gst_pvrvideosink_get_dcontext (GstPVRVideoSink * pvrvideosink)
++   char *driver, *device;
++   int fd = -1;
++   WSEGLDisplayHandle display_handle;
+++  PVR2DERROR pvr_error = PVR2D_OK;
+++  PVR2DDEVICEINFO *device_info;
+++  int num_devices, device_id;
++ 
++   dcontext = g_new0 (GstDrawContext, 1);
++   dcontext->x_lock = g_mutex_new ();
++@@ -615,8 +618,29 @@ gst_pvrvideosink_get_dcontext (GstPVRVideoSink * pvrvideosink)
++   dcontext->gst_display_handle =
++       gst_display_handle_new (display_handle, dcontext->wsegl_table);
++ 
++-  displayImpl = (DRI2Display *) display_handle;
++-  dcontext->pvr_context = displayImpl->hContext;
+++  num_devices = PVR2DEnumerateDevices (NULL);
+++  if (num_devices < 0) {
+++    GST_WARNING_OBJECT (pvrvideosink, "Failed to enumerate devices, using 0");
+++    device_id = 0;
+++  } else if (num_devices == 0) {
+++    GST_WARNING_OBJECT (pvrvideosink, "Device not found, ignoring and using 0");
+++    device_id = 0;
+++  } else {
+++    device_info = g_malloc (num_devices * sizeof (PVR2DDEVICEINFO));
+++    pvr_error = PVR2DEnumerateDevices (device_info);
+++    if (pvr_error != PVR2D_OK) {
+++      GST_WARNING_OBJECT (pvrvideosink, "Failed to enumerate devices, using 0");
+++      device_id = 0;
+++    } else {
+++      device_id = device_info[0].ulDevID;
+++    }
+++    g_free (device_info);
+++  }
+++
+++  /* TODO: what is PVR2D_XSERVER_PROC ? Use this instead of 0 as flags ? */
+++  pvr_error = PVR2DCreateDeviceContext (device_id, &dcontext->pvr_context, 0);
+++  if (pvr_error != PVR2D_OK)
+++    goto create_device_context_error;
++ 
++ #if 0
++   /* XXX: PVR2DGetScreenMode and PVR2DGetMiscDisplayInfo fail with the new
++@@ -677,12 +701,22 @@ wsegl_init_error:
++       ("Failed to initialize display"), ("%s", wseglstrerr (glerror)));
++   goto fail;
++ 
+++create_device_context_error:
+++  GST_ELEMENT_ERROR (pvrvideosink, RESOURCE, WRITE,
+++      ("Failed to create device context"), ("pvr error %d", pvr_error));
+++  goto fail;
+++
++ dri_device_error:
++   GST_ELEMENT_ERROR (pvrvideosink, RESOURCE, WRITE,
++       ("Could not open DRI device"), ("%s", strerror (errno)));
++   goto fail;
++ 
++ fail:
+++  if (dcontext->pvr_context) {
+++    PVR2DDestroyDeviceContext (dcontext->pvr_context);
+++    dcontext->pvr_context = NULL;
+++  }
+++
++   if (dcontext->x_display) {
++     XCloseDisplay (dcontext->x_display);
++     dcontext->x_display = NULL;
++@@ -1911,6 +1945,8 @@ gst_pvrvideosink_dcontext_clear (GstPVRVideoSink * pvrvideosink)
++ 
++   g_free (dcontext->par);
++ 
+++  PVR2DDestroyDeviceContext (dcontext->pvr_context);
+++
++   g_mutex_lock (dcontext->x_lock);
++   XCloseDisplay (dcontext->x_display);
++   g_mutex_unlock (dcontext->x_lock);
++-- 
++1.7.10
++
++
+diff -Naur gst-plugins-bad-0.10.23+48e4c8f/debian/patches/0201.diff gst-plugins-bad-0.10.23+48e4c8f-new/debian/patches/0201.diff
+--- gst-plugins-bad-0.10.23+48e4c8f/debian/patches/0201.diff	1970-01-01 01:00:00.000000000 +0100
++++ gst-plugins-bad-0.10.23+48e4c8f-new/debian/patches/0201.diff	2012-07-07 11:24:36.801791589 +0200
+@@ -0,0 +1,30 @@
++From 9fd84980a235a0e886b0d1e511f5bf39606391c8 Mon Sep 17 00:00:00 2001
++From: Vincent Penquerc'h <vincent.penquerch@collabora.co.uk>
++Date: Wed, 27 Jun 2012 16:20:41 +0000
++Subject: [PATCH] libgstdrm: use gst_caps_is_strictly_equal instead of
++ gst_caps_is_equal
++
++The latter is, well, not strict enough. In fact, it will be happy to
++return TRUE when one caps has interlaced=TRUE, and the other does not
++have interlaced at all.
++---
++ gst-libs/gst/drm/gstdrmbufferpool.c |    2 +-
++ 1 file changed, 1 insertion(+), 1 deletion(-)
++
++diff --git a/gst-libs/gst/drm/gstdrmbufferpool.c b/gst-libs/gst/drm/gstdrmbufferpool.c
++index e234447..7022a37 100644
++--- a/gst-libs/gst/drm/gstdrmbufferpool.c
+++++ b/gst-libs/gst/drm/gstdrmbufferpool.c
++@@ -103,7 +103,7 @@ gboolean
++ gst_drm_buffer_pool_check_caps (GstDRMBufferPool * self,
++     GstCaps * caps)
++ {
++-  return gst_caps_is_equal (self->caps, caps);
+++  return gst_caps_is_strictly_equal (self->caps, caps);
++ }
++ 
++ /** destroy existing bufferpool */
++-- 
++1.7.10
++
++
+diff -Naur gst-plugins-bad-0.10.23+48e4c8f/debian/patches/0202.diff gst-plugins-bad-0.10.23+48e4c8f-new/debian/patches/0202.diff
+--- gst-plugins-bad-0.10.23+48e4c8f/debian/patches/0202.diff	1970-01-01 01:00:00.000000000 +0100
++++ gst-plugins-bad-0.10.23+48e4c8f-new/debian/patches/0202.diff	2012-07-07 11:24:36.957791595 +0200
+@@ -0,0 +1,27 @@
++From 9cb22c3b3185e120a3783c3edd94f889c3c20c6c Mon Sep 17 00:00:00 2001
++From: Vincent Penquerc'h <vincent.penquerch@collabora.co.uk>
++Date: Wed, 27 Jun 2012 16:22:10 +0000
++Subject: [PATCH] pvrvideosink: fix caps equality check
++
++gst_drm_buffer_pool_check_caps returns FALSE when the caps are not equal.
++---
++ sys/pvr2d/gstpvrvideosink.c |    2 +-
++ 1 file changed, 1 insertion(+), 1 deletion(-)
++
++diff --git a/sys/pvr2d/gstpvrvideosink.c b/sys/pvr2d/gstpvrvideosink.c
++index 0b5a24c..5240905 100644
++--- a/sys/pvr2d/gstpvrvideosink.c
+++++ b/sys/pvr2d/gstpvrvideosink.c
++@@ -1239,7 +1239,7 @@ gst_pvrvideosink_setcaps (GstBaseSink * bsink, GstCaps * caps)
++ 
++   g_mutex_lock (pvrvideosink->pool_lock);
++   if (pvrvideosink->buffer_pool) {
++-    if (gst_drm_buffer_pool_check_caps (pvrvideosink->buffer_pool, caps)) {
+++    if (!gst_drm_buffer_pool_check_caps (pvrvideosink->buffer_pool, caps)) {
++       GST_INFO_OBJECT (pvrvideosink, "in set caps, pool->caps != caps");
++       gst_drm_buffer_pool_destroy (pvrvideosink->buffer_pool);
++       pvrvideosink->buffer_pool = NULL;
++-- 
++1.7.10
++
++
+diff -Naur gst-plugins-bad-0.10.23+48e4c8f/debian/patches/0203.diff gst-plugins-bad-0.10.23+48e4c8f-new/debian/patches/0203.diff
+--- gst-plugins-bad-0.10.23+48e4c8f/debian/patches/0203.diff	1970-01-01 01:00:00.000000000 +0100
++++ gst-plugins-bad-0.10.23+48e4c8f-new/debian/patches/0203.diff	2012-07-07 11:24:37.129791596 +0200
+@@ -0,0 +1,27 @@
++From 1150c1f39f2be01a0f768d3655bc7498fbfde319 Mon Sep 17 00:00:00 2001
++From: Vincent Penquerc'h <vincent.penquerch@collabora.co.uk>
++Date: Wed, 27 Jun 2012 16:23:07 +0000
++Subject: [PATCH] dri2ideosink: fix caps equality check
++
++gst_drm_buffer_pool_check_caps returns FALSE when the caps are not equal.
++---
++ sys/dri2/gstdri2util.c |    2 +-
++ 1 file changed, 1 insertion(+), 1 deletion(-)
++
++diff --git a/sys/dri2/gstdri2util.c b/sys/dri2/gstdri2util.c
++index a9468a7..2ad9808 100644
++--- a/sys/dri2/gstdri2util.c
+++++ b/sys/dri2/gstdri2util.c
++@@ -463,7 +463,7 @@ gst_dri2window_check_caps (GstDRI2Window * xwindow, GstCaps * caps)
++ {
++   g_mutex_lock (xwindow->pool_lock);
++   if (xwindow->buffer_pool) {
++-    if (gst_drm_buffer_pool_check_caps (xwindow->buffer_pool, caps)) {
+++    if (!gst_drm_buffer_pool_check_caps (xwindow->buffer_pool, caps)) {
++       GST_INFO_OBJECT (xwindow->dcontext->elem, "caps change");
++       gst_drm_buffer_pool_destroy (xwindow->buffer_pool);
++       xwindow->buffer_pool = NULL;
++-- 
++1.7.10
++
++
+diff -Naur gst-plugins-bad-0.10.23+48e4c8f/debian/patches/0204.diff gst-plugins-bad-0.10.23+48e4c8f-new/debian/patches/0204.diff
+--- gst-plugins-bad-0.10.23+48e4c8f/debian/patches/0204.diff	1970-01-01 01:00:00.000000000 +0100
++++ gst-plugins-bad-0.10.23+48e4c8f-new/debian/patches/0204.diff	2012-07-07 11:24:37.405791602 +0200
+@@ -0,0 +1,26 @@
++From bb108a8516fd09b9fcd007c08fe80ffc3131a7fb Mon Sep 17 00:00:00 2001
++From: Vincent Penquerc'h <vincent.penquerch@collabora.co.uk>
++Date: Wed, 27 Jun 2012 16:25:50 +0000
++Subject: [PATCH] pvrvideosink: actually print caps
++
++---
++ sys/pvr2d/gstpvrvideosink.c |    2 +-
++ 1 file changed, 1 insertion(+), 1 deletion(-)
++
++diff --git a/sys/pvr2d/gstpvrvideosink.c b/sys/pvr2d/gstpvrvideosink.c
++index 5240905..08917e1 100644
++--- a/sys/pvr2d/gstpvrvideosink.c
+++++ b/sys/pvr2d/gstpvrvideosink.c
++@@ -1178,7 +1178,7 @@ gst_pvrvideosink_setcaps (GstBaseSink * bsink, GstCaps * caps)
++   pvrvideosink = GST_PVRVIDEOSINK (bsink);
++ 
++   GST_DEBUG_OBJECT (pvrvideosink,
++-      "sinkconnect possible caps with given caps %", caps);
+++      "sinkconnect possible caps with given caps %" GST_PTR_FORMAT, caps);
++ 
++   if (pvrvideosink->current_caps) {
++     GST_DEBUG_OBJECT (pvrvideosink, "already have caps set");
++-- 
++1.7.10
++
++
+diff -Naur gst-plugins-bad-0.10.23+48e4c8f/debian/patches/0205.diff gst-plugins-bad-0.10.23+48e4c8f-new/debian/patches/0205.diff
+--- gst-plugins-bad-0.10.23+48e4c8f/debian/patches/0205.diff	1970-01-01 01:00:00.000000000 +0100
++++ gst-plugins-bad-0.10.23+48e4c8f-new/debian/patches/0205.diff	2012-07-07 11:24:37.541791609 +0200
+@@ -0,0 +1,39 @@
++From d2747bcc6e30a790dbe1fd0d5fe1a3cad7de5fb1 Mon Sep 17 00:00:00 2001
++From: Vincent Penquerc'h <vincent.penquerch@collabora.co.uk>
++Date: Wed, 27 Jun 2012 18:27:05 +0000
++Subject: [PATCH] pvrvideosink: recreate the pool on new caps in buffer-alloc
++
++When an element downstream calls setcaps, then buffer-alloc,
++the setcaps may be delayed, so do not rely on setcaps to reset
++the pool before buffer-alloc.
++---
++ sys/pvr2d/gstpvrvideosink.c |    7 ++++---
++ 1 file changed, 4 insertions(+), 3 deletions(-)
++
++diff --git a/sys/pvr2d/gstpvrvideosink.c b/sys/pvr2d/gstpvrvideosink.c
++index 08917e1..54ef681 100644
++--- a/sys/pvr2d/gstpvrvideosink.c
+++++ b/sys/pvr2d/gstpvrvideosink.c
++@@ -1589,14 +1589,15 @@ gst_pvrvideosink_buffer_alloc (GstBaseSink * bsink, guint64 offset, guint size,
++ 
++   /* initialize the buffer pool if not initialized yet */
++   if (G_UNLIKELY (!pvrvideosink->buffer_pool ||
++-          gst_drm_buffer_pool_size (pvrvideosink->buffer_pool) != size)) {
+++          !gst_drm_buffer_pool_check_caps (pvrvideosink->buffer_pool, caps))) {
++     if (pvrvideosink->buffer_pool) {
++       GST_INFO_OBJECT (pvrvideosink, "in buffer alloc, pool->size != size");
++       gst_drm_buffer_pool_destroy (pvrvideosink->buffer_pool);
++     }
++ 
++-    GST_LOG_OBJECT (pvrvideosink, "Creating a buffer pool with %d buffers",
++-        pvrvideosink->num_buffers);
+++    GST_LOG_OBJECT (pvrvideosink,
+++        "Creating a buffer pool with %d buffers and caps %" GST_PTR_FORMAT,
+++        pvrvideosink->num_buffers, caps);
++     if (!(pvrvideosink->buffer_pool =
++             gst_drm_buffer_pool_new (GST_ELEMENT (pvrvideosink),
++                 pvrvideosink->drm_fd, caps, size))) {
++-- 
++1.7.10
++
++
+diff -Naur gst-plugins-bad-0.10.23+48e4c8f/debian/patches/0206.diff gst-plugins-bad-0.10.23+48e4c8f-new/debian/patches/0206.diff
+--- gst-plugins-bad-0.10.23+48e4c8f/debian/patches/0206.diff	1970-01-01 01:00:00.000000000 +0100
++++ gst-plugins-bad-0.10.23+48e4c8f-new/debian/patches/0206.diff	2012-07-07 11:24:37.669791614 +0200
+@@ -0,0 +1,59 @@
++From 22e12ee7a736db9357ad6cf22fb1fa50ef09c882 Mon Sep 17 00:00:00 2001
++From: Vincent Penquerc'h <vincent.penquerch@collabora.co.uk>
++Date: Thu, 28 Jun 2012 09:03:59 +0000
++Subject: [PATCH] drmbufferpool: give this code a separate debug category
++
++and add a couple logs while we're at it
++---
++ gst-libs/gst/drm/gstdrmbufferpool.c |   13 ++++++++++++-
++ 1 file changed, 12 insertions(+), 1 deletion(-)
++
++diff --git a/gst-libs/gst/drm/gstdrmbufferpool.c b/gst-libs/gst/drm/gstdrmbufferpool.c
++index 7022a37..67810fb 100644
++--- a/gst-libs/gst/drm/gstdrmbufferpool.c
+++++ b/gst-libs/gst/drm/gstdrmbufferpool.c
++@@ -33,6 +33,9 @@
++ 
++ #include "gstdrmbufferpool.h"
++ 
+++GST_DEBUG_CATEGORY (drmbufferpool_debug);
+++#define GST_CAT_DEFAULT drmbufferpool_debug
+++
++ static GstDRMBuffer * gst_drm_buffer_new (GstDRMBufferPool * pool);
++ static void gst_drm_buffer_set_pool (GstDRMBuffer * self,
++     GstDRMBufferPool * pool);
++@@ -67,6 +70,8 @@ gst_drm_buffer_pool_new (GstElement * element,
++   GstDRMBufferPool *self = (GstDRMBufferPool *)
++       gst_mini_object_new (GST_TYPE_DRM_BUFFER_POOL);
++ 
+++  GST_DEBUG_OBJECT (element, "Creating DRM buffer pool with caps %" GST_PTR_FORMAT, caps);
+++
++   gst_drm_buffer_pool_initialize (self, element, fd, caps, size);
++ 
++   return self;
++@@ -209,6 +214,7 @@ gst_drm_buffer_pool_put (GstDRMBufferPool * self, GstDRMBuffer * buf)
++ static void
++ gst_drm_buffer_pool_finalize (GstDRMBufferPool * self)
++ {
+++  GST_DEBUG_OBJECT (self->element, "finalize");
++   g_mutex_free (self->lock);
++   if (self->caps)
++     gst_caps_unref (self->caps);
++@@ -221,7 +227,12 @@ gst_drm_buffer_pool_finalize (GstDRMBufferPool * self)
++ static void
++ gst_drm_buffer_pool_class_init (GstDRMBufferPoolClass * klass)
++ {
++-  GstMiniObjectClass *mini_object_class = GST_MINI_OBJECT_CLASS (klass);
+++  GstMiniObjectClass *mini_object_class;
+++
+++  GST_DEBUG_CATEGORY_INIT (drmbufferpool_debug, "drmbufferpool", 0,
+++      "DRM buffer pool");
+++
+++  mini_object_class = GST_MINI_OBJECT_CLASS (klass);
++   klass->buffer_alloc =
++       GST_DEBUG_FUNCPTR (gst_drm_buffer_new);
++   mini_object_class->finalize = (GstMiniObjectFinalizeFunction)
++-- 
++1.7.10
++
++
+diff -Naur gst-plugins-bad-0.10.23+48e4c8f/debian/patches/0207.diff gst-plugins-bad-0.10.23+48e4c8f-new/debian/patches/0207.diff
+--- gst-plugins-bad-0.10.23+48e4c8f/debian/patches/0207.diff	1970-01-01 01:00:00.000000000 +0100
++++ gst-plugins-bad-0.10.23+48e4c8f-new/debian/patches/0207.diff	2012-07-07 11:24:38.029791629 +0200
+@@ -0,0 +1,98 @@
++From 39836c75432b4008508884ed54c406c44824a83f Mon Sep 17 00:00:00 2001
++From: Vincent Penquerc'h <vincent.penquerch@collabora.co.uk>
++Date: Thu, 28 Jun 2012 15:10:08 +0000
++Subject: [PATCH] h264parse: wait to get resolution before pushing buffers
++
++ducatih264dec wants resolution in caps, so we have to wait for it
++to become known before pushing the first buffer, so it includes caps
++with the resolution.
++
++This fixes prerolling on the disney-sample.mpg test file.
++---
++ gst/videoparsers/gsth264parse.c |   34 +++++++++++++++++++++++++++++++++-
++ gst/videoparsers/gsth264parse.h |    2 ++
++ 2 files changed, 35 insertions(+), 1 deletion(-)
++
++diff --git a/gst/videoparsers/gsth264parse.c b/gst/videoparsers/gsth264parse.c
++index 1ec93fc..9c5b82a 100644
++--- a/gst/videoparsers/gsth264parse.c
+++++ b/gst/videoparsers/gsth264parse.c
++@@ -168,6 +168,8 @@ gst_h264_parse_finalize (GObject * object)
++   GstH264Parse *h264parse = GST_H264_PARSE (object);
++ 
++   g_object_unref (h264parse->frame_out);
+++  g_list_foreach (h264parse->pending_buffers, (GFunc) gst_buffer_unref, NULL);
+++  g_list_free (h264parse->pending_buffers);
++ 
++   G_OBJECT_CLASS (parent_class)->finalize (object);
++ }
++@@ -225,6 +227,10 @@ gst_h264_parse_reset (GstH264Parse * h264parse)
++   h264parse->pending_key_unit_ts = GST_CLOCK_TIME_NONE;
++   h264parse->force_key_unit_event = NULL;
++ 
+++  g_list_foreach (h264parse->pending_buffers, (GFunc) gst_buffer_unref, NULL);
+++  g_list_free (h264parse->pending_buffers);
+++  h264parse->pending_buffers = NULL;
+++
++   gst_h264_parse_reset_frame (h264parse);
++ }
++ 
++@@ -1553,6 +1559,27 @@ gst_h264_parse_pre_push_frame (GstBaseParse * parse, GstBaseParseFrame * frame)
++ 
++   gst_h264_parse_reset_frame (h264parse);
++ 
+++  /* we only start pushing when we found the frame size */
+++  if (h264parse->width == 0) {
+++    GST_DEBUG_OBJECT (h264parse,
+++        "Video resolution not known yet, not pushing buffer yet");
+++    h264parse->pending_buffers =
+++        g_list_append (h264parse->pending_buffers, gst_buffer_ref (buffer));
+++    return GST_BASE_PARSE_FLOW_DROPPED;
+++  } else if (h264parse->pending_buffers) {
+++    GST_DEBUG_OBJECT (h264parse,
+++        "We have some pending buffers, pushing them first");
+++    while (h264parse->pending_buffers) {
+++      GstBuffer *buf = h264parse->pending_buffers->data;
+++      gst_buffer_set_caps (buf,
+++          GST_PAD_CAPS (GST_BASE_PARSE_SRC_PAD (h264parse)));
+++      gst_pad_push (GST_BASE_PARSE_SRC_PAD (h264parse), buf);
+++      h264parse->pending_buffers =
+++          g_list_delete_link (h264parse->pending_buffers,
+++          h264parse->pending_buffers);
+++    }
+++  }
+++
++   return GST_FLOW_OK;
++ }
++ 
++@@ -1686,7 +1713,12 @@ gst_h264_parse_set_caps (GstBaseParse * parse, GstCaps * caps)
++   }
++ 
++   if (format == h264parse->format && align == h264parse->align) {
++-    gst_base_parse_set_passthrough (parse, TRUE);
+++    /* Only use passthrough when the resolution is known, othwerwise
+++       we want to wait and accumulate buffers to only push them
+++       once we can set resolution in caps */
+++    if (h264parse->width != 0) {
+++      gst_base_parse_set_passthrough (parse, TRUE);
+++    }
++ 
++     /* we did parse codec-data and might supplement src caps */
++     gst_h264_parse_update_src_caps (h264parse, caps);
++diff --git a/gst/videoparsers/gsth264parse.h b/gst/videoparsers/gsth264parse.h
++index 7d5e9e5..da79e15 100644
++--- a/gst/videoparsers/gsth264parse.h
+++++ b/gst/videoparsers/gsth264parse.h
++@@ -114,6 +114,8 @@ struct _GstH264Parse
++ 
++   GstClockTime pending_key_unit_ts;
++   GstEvent *force_key_unit_event;
+++
+++  GList *pending_buffers;
++ };
++ 
++ struct _GstH264ParseClass
++-- 
++1.7.10
++
++
+diff -Naur gst-plugins-bad-0.10.23+48e4c8f/debian/patches/series gst-plugins-bad-0.10.23+48e4c8f-new/debian/patches/series
+--- gst-plugins-bad-0.10.23+48e4c8f/debian/patches/series	2012-06-26 12:31:06.000000000 +0200
++++ gst-plugins-bad-0.10.23+48e4c8f-new/debian/patches/series	2012-07-07 11:25:23.137793016 +0200
+@@ -100,4 +100,12 @@
+ 0099-dri2videosink-do-not-crash-when-XOpenDisplay-fails.patch
+ 0100-dri2videosink-avoid-possible-aliasing-and-locale-iss.patch
+ 0101-dri2videosink-reenable-the-memcpy-on-slow-path.patch
++0200.diff
++0201.diff
++0202.diff
++0203.diff
++0204.diff
++0205.diff
++0206.diff
++0207.diff
+ 99_ltmain_as-needed.patch
