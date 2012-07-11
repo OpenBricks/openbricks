@@ -1,0 +1,23 @@
+#!/bin/sh
+
+. config/options
+
+. $CONFIG_MACHINE/meta
+
+if [ -z "$MACHINE_UBOOT_CONFIG" ]; then
+  echo "$TARGET_PLATFORM does not define any u-boot configuration, aborting."
+  echo "Please add MACHINE_UBOOT_CONFIG to your platform meta file"
+  exit 1
+fi
+
+cd $BUILD/$1*
+make CROSS_COMPILE="$TARGET_PREFIX" $MACHINE_UBOOT_CONFIG BOOTROM=1 SPIBOOT=1 DRAM=HYNIX_CUBOX NAND=0 
+make CROSS_COMPILE="$TARGET_PREFIX" HOSTCC="$HOST_CC" HOSTSTRIP="true"
+
+BOOT_CFG="$CONFIG_MACHINE/boot.cfg"
+[ ! -r "$BOOT_CFG" ] && BOOT_CFG="$CONFIG_PLATFORM/boot.cfg"
+[ ! -r "$BOOT_CFG" ] && exit 0
+
+cp $BOOT_CFG boot.cfg
+mkimage -A arm -O u-boot -T script -C none -a $UBOOT_ENTRYPOINT -e $UBOOT_LOADADDRESS \
+  -n "$DISTRONAME Boot" -d boot.cfg boot.ini
