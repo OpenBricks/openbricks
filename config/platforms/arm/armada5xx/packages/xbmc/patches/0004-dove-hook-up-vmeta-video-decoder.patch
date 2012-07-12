@@ -1,0 +1,84 @@
+From 0f49e8cc2f80ee20cc6d92c227ac23ba316ed067 Mon Sep 17 00:00:00 2001
+From: huceke <gimli@i7.(none)>
+Date: Tue, 20 Mar 2012 19:02:44 +0100
+Subject: [PATCH 04/17] [dove] hook up vmeta video decoder.
+
+---
+ xbmc/cores/dvdplayer/DVDCodecs/DVDFactoryCodec.cpp |   10 ++++++++++
+ .../dvdplayer/DVDCodecs/Video/DVDVideoCodec.h      |    6 +++++-
+ xbmc/cores/dvdplayer/DVDCodecs/Video/Makefile.in   |    5 +++++
+ 3 files changed, 20 insertions(+), 1 deletions(-)
+
+diff --git a/xbmc/cores/dvdplayer/DVDCodecs/DVDFactoryCodec.cpp b/xbmc/cores/dvdplayer/DVDCodecs/DVDFactoryCodec.cpp
+index 5cdc226..65f03be 100644
+--- a/xbmc/cores/dvdplayer/DVDCodecs/DVDFactoryCodec.cpp
++++ b/xbmc/cores/dvdplayer/DVDCodecs/DVDFactoryCodec.cpp
+@@ -33,6 +33,7 @@
+ #endif
+ #include "Video/DVDVideoCodecFFmpeg.h"
+ #include "Video/DVDVideoCodecOpenMax.h"
++#include "Video/DVDVideoCodecVMETA.h"
+ #include "Video/DVDVideoCodecLibMpeg2.h"
+ #if defined(HAVE_LIBCRYSTALHD)
+ #include "Video/DVDVideoCodecCrystalHD.h"
+@@ -162,8 +163,17 @@ CDVDVideoCodec* CDVDFactoryCodec::CreateVideoCodec(CDVDStreamInfo &hint, unsigne
+ #elif defined(_LINUX) && !defined(__APPLE__)
+   hwSupport += "VAAPI:no ";
+ #endif
++#if defined(HAS_MARVELL_DOVE)
++  hwSupport += "VMETA:yes ";
++#else
++  hwSupport += "VMETA:no ";
++#endif
+ 
+   CLog::Log(LOGDEBUG, "CDVDFactoryCodec: compiled in hardware support: %s", hwSupport.c_str());
++#if defined(HAS_MARVELL_DOVE)
++  CLog::Log(LOGINFO, "Trying VMETA Video Decoder...");
++  if ( (pCodec = OpenCodec(new CDVDVideoCodecVMETA(), hint, options)) ) return pCodec;
++#endif
+ 
+   // dvd's have weird still-frames in it, which is not fully supported in ffmpeg
+   if(hint.stills && (hint.codec == CODEC_ID_MPEG2VIDEO || hint.codec == CODEC_ID_MPEG1VIDEO))
+diff --git a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodec.h b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodec.h
+index e4bd9c9..59de190 100644
+--- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodec.h
++++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodec.h
+@@ -42,7 +42,6 @@ struct OpenMaxVideoBuffer;
+   class CDVDVideoCodecVideoToolBox;
+   struct __CVBuffer;
+ #endif
+-
+ // should be entirely filled by all codecs
+ struct DVDVideoPicture
+ {
+@@ -76,6 +75,11 @@ struct DVDVideoPicture
+     };
+ #endif
+   };
++#ifdef HAS_MARVELL_DOVE
++  struct {
++    void *vmeta;
++  };
++#endif
+ 
+   unsigned int iFlags;
+ 
+diff --git a/xbmc/cores/dvdplayer/DVDCodecs/Video/Makefile.in b/xbmc/cores/dvdplayer/DVDCodecs/Video/Makefile.in
+index 1dce256..47da087 100644
+--- a/xbmc/cores/dvdplayer/DVDCodecs/Video/Makefile.in
++++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/Makefile.in
+@@ -27,6 +27,11 @@ SRCS += OpenMax.cpp \
+         DVDVideoCodecOpenMax.cpp \
+ 
+ endif
++ifeq (@USE_MARVELL_DOVE@,1)
++SRCS += DVDVideoCodecVMETA.cpp \
++
++endif
++
+ 
+ LIB=Video.a
+ 
+-- 
+1.7.4.1
+

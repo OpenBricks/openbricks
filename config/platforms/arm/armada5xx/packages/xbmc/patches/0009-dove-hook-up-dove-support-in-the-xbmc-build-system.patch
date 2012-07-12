@@ -1,0 +1,110 @@
+From 3007940af3bac030ffe6ca9baa1d882dd18cad87 Mon Sep 17 00:00:00 2001
+From: huceke <gimli@i7.(none)>
+Date: Tue, 20 Mar 2012 19:07:24 +0100
+Subject: [PATCH 09/17] [dove] hook up dove support in the xbmc build system.
+
+---
+ configure.in |   45 +++++++++++++++++++++++++++++++++++++++++++++
+ 1 files changed, 45 insertions(+), 0 deletions(-)
+
+diff --git a/configure.in b/configure.in
+index bca9239..ed120a2 100755
+--- a/configure.in
++++ b/configure.in
+@@ -151,6 +151,12 @@ AC_ARG_WITH([arch],
+   [use_arch=$withval],
+   [use_arch=no])
+ 
++AC_ARG_WITH([platform],
++  [AS_HELP_STRING([--with-platform],
++  [use a pre-configured config for common arm boards])],
++  [use_platform=$withval],
++  [use_platform=none])
++
+ AC_ARG_WITH([cpu],
+   [AS_HELP_STRING([--with-cpu],
+   [build with given cpu passing to ffmpeg (default is no)])],
+@@ -517,6 +523,33 @@ case $host in
+ esac
+ AC_SUBST([ARCH])
+ 
++case $use_platform in
++  marvell-dove)
++     target_platform=target_marvell_dove
++     use_neon=no
++     use_texturepacker=yes
++     use_texturepacker_native=yes
++     use_arch="arm"
++     use_cpu=cortex-a8
++     use_armv5te="no"
++     use_armv6t2="no"
++     use_armv6="yes"
++     use_armvfp="yes"
++     use_hardcoded_tables="yes"
++     use_alsa="yes"
++     USE_TEXTUREPACKER_NATIVE_ROOT="$TEXTUREPACKER_NATIVE_ROOT"
++     ARCH="arm"
++     AC_SUBST(ARCH_DEFINES, "-DTARGET_POSIX -DTARGET_LINUX -D_LINUX -D_ARMEL -DTARGET_MARVELL_DOVE")
++     AC_DEFINE(HAS_MARVELL_DOVE, [1], [Define if supporting Marvell Armada 510 (Dove)])
++     CFLAGS="$CFLAGS -Wno-psabi -Wa,-march=armv7a -mtune=cortex-a8 -mfpu=vfpv3-d16 -mthumb -marm -O3 -ftree-vectorize"
++     CXXFLAGS="$CXXFLAGS -Wno-psabi -Wa,-march=armv7a -mtune=cortex-a8 -mfpu=vfpv3-d16 -mthumb -marm -O3 -ftree-vectorize"
++     FFMPEG_EXTRACFLAGS="$FFMPEG_EXTRACFLAGS -mtune=cortex-a8 -mfpu=vfpv3-d16 -O3 -ftree-vectorize -mthumb -marm"
++     USE_MARVELL_DOVE=1
++     ;;
++  *)
++     use_alsa="yes"
++esac
++
+ # platform debug flags
+ if test "$use_debug" = "yes"; then
+   final_message="$final_message\n  Debugging:\tYes"
+@@ -575,6 +608,10 @@ elif test "$use_arch" = "arm"; then
+   CFLAGS="$CFLAGS -mno-apcs-stack-check"
+   CXXFLAGS="$CXXFLAGS -mno-apcs-stack-check"
+   FFMPEG_EXTRACFLAGS=""
++elif test "$target_platform" = "target_marvell_dove"; then
++  ARCH="arm"
++  use_arch="arm"
++else
+   if test "$use_tegra" = "yes"; then
+     # Compile for ARMv7a architecture, need to test gcc for vfpv3-d16 support 
+     SAVE_CFLAGS="$CFLAGS"
+@@ -1949,6 +1986,7 @@ AC_SUBST(USE_LIBAFPCLIENT)
+ AC_SUBST(USE_AIRPLAY)
+ AC_SUBST(USE_VDA)
+ AC_SUBST(USE_OPENMAX)
++AC_SUBST(USE_MARVELL_DOVE)
+ AC_SUBST(USE_PULSE)
+ AC_SUBST(USE_XRANDR)
+ AC_SUBST(USE_ALSA)
+@@ -2055,6 +2093,8 @@ XB_CONFIG_MODULE([lib/ffmpeg], [
+       sed -ie "s/^HAVE_GNU_AS=yes/!HAVE_GNU_AS=yes/" config.mak
+     fi
+   else
++    #CFLAGS="$CFLAGS -Wno-psabi -Wa,-march=armv7a -mtune=cortex-a8 -mfpu=vfpv3-d16 -mthumb-interwork"
++    #CXXFLAGS="$CXXFLAGS -Wno-psabi -Wa,-march=armv7a -mtune=cortex-a8 -mfpu=vfpv3-d16 -mthumb-interwork"
+     CFLAGS="" \
+     LDFLAGS="$(echo "$LDFLAGS" | sed "s/-Wl,-Bsymbolic-functions//g")" \
+     ./configure \
+@@ -2065,6 +2105,10 @@ XB_CONFIG_MODULE([lib/ffmpeg], [
+       `if test "$use_arch" != "no"; then echo --arch=$use_arch; fi`\
+       `if test "$use_cpu" != "no"; then echo --cpu=$use_cpu; fi`\
+       `if test "$use_neon" = "yes"; then echo --enable-neon; else echo --disable-neon; fi`\
++      `if test "$use_armv5te" = "yes"; then echo --enable-armv5te; else echo --disable-armv5te; fi`\
++      `if test "$use_armv6t2" = "yes"; then echo --enable-armv6t2; else echo --disable-armv6t2; fi`\
++      `if test "$use_armv6" = "yes"; then echo --enable-armv6; else echo --disable-armv6; fi`\
++      `if test "$use_armvfp" = "yes"; then echo --enable-armvfp; else echo --disable-armvfp; fi`\
+       --target-os=$(tolower $(uname -s)) \
+       --disable-muxers \
+       --enable-muxer=spdif \
+@@ -2088,6 +2132,7 @@ XB_CONFIG_MODULE([lib/ffmpeg], [
+       --enable-protocol=http \
+       --enable-pthreads \
+       --enable-runtime-cpudetect \
++      `if test "$use_hardcoded_tables" = "yes"; then echo --enable-hardcoded-tables; else echo --disable-hardcoded-tables; fi`\
+       --custom-libname-with-major="\$(FULLNAME)-\$(LIBMAJOR)-${ARCH}\$(SLIBSUF)" \
+       `case $host_cpu in i?86*) echo --disable-pic ;; *) echo --enable-pic ;; esac` \
+       --cc="$CC" &&
+-- 
+1.7.4.1
+
