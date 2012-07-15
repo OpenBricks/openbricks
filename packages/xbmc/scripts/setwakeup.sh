@@ -1,14 +1,18 @@
 #!/bin/bash
 # acpi wakeup script called by xbmc; first and only parameter is UTC time
 
-LOGFILE="/dev/null"
+[ -n "$LOGFILE" ] || LOGFILE="/dev/null"
 GUISETTINGS="/root/.xbmc/userdata/guisettings.xml"
 TIMER="$1"
 echo "$0 was called with: \"$@\"" >>$LOGFILE
+echo "rtc was $(cat /sys/class/rtc/rtc0/since_epoch)" >>$LOGFILE
+echo "date was $(date)" >>$LOGFILE
+echo "journal bootup line: $(journalctl -a | grep ': Linux version' | tail -n 1)" >>$LOGFILE
+echo -e "vdr timers are:\n$(cat /etc/vdr/timers.conf)\n----------------" >>$LOGFILE
 [ "x$TIMER" = "x" ] && exit 1
 
 if [ "$TIMER" -le 1 ]; then #buggy xbmc does not always use it's settings?
-  echo "reading wakeup time from user config..."
+  echo "reading wakeup time from user config..." >>$LOGFILE
   DAILYWAKEUP=$(sed -n 's/.*<dailywakeup>\(.*\)<\/dailywakeup>/\1/p' $GUISETTINGS)
   DAILYWAKEUPTIME=$(sed -n 's/.*<dailywakeuptime>\(.*\)<\/dailywakeuptime>/\1/p' $GUISETTINGS)
   [ "x$DAILYWAKEUP" = "xtrue" ] && TIMER=$(date -u -d $DAILYWAKEUPTIME +%s)
