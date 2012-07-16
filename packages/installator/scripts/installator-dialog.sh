@@ -7,7 +7,7 @@ BACKTITLE_TXT="$DISTRO $ARCH $VERSION installator"
 
 LOGFILE="/tmp/install.log"
 ANSWER="/tmp/answer"
-
+touch $LOGFILE
 
 main_menu() {
   TXT="\nThis program installs \Zb$DISTRO\Zn on your computer \
@@ -50,7 +50,7 @@ do_install() {
 
   start_install_menu || main_menu
 
-  echo "### $BACKTITLE_TXT" > $LOGFILE
+  echo "### Start installation $BACKTITLE_TXT" >> $LOGFILE
 
   INSTALL_FSYS=ext4
   # Make sure the ESP size is big enough to get FAT32!
@@ -156,6 +156,12 @@ do_install() {
 
 device_menu() {
   get_device_list
+
+  if [ "$DEVICES" = "" ]; then
+    no_device_warning
+    return 255
+  fi
+
   MENU_ITEMS=""
   for i in $DEVICES; do
     get_device_details $i
@@ -174,6 +180,14 @@ device_menu() {
   INSTALL_DEV=$(cat "${ANSWER}_device")
 
   return $RETVAL
+}
+
+
+no_device_warning() {
+  dialog --colors \
+    --backtitle "$BACKTITLE_TXT" \
+    --title "\Z7- WARNING -" \
+    --msgbox "\nNo devices found for installation\n" 0 0
 }
 
 
@@ -211,19 +225,23 @@ get_device_details() {
   DEVICE_MODEL=$(parted -s $1 -m print | grep $1 | cut -f7 -d ":" | sed "s/;//")
   DEVICE_SIZE=$(parted -s $1 -m print | grep $1 | cut -f2 -d ":")
   DEVICE_DETAILS=$(echo $DEVICE_MODEL ${DEVICE_SIZE} | sed 's/ /_/g')
+  echo "Details for $1: $DEVICE_DETAILS"  >> $LOGFILE 2>&1
 }
 
 
 get_device_list() {
   DEVICES=$(parted -s -m -l | grep /dev/sd | cut -f1 -d ":")
+  echo "List of all install devices: $DEVICES"  >> $LOGFILE 2>&1
 
   for i in $(cat /proc/mounts | grep /dev/sd | cut -f1 -d " " | sed "s/[0-9]$//"); do
     DEVICES=$(echo $DEVICES | sed -e "s|$i||")
   done
+  echo "List of all unmounted install devices: $DEVICES"  >> $LOGFILE 2>&1
 }
 
 
 is_efi_capable() {
+  modprobe efivars >> $LOGFILE 2>&1
   efibootmgr > /dev/null 2>&1
   RETVAL=$?
 
@@ -271,7 +289,7 @@ do_reboot() {
 
 
 do_shutdown() {
-  echo "Shuting down..."
+  echo "Shutting down..."
   poweroff
 }
 
