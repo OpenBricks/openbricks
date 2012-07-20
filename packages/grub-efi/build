@@ -2,15 +2,17 @@
 
 . config/options
 
-mkdir -p $BUILD/$1
-cd $BUILD/$1*
+get_meta $1
 
-# Set arch for EFI boot file
+mkdir -p $BUILD/${PKG_NAME}-${PKG_VERSION}
+cd $BUILD/${PKG_NAME}-${PKG_VERSION}
+
+### Set arch for EFI boot file
 export efi_file
 [ "$TARGET_ARCH" = "i386" ] && efi_file=bootia32.efi
 [ "$TARGET_ARCH" = "x86_64" ] && efi_file=bootx64.efi
 
-# Make grub EFI image and embed all needed grub modules
+### Make grub EFI image and embed all needed grub modules
 echo "Creating Grub image: $efi_file"
 $ROOT/$TOOLCHAIN/bin/grub-mkimage \
 	-O${TARGET_ARCH}-efi  \
@@ -22,7 +24,7 @@ $ROOT/$TOOLCHAIN/bin/grub-mkimage \
 #wget http://unifoundry.com/unifont-5.1.20080820.pcf.gz
 #gunzip -f unifont-5.1.20080820.pcf.gz
 
-# Create pf2 font for grub menu
+### Create pf2 font for grub menu
 font_source="../font-misc-misc*/8x13.bdf"
 font=8x13.pf2
 echo "Creating Grub menu font: $font"
@@ -31,22 +33,10 @@ $ROOT/$TOOLCHAIN/bin/grub-mkfont \
 	$font_source
 
 
-# Collect needed files in .install dir
-# For information: the install target partition on the final medium needs to be FAT16 or FAT32 with "boot" flag turned on
+### Collect needed files in .install dir
+### For information: the install target partition on the final medium needs to be FAT16 or FAT32 with "boot" flag turned on
 dir=.install/efi/boot
 mkdir -p $dir
 cp $font $dir
 cp $efi_file $dir
-cp $ROOT/$PACKAGES/$1/config/grub.cfg $dir
 
-# Adapt grub.cfg file
-if [ "$INSTALLATOR" = "yes" ]; then
-  [ "$TARGET_ARCH" = i386 -o "$TARGET_ARCH" = x86_64 ] && INS_PARAMS="^#INS#" || INS_PARAMS="^#INS#.*"
-  sed -i s%$INS_PARAMS%% $dir/grub.cfg
-fi
-
-sed -i s%extra_cmdline_params%$EXTRA_CMDLINE_PARAMS% $dir/grub.cfg
-sed -i s%distro-name%$DISTRONAME% $dir/grub.cfg
-sed -i s%target-arch%$TARGET_ARCH% $dir/grub.cfg
-sed -i s%release-nr%$DISTRO_VERSION% $dir/grub.cfg
-sed -i s%font_filename%$font% $dir/grub.cfg
