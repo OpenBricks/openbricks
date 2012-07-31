@@ -40,6 +40,9 @@ xbmc_set_option $1 "afpclient"         "afpclient"
 xbmc_set_option $1 "airtunes"          "airtunes"
 xbmc_set_option $1 "screensavers"      "rsxs"
 xbmc_set_option $1 "gstreamer"         "gstreamer"
+xbmc_set_option $1 "xorg"              "x11 xrandr"
+xbmc_set_option $1 "sdl"               "sdl"
+xbmc_set_option $1 "alsa"               "alsa"
 
 pkg_uses $1 externalffmpeg && ! pkg_uses $1 externalffmpeglibav && xbmc_set_option $1 "externalffmpeg" "external-ffmpeg"
 pkg_uses $1 externalffmpeglibav && ! pkg_uses $1 externalffmpeg && xbmc_set_option $1 "externalffmpeglibav"    "external-ffmpeg"
@@ -48,6 +51,13 @@ pkg_uses $1 externalffmpeglibav && ! pkg_uses $1 externalffmpeg && xbmc_set_opti
 CFG_TEGRA="--disable-tegra"
 [ "$TARGET_PLATFORM" = tegra2 ] && CFG_TEGRA="--enable-tegra"
 [ "$TARGET_MACHINE" = cubox ] && EXTRA_CONFIG="$EXTRA_CONFIG --with-platform=marvell-dove"
+if [ "$TARGET_MACHINE" = raspberrypi ]; then
+  EXTRA_CONFIG="$EXTRA_CONFIG --with-platform=raspberry-pi"
+  if pkg_uses $1 openmax; then
+    local_cflags="-I$LIB_PREFIX/include/interface/vcos/pthreads/"
+    local_cxxflags="-I$LIB_PREFIX/include/interface/vcos/pthreads/"
+  fi
+fi
 
 if [ "$FPU_OPTIMIZATIONS" = neon ]; then
   EXTRA_CONFIG="$EXTRA_CONFIG --enable-neon"
@@ -63,9 +73,7 @@ export PYTHON_SITE_PKG=$LIB_PREFIX/lib/python2.7/site-packages
 export PYTHON_EXTRA_LIBS="-lpthread -ldl -lutil"
 export PYTHON_EXTRA_LDFLAGS="-Xlinker -export-dynamic"
 
-
 cd $PKG_BUILD_DIR
-
 
 touch .dummy.in
 
@@ -92,7 +100,6 @@ do_configure \
   --enable-optimizations \
   --disable-vdadecoder \
   --disable-profiling \
-  --enable-xrandr \
   --disable-goom \
   --disable-ccache \
   --disable-mid \
@@ -104,6 +111,11 @@ do_configure \
 
 # leaked host includes break the Python components build
 sed -i Makefile.include -e "s:-I$ROOT/$TOOLCHAIN/include::"
+
+# leaked host includes also break libdvdnav
+sed -i lib/libdvd/libdvdnav/config.mak \
+    -e "s:^DVDREAD_CFLAGS=.*$:DVDREAD_CFLAGS=-I$LIB_PREFIX/include:" \
+    -e "s:^DVDREAD_LIBS=.*$:DVDREAD_LIBS=-L$LIB_PREFIX/lib -ldvdread:" \
 
 #export MAKEFLAGS=-j1
 make externals
