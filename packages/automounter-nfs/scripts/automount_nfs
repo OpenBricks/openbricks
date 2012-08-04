@@ -8,19 +8,33 @@
 
 MOUNT_POINT=/mnt/nfs
 
+clean_up () {
+  echo "Trap : exiting ..."
+  while read i ; do 
+  a=`echo $i | grep "/mnt/nfs/"| cut -d" " -f2`
+  if [ -n "$a" ] ; then
+    echo " Found $a , trying to umount ..."
+    if umount $a ; then 
+      echo "Success"
+    else
+      echo "Trying to force ..."
+      umount -l $a
+    fi
+  fi
+  done < /proc/mounts
+
+}
+
 mount_nfs () {
   MNT="$MOUNT_POINT/$2"
    logger -t automount_nfs "Trying to mount: $2"
-  if [ ! -e "$MNT" ]; then
+  if [ ! -d "$MNT" ]; then
     mkdir -p "$MNT"
   fi
-  mount -t nfs -o ro,udp,rsize=32768,soft,noatime,nolock "$1" "$MNT" >/dev/null 2>&1 || rmdir -p "$MNT"
+  mount -t nfs -o ro,udp,rsize=32768,soft,noatime,nolock "$1" "$MNT" >/dev/null 2>&1
 }
 
-if [ ! -n "`ps | grep -v grep | grep $0`" ]; then
-  logger -t automount_nfs "Process \"$0\" already running, exiting..."
-  exit 1
-fi
+trap clean_up SIGHUP SIGINT SIGTERM
 
 wait_for_network
 
@@ -33,4 +47,6 @@ for MOUNTS in `grep -v "^#" /etc/nfs | grep -v "^$"`; do
   mount_nfs "$SRV" "$DIR"
 done
 
-exit 0
+while true ; do
+  sleep 2000
+done
