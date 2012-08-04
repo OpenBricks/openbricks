@@ -8,6 +8,23 @@
 
 MOUNT_POINT=/mnt/shares
 
+clean_up () {
+  echo "Trap : exiting ..."
+  while read i ; do 
+  a=`echo $i | grep "/mnt/shares/"| cut -d" " -f2`
+  if [ -n "$a" ] ; then
+    echo " Found $a , trying to umount ..."
+    if umount $a ; then 
+      echo "Success"
+    else
+      echo "Trying to force ..."
+      umount -l $a
+    fi
+  fi
+  done < /proc/mounts
+
+}
+
 mount_samba () {
   user=$1
   pass=$2
@@ -17,10 +34,10 @@ mount_samba () {
   while [ $# -gt 0 ]; do
     dir="$MOUNT_POINT/$name/$1"
     logger -t automount_smb "Trying to mount: $name/$1"
-    if [ ! -e "$dir" ]; then
+    if [ ! -d "$dir" ]; then
       mkdir -p "$dir"
-      mount "//$ip/$1" "$dir" -t cifs -o "ro,iocharset=utf8,user=$user,pass=$pass" || mount.cifs "//$name/$1" "$dir" -o "ro,iocharset=utf8,ip=$ip,username=$user,passwd=$pass" || rmdir -p "$dir"
     fi
+    mount "//$ip/$1" "$dir" -t cifs -o "ro,iocharset=utf8,user=$user,pass=$pass" || mount.cifs "//$name/$1" "$dir" -o "ro,iocharset=utf8,ip=$ip,username=$user,passwd=$pass"
     shift
   done
 }
@@ -52,10 +69,7 @@ do_dynamic_mount () {
   done
 }
 
-if [ ! -n "`ps | grep -v grep | grep $0`" ]; then
-  logger -t automount_smb "Process \"$0\" already running, exiting..."
-  exit 1
-fi
+trap clean_up SIGHUP SIGINT SIGTERM
 
 wait_for_network
 
@@ -68,4 +82,6 @@ else
   do_dynamic_mount                                               
 fi 
 
-exit 0
+while true ; do
+  sleep 2000
+done
