@@ -84,7 +84,7 @@ EOF
 mkdir -p "$USERDATA"
 set_default_advanced_settings
 set_default_gui_settings
-set_default_sources
+# set_default_sources
 
 # remote
 if [ -f /usr/share/xbmc/system/Lircmap.xml ] && [ ! -f $USERDATA/Lircmap.xml ]; then cp /usr/share/xbmc/system/Lircmap.xml "$USERDATA"; fi
