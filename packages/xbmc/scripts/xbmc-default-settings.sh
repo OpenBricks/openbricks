@@ -47,6 +47,27 @@ set_default_gui_settings () {
     <timezone>$TZ</timezone>
     <timezonecountry>$TZ_COUNTRY</timezonecountry>
   </locale>
+  <services>
+    <airplay>false</airplay>
+    <airplaypassword></airplaypassword>
+    <devicename>XBMC</devicename>
+    <esallinterfaces>true</esallinterfaces>
+    <escontinuousdelay>25</escontinuousdelay>
+    <esenabled>true</esenabled>
+    <esinitialdelay>750</esinitialdelay>
+    <esmaxclients>20</esmaxclients>
+    <esport>9777</esport>
+    <esportrange>10</esportrange>
+    <upnprenderer>true</upnprenderer>
+    <upnpserver>false</upnpserver>
+    <useairplaypassword>false</useairplaypassword>
+    <webserver>true</webserver>
+    <webserverpassword></webserverpassword>
+    <webserverport>80</webserverport>
+    <webserverusername>xbmc</webserverusername>
+    <webskin>webinterface.default</webskin>
+    <zeroconf>true</zeroconf>
+  </services>
 </settings>
 EOF
 }
