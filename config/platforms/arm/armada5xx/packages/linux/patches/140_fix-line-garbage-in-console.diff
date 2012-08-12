@@ -1,0 +1,104 @@
+Fix line garbage in virtual console on command line edition.
+(Thu Aug  9 08:43:16 CEST 2012)
+
+The use of update_region() is a bit slower than directly updating the
+graphical buffer, but it works with all platforms.
+
+This patch is not complete. The goal is to remove all changes to the
+graphical buffer in screen edition.
+
+diff --git a/drivers/tty/vt/vt.c b/drivers/tty/vt/vt.c
+index 84cbf29..41b120c 100644
+--- a/drivers/tty/vt/vt.c
++++ b/drivers/tty/vt/vt.c
+@@ -537,45 +537,26 @@ void complement_pos(struct vc_data *vc, int offset)
+ 
+ static void insert_char(struct vc_data *vc, unsigned int nr)
+ {
+-	unsigned short *p, *q = (unsigned short *)vc->vc_pos;
++	unsigned short *p = (unsigned short *) vc->vc_pos;
+ 
+-	p = q + vc->vc_cols - nr - vc->vc_x;
+-	while (--p >= q)
+-		scr_writew(scr_readw(p), p + nr);
+-	scr_memsetw(q, vc->vc_video_erase_char, nr * 2);
++	scr_memmovew(p + vc->vc_cols - nr - vc->vc_x, p, vc->vc_cols - vc->vc_x);
++	scr_memsetw(p, vc->vc_video_erase_char, nr * 2);
+ 	vc->vc_need_wrap = 0;
+-	if (DO_UPDATE(vc)) {
+-		unsigned short oldattr = vc->vc_attr;
+-		vc->vc_sw->con_bmove(vc, vc->vc_y, vc->vc_x, vc->vc_y, vc->vc_x + nr, 1,
+-				     vc->vc_cols - vc->vc_x - nr);
+-		vc->vc_attr = vc->vc_video_erase_char >> 8;
+-		while (nr--)
+-			vc->vc_sw->con_putc(vc, vc->vc_video_erase_char, vc->vc_y, vc->vc_x + nr);
+-		vc->vc_attr = oldattr;
+-	}
++	if (DO_UPDATE(vc))
++		do_update_region(vc, (unsigned long) p,
++			vc->vc_cols - vc->vc_x);
+ }
+ 
+ static void delete_char(struct vc_data *vc, unsigned int nr)
+ {
+-	unsigned int i = vc->vc_x;
+-	unsigned short *p = (unsigned short *)vc->vc_pos;
++	unsigned short *p = (unsigned short *) vc->vc_pos;
+ 
+-	while (++i <= vc->vc_cols - nr) {
+-		scr_writew(scr_readw(p+nr), p);
+-		p++;
+-	}
+-	scr_memsetw(p, vc->vc_video_erase_char, nr * 2);
++	scr_memmovew(p, p + nr, vc->vc_cols - vc->vc_x - nr);
++	scr_memsetw(p + vc->vc_cols - vc->vc_x - nr, vc->vc_video_erase_char, nr * 2);
+ 	vc->vc_need_wrap = 0;
+-	if (DO_UPDATE(vc)) {
+-		unsigned short oldattr = vc->vc_attr;
+-		vc->vc_sw->con_bmove(vc, vc->vc_y, vc->vc_x + nr, vc->vc_y, vc->vc_x, 1,
+-				     vc->vc_cols - vc->vc_x - nr);
+-		vc->vc_attr = vc->vc_video_erase_char >> 8;
+-		while (nr--)
+-			vc->vc_sw->con_putc(vc, vc->vc_video_erase_char, vc->vc_y,
+-				     vc->vc_cols - 1 - nr);
+-		vc->vc_attr = oldattr;
+-	}
++	if (DO_UPDATE(vc))
++		do_update_region(vc, (unsigned long) p,
++			vc->vc_cols - vc->vc_x);
+ }
+ 
+ static int softcursor_original;
+@@ -1223,29 +1204,22 @@ static void csi_K(struct vc_data *vc, int vpar)
+ 		case 0:	/* erase from cursor to end of line */
+ 			count = vc->vc_cols - vc->vc_x;
+ 			start = (unsigned short *)vc->vc_pos;
+-			if (DO_UPDATE(vc))
+-				vc->vc_sw->con_clear(vc, vc->vc_y, vc->vc_x, 1,
+-						     vc->vc_cols - vc->vc_x);
+ 			break;
+ 		case 1:	/* erase from start of line to cursor */
+ 			start = (unsigned short *)(vc->vc_pos - (vc->vc_x << 1));
+ 			count = vc->vc_x + 1;
+-			if (DO_UPDATE(vc))
+-				vc->vc_sw->con_clear(vc, vc->vc_y, 0, 1,
+-						     vc->vc_x + 1);
+ 			break;
+ 		case 2: /* erase whole line */
+ 			start = (unsigned short *)(vc->vc_pos - (vc->vc_x << 1));
+ 			count = vc->vc_cols;
+-			if (DO_UPDATE(vc))
+-				vc->vc_sw->con_clear(vc, vc->vc_y, 0, 1,
+-					      vc->vc_cols);
+ 			break;
+ 		default:
+ 			return;
+ 	}
+ 	scr_memsetw(start, vc->vc_video_erase_char, 2 * count);
+ 	vc->vc_need_wrap = 0;
++	if (DO_UPDATE(vc))
++		do_update_region(vc, (unsigned long) start, count);
+ }
+ 
+ static void csi_X(struct vc_data *vc, int vpar) /* erase the following vpar positions */
+
