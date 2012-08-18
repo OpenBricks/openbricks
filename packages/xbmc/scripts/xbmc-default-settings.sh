@@ -8,14 +8,22 @@
 USERDATA="/root/.xbmc/userdata"
 ADV_SETTINGS="$USERDATA/advancedsettings.xml"
 GUI_SETTINGS="$USERDATA/guisettings.xml"
+CORE_FACTORY="$USERDATA/playercorefactory.xml"
 SOURCES="$USERDATA/sources.xml"
 
 set_default_advanced_settings () {
   [ -f "$ADV_SETTINGS" ] && return
 
 FULLSCREEN=true
-if dmesg | grep "OMAP4 Panda board" -q ; then 
+if dmesg | grep "OMAP4 Panda board" -q ; then
   FULLSCREEN=false
+  cat > $CORE_FACTORY <<EOF
+<playercorefactory>
+ <rules action="prepend">
+   <rule protocols="pvr" player="dvdplayer"/>
+ </rules>
+</playercorefactory>
+EOF
 fi
 
 if grep Snowball /proc/cpuinfo -q ; then 
