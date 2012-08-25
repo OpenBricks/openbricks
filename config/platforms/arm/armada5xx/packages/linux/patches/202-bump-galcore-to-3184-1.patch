@@ -1,0 +1,148 @@
+From ea791e36fb039aed5b266aa6e61adf559e219bcc Mon Sep 17 00:00:00 2001
+From: Thomas Genty <tomlohave@openbricks.org>
+Date: Sat, 25 Aug 2012 13:40:51 +0200
+Subject: [PATCH 2/2] bump galcore to 3184-1
+
+---
+ .../galcore_ko_src/hal/inc/gc_hal_base.h           |   17 ++++++++++++++++-
+ .../galcore_ko_src/hal/inc/gc_hal_options.h        |    3 +--
+ .../galcore_ko_src/hal/inc/gc_hal_profiler.h       |   11 -----------
+ .../galcore_ko_src/hal/user/gc_hal_user.h          |    1 -
+ .../galcore_ko_src/makefile.linux.def              |    2 +-
+ 5 files changed, 18 insertions(+), 16 deletions(-)
+
+diff --git a/arch/arm/mach-dove/gc600_driver_dove/galcore_ko_src/hal/inc/gc_hal_base.h b/arch/arm/mach-dove/gc600_driver_dove/galcore_ko_src/hal/inc/gc_hal_base.h
+index df39e8e..c24f8f7 100644
+--- a/arch/arm/mach-dove/gc600_driver_dove/galcore_ko_src/hal/inc/gc_hal_base.h
++++ b/arch/arm/mach-dove/gc600_driver_dove/galcore_ko_src/hal/inc/gc_hal_base.h
+@@ -713,6 +713,11 @@ gcoOS_GetMilliTime(
+ 
+ char* gcoOS_GetProgramName(char* buf, int size);
+ 
++/* return non-NULL means success. null-terminate guarantee! */
++gctSTRING gcoOS_GetProgramNameWithoutPath(
++    OUT gctSTRING buf,
++    IN const gctSIZE_T size
++    );
+ #if MRVL_BENCH
+ 
+ /*
+@@ -744,6 +749,9 @@ typedef enum _apiBenchIndex  {
+ 	APIBENCH_INDEX_DRAWTEX,
+ 	APIBENCH_INDEX_BUFFERDATA,
+ 	APIBENCH_INDEX_BUFFERSUBDATA,
++	APIBENCH_INDEX_COMPILER_FRONTEND,
++	APIBENCH_INDEX_COMPILER_OPTIMIZING,
++	APIBENCH_INDEX_COMPILER_BACKEND,    /* i.e. LINKER */
+ 	APIBENCH_INDEX_MAX
+ }apiBenchIndex;
+ 
+@@ -765,6 +773,9 @@ typedef enum _apiBenchIndex  {
+ 	"glDrawTex",        \
+ 	"glBufferData",     \
+ 	"glBufferSubData",  \
++	"_glshCompileShader_frontEnd",  \
++	"_glshCompileShader_optimizing",\
++	"_glshLinkShaders", \
+ }
+ 
+ /*
+@@ -796,6 +807,7 @@ typedef struct _gcoTIMER
+  /*  global structure for api bench */
+ typedef struct _gcoAPIBENCH
+ {
++	gctFILE         	file;
+ 	/* frame count */
+ 	gctUINT32			frameCount;
+ 
+@@ -835,6 +847,10 @@ void gcoDUMP_APIBenchInit(
+ 	IN gcoHAL Hal
+ 	);
+ 
++void gcoDUMP_APIBenchDestroy(
++    IN gcoHAL Hal
++    );
++
+ void gcoDUMP_APIBenchFrame(
+ 	IN gcoHAL Hal
+ 	);
+@@ -2810,4 +2826,3 @@ void gckOS_SetLogFilter(IN unsigned int filter);
+ #endif
+ 
+ #endif /* __gc_hal_base_h_ */
+-
+diff --git a/arch/arm/mach-dove/gc600_driver_dove/galcore_ko_src/hal/inc/gc_hal_options.h b/arch/arm/mach-dove/gc600_driver_dove/galcore_ko_src/hal/inc/gc_hal_options.h
+index 29bdced..b9749f4 100644
+--- a/arch/arm/mach-dove/gc600_driver_dove/galcore_ko_src/hal/inc/gc_hal_options.h
++++ b/arch/arm/mach-dove/gc600_driver_dove/galcore_ko_src/hal/inc/gc_hal_options.h
+@@ -527,7 +527,6 @@
+ 
+ #define _OPENVG_VERSION_STRING_     "OpenVG 1.1"
+ 
+-#define _GC_VERSION_STRING_        "GC Ver0.8.0.3184"
++#define _GC_VERSION_STRING_        "GC Ver0.8.0.3184-1"
+ 
+ #endif /* __gc_hal_options_h_ */
+-
+diff --git a/arch/arm/mach-dove/gc600_driver_dove/galcore_ko_src/hal/inc/gc_hal_profiler.h b/arch/arm/mach-dove/gc600_driver_dove/galcore_ko_src/hal/inc/gc_hal_profiler.h
+index 8fe1f55..4373215 100644
+--- a/arch/arm/mach-dove/gc600_driver_dove/galcore_ko_src/hal/inc/gc_hal_profiler.h
++++ b/arch/arm/mach-dove/gc600_driver_dove/galcore_ko_src/hal/inc/gc_hal_profiler.h
+@@ -127,14 +127,10 @@ typedef struct _gcsPROFILER
+ 
+     /* Clock Info */
+     gctUINT64       		frameStart;
+-    gctUINT64       		frameEnd;
+ 
+     /* Current frame information */
+     gctUINT32       		frameNumber;
+     gctUINT64       		frameStartTimeusec;
+-    gctUINT64       		frameEndTimeusec;
+-    gctUINT64       		frameStartCPUTimeusec;
+-    gctUINT64       		frameEndCPUTimeusec;
+ 
+ #if PROFILE_HAL_COUNTERS
+     gctUINT32       		vertexBufferTotalBytesAlloc;
+@@ -152,12 +148,6 @@ typedef struct _gcsPROFILER
+     int             		textureBufferTotalObjectsAlloc;
+     int             		textureBufferNewObjectsAlloc;
+ 
+-    gctUINT32       		numCommits;
+-    gctUINT32       		drawPointCount;
+-    gctUINT32       		drawLineCount;
+-    gctUINT32       		drawTriangleCount;
+-    gctUINT32       		drawVertexCount;
+-    gctUINT32       		redundantStateChangeCalls;
+ #endif
+ }
+ gcsPROFILER;
+@@ -229,4 +219,3 @@ gcoPROFILER_ShaderFS(
+ #endif
+ 
+ #endif /* __gc_hal_profiler_h_ */
+-
+diff --git a/arch/arm/mach-dove/gc600_driver_dove/galcore_ko_src/hal/user/gc_hal_user.h b/arch/arm/mach-dove/gc600_driver_dove/galcore_ko_src/hal/user/gc_hal_user.h
+index fb7a83c..d29a93f 100644
+--- a/arch/arm/mach-dove/gc600_driver_dove/galcore_ko_src/hal/user/gc_hal_user.h
++++ b/arch/arm/mach-dove/gc600_driver_dove/galcore_ko_src/hal/user/gc_hal_user.h
+@@ -2382,4 +2382,3 @@ gcoQUEUE_Commit(
+ #endif
+ 
+ #endif /* __gc_hal_user_h_ */
+-
+diff --git a/arch/arm/mach-dove/gc600_driver_dove/galcore_ko_src/makefile.linux.def b/arch/arm/mach-dove/gc600_driver_dove/galcore_ko_src/makefile.linux.def
+index 503c5a8..2057760 100644
+--- a/arch/arm/mach-dove/gc600_driver_dove/galcore_ko_src/makefile.linux.def
++++ b/arch/arm/mach-dove/gc600_driver_dove/galcore_ko_src/makefile.linux.def
+@@ -195,7 +195,7 @@ endif
+ ifeq ($(DEBUG), 1)
+ 	CFLAGS += -g -fPIC -O0 -DDEBUG -D_DEBUG
+ else
+-	CFLAGS += -O2 -fPIC -g
++	CFLAGS += -O2 -fPIC
+ endif
+ 
+ ifeq ($(EGL_API_FB), 1)
+-- 
+1.7.4.1
+
