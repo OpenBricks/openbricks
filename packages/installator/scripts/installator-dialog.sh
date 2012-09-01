@@ -45,7 +45,7 @@ do_install() {
   efi_menu
   INSTALL_EFI=$?
 
-  has_ssd_with_tirm
+  has_ssd_with_tirm $INSTALL_DEV
   INSTALL_SSD=$?
 
   start_install_menu || main_menu
@@ -142,6 +142,12 @@ do_install() {
     umount $INSTALL_MOUNT >> $LOGFILE 2>&1
     cat /usr/share/syslinux/mbr.bin > $INSTALL_DEV
   fi
+
+  # Add SSD batch discard if needed
+  if [ "$INSTALL_SSD" = 0 ]; then
+    echo "* */4 * * * fstrim /" > $INSTALL_MOUNT/var/spool/cron/crontabs/root
+  fi
+
   progress_install 100 "Done"
 
 
