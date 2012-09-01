@@ -8,6 +8,7 @@ BACKTITLE_TXT="$DISTRO $ARCH $VERSION installator"
 LOGFILE="/tmp/install.log"
 ANSWER="/tmp/answer"
 touch $LOGFILE
+GEEXBOX_EFI_NAME=GeeXboX
 
 main_menu() {
   TXT="\nThis program installs \Zb$DISTRO\Zn on your computer \
@@ -126,6 +127,9 @@ do_install() {
 
     umount $INSTALL_EFI_MOUNT >> $LOGFILE 2>&1
     umount $INSTALL_MOUNT >> $LOGFILE 2>&1
+
+    remove_efi_bootentry
+    add_efi_bootentry $INSTALL_DEV
   else
     cp -P /.root/isolinux/splash.png $INSTALL_MOUNT/boot >> $LOGFILE 2>&1
     cp -P /.root/isolinux/vesamenu.c32 $INSTALL_MOUNT/boot >> $LOGFILE 2>&1
@@ -252,6 +256,25 @@ is_efi_capable() {
   RETVAL=$?
 
   return $RETVAL
+}
+
+
+add_efi_bootentry() {
+  [ -z "$1" -o ! -r $1 ] && return 2
+
+  modprobe efivars >> $LOGFILE 2>&1
+  efibootmgr -c -g -d $1 -p 1 -w -L $GEEXBOX_EFI_NAME -l "\\efi\\boot\\bootx64.efi" >> $LOGFILE 2>&1
+  RETVAL=$?
+
+  return $RETVAL
+}
+
+
+remove_efi_bootentry() {
+  modprobe efivars >> $LOGFILE 2>&1
+  for i in $(efibootmgr | grep Boot00 | grep $GEEXBOX_EFI_NAME | cut -f1 -d " "); do
+    efibootmgr -b $(echo $i | sed "s/.*\([0-9]\{4\}\).*/\1/") -B
+  done
 }
 
 
