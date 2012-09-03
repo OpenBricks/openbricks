@@ -1,0 +1,1215 @@
+diff --git a/arch/arm/mach-dove/cubox-setup.c b/arch/arm/mach-dove/cubox-setup.c
+index 25c4e04..3057022 100644
+--- a/arch/arm/mach-dove/cubox-setup.c
++++ b/arch/arm/mach-dove/cubox-setup.c
+@@ -222,10 +222,8 @@ static void cubox_extclk_setup(struct device *clkdev)
+ 
+ /*****************************************************************************
+  * I2C devices:
+- *      ALC5630 codec, address 0x
+- *      Battery charger, address 0x??
+- *      G-Sensor, address 0x??
+- *      MCU PIC-16F887, address 0x??
++ *      Silicon Labs Si5351 programmable clock generator
++ *      NXP TDA19989 HDMI transmitter with CEC support
+  ****************************************************************************/
+ static struct i2c_board_info __initdata dove_cubox_i2c_bus0_devs[] = {
+ 	{
+@@ -235,6 +233,7 @@ static void cubox_extclk_setup(struct device *clkdev)
+ #ifdef CONFIG_TDA19988
+ 	{ /* First CEC that enables 0x70 for HDMI */
+ 		I2C_BOARD_INFO("tda99Xcec", 0x34), .irq = 91,
++                .platform_data = "CuBox"   
+ 	},
+ 	{
+ 		I2C_BOARD_INFO("tda998X", 0x70), .irq = 91,
+diff --git a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/cfg/tmdlHdmiCEC_Linux.c b/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/cfg/tmdlHdmiCEC_Linux.c
+index 611e6bf..f8987bb 100755
+--- a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/cfg/tmdlHdmiCEC_Linux.c
++++ b/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/cfg/tmdlHdmiCEC_Linux.c
+@@ -13,7 +13,7 @@
+ #include "tmdlHdmiCEC.h"
+ #include "tmdlHdmiCEC_cfg.h"
+ 
+-static struct i2c_client *cecGetThisI2cClient(void);
++struct i2c_client *cecGetThisI2cClient(void);
+ static unsigned char  my_i2c_data[255];
+ 
+ /*============================================================================*/
+@@ -347,28 +347,29 @@ static int read_reg(struct i2c_client *client, u16 data_length, u8 reg, u8 *val)
+ 
+ tmErrorCode_t I2cReadFunction (tmdlHdmiCecSysArgs_t *pSysArgs)
+ {
+-   tmErrorCode_t errCode = TM_OK;
+-   u16 outLenght=0;
+-   struct i2c_client *client=cecGetThisI2cClient();
+-   u32 client_main_addr=client->addr;
++   tmErrorCode_t errCode = TM_ERR_NULL_DATAINFUNC;
++   struct i2c_client *client = cecGetThisI2cClient();
+ 
+-   /* DevLib needs address control, so let it be */ 
+-   client->addr=pSysArgs->slaveAddr;
++   if (client) {
++      u16 inLength = 0;
++      u32 client_main_addr = client->addr;
+ 
+-   if (pSysArgs->lenData == 1) {
+-      /* single byte */
+-      errCode = read_reg(cecGetThisI2cClient(),1,pSysArgs->firstRegister,pSysArgs->pData);
+-   }
+-   else {
+-      /* block */
+-      errCode = blockread_reg(cecGetThisI2cClient(),1, \
+-			      pSysArgs->firstRegister, \
+-			      pSysArgs->lenData, \
+-			      pSysArgs->pData, &outLenght);
+-   }
++      /* DevLib needs address control, so let it be */ 
++      client->addr = pSysArgs->slaveAddr;
++
++      if (pSysArgs->lenData == 1) {
++         /* single byte */
++         errCode = read_reg(client, 1, pSysArgs->firstRegister, pSysArgs->pData);
++      }
++      else {
++         /* block */
++         errCode = blockread_reg(client, 1, pSysArgs->firstRegister,
++			         pSysArgs->lenData, pSysArgs->pData, &inLength);
++      }
+    
+-   /* restore default client address */
+-   client->addr=client_main_addr;
++      /* restore default client address */
++      client->addr = client_main_addr;
++   }
+ 
+    return errCode;
+ }
+@@ -376,32 +377,31 @@ tmErrorCode_t I2cReadFunction (tmdlHdmiCecSysArgs_t *pSysArgs)
+ 
+ tmErrorCode_t I2cWriteFunction(tmdlHdmiCecSysArgs_t *pSysArgs)
+ {
++   tmErrorCode_t errCode = TM_ERR_NULL_DATAOUTFUNC;
++   struct i2c_client *client = cecGetThisI2cClient();
+ 
+-   tmErrorCode_t errCode = TM_OK;
+-   u16 outLenght=0;
+-   struct i2c_client *client=cecGetThisI2cClient();
+-   u32 client_main_addr=client->addr;
++   if (client) {
++      u16 outLength = 0;
++      u32 client_main_addr = client->addr;
+ 
+-   /* DevLib needs address control, so let it be */ 
+-   client->addr=pSysArgs->slaveAddr;
++      /* DevLib needs address control, so let it be */ 
++      client->addr = pSysArgs->slaveAddr;
+    
+-   if (pSysArgs->lenData == 1) {
+-      /* single byte */
+-      errCode = write_reg(cecGetThisI2cClient(),pSysArgs->firstRegister,*pSysArgs->pData);
+-   }
+-   else {
+-      /* block */
+-      errCode = blockwrite_reg(cecGetThisI2cClient(),  \
+-                               pSysArgs->firstRegister, \
+-                               pSysArgs->lenData,       \
+-                               pSysArgs->pData,&outLenght);
+-   }
++      if (pSysArgs->lenData == 1) {
++         /* single byte */
++         errCode = write_reg(client, pSysArgs->firstRegister, *pSysArgs->pData);
++      }
++      else {
++         /* block */
++         errCode = blockwrite_reg(client, pSysArgs->firstRegister,
++                                  pSysArgs->lenData, pSysArgs->pData, &outLength);
++      }
+    
+-   /* restore default client address */
+-   client->addr=client_main_addr;
++      /* restore default client address */
++      client->addr = client_main_addr;
++   }
+ 
+    return errCode;
+-
+ }
+ 
+ static tmErrorCode_t tmdlHdmiTxIWWait
+diff --git a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/src/tmdlHdmiCEC.c b/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/src/tmdlHdmiCEC.c
+index d18a506..629b06c9 100755
+--- a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/src/tmdlHdmiCEC.c
++++ b/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/src/tmdlHdmiCEC.c
+@@ -229,9 +229,7 @@
+   unsigned char  I2c_ReadBuffer[19] ;   /* I2C Read data buffer */
+   tmdlHdmiCecDriverConfigTable_t *pDis; /* Pointer to Device Instance Structure */
+   tmdlHdmiCecUnitConfig_t        *pCecObject; /* Pointer to Cec Object */
+-  tmdlHdmiCecFrameFormat_t  ReadFrame;
+   tmdlHdmiCecSaveMessage_t  LastSendMessage;
+-  int i;
+ 
+ 
+   pDis = &gtmdlHdmiCecDriverConfigTable[instance];
+@@ -250,52 +248,35 @@
+ #endif
+ 
+   errCode = getCecHwRegisters(pDis, E_REG_CDR0,I2c_ReadBuffer,19);
+-  RETIF(errCode != TM_OK, errCode)
+-     
+-  /*Fill Frame structure with read data*/
++  RETIF((errCode != TM_OK || I2c_ReadBuffer[0] < 2), errCode)
+ 
+-  /* Case of Receiving CECData.cnf*/
+-  /*Inform Success or reason of failure of CEC message sending*/
+-  if (I2c_ReadBuffer[1]== 0x01)
++  if (I2c_ReadBuffer[1] == 0x81)
+   {
+-    /* Get Infos of last message send */ 
+-    getCecLastMessage(&LastSendMessage);
+-	
+-    if (LastSendMessage.MessageTypePolling)
+-    {
+-     ReadFrame.FrameByteCount = I2c_ReadBuffer[0];
+-     ReadFrame.AddressByte = LastSendMessage.AddressByte;
+-     ReadFrame.DataBytes[0]= I2c_ReadBuffer[2];
+-    }
+-    else
+-    {
+-     ReadFrame.FrameByteCount = I2c_ReadBuffer[0]+1;
+-     ReadFrame.AddressByte = LastSendMessage.AddressByte;
+-     ReadFrame.DataBytes[0]= I2c_ReadBuffer[2];
+-     ReadFrame.DataBytes[1]= LastSendMessage.Opcode;
+-    }
+-    
+-    pCecObject->MessageCallback(TMDL_HDMICEC_CALLBACK_STATUS
+-                               , (Void *) &ReadFrame, ReadFrame.FrameByteCount);
+-  }
++    /* Case of Receiving CECData.ind*/
++    /*Give receive data from CEC bus*/
+ 
+-  /* Case of Receiving CECData.ind*/
+-  /*Give receive data from CEC bus*/
+-  if (I2c_ReadBuffer[1]== 0x81)
++    pCecObject->MessageCallback(TMDL_HDMICEC_CALLBACK_MESSAGE_AVAILABLE,
++                                &I2c_ReadBuffer[2], I2c_ReadBuffer[0] - 2);
++  }
++  else if (I2c_ReadBuffer[1]== 0x01)
+   {
+-    ReadFrame.FrameByteCount = I2c_ReadBuffer[0];
+-    ReadFrame.AddressByte = I2c_ReadBuffer[2];
+-    for (i=0; i<15; i++)
+-    {
+-    ReadFrame.DataBytes[i] = I2c_ReadBuffer[i+3];
+-    }
++    /* Case of Receiving CECData.cnf*/
++    /*Inform Success or reason of failure of CEC message sending*/
++
++    getCecLastMessage(&LastSendMessage);
++
++    /* Append saved OpCode */
++    if (!LastSendMessage.MessageTypePolling)
++      I2c_ReadBuffer[I2c_ReadBuffer[0]++] = LastSendMessage.Opcode;
+ 
+-    pCecObject->MessageCallback(TMDL_HDMICEC_CALLBACK_MESSAGE_AVAILABLE
+-                               , (Void *) &ReadFrame, ReadFrame.FrameByteCount);
++    /* Prepend saved AddressByte */
++    I2c_ReadBuffer[1] = LastSendMessage.AddressByte;
++
++    pCecObject->MessageCallback(TMDL_HDMICEC_CALLBACK_STATUS,
++                                &I2c_ReadBuffer[1], I2c_ReadBuffer[0] - 1);
+   }
+ 
+   return(TM_OK);
+-
+ }
+ 
+ //==========================================================================
+diff --git a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiTx/cfg/TDA9989/tmdlHdmiTx_Linux_cfg.c b/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiTx/cfg/TDA9989/tmdlHdmiTx_Linux_cfg.c
+index 07f3283..a7182f9 100755
+--- a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiTx/cfg/TDA9989/tmdlHdmiTx_Linux_cfg.c
++++ b/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiTx/cfg/TDA9989/tmdlHdmiTx_Linux_cfg.c
+@@ -56,8 +56,8 @@
+  *                 THIS PART CAN BE MODIFIED BY CUSTOMER                      *
+  ******************************************************************************
+  *****************************************************************************/
+-static struct i2c_client *GetThisI2cClient(void);
+-unsigned char  my_i2c_data[255];
++struct i2c_client *GetThisI2cClient(void);
++static unsigned char  my_i2c_data[255];
+ 
+ /* The following includes are used by I2C access function. If    */
+ /* you need to rewrite these functions for your own SW infrastructure, then   */
+@@ -392,29 +392,31 @@ int read_reg(struct i2c_client *client, u16 data_length, u8 reg, u8 *val)
+ /* tmbslHdmiTxSysArgs_t definition is located into tmbslHdmiTx_type.h file.   */
+ tmErrorCode_t TxI2cReadFunction(tmbslHdmiTxSysArgs_t *pSysArgs)
+ {
+-   tmErrorCode_t errCode = TM_OK;
+-   struct i2c_client *client=GetThisI2cClient();
+-   u32 client_main_addr=client->addr;
+-
+-   /* DevLib needs address control, so let it be */ 
+-   client->addr=pSysArgs->slaveAddr;
+-
+-   if (pSysArgs->lenData == 1) {
+-      /* single byte */
+-      errCode = read_reg(GetThisI2cClient(),1,pSysArgs->firstRegister,pSysArgs->pData);
+-   }
+-   else {
+-      /* block */
+-      errCode = blockread_reg(GetThisI2cClient(), \
+-			      pSysArgs->firstRegister, \
+-			      pSysArgs->lenData, \
+-			      pSysArgs->pData);
+-   }
++   tmErrorCode_t errCode = TM_ERR_NULL_DATAINFUNC;
++   struct i2c_client *client = GetThisI2cClient();
++
++   if (client) {
++      u32 client_main_addr = client->addr;
++
++      /* DevLib needs address control, so let it be */ 
++      client->addr = pSysArgs->slaveAddr;
++
++      if (pSysArgs->lenData == 1) {
++         /* single byte */
++         errCode = read_reg(client, 1,
++			    pSysArgs->firstRegister, pSysArgs->pData);
++      }
++      else {
++         /* block */
++         errCode = blockread_reg(client, pSysArgs->firstRegister,
++				 pSysArgs->lenData, pSysArgs->pData);
++      }
+    
+-   /* restore default client address */
+-   client->addr=client_main_addr;
++      /* restore default client address */
++      client->addr = client_main_addr;
++   }
+ 
+-    return errCode;
++   return errCode;
+ }
+ 
+ /* The following function must be rewritten by the customer to fit its own    */
+@@ -422,29 +424,30 @@ tmErrorCode_t TxI2cReadFunction(tmbslHdmiTxSysArgs_t *pSysArgs)
+ /* tmbslHdmiTxSysArgs_t definition is located into tmbslHdmiTx_type.h file.   */
+ tmErrorCode_t TxI2cWriteFunction(tmbslHdmiTxSysArgs_t *pSysArgs)
+ {
+-   tmErrorCode_t  errCode = TM_OK;
+-   struct i2c_client *client=GetThisI2cClient();
+-   u32 client_main_addr=client->addr;
++   tmErrorCode_t errCode = TM_ERR_NULL_DATAOUTFUNC;
++   struct i2c_client *client = GetThisI2cClient();
+ 
+-   /* DevLib needs address control, so let it be */ 
+-   client->addr=pSysArgs->slaveAddr;
++   if (client) {
++      u32 client_main_addr = client->addr;
++
++      /* DevLib needs address control, so let it be */ 
++      client->addr = pSysArgs->slaveAddr;
+    
+-   if (pSysArgs->lenData == 1) {
+-      /* single byte */
+-      errCode = write_reg(GetThisI2cClient(),pSysArgs->firstRegister,*pSysArgs->pData);
+-   }
+-   else {
+-      /* block */
+-      errCode = blockwrite_reg(GetThisI2cClient(),  \
+-                               pSysArgs->firstRegister, \
+-                               pSysArgs->lenData,       \
+-                               pSysArgs->pData);
+-   }
++      if (pSysArgs->lenData == 1) {
++         /* single byte */
++         errCode = write_reg(client, pSysArgs->firstRegister, *pSysArgs->pData);
++      }
++      else {
++         /* block */
++         errCode = blockwrite_reg(client, pSysArgs->firstRegister,
++				  pSysArgs->lenData, pSysArgs->pData);
++      }
+    
+-   /* restore default client address */
+-   client->addr=client_main_addr;
++      /* restore default client address */
++      client->addr = client_main_addr;
++   }
+ 
+-    return errCode;
++   return errCode;
+ }
+ 
+ 
+diff --git a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c
+index 2cdb4b7..cde55ca 100755
+--- a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c
++++ b/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c
+@@ -30,7 +30,7 @@
+ #include <linux/delay.h>
+ #include <linux/interrupt.h>
+ #include <linux/input.h>
+-#include <asm/uaccess.h>
++#include <linux/poll.h>
+ #include <linux/gpio.h>
+ 
+ /* HDMI DevLib */
+@@ -60,8 +60,8 @@
+    { CEC_NAME, 0 },
+    { },
+ };
++static struct cdev our_cdev;
+ static cec_instance our_instance;
+-static struct cdev our_cdev, *this_cdev=&our_cdev;
+ 
+ #ifdef TWL4030_HACK
+ /* AL : hack to bypass keypad */
+@@ -110,12 +110,11 @@
+ 
+ 
+ /* 
+- *  Get main and unique I2C Client driver handle
++ *  Get main and unique I2C Client driver handle (called from NXP SDK)
+  */
+ struct i2c_client *cecGetThisI2cClient(void)
+ {
+-   cec_instance *this=&our_instance;
+-   return this->driver.i2c_client;
++   return our_instance.driver.i2c_client;
+ }
+ 
+ /*
+@@ -320,6 +319,12 @@ static char *cec_ioctl(int io)
+       case CEC_IOCTL_DISABLE_CALIBRATION_CMD: {return "CEC_IOCTL_DISABLE_CALIBRATION_CMD";break;}
+       case CEC_IOCTL_SEND_MSG_CMD: {return "CEC_IOCTL_SEND_MSG_CMD";break;}
+       case CEC_IOCTL_SET_REGISTER_CMD: {return "CEC_IOCTL_SET_REGISTER_CMD";break;}
++
++      case CEC_IOCTL_GET_RAW_MODE_CMD: {return "CEC_IOCTL_GET_RAW_MODE_CMD";break;}
++      case CEC_IOCTL_SET_RAW_MODE_CMD: {return "CEC_IOCTL_SET_RAW_MODE_CMD";break;}
++      case CEC_IOCTL_GET_RAW_INFO_CMD: {return "CEC_IOCTL_GET_RAW_INFO_CMD";break;}
++      case CEC_IOCTL_SET_RX_ADDR_MASK_CMD: {return "CEC_IOCTL_SET_RX_ADDR_MASK_CMD";break;}
++
+       default : {return "unknown";break;}
+       }
+ }
+@@ -450,7 +455,7 @@ static void cec_on(cec_instance *this)
+    /* turn GPIO into calib pulse generator */
+    err = gpio_direction_output(TDA_IRQ_CALIB,0); /* output (1 means try-state or high) */
+    if (err < 0) {
+-	LOG(KERN_ERR,"%s: Cannot access GPIO %d, err:%d\n",__func__,TDA_IRQ_CALIB,err);
++	LOG(KERN_ERR,"Cannot access GPIO %d, err:%d\n",TDA_IRQ_CALIB,err);
+ 
+ 	enable_irq(gpio_to_irq(TDA_IRQ_CALIB));
+ 	return;
+@@ -509,41 +514,99 @@ static void cec_standby(cec_instance *this)
+ }
+ 
+ /*
++ * enable listening on a single logical addresses
++ */
++static void cec_listen_single(cec_instance *this, unsigned char rx_addr)
++{
++   int err;
++
++   LOG(KERN_INFO,"logAddr 0x%x\n", rx_addr);
++
++   TRY(tmdlHdmiCecSetLogicalAddress(this->cec.inst, rx_addr));
++
++   this->cec.rx_addr = rx_addr;
++   this->cec.rx_addr_mask = (1 << rx_addr) & 0x7fff;
++
++ TRY_DONE:
++   (void)0;
++}
++
++/*
++ * enable listening on multiple logical addresses
++ */
++static void cec_listen_multi(cec_instance *this, 
++                             unsigned short onMask, unsigned short offMask)
++{
++   int err;
++   unsigned short newMask, changeMask;
++
++   newMask = (this->cec.rx_addr_mask | onMask) & ~(offMask | 0x8000);
++   changeMask = newMask ^ this->cec.rx_addr_mask; 
++
++LOG(KERN_INFO,"newMask 0x%04x, changeMask 0x%04x\n", newMask, changeMask);
++
++   if (changeMask & 0xff00) {
++       TRY(tmdlHdmiCecSetRegister(this->cec.inst, E_REG_ACKH, newMask >> 8));
++       this->cec.rx_addr_mask ^= changeMask & 0xff00;
++   } 
++
++   if (changeMask & 0x80ff) {
++       TRY(tmdlHdmiCecSetRegister(this->cec.inst, E_REG_ACKL, newMask & 0xff));
++       this->cec.rx_addr_mask ^= changeMask & 0x00ff;
++   }
++
++LOG(KERN_INFO,"resultMask 0x%04x\n", this->cec.rx_addr_mask);
++
++ TRY_DONE:
++   (void)0;
++}
++
++/*
+  *  CEC interrupt polling
+  */
+ static void cec_interrupt(struct work_struct *dummy)
+ {
+    cec_instance *this=&our_instance;
+-   unsigned short new_phy_addr=edid_phy_addr();
++   cec_power display_active = get_hpd_status();
++   unsigned short new_phy_addr = edid_phy_addr();
+    int err=0;
+    
+-   LOG(KERN_INFO,"%s called\n",__func__);
++   LOG(KERN_INFO,"called\n");
+ 
+    /* switch on/off CEC */
+-   if (!get_hpd_status() &&                     \
+-       (this->cec.power == tmPowerOn)) {
++   if (!display_active && (this->cec.power == tmPowerOn)) {
+       this->cec.source_status = CEC_POWER_STATUS_STANDBY;
+ /*       TRY(tmdlHdmiCecInactiveSource(this->cec.inst,             \ */
+ /*                                        this->cec.initiator,     \ */
+ /*                                        this->cec.phy_addr)); */
+       cec_standby(this);
+    }
+-   else if (get_hpd_status() &&                         \
+-            (this->cec.power == tmPowerStandby)) {
++   else if (display_active && (this->cec.power == tmPowerStandby)) {
+       /* send active msg when hdmi has been abled */
+       cec_on(this);
++
++#ifndef GUI_OVER_HDMI
++      this->cec.source_status = CEC_POWER_STATUS_ON;
++#endif
+    }
+    /* new phy addr means new EDID, mean HPD ! */
+    else if ((this->cec.phy_addr != new_phy_addr) &&        \
+        (this->cec.source_status == CEC_POWER_STATUS_ON)) {
+       LOG(KERN_INFO,"New physical address %02x\n",new_phy_addr);
+       this->cec.phy_addr = new_phy_addr;
+-      if (this->cec.phy_addr != 0xFFFF) {
+-         this->cec.rx_addr = get_next_logical_addr(this->cec.device_type,CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST);
+-         TRY(tmdlHdmiCecPollingMessage(this->cec.inst,this->cec.rx_addr));
+-      }
++
++      if (!this->driver.raw_mode) {
++         if (this->cec.phy_addr != 0xFFFF) {
++            this->cec.rx_addr = get_next_logical_addr(
++               this->cec.device_type, CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST);
++            TRY(tmdlHdmiCecPollingMessage(this->cec.inst, this->cec.rx_addr));
++         }
++         else {
++            this->cec.rx_addr = CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST;
++         }
++      } 
+       else {
+-         this->cec.rx_addr = CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST;
++         // Todo: how to notify libCEC about this ??
+       }
+    }
+ #ifdef GUI_OVER_HDMI
+@@ -555,6 +618,7 @@ static void cec_interrupt(struct work_struct *dummy)
+          msleep(200);
+          TRY(tmdlHdmiCecActiveSource(this->cec.inst,this->cec.phy_addr));
+          this->cec.source_status = CEC_POWER_STATUS_ON;
++         goto TRY_DONE;
+       }
+    }
+ #endif
+@@ -619,7 +683,7 @@ void polling_timeout(unsigned long arg)
+          printk(KERN_INFO "Fake Rx message\n");
+          this->driver.timer.data=0;
+ 
+-         this->cec.frame.count = 4;
++         this->cec.frame.size = 4;
+          this->cec.frame.addr = 4; /* 0-->4 (TV-->MediaPlayer1) */
+          this->cec.frame.data[0]=0x46; /* opcode: "GiveOsd" */
+          this->cec.frame.service = CEC_RX_DONE;
+@@ -665,6 +729,7 @@ static void user_control(int key, int press)
+ }
+ #endif
+ 
++
+ /*
+  *  CEC callback
+  */
+@@ -674,18 +739,78 @@ static void eventCallbackCEC(tmdlHdmiCecEvent_t event, unsigned char *data, unsi
+    cec_instance *this=&our_instance;
+    int opcode;
+    int initiator,receiver;
++   cec_frame *frame;
++   int new_tail;
++
++   if (this->driver.raw_mode) {
++      new_tail = (this->driver.read_queue_tail + 1) %
++                     ARRAY_SIZE(this->driver.read_queue);
++
++      frame = &this->driver.read_queue[this->driver.read_queue_tail];
++      memset(frame, 0, sizeof(frame[0]));
++
++      if (event == TMDL_HDMICEC_CALLBACK_MESSAGE_AVAILABLE) {
++
++         if (new_tail != this->driver.read_queue_head) {
++            frame->size    = length + 2;		/* */
++            frame->service = 1;
++            frame->addr    = data[0];			/* .AddressByte */
++            memcpy(frame->data, &data[1], length - 1);	/* .DataBytes[], length - sizeof(length,addr) */
++
++            initiator = (frame->addr >> 4) & 0x0F;
++            receiver  = frame->addr & 0x0F;
++            opcode    = frame->data[0];
++            LOG(KERN_INFO,"hdmicec:Rx:[%x--->%x] %s length:%d [%02x %02x %02x %02x]\n",
++               initiator,receiver,cec_opcode(opcode),length, 
++               frame->data[0], frame->data[1], frame->data[2], frame->data[3]);
++
++            this->driver.read_queue_tail = new_tail;
++         }
++
++         wake_up_interruptible(&this->driver.wait_read);
++
++      } else if (event == TMDL_HDMICEC_CALLBACK_STATUS) {
++
++         if (new_tail != this->driver.read_queue_head) {
++            frame->size    = length + 2;		/* */
++            frame->service = 2;
++            frame->addr    = data[0];			/* .AddressByte */
++            memcpy(frame->data, &data[1], length - 1);	/* .DataBytes[], length - sizeof(length,addr) */
++
++            initiator = (frame->addr >> 4) & 0x0F;
++            receiver  = frame->addr & 0x0F;
++            opcode    = frame->data[0];
++            LOG(KERN_INFO,"hdmicec:ACK:[%x--->%x] %s lenght:%d [%02x %02x %02x %02x]\n",
++	      initiator,receiver,cec_rxstatus(opcode),length, 
++              frame->data[0], frame->data[1], frame->data[2], frame->data[3]);
++
++            this->driver.read_queue_tail = new_tail;
++         }
++
++	 this->driver.write_pending = 0;
++         wake_up_interruptible(&this->driver.wait_read);
++         wake_up_interruptible(&this->driver.wait_write);
++
++      } else {
++         LOG(KERN_ERR,"Oups ! Callback got invalid event %d !\n",event);
++      }
++
++      return;
++   }
++
+ 
+    if (event == TMDL_HDMICEC_CALLBACK_MESSAGE_AVAILABLE) {
+ 
+-      this->cec.frame.count = length;
+-      this->cec.frame.addr = data[1]; /* .AddressByte */
++      this->cec.frame.size = length + 2;
++      this->cec.frame.addr = data[0]; /* .AddressByte */
+       initiator = (this->cec.frame.addr >> 4) & 0x0F;
+       this->cec.initiator = initiator;
+       receiver = this->cec.frame.addr & 0x0F;
+-      memcpy(&this->cec.frame.data,&data[2],length-2); /* .DataBytes[], length - siezof(length,addr,ack) */
++      memcpy(&this->cec.frame.data,&data[1],length-1); /* .DataBytes[], length - siezof(length,addr,ack) */
+       opcode=this->cec.frame.data[0];
+-      printk(KERN_INFO "hdmicec:Rx:[%x--->%x] %s length:%d addr:%d %02x%02x%02x%02x\n",initiator,receiver,cec_opcode(opcode), \
+-          length,data[1],
++      LOG(KERN_INFO,"hdmicec:Rx:[%x--->%x] %s length:%d addr:%d %02x%02x%02x%02x\n",initiator,receiver,cec_opcode(opcode), \
++          length,
++          this->cec.frame.addr,
+           this->cec.frame.data[0],                                      \
+           this->cec.frame.data[1],                                      \
+           this->cec.frame.data[2],                                      \
+@@ -849,11 +974,11 @@ static void eventCallbackCEC(tmdlHdmiCecEvent_t event, unsigned char *data, unsi
+    }
+    else if (event == TMDL_HDMICEC_CALLBACK_STATUS) {
+ 
+-      this->cec.frame.count = length;
+-      this->cec.frame.addr = data[1]; /* .AddressByte */
++      this->cec.frame.size = length + 2;
++      this->cec.frame.addr = data[0]; /* .AddressByte */
+       initiator = (this->cec.frame.addr >> 4) & 0x0F;
+       receiver = this->cec.frame.addr & 0x0F;
+-      memcpy(&this->cec.frame.data,&data[2],length-2); /* .DataBytes[], length - siezof(length,addr)  */
++      memcpy(&this->cec.frame.data,&data[1],length-1); /* .DataBytes[], length - siezof(length,addr)  */
+       opcode=this->cec.frame.data[0];
+       this->cec.frame.service = CEC_TX_DONE;
+ 
+@@ -882,12 +1007,12 @@ static void eventCallbackCEC(tmdlHdmiCecEvent_t event, unsigned char *data, unsi
+             }
+          }
+          else {
+-            printk(KERN_INFO "ACK [%x--->%x] %s\n",initiator,receiver,cec_rxstatus(opcode));
++            LOG(KERN_INFO,"ACK [%x--->%x] %s\n",initiator,receiver,cec_rxstatus(opcode));
+          }
+       }
+       else {
+          if (CEC_MSG_SUCCESS != opcode) {
+-            printk(KERN_INFO "ACK [%x--->%x] %s\n",initiator,receiver,cec_rxstatus(opcode));
++            LOG(KERN_INFO,"ACK [%x--->%x] %s\n",initiator,receiver,cec_rxstatus(opcode));
+          }
+       }
+ 
+@@ -906,7 +1031,7 @@ static void eventCallbackCEC(tmdlHdmiCecEvent_t event, unsigned char *data, unsi
+ /*
+  *  DevLib CEC opening
+  */
+-static int hdmi_cec_init(cec_instance *this)
++static int hdmi_cec_init(cec_instance *this, const char *osd_name)
+ {
+    int err=0;
+ 
+@@ -919,20 +1044,21 @@ static int hdmi_cec_init(cec_instance *this)
+ 
+ /*    this->cec.version = CEC_VERSION_1_4; */
+    this->cec.version = CEC_VERSION_1_3a;
+-   this->cec.osd_name.data[0]=0x54; /* TDA19989 by default */
+-   this->cec.osd_name.data[1]=0x44;
+-   this->cec.osd_name.data[2]=0x41;
+-   this->cec.osd_name.data[3]=0x31;
+-   this->cec.osd_name.data[4]=0x39;
+-   this->cec.osd_name.data[5]=0x39;
+-   this->cec.osd_name.data[6]=0x38;
+-   this->cec.osd_name.data[7]=0x39;
+-   this->cec.osd_name.length=8;
+-   
++
++   if (!osd_name)
++      osd_name = "TDA19989";	/* TDA19989 by default */
++
++   strncpy(this->cec.osd_name.data, 
++           osd_name, sizeof(this->cec.osd_name.data));
++   this->cec.osd_name.length = 
++      min(strlen(osd_name), sizeof(this->cec.osd_name.data));
++     
++   this->cec.rx_addr = CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST;
++   this->cec.rx_addr_mask = 0;
++   this->cec.phy_addr = param_addr;			// 0xffff == unconfigured
++   this->cec.device_type = device_type(param_device);	// 4 == CEC_DEVICE_TYPE_PLAYBACK_DEVICE
++
+    TRY(tmdlHdmiCecRegisterCallbacks(this->cec.inst,eventCallbackCEC));
+-       
+-   this->cec.phy_addr = param_addr;
+-   this->cec.device_type = device_type(param_device);
+ 
+  TRY_DONE:
+    return err;
+@@ -957,29 +1083,34 @@ static int hdmi_cec_init(cec_instance *this)
+ 
+ static int this_cdev_open(struct inode *pInode, struct file *pFile)
+ {
+-   cec_instance *this;
+-   int minor=iminor(pInode);
++   cec_instance *this = pFile->private_data;
++   int minor = iminor(pInode);
+ 
+-   if(minor >= MAX_MINOR) {
++   if (minor >= MAX_MINOR) {
+       printk(KERN_ERR "hdmicec:%s:only one cec opening please\n",__func__);
+       return -EINVAL;
+    }
+ 
+-   if ((pFile->private_data != NULL) && (pFile->private_data != &our_instance)) {
+-      printk(KERN_ERR "hdmicec:%s:pFile missmatch\n",__func__);
++   if (this && this != &our_instance) {
++      printk(KERN_ERR "hdmicec:%s:pFile mismatch\n",__func__);
++      return -EINVAL;
+    }
+-   this = pFile->private_data = &our_instance;
++
++   this = &our_instance;
++   pFile->private_data = this;
++
+    down(&this->driver.sem);
+ 
+-   LOG(KERN_INFO,"major:%d minor:%d user:%d\n", imajor(pInode), iminor(pInode), this->driver.user_counter);
++   LOG(KERN_INFO,"major:%d minor:%d user:%d\n", 
++       imajor(pInode), iminor(pInode), this->driver.user_counter);
+ 
+    if ((this->driver.user_counter++) && (this->driver.minor == minor)) {
+       /* init already done */
+       up(&this->driver.sem);
+       return 0;
+    }
+-   this->driver.minor = minor;
+ 
++   this->driver.minor = minor;
+ 
+    up(&this->driver.sem);
+    return 0;
+@@ -1001,9 +1132,10 @@ static long this_cdev_ioctl(struct file *pFile, unsigned int cmd, unsigned long
+    }
+ 
+    if (_IOC_DIR(cmd) & _IOC_READ) 
+-      err = !access_ok(VERIFY_WRITE, (void __user *)arg, _IOC_SIZE(cmd)) || !arg;
++      err = !arg || !access_ok(VERIFY_WRITE, (void __user *)arg, _IOC_SIZE(cmd));
+    else if (_IOC_DIR(cmd) & _IOC_WRITE)
+-      err = !access_ok(VERIFY_READ, (void __user *)arg, _IOC_SIZE(cmd)) || !arg;
++      err = !arg || !access_ok(VERIFY_READ, (void __user *)arg, _IOC_SIZE(cmd));
++
+    if (err) {
+       printk(KERN_ERR "hdmicec:%s:argument access denied (check address vs value)\n",__func__);
+       printk(KERN_ERR "_IOC_DIR:%d arg:%lx\n",_IOC_DIR(cmd),arg);
+@@ -1016,6 +1148,85 @@ static long this_cdev_ioctl(struct file *pFile, unsigned int cmd, unsigned long
+ 
+    switch ( _IOC_NR(cmd) )
+       {
++      case CEC_IOCTL_SEND_MSG_CMD:
++         {
++	    cec_frame frame;
++
++            BUG_ON(copy_from_user(&frame, (void *)arg, sizeof(cec_frame)) != 0);
++
++            if (frame.size >= 3 && frame.size < sizeof(cec_frame)) {
++               /* set initiator to "broadcast" */
++               frame.addr |= CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST << 4;
++               TRY(tmdlHdmiCecSendMessage(this->cec.inst, &frame.addr, frame.size - 2));
++            }
++            break;
++         }
++
++      case CEC_IOCTL_GET_RAW_MODE_CMD:
++         {
++            BUG_ON(copy_to_user((void *)arg,&this->driver.raw_mode,sizeof(this->driver.raw_mode)) != 0);
++	    break;
++	 }
++
++      case CEC_IOCTL_SET_RAW_MODE_CMD:
++         {
++            unsigned char raw_mode;
++            BUG_ON(copy_from_user(&raw_mode,(void *)arg,sizeof(raw_mode)) != 0);
++
++            if (raw_mode < 2 && this->driver.raw_mode != raw_mode) {
++
++               this->driver.raw_mode = raw_mode;
++
++	       if (this->driver.raw_mode) {
++                  this->driver.write_pending = 0;
++                  this->driver.read_queue_head = this->driver.read_queue_tail;
++
++                  this->cec.rx_addr_mask = 0x8000;  /* force i2c output */   
++		  cec_listen_multi(this, 0, 0x7fff);
++               } 
++               else {
++                  this->driver.write_pending = 1;
++                  this->driver.read_queue_head = this->driver.read_queue_tail;
++                  wake_up_interruptible(&this->driver.wait_read);
++                  wake_up_interruptible(&this->driver.wait_write);
++
++		  cec_listen_single(this, this->cec.rx_addr);
++	       }
++            }
++	    break;
++	 }
++
++      case CEC_IOCTL_GET_RAW_INFO_CMD:
++         {
++            int len;
++            cec_raw_info info;
++            
++            info.VendorID = this->cec.vendor_id;
++            info.QueueSize = ARRAY_SIZE(this->driver.read_queue);
++            info.LogicalAddress = this->cec.rx_addr;
++            info.PhysicalAddress = this->cec.phy_addr;
++            info.LogicalAddressMask = this->cec.rx_addr_mask;
++
++	    len = min((size_t)this->cec.osd_name.length, sizeof(info.OsdName)-1);
++	    memcpy(info.OsdName, this->cec.osd_name.data, len);
++	    memset(&info.OsdName[len], '\0', sizeof(info.OsdName) - len);
++
++            BUG_ON(copy_to_user((void *)arg,&info,sizeof(info)) != 0);
++	    break;
++	 }
++
++      case CEC_IOCTL_SET_RX_ADDR_MASK_CMD:
++         {
++            cec_rx_mask rx_mask;
++            BUG_ON(copy_from_user(&rx_mask,(void *)arg,sizeof(rx_mask)) != 0);
++
++            if (this->driver.raw_mode) {
++               cec_listen_multi(this, rx_mask.SwitchOn, rx_mask.SwitchOff);
++            }
++            break;
++         }
++
++
+       case CEC_VERBOSE_ON_CMD:
+          {
+             printk(KERN_INFO "verbose on\n");
+@@ -1209,9 +1420,11 @@ static long this_cdev_ioctl(struct file *pFile, unsigned int cmd, unsigned long
+ 
+       case CEC_IOCTL_RX_ADDR_CMD:
+          {
+-            /* 	    BUG_ON(copy_from_user(&this->cec.rx_addr,(unsigned char*)arg,sizeof(unsigned char)) != 0); */
+-            this->cec.rx_addr=arg;
+-            TRY(tmdlHdmiCecSetLogicalAddress(this->cec.inst,this->cec.rx_addr));
++            unsigned char rx_addr;
++            BUG_ON(copy_from_user(&rx_addr,(void *)arg,sizeof(unsigned char)) != 0);
++            if (rx_addr <= CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST) {
++               cec_listen_single(this, rx_addr);
++            }
+             break;
+          }
+ 
+@@ -1827,6 +2040,106 @@ static long this_cdev_ioctl(struct file *pFile, unsigned int cmd, unsigned long
+ }
+ 
+ /*
++ *  ioctl driver :: read
++ */
++static ssize_t this_cdev_read(struct file *pFile, char *buffer, size_t length, loff_t *offset)
++{
++   cec_instance* this = pFile->private_data;
++   int bytes_returned = 0;
++
++   if (!this->driver.raw_mode || length < sizeof(cec_frame))
++      return -EINVAL; 
++
++   while (length - bytes_returned >= sizeof(cec_frame) &&
++          this->driver.read_queue_head != this->driver.read_queue_tail) {
++      memcpy(buffer + bytes_returned, 
++        &this->driver.read_queue[this->driver.read_queue_head], sizeof(cec_frame));
++
++      this->driver.read_queue_head = 
++        (this->driver.read_queue_head + 1) % ARRAY_SIZE(this->driver.read_queue);
++
++      bytes_returned += sizeof(cec_frame);
++   }
++
++   LOG(KERN_INFO,"%d bytes\n",bytes_returned);
++
++   return bytes_returned;
++}
++
++/*
++ *  ioctl driver :: write
++ */
++static ssize_t this_cdev_write(struct file *pFile, const char *buffer, size_t length, loff_t *offset)
++{
++   cec_instance* this = pFile->private_data;
++   int err = 0, bytes_written = 0;
++   const cec_frame *frame;
++
++   if (!this->driver.raw_mode || length < sizeof(cec_frame))
++      return -EINVAL; 
++
++   frame = (const cec_frame *)buffer;
++   if (frame->size < 3 || frame->size > sizeof(cec_frame))
++      return -EINVAL; 
++
++//printk(KERN_INFO "%s: %02x %02x%02x%02x%02x (%d)\n", __func__, 
++//  frame->addr,frame->data[0],frame->data[1],frame->data[2],frame->data[3], frame->size);
++
++   down(&this->driver.sem);
++
++   if (!this->driver.write_pending) {
++      if ((frame->addr & 0xf0) != (CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST << 4) ) {
++         TRY(tmdlHdmiCecSendMessage(this->cec.inst, (UInt8 *)&frame->addr, frame->size - 2));
++         this->driver.write_pending = 1;
++         bytes_written += length;
++//printk(KERN_INFO "%s: tmdlHdmiCecSendMessage O.K. (%d) \n", __func__, err);
++      }
++      else {
++         LOG(KERN_ERR,"initiator 'Broadcast' is not supported !\n");
++         goto TRY_DONE;
++      }
++   }
++
++   LOG(KERN_INFO,"%d bytes\n",bytes_written);
++
++   up(&this->driver.sem);
++   return bytes_written;
++
++ TRY_DONE:
++   up(&this->driver.sem);
++   return -EINVAL;
++}
++
++/*
++ *  ioctl driver :: poll
++ */
++static unsigned int this_cdev_poll(struct file *pFile, poll_table *poll_data)
++{
++   cec_instance* this = pFile->private_data;
++   unsigned int mask = 0;
++
++   down(&this->driver.sem);
++
++   if (this->driver.raw_mode) {
++      poll_wait(pFile, &this->driver.wait_read, poll_data);
++      poll_wait(pFile, &this->driver.wait_write, poll_data);
++
++      if (this->driver.read_queue_head != this->driver.read_queue_tail)
++   	 mask |= POLLIN | POLLRDNORM;	/* readable */
++
++      if (!this->driver.write_pending)
++   	 mask |= POLLOUT | POLLWRNORM;	/* writable */
++
++   } else {
++      mask |= POLLIN | POLLRDNORM | POLLOUT | POLLWRNORM;
++   }
++
++   up(&this->driver.sem);
++
++   return mask;
++}
++
++/*
+  *  ioctl driver :: releasing
+  */
+ static int this_cdev_release(struct inode *pInode, struct file *pFile)
+@@ -1836,15 +2149,34 @@ static int this_cdev_release(struct inode *pInode, struct file *pFile)
+ 
+    LOG(KERN_INFO,"called\n");
+ 
+-   if(minor >= MAX_MINOR) {
++   if (minor >= MAX_MINOR) {
+       return -EINVAL;
+    }
+ 
+    BUG_ON(this->driver.minor!=iminor(pInode));
+    down(&this->driver.sem);
+ 
+-   this->driver.user_counter--;
+-   if(this->driver.user_counter == 0) {
++   if (--this->driver.user_counter == 0) {
++      if (this->driver.raw_mode) {
++         this->driver.raw_mode = 0;
++         this->driver.write_pending = 0;
++         this->driver.read_queue_head = this->driver.read_queue_tail;
++
++         wake_up_interruptible(&this->driver.wait_write);
++         wake_up_interruptible(&this->driver.wait_read);
++
++   LOG(KERN_INFO,"releasing RAW mode (1) i2c_client=%08x %08x %01x\n", 
++	this->driver.i2c_client, our_instance.driver.i2c_client, this->cec.rx_addr);
++
++#if 0
++         cec_listen_single(this, this->cec.rx_addr);
++#else
++         this->cec.rx_addr_mask = 0x8000;
++         cec_listen_multi(this, 1 << this->cec.rx_addr, ~(1 << this->cec.rx_addr));
++#endif
++
++      }
++
+       pFile->private_data = NULL;
+    }
+    else {
+@@ -1874,17 +2206,24 @@ static int __devinit this_i2c_probe(struct i2c_client *client, const struct i2c_
+       return -ENODEV;
+    }
+ 
++#if 0
+    this->driver.i2c_client = kmalloc(sizeof(struct i2c_client), GFP_KERNEL);
+    if (!this->driver.i2c_client) {
+       return -ENOMEM;
+    }
+    memset(this->driver.i2c_client, 0, sizeof(struct i2c_client));
+ 
+-   strncpy(this->driver.i2c_client->name, CEC_NAME, I2C_NAME_SIZE);
++   strncpy(this->driver.i2c_client->name, CEC_NAME, I2C_NAME_SIZE - 1);
+    this->driver.i2c_client->addr = TDA99XCEC_I2C_SLAVEADDRESS;
+    this->driver.i2c_client->adapter = client->adapter;
+ 
+    i2c_set_clientdata(client, this->driver.i2c_client);
++#else
++
++   this->driver.i2c_client = client;
++   i2c_set_clientdata(client, this);
++
++#endif
+ 
+    tmdlHdmiCecGetSWVersion(&this->cec.sw_version);
+    LOG(KERN_INFO,"HDMI CEC SW Version:%lu.%lu compatibility:%lu\n", \
+@@ -1894,6 +2233,14 @@ static int __devinit this_i2c_probe(struct i2c_client *client, const struct i2c_
+ 
+    /* I2C ok, then let's startup CEC */
+ 
++   /* initialize raw mode stuff */
++   this->driver.raw_mode = 0;
++   this->driver.write_pending = 1;
++   this->driver.read_queue_head = 0;
++   this->driver.read_queue_tail = 0;
++   init_waitqueue_head(&this->driver.wait_read);
++   init_waitqueue_head(&this->driver.wait_write);
++
+    /* prepare event */
+    this->driver.poll_done = true; /* currently idle */
+    init_waitqueue_head(&this->driver.wait);
+@@ -1925,9 +2272,8 @@ static int __devinit this_i2c_probe(struct i2c_client *client, const struct i2c_
+    }
+ #endif
+ 
+-   err = hdmi_cec_init(this);
++   err = hdmi_cec_init(this, (const char *)client->dev.platform_data);
+    if (err) goto i2c_out;
+-   this->cec.rx_addr=CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST;
+ 
+    if (get_hpd_status()) {
+       cec_on(this);
+@@ -1944,7 +2290,9 @@ static int __devinit this_i2c_probe(struct i2c_client *client, const struct i2c_
+  i2c_out:
+    LOG(KERN_INFO,"HDMICEC eject: this->driver.i2c_client removed\n");
+    tmdlHdmiCecClose(this->cec.inst);
++#if 0
+    kfree(this->driver.i2c_client);
++#endif
+    this->driver.i2c_client = NULL;
+ 
+    return err;
+@@ -1967,7 +2315,9 @@ static int this_i2c_remove(struct i2c_client *client)
+               __func__);
+       return -ENODEV;
+    }
++#if 0
+    kfree(this->driver.i2c_client);
++#endif
+    this->driver.i2c_client = NULL;
+ 
+    return err;
+@@ -1996,6 +2346,9 @@ static int this_i2c_remove(struct i2c_client *client)
+  open:     this_cdev_open,
+  release:  this_cdev_release,
+  unlocked_ioctl: this_cdev_ioctl,
++ read:     this_cdev_read,
++ write:    this_cdev_write,
++ poll:     this_cdev_poll
+ };
+ 
+ /*
+@@ -2057,8 +2410,8 @@ static int __init cec_init(void)
+       this->param.major = MAJOR(dev);
+    }
+ 
+-   cdev_init(this_cdev, &this_cdev_fops);
+-   this_cdev->owner = THIS_MODULE;
++   cdev_init(&our_cdev, &this_cdev_fops);
++   our_cdev.owner = THIS_MODULE;
+ 
+    this->driver.class = class_create(THIS_MODULE, HDMICEC_NAME);
+    if (IS_ERR(this->driver.class)) {
+@@ -2069,7 +2422,7 @@ static int __init cec_init(void)
+    this->driver.dev = device_create(this->driver.class, NULL, dev, NULL, HDMICEC_NAME);
+ 
+    this->driver.devno = dev;
+-   err = cdev_add(this_cdev, this->driver.devno, MAX_MINOR);
++   err = cdev_add(&our_cdev, this->driver.devno, MAX_MINOR);
+    if (err){
+       printk(KERN_INFO "unable to add device for %s, ipp_driver.devno=%d %s\n",HDMICEC_NAME,this->driver.devno,ERR_TO_STR(err));
+       device_destroy(this->driver.class,this->driver.devno);
+@@ -2125,7 +2478,7 @@ static void __exit cec_exit(void)
+ #endif
+ 
+    /* unregister cdevice */
+-   cdev_del(this_cdev);
++   cdev_del(&our_cdev);
+    unregister_chrdev_region(this->driver.devno, MAX_MINOR);
+ 
+    /* unregister device */
+@@ -2134,7 +2487,6 @@ static void __exit cec_exit(void)
+ 
+    /* unregister i2c */
+    i2c_del_driver(&this_i2c_driver);
+-
+ }
+ 
+ 
+diff --git a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.h b/drivers/video/dovefb/nxp_hdmi/tda998x_cec.h
+index 2a06e95..99ea5e3 100755
+--- a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.h
++++ b/drivers/video/dovefb/nxp_hdmi/tda998x_cec.h
+@@ -87,12 +87,21 @@
+       bool poll_done;
+       int deinit_req;
+       struct timer_list timer;
++
++      unsigned char raw_mode;
++      unsigned char write_pending;
++      wait_queue_head_t wait_read;
++      wait_queue_head_t wait_write;
++      int read_queue_head;
++      int read_queue_tail;
++      cec_frame read_queue[8];
+    } driver;
+    /* cec */
+    struct {
+       int inst;
+-      unsigned char rx_addr;
+       unsigned short phy_addr;
++      unsigned short rx_addr_mask;
++      unsigned char rx_addr;
+       unsigned char initiator;
+       cec_version version;
+       cec_sw_version sw_version;
+diff --git a/drivers/video/dovefb/nxp_hdmi/tda998x_ioctl.h b/drivers/video/dovefb/nxp_hdmi/tda998x_ioctl.h
+index 192615b..f6f2594 100755
+--- a/drivers/video/dovefb/nxp_hdmi/tda998x_ioctl.h
++++ b/drivers/video/dovefb/nxp_hdmi/tda998x_ioctl.h
+@@ -772,15 +772,28 @@ enum {
+   } cec_send_msg;
+ */
+ 
+-typedef struct
+-{
+-   unsigned char count;
++typedef struct {
++   unsigned char size;
+    unsigned char service;
+    unsigned char addr;
+    unsigned char data[15];
+ } cec_frame;
+ /* typedef tmdlHdmiCecFrameFormat_t cec_frame; */
+ 
++typedef struct {
++   unsigned long  VendorID;
++   unsigned char  QueueSize;
++   unsigned char  LogicalAddress;
++   unsigned short PhysicalAddress;
++   unsigned short LogicalAddressMask;
++   char           OsdName[16];
++} cec_raw_info;
++
++typedef struct {
++   unsigned short SwitchOn;
++   unsigned short SwitchOff;
++} cec_rx_mask;
++
+ typedef tmSWVersion_t cec_sw_version;
+ typedef tmPowerState_t cec_power;
+ typedef tmdlHdmiCecInstanceSetup_t cec_setup;
+@@ -912,7 +925,13 @@ enum {
+    CEC_IOCTL_ENABLE_CALIBRATION_CMD,
+    CEC_IOCTL_DISABLE_CALIBRATION_CMD,
+    CEC_IOCTL_SEND_MSG_CMD,
+-   CEC_IOCTL_SET_REGISTER_CMD
++   CEC_IOCTL_SET_REGISTER_CMD,
++
++   /* libCEC support */
++   CEC_IOCTL_GET_RAW_MODE_CMD = 200,
++   CEC_IOCTL_SET_RAW_MODE_CMD,
++   CEC_IOCTL_GET_RAW_INFO_CMD,
++   CEC_IOCTL_SET_RX_ADDR_MASK_CMD
+ };
+ 
+ 
+@@ -1010,7 +1029,15 @@ enum {
+ #define CEC_IOCTL_DISABLE_EVENT      _IOWR(CEC_IOCTL_BASE,CEC_IOCTL_DISABLE_EVENT_CMD,cec_event)
+ #define CEC_IOCTL_ENABLE_CALIBRATION      _IOWR(CEC_IOCTL_BASE,CEC_IOCTL_ENABLE_CALIBRATION_CMD,cec_clock)
+ #define CEC_IOCTL_DISABLE_CALIBRATION      _IO(CEC_IOCTL_BASE,CEC_IOCTL_DISABLE_CALIBRATION_CMD)
+-//#define CEC_IOCTL_SEND_MSG      _IOWR(CEC_IOCTL_BASE,CEC_IOCTL_SEND_MSG_CMD,cec_send_msg)
++#define CEC_IOCTL_SEND_MSG      _IOR(CEC_IOCTL_BASE,CEC_IOCTL_SEND_MSG_CMD,cec_frame)
++
++/* libCEC support */
++#define	CEC_IOCTL_GET_RAW_MODE      _IOR(CEC_IOCTL_BASE,CEC_IOCTL_GET_RAW_MODE_CMD,unsigned char)
++#define	CEC_IOCTL_SET_RAW_MODE      _IOWR(CEC_IOCTL_BASE,CEC_IOCTL_SET_RAW_MODE_CMD,unsigned char)
++#define	CEC_IOCTL_GET_RAW_INFO      _IOR(CEC_IOCTL_BASE,CEC_IOCTL_GET_RAW_INFO_CMD,cec_raw_info)
++#define	CEC_IOCTL_SET_RX_ADDR_MASK  _IOWR(CEC_IOCTL_BASE,CEC_IOCTL_SET_RX_ADDR_MASK_CMD,cec_rx_mask)
++
++
+ 
+ /* --- Full list --- */
+ 

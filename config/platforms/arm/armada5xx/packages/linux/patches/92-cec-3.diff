@@ -1,0 +1,81 @@
+diff --git a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/src/tmdlHdmiCEC.c b/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/src/tmdlHdmiCEC.c
+index 859a7a7..e6d2a6e 100755
+--- a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/src/tmdlHdmiCEC.c
++++ b/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/src/tmdlHdmiCEC.c
+@@ -7423,13 +7423,12 @@ tmErrorCode_t tmdlHdmiCecSendMessage(
+    UInt16       lenData
+ )
+ {
+-
+   tmErrorCode_t  errCode = TM_OK;
+ 
+ #ifdef TMFL_TDA9989
+ 
+   unsigned char  I2c_Buffer[19] ;        /* I2C data buffer */
+-  unsigned char  Loci;                   /* Local increment variable*/
++  unsigned char  loci;                   /* Local increment variable*/
+   unsigned char  MessLength;             /* Local Message length*/
+   
+   tmdlHdmiCecDriverConfigTable_t *pDis; /* Pointer to Device Instance Structure */
+@@ -7440,40 +7439,42 @@ tmErrorCode_t tmdlHdmiCecSendMessage(
+   /* check if unit corresponding to instance is opened */
+   RETIF(UnitTable[instance].opened == False, TMDL_ERR_DLHDMICEC_RESOURCE_NOT_OWNED)
+   
+-  /* check if CEC message is not too long */
+-  RETIF((lenData > 16), TMDL_ERR_DLHDMICEC_INCONSISTENT_PARAMS)
++  /* check if CEC message length is valid */
++  RETIF((lenData == 0 || lenData > 17), TMDL_ERR_DLHDMICEC_INCONSISTENT_PARAMS)
+ 
+   pDis = &gtmdlHdmiCecDriverConfigTable[instance];
+ 
+   /* Calculate Internal Message length*/
+-  MessLength = (lenData-1)+3; /* real data is less ReceiverLogical address */
++  MessLength = lenData + 2;
+   
+   I2c_Buffer[0] = MessLength;  /* Param number */
++  I2c_Buffer[1] = 0x00;        /* Request CEC data */
++  I2c_Buffer[3] = 0x00;        /* Initialize (for the case it's a poll) */
+ 
+-  I2c_Buffer[1] = 0x00;     /* Request CEC data */
+-
+-  /*Build Initiator and Reciever Logical Address Byte*/
+-  I2c_Buffer[2] = (unsigned char)(UnitTable[instance].DeviceLogicalAddress) & 0x0F; /*Initiator logical Address*/
+-  I2c_Buffer[2] = I2c_Buffer[2] << 4;
+-  I2c_Buffer[2] |= pData[0] & 0x0F;
++  /* copy data */
++  for (loci = 0; loci < lenData; loci++) {
++      I2c_Buffer[loci + 2] = pData[loci]; 
++  }
+ 
+-  for(Loci = 0; Loci <= lenData ; Loci++)
+-  {
+-     I2c_Buffer[(Loci+3)] = pData[(Loci+1)];     /* Fill Table with Data from middleware, Data begin at position 1*/
++  /* replace initiator logical address *ONLY* in case of 'Broadcast' */
++  /* for libCEC support, we need to be able to use any valid initiator address */
++  if ((I2c_Buffer[2] & 0xf0) == (CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST << 4)) {
++      I2c_Buffer[2] = (I2c_Buffer[2] & 0x0f) |
++          ((unsigned char)(UnitTable[instance].DeviceLogicalAddress) << 4);
+   }
+-  
+-  errCode = setCecHwRegisters(pDis, E_REG_CDR0, I2c_Buffer,MessLength); /* CEC Data register */
++
++  /* write CEC Data register */
++  errCode = setCecHwRegisters(pDis, E_REG_CDR0, I2c_Buffer, MessLength); 
+   RETIF(errCode != TM_OK, errCode)
+   
+-  /* Save Datas of the CEC message send */
+-  gtmdlHdmiCecDriverSaveMessage.AddressByte = pData[2];
+-  gtmdlHdmiCecDriverSaveMessage.MessageTypePolling = 0;
+-  gtmdlHdmiCecDriverSaveMessage.Opcode = pData[3];
++  /* Save Datas of the CEC message sent */
++  gtmdlHdmiCecDriverSaveMessage.AddressByte = I2c_Buffer[2];
++  gtmdlHdmiCecDriverSaveMessage.MessageTypePolling = (MessLength == 3);
++  gtmdlHdmiCecDriverSaveMessage.Opcode = I2c_Buffer[3];
+ 
+ #endif  /*  TMFL_TDA9989 */
+ 
+   return errCode;
+-
+ }
+ 
+ 

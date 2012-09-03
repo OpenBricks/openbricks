@@ -1,0 +1,1054 @@
+From 622f3bd2d7553f1d74f387e3a3645d098b7b3a51 Mon Sep 17 00:00:00 2001
+From: warped-rudi <r.ihle@s-t.de>
+Date: Sun, 2 Sep 2012 19:42:11 +0200
+Subject: [PATCH 3/4] Add suport for SolidRun's CuBox
+
+---
+ include/cectypes.h                                 |    3 +
+ src/lib/Makefile.am                                |    7 +
+ src/lib/adapter/AdapterFactory.cpp                 |   22 +-
+ src/lib/adapter/CuBox/AdapterMessageQueue.h        |  134 +++++++
+ .../adapter/CuBox/NxpCECAdapterCommunication.cpp   |  403 ++++++++++++++++++++
+ src/lib/adapter/CuBox/NxpCECAdapterCommunication.h |  112 ++++++
+ src/lib/adapter/CuBox/NxpCECAdapterDetection.cpp   |   55 +++
+ src/lib/adapter/CuBox/NxpCECAdapterDetection.h     |   41 ++
+ src/lib/platform/posix/os-socket.h                 |   15 +
+ src/lib/platform/posix/os-types.h                  |    3 +
+ src/lib/platform/sockets/cdevsocket.h              |  117 ++++++
+ 11 files changed, 910 insertions(+), 2 deletions(-)
+ create mode 100644 src/lib/adapter/CuBox/AdapterMessageQueue.h
+ create mode 100644 src/lib/adapter/CuBox/NxpCECAdapterCommunication.cpp
+ create mode 100644 src/lib/adapter/CuBox/NxpCECAdapterCommunication.h
+ create mode 100644 src/lib/adapter/CuBox/NxpCECAdapterDetection.cpp
+ create mode 100644 src/lib/adapter/CuBox/NxpCECAdapterDetection.h
+ create mode 100644 src/lib/platform/sockets/cdevsocket.h
+
+diff --git a/include/cectypes.h b/include/cectypes.h
+index 4656141..f656cdd 100644
+--- a/include/cectypes.h
++++ b/include/cectypes.h
+@@ -117,6 +117,9 @@ namespace CEC {
+ #define CEC_RPI_VIRTUAL_PATH           "Raspberry Pi"
+ #define CEC_RPI_VIRTUAL_COM            "RPI"
+ 
++#define CEC_NXP_PATH			"/dev/hdmicec"
++#define CEC_NXP_VIRTUAL_COM		"NXP"
++
+ #define CEC_MIN_LIB_VERSION          1
+ #define CEC_LIB_VERSION_MAJOR        1
+ #define CEC_LIB_VERSION_MAJOR_STR    "1"
+diff --git a/src/lib/Makefile.am b/src/lib/Makefile.am
+index 7ea1e99..b4afcd1 100644
+--- a/src/lib/Makefile.am
++++ b/src/lib/Makefile.am
+@@ -50,4 +50,11 @@ libcec_la_SOURCES += adapter/RPi/RPiCECAdapterDetection.cpp \
+                      adapter/RPi/RPiCECAdapterMessageQueue.cpp
+ endif
+ 
++## CuBox (NXP) support
++if USE_NXP_API
++libcec_la_SOURCES += adapter/CuBox/NxpCECAdapterDetection.cpp \
++                     adapter/CuBox/NxpCECAdapterCommunication.cpp
++endif
++
++
+ libcec_la_LDFLAGS = @LIBS_LIBCEC@ -version-info @VERSION@
+diff --git a/src/lib/adapter/AdapterFactory.cpp b/src/lib/adapter/AdapterFactory.cpp
+index 9ee9cc7..8ade6ee 100644
+--- a/src/lib/adapter/AdapterFactory.cpp
++++ b/src/lib/adapter/AdapterFactory.cpp
+@@ -47,6 +47,11 @@
+ #include "RPi/RPiCECAdapterCommunication.h"
+ #endif
+ 
++#if defined(HAVE_NXP_API)
++#include "CuBox/NxpCECAdapterDetection.h"
++#include "CuBox/NxpCECAdapterCommunication.h"
++#endif
++
+ using namespace std;
+ using namespace CEC;
+ 
+@@ -75,7 +80,15 @@ int8_t CAdapterFactory::FindAdapters(cec_adapter *deviceList, uint8_t iBufSize,
+   }
+ #endif
+ 
+-#if !defined(HAVE_RPI_API) && !defined(HAVE_P8_USB)
++#if defined(HAVE_NXP_API)
++  if (iAdaptersFound < iBufSize && CNxpCECAdapterDetection::FindAdapter())
++  {
++    snprintf(deviceList[iAdaptersFound].path, 1024, CEC_NXP_PATH);
++    snprintf(deviceList[iAdaptersFound++].comm, 1024, CEC_NXP_VIRTUAL_COM);
++  }
++#endif
++
++#if !defined(HAVE_RPI_API) && !defined(HAVE_P8_USB) && !defined(HAVE_NXP_API)
+ #error "libCEC doesn't have support for any type of adapter. please check your build system or configuration"
+ #endif
+ 
+@@ -84,6 +97,11 @@ int8_t CAdapterFactory::FindAdapters(cec_adapter *deviceList, uint8_t iBufSize,
+ 
+ IAdapterCommunication *CAdapterFactory::GetInstance(const char *strPort, uint16_t iBaudRate)
+ {
++#if defined(HAVE_NXP_API)
++  if (!strcmp(strPort, CEC_NXP_VIRTUAL_COM))
++    return new CNxpCECAdapterCommunication(m_lib->m_cec, CEC_NXP_PATH);
++#endif
++
+ #if defined(HAVE_RPI_API)
+   if (!strcmp(strPort, CEC_RPI_VIRTUAL_COM))
+     return new CRPiCECAdapterCommunication(m_lib->m_cec);
+@@ -93,7 +111,7 @@ IAdapterCommunication *CAdapterFactory::GetInstance(const char *strPort, uint16_
+   return new CUSBCECAdapterCommunication(m_lib->m_cec, strPort, iBaudRate);
+ #endif
+ 
+-#if !defined(HAVE_RPI_API) && !defined(HAVE_P8_USB)
++#if !defined(HAVE_RPI_API) && !defined(HAVE_P8_USB) && !defined(HAVE_NXP_API)
+   return NULL;
+ #endif
+ }
+diff --git a/src/lib/adapter/CuBox/AdapterMessageQueue.h b/src/lib/adapter/CuBox/AdapterMessageQueue.h
+new file mode 100644
+index 0000000..c8e98d9
+--- /dev/null
++++ b/src/lib/adapter/CuBox/AdapterMessageQueue.h
+@@ -0,0 +1,134 @@
++#pragma once
++/*
++ * This file is part of the libCEC(R) library.
++ *
++ * libCEC(R) is Copyright (C) 2011-2012 Pulse-Eight Limited.  All rights reserved.
++ * libCEC(R) is an original work, containing original code.
++ *
++ * libCEC(R) is a trademark of Pulse-Eight Limited.
++ *
++ * This program is dual-licensed; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
++ *
++ *
++ * Alternatively, you can license this library under a commercial license,
++ * please contact Pulse-Eight Licensing for more information.
++ *
++ * For more information contact:
++ * Pulse-Eight Licensing       <license@pulse-eight.com>
++ *     http://www.pulse-eight.com/
++ *     http://www.pulse-eight.net/
++ */
++
++#include "lib/platform/threads/mutex.h"
++
++namespace CEC
++{
++  using namespace PLATFORM;
++  
++  class CAdapterMessageQueueEntry
++  {
++  public:
++    CAdapterMessageQueueEntry(const cec_command &command)
++       : m_bWaiting(true), m_retval((uint32_t)-1), m_bSucceeded(false)
++    {
++      m_hash = hashValue(
++	uint32_t(command.opcode_set ? command.opcode : CEC_OPCODE_NONE),
++	command.initiator, command.destination);
++    }
++    
++    virtual ~CAdapterMessageQueueEntry(void) {}
++
++    /*!
++     * @brief Query result from worker thread
++     */
++    uint32_t Result() const
++    {
++      return m_retval;
++    }
++    
++    /*!
++     * @brief Signal waiting threads
++     */
++    void Broadcast(void)
++    {
++      CLockObject lock(m_mutex);
++      m_condition.Broadcast();
++    }
++
++    /*!
++     * @brief Signal waiting thread(s) when message matches this entry
++     */
++    bool CheckMatch(uint32_t opcode, cec_logical_address initiator, 
++		    cec_logical_address destination, uint32_t response)
++    {
++      uint32_t hash = hashValue(opcode, initiator, destination);
++      
++      if (hash == m_hash)
++      {
++        CLockObject lock(m_mutex);
++
++	m_retval = response;
++        m_bSucceeded = true;
++        m_condition.Signal();
++	return true;
++      }
++      
++      return false;
++    }
++
++    /*!
++     * @brief Wait for a response to this command.
++     * @param iTimeout The timeout to use while waiting.
++     * @return True when a response was received before the timeout passed, false otherwise.
++     */
++    bool Wait(uint32_t iTimeout)
++    {
++      CLockObject lock(m_mutex);
++      bool bReturn = m_bSucceeded ? true : m_condition.Wait(m_mutex, m_bSucceeded, iTimeout);
++
++      m_bWaiting = false;
++      return bReturn && m_retval == 0;
++    }
++
++    /*!
++     * @return True while a thread is waiting for a signal or isn't waiting yet, false otherwise.
++     */
++    bool IsWaiting(void)
++    {
++      CLockObject lock(m_mutex);
++      return m_bWaiting;
++    }
++
++    /*!
++     * @return Hash value for given cec_command
++     */
++    static uint32_t hashValue(uint32_t opcode, 
++			      cec_logical_address initiator,  
++			      cec_logical_address destination)
++    {
++      return 1 | ((uint32_t)initiator << 8) | 
++             ((uint32_t)destination << 16) | ((uint32_t)opcode << 16);
++    }
++    
++  private:    
++    bool                         m_bWaiting;     /**< true while a thread is waiting or when it hasn't started waiting yet */
++    PLATFORM::CCondition<bool>   m_condition;    /**< the condition to wait on */
++    PLATFORM::CMutex             m_mutex;        /**< mutex for changes to this class */
++    uint32_t                  	 m_hash;
++    uint32_t                     m_retval;
++    bool                         m_bSucceeded;
++  };
++ 
++};
+diff --git a/src/lib/adapter/CuBox/NxpCECAdapterCommunication.cpp b/src/lib/adapter/CuBox/NxpCECAdapterCommunication.cpp
+new file mode 100644
+index 0000000..1e26eab
+--- /dev/null
++++ b/src/lib/adapter/CuBox/NxpCECAdapterCommunication.cpp
+@@ -0,0 +1,403 @@
++/*
++ * This file is part of the libCEC(R) library.
++ *
++ * libCEC(R) is Copyright (C) 2011-2012 Pulse-Eight Limited.  All rights reserved.
++ * libCEC(R) is an original work, containing original code.
++ *
++ * libCEC(R) is a trademark of Pulse-Eight Limited.
++ *
++ * This program is dual-licensed; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
++ *
++ *
++ * Alternatively, you can license this library under a commercial license,
++ * please contact Pulse-Eight Licensing for more information.
++ *
++ * For more information contact:
++ * Pulse-Eight Licensing       <license@pulse-eight.com>
++ *     http://www.pulse-eight.com/
++ *     http://www.pulse-eight.net/
++ */
++
++#include "env.h"
++
++#if defined(HAVE_NXP_API)
++#include "NxpCECAdapterCommunication.h"
++
++#include "lib/CECTypeUtils.h"
++#include "lib/LibCEC.h"
++#include "lib/platform/sockets/cdevsocket.h"
++#include "lib/platform/util/StdString.h"
++#include "lib/platform/util/buffer.h"
++
++extern "C" {
++#define __cec_h__
++#include <../comps/tmdlHdmiCEC/inc/tmdlHdmiCEC_Types.h>
++#include <../tda998x_ioctl.h>
++}
++
++using namespace std;
++using namespace CEC;
++using namespace PLATFORM;
++
++#include "AdapterMessageQueue.h"
++
++#define LIB_CEC m_callback->GetLib()
++
++// these are defined in nxp private header file
++#define CEC_MSG_SUCCESS 		0
++#define CEC_MSG_FAIL_DEST_NOT_ACK	0x85
++
++
++CNxpCECAdapterCommunication::CNxpCECAdapterCommunication(IAdapterCommunicationCallback *callback, const char *UNUSED(device)) :
++    IAdapterCommunication(callback),
++    m_bLogicalAddressChanged(false)
++{ 
++  //LIB_CEC->AddLog(CEC_LOG_NOTICE, "%s called", __func__);
++  
++  CLockObject lock(m_mutex);
++
++  m_iNextMessage = 0;
++  m_logicalAddresses.Clear();
++  m_dev = new CCDevSocket(CEC_NXP_PATH);
++}
++
++
++CNxpCECAdapterCommunication::~CNxpCECAdapterCommunication(void)
++{
++  //LIB_CEC->AddLog(CEC_LOG_NOTICE, "%s called", __func__);
++
++  Close();
++
++  CLockObject lock(m_mutex);
++  delete m_dev;
++  m_dev = 0;
++}
++
++
++bool CNxpCECAdapterCommunication::IsOpen(void)
++{
++  return IsInitialised() && m_dev->IsOpen();
++}
++
++    
++bool CNxpCECAdapterCommunication::Open(uint32_t iTimeoutMs, bool UNUSED(bSkipChecks), bool bStartListening)
++{
++  //LIB_CEC->AddLog(CEC_LOG_NOTICE, "%s called (%d,%d,%d)", __func__, iTimeoutMs, bSkipChecks, bStartListening);
++
++  if (m_dev->Open(iTimeoutMs))
++  {
++    int rc;
++    unsigned char raw_mode = 0xff;
++    
++    if (m_dev->Ioctl(CEC_IOCTL_GET_RAW_MODE, &raw_mode) == 0)
++    {
++      raw_mode = 1;
++      rc = m_dev->Ioctl(CEC_IOCTL_SET_RAW_MODE, &raw_mode);
++      LIB_CEC->AddLog(CEC_LOG_NOTICE,
++	"CEC_IOCTL_SET_RAW_MODE: %d -> %02x", rc, raw_mode);
++   
++      if (!bStartListening || CreateThread())
++        return true;
++    
++      raw_mode = 0;
++      m_dev->Ioctl(CEC_IOCTL_SET_RAW_MODE, &raw_mode);
++    }
++    else
++    {
++      LIB_CEC->AddLog(CEC_LOG_ERROR, 
++	"NXP: CEC_IOCTL_GET_RAW_MODE not supported. Please update your kernel.");
++    }
++
++    m_dev->Close();
++  }
++
++  return false;
++}
++
++
++void CNxpCECAdapterCommunication::Close(void)
++{
++  //LIB_CEC->AddLog(CEC_LOG_NOTICE, "%s called", __func__);
++
++  StopThread(0);
++
++  unsigned char raw_mode = 0;
++  m_dev->Ioctl(CEC_IOCTL_SET_RAW_MODE, &raw_mode);
++
++  m_dev->Close();
++}
++
++
++std::string CNxpCECAdapterCommunication::GetError(void) const
++{
++  //LIB_CEC->AddLog(CEC_LOG_NOTICE, "%s called", __func__);
++
++  std::string strError(m_strError);
++  return strError;
++}
++
++
++cec_adapter_message_state CNxpCECAdapterCommunication::Write(
++  const cec_command &data, bool &UNUSED(bRetry), uint8_t UNUSED(iLineTimeout), bool UNUSED(bIsReply))
++{
++  cec_frame frame;
++  CAdapterMessageQueueEntry *entry;
++  cec_adapter_message_state rc = ADAPTER_MESSAGE_STATE_ERROR;
++  
++  LIB_CEC->AddLog(CEC_LOG_NOTICE, "%s: %1x->%1x, %d,%d,%d OPC%02x TMO%d LEN%d [%02x,%02x,%02x,%02x...]", __func__,
++		  data.initiator, data.destination, data.ack, data.eom, data.opcode_set, data.opcode, data.transmit_timeout,
++		  data.parameters.size, data.parameters.data[0], data.parameters.data[1],data.parameters.data[2],data.parameters.data[3]);
++
++  
++  if ((size_t)data.parameters.size + data.opcode_set > sizeof(frame.data))
++  {
++    LIB_CEC->AddLog(CEC_LOG_ERROR, "%s: data size too large !", __func__);
++    return ADAPTER_MESSAGE_STATE_ERROR;
++  }
++  
++  frame.size    = 0;
++  frame.service = 0;
++  frame.addr    = (data.initiator << 4) | (data.destination & 0x0f);
++
++  if (data.opcode_set)
++  {
++    frame.data[0] = data.opcode;
++    frame.size++;
++
++    memcpy(&frame.data[frame.size], data.parameters.data, data.parameters.size);
++    frame.size += data.parameters.size;
++  }
++  
++  frame.size += 3;
++
++  entry = new CAdapterMessageQueueEntry(data);
++  
++  m_messageMutex.Lock();
++  uint32_t msgKey = ++m_iNextMessage;
++  m_messages.insert(make_pair(msgKey, entry));
++ 
++  if (m_dev->Write((char *)&frame, sizeof(frame)) == sizeof(frame))
++  {
++    m_messageMutex.Unlock();
++
++    LIB_CEC->AddLog(CEC_LOG_NOTICE, "%s: write O.K.", __func__);
++
++    if (entry->Wait(CEC_DEFAULT_TRANSMIT_WAIT))
++    {
++      uint32_t status = entry->Result();
++     
++      if (status == CEC_MSG_FAIL_DEST_NOT_ACK)
++        rc = ADAPTER_MESSAGE_STATE_SENT_NOT_ACKED;
++      else if (status == CEC_MSG_SUCCESS)
++        rc = ADAPTER_MESSAGE_STATE_SENT_ACKED;
++      
++      LIB_CEC->AddLog(CEC_LOG_NOTICE, "%s: reply received (0x%02x)", __func__, status);
++    }
++    else
++      LIB_CEC->AddLog(CEC_LOG_ERROR, "%s: command timed out !", __func__);
++    
++    m_messageMutex.Lock();
++  }
++  else
++     LIB_CEC->AddLog(CEC_LOG_ERROR, "%s: write failed !", __func__);
++
++  m_messages.erase(msgKey);
++  m_messageMutex.Unlock();
++
++  delete entry;
++
++  return rc;
++}
++
++
++uint16_t CNxpCECAdapterCommunication::GetFirmwareVersion(void)
++{
++  //LIB_CEC->AddLog(CEC_LOG_NOTICE, "%s called", __func__);
++
++  cec_sw_version  vers = { 0 };
++
++  m_dev->Ioctl(CEC_IOCTL_GET_SW_VERSION, &vers);
++  
++  LIB_CEC->AddLog(CEC_LOG_NOTICE, 
++    "%s: Device %s Version is comp: %08lX, major: %08lX, minor: %08lX", __func__,
++    m_dev->GetName().c_str(), vers.compatibilityNr, vers.majorVersionNr, vers.minorVersionNr);
++
++  return (vers.majorVersionNr * 100) + vers.minorVersionNr;
++}
++
++
++cec_vendor_id CNxpCECAdapterCommunication::GetVendorId(void)
++{
++  //LIB_CEC->AddLog(CEC_LOG_NOTICE, "%s called", __func__);
++
++  cec_raw_info info;
++ 
++  if (m_dev->Ioctl(CEC_IOCTL_GET_RAW_INFO, &info) != 0)
++  {
++    LIB_CEC->AddLog(CEC_LOG_ERROR, "%s: CEC_IOCTL_GET_RAW_INFO failed !", __func__);
++    return CEC_VENDOR_LG; 
++  }
++  
++  LIB_CEC->AddLog(CEC_LOG_NOTICE, "%s Vendor=%08x", __func__, info.VendorID);
++
++  return cec_vendor_id(info.VendorID);
++}
++
++
++uint16_t CNxpCECAdapterCommunication::GetPhysicalAddress(void)
++{
++  //LIB_CEC->AddLog(CEC_LOG_NOTICE, "%s called", __func__);
++
++  cec_raw_info info;
++ 
++  if (m_dev->Ioctl(CEC_IOCTL_GET_RAW_INFO, &info) != 0)
++  {
++    LIB_CEC->AddLog(CEC_LOG_ERROR, "%s: CEC_IOCTL_GET_RAW_INFO failed !", __func__);
++    return CEC_INVALID_PHYSICAL_ADDRESS; 
++  }
++  
++  LIB_CEC->AddLog(CEC_LOG_NOTICE, "%s PhysAddr=%d", __func__, info.PhysicalAddress);
++
++  return info.PhysicalAddress;
++}
++
++
++cec_logical_addresses CNxpCECAdapterCommunication::GetLogicalAddresses(void)
++{
++  //LIB_CEC->AddLog(CEC_LOG_NOTICE, "%s called", __func__);
++
++  CLockObject lock(m_mutex);
++
++  if (m_bLogicalAddressChanged || m_logicalAddresses.IsEmpty() )
++  {
++    cec_raw_info info;
++
++    m_logicalAddresses.Clear();
++
++    if (m_dev->Ioctl(CEC_IOCTL_GET_RAW_INFO, &info) != 0)
++    {
++      LIB_CEC->AddLog(CEC_LOG_ERROR, "%s: CEC_IOCTL_GET_RAW_INFO failed !", __func__);
++    }
++    else if (info.LogicalAddress != CECDEVICE_UNREGISTERED)
++    {
++      m_logicalAddresses.Set(cec_logical_address(info.LogicalAddress));
++      
++      for (int la = CECDEVICE_TV; la < CECDEVICE_BROADCAST; la++)
++      {
++        m_logicalAddresses.Set(cec_logical_address(la));  
++      }
++    }
++
++    m_bLogicalAddressChanged = false;
++  }
++
++  LIB_CEC->AddLog(CEC_LOG_NOTICE, "%s LogAddr=%d", __func__, (int)m_logicalAddresses.primary);
++
++  return m_logicalAddresses;
++}
++
++
++bool CNxpCECAdapterCommunication::SetLogicalAddresses(const cec_logical_addresses &addresses)
++{
++  LIB_CEC->AddLog(CEC_LOG_NOTICE, "%s called LogAddr=%d", __func__, addresses.primary);
++  
++  if (!SupportsSourceLogicalAddress(addresses.primary))
++  {
++    LIB_CEC->AddLog(CEC_LOG_ERROR, "invalid logical address !");
++    return false;
++  }
++  
++  unsigned char log_addr = addresses.primary;
++  
++  if (m_dev->Ioctl(CEC_IOCTL_RX_ADDR, &log_addr) != 0)
++  {
++    LIB_CEC->AddLog(CEC_LOG_ERROR, "CEC_IOCTL_RX_ADDR failed !");
++    return false;
++  }
++
++  cec_rx_mask all_addresses;
++  
++  all_addresses.SwitchOn  = addresses.AckMask() & 0x7fff;
++  all_addresses.SwitchOff = ~all_addresses.SwitchOn;
++  
++  if (all_addresses.SwitchOn != (1 << addresses.primary) &&
++      m_dev->Ioctl(CEC_IOCTL_SET_RX_ADDR_MASK, &all_addresses) != 0)
++  {
++    LIB_CEC->AddLog(CEC_LOG_ERROR, "CEC_IOCTL_SET_RX_ADDR_MASK failed !");
++    return false;
++  }
++  
++  m_bLogicalAddressChanged = true;
++  
++  return true;
++}
++
++
++void *CNxpCECAdapterCommunication::Process(void)
++{
++  bool bHandled;
++  cec_frame frame;
++  uint32_t opcode, status;
++  cec_logical_address initiator, destination;
++
++  while (!IsStopped())
++  {
++    if (m_dev->Read((char *)&frame, sizeof(frame), 500) == sizeof(frame))
++    {
++      initiator = cec_logical_address(frame.addr >> 4);
++      destination = cec_logical_address(frame.addr & 0x0f);
++      
++      LIB_CEC->AddLog(CEC_LOG_NOTICE, 
++		      "%s: frame received [%x -> %x] (srvc=%d, len=%d)", 
++		      __func__, initiator, destination, frame.service, frame.size);
++
++      if (frame.service == 1)
++      {
++	cec_command cmd;
++	
++	cec_command::Format(
++	  cmd, initiator, destination,
++          ( frame.size > 3 ) ? cec_opcode(frame.data[0]) : CEC_OPCODE_NONE);
++	
++	for( uint8_t i = 1; i < frame.size-3; i++ )
++           cmd.parameters.PushBack(frame.data[i]);
++	
++        m_callback->OnCommandReceived(cmd);
++      }
++      else if (frame.service == 2)
++      {
++        bHandled = false;
++	status = ( frame.size > 3 ) ? frame.data[0] : 255;
++        opcode = ( frame.size > 4 ) ? frame.data[1] : (uint32_t)CEC_OPCODE_NONE;
++
++        m_messageMutex.Lock();
++        for (map<uint32_t, CAdapterMessageQueueEntry *>::iterator it = m_messages.begin(); 
++	     !bHandled && it != m_messages.end(); it++)
++	{
++          bHandled = it->second->CheckMatch(opcode, initiator, destination, status);
++	}
++        m_messageMutex.Unlock();
++      
++        if (!bHandled)
++          LIB_CEC->AddLog(CEC_LOG_WARNING, "%s: unhandled response received !", __func__);
++      }
++    }
++  }
++
++  return 0;
++}
++
++
++#endif	// HAVE_NXP_API
+diff --git a/src/lib/adapter/CuBox/NxpCECAdapterCommunication.h b/src/lib/adapter/CuBox/NxpCECAdapterCommunication.h
+new file mode 100644
+index 0000000..038be81
+--- /dev/null
++++ b/src/lib/adapter/CuBox/NxpCECAdapterCommunication.h
+@@ -0,0 +1,112 @@
++#pragma once
++/*
++ * This file is part of the libCEC(R) library.
++ *
++ * libCEC(R) is Copyright (C) 2011-2012 Pulse-Eight Limited.  All rights reserved.
++ * libCEC(R) is an original work, containing original code.
++ *
++ * libCEC(R) is a trademark of Pulse-Eight Limited.
++ *
++ * This program is dual-licensed; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
++ *
++ *
++ * Alternatively, you can license this library under a commercial license,
++ * please contact Pulse-Eight Licensing for more information.
++ *
++ * For more information contact:
++ * Pulse-Eight Licensing       <license@pulse-eight.com>
++ *     http://www.pulse-eight.com/
++ *     http://www.pulse-eight.net/
++ */
++
++#if defined(HAVE_NXP_API)
++
++#include "lib/platform/threads/mutex.h"
++#include "lib/platform/threads/threads.h"
++#include "lib/platform/sockets/socket.h"
++#include "lib/adapter/AdapterCommunication.h"
++#include <map>
++
++
++namespace PLATFORM
++{
++  class CCDevSocket;
++};
++
++
++namespace CEC
++{
++  class CAdapterMessageQueueEntry;
++
++  class CNxpCECAdapterCommunication : public IAdapterCommunication, public PLATFORM::CThread
++  {
++  public:
++    /*!
++     * @brief Create a new USB-CEC communication handler.
++     * @param callback The callback to use for incoming CEC commands.
++     */
++    CNxpCECAdapterCommunication(IAdapterCommunicationCallback *callback, const char *device);
++    virtual ~CNxpCECAdapterCommunication(void);
++
++    /** @name IAdapterCommunication implementation */
++    ///{
++    bool Open(uint32_t iTimeoutMs = CEC_DEFAULT_CONNECT_TIMEOUT, bool bSkipChecks = false, bool bStartListening = true);
++    void Close(void);
++    bool IsOpen(void);
++    std::string GetError(void) const;
++    cec_adapter_message_state Write(const cec_command &data, bool &bRetry, uint8_t iLineTimeout, bool bIsReply);
++
++    bool SetLineTimeout(uint8_t UNUSED(iTimeout)) { return true; }
++    bool StartBootloader(void) { return false; }
++    bool SetLogicalAddresses(const cec_logical_addresses &addresses);
++    cec_logical_addresses GetLogicalAddresses(void);
++    bool PingAdapter(void) { return IsInitialised(); }
++    uint16_t GetFirmwareVersion(void);
++    uint32_t GetFirmwareBuildDate(void) { return 0; }
++    bool IsRunningLatestFirmware(void) { return true; }
++    bool PersistConfiguration(const libcec_configuration & UNUSED(configuration)) { return false; }
++    bool GetConfiguration(libcec_configuration & UNUSED(configuration)) { return false; }
++    std::string GetPortName(void) { std::string strReturn("NXP"); return strReturn; }
++    uint16_t GetPhysicalAddress(void);
++    bool SetControlledMode(bool UNUSED(controlled)) { return true; }
++    cec_vendor_id GetVendorId(void);
++    bool SupportsSourceLogicalAddress(const cec_logical_address address) { return address > CECDEVICE_TV && address < CECDEVICE_BROADCAST; }
++    ///}
++
++    /** @name PLATFORM::CThread implementation */
++    ///{
++    void *Process(void);
++    ///}
++
++  private:
++    bool IsInitialised(void) const { return m_dev != 0; };
++
++    std::string                 m_strError; /**< current error message */
++
++    bool                        m_bLogicalAddressChanged;
++    cec_logical_addresses       m_logicalAddresses;
++
++    PLATFORM::CCondition<bool>  m_logicalAddressCondition;
++    PLATFORM::CMutex            m_mutex;
++    PLATFORM::CCDevSocket	*m_dev;	/**< the device connection */
++    
++    PLATFORM::CMutex            m_messageMutex;
++    uint32_t                    m_iNextMessage;
++    std::map<uint32_t, CAdapterMessageQueueEntry *> m_messages;
++  };
++  
++};
++
++#endif
+diff --git a/src/lib/adapter/CuBox/NxpCECAdapterDetection.cpp b/src/lib/adapter/CuBox/NxpCECAdapterDetection.cpp
+new file mode 100644
+index 0000000..c4d1327
+--- /dev/null
++++ b/src/lib/adapter/CuBox/NxpCECAdapterDetection.cpp
+@@ -0,0 +1,55 @@
++/*
++ * This file is part of the libCEC(R) library.
++ *
++ * libCEC(R) is Copyright (C) 2011-2012 Pulse-Eight Limited.  All rights reserved.
++ * libCEC(R) is an original work, containing original code.
++ *
++ * libCEC(R) is a trademark of Pulse-Eight Limited.
++ *
++ * This program is dual-licensed; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
++ *
++ *
++ * Alternatively, you can license this library under a commercial license,
++ * please contact Pulse-Eight Licensing for more information.
++ *
++ * For more information contact:
++ * Pulse-Eight Licensing       <license@pulse-eight.com>
++ *     http://www.pulse-eight.com/
++ *     http://www.pulse-eight.net/
++ */
++
++#include "env.h"
++#include <stdio.h>
++
++#if defined(HAVE_NXP_API)
++#include "NxpCECAdapterDetection.h"
++
++extern "C" {
++#define __cec_h__
++#include <../comps/tmdlHdmiCEC/inc/tmdlHdmiCEC_Types.h>
++#include <../tda998x_ioctl.h>
++}
++
++using namespace CEC;
++
++bool CNxpCECAdapterDetection::FindAdapter(void)
++{
++  /* NXP HDMI uses /dev/hdmicec and ioctl() communication */
++
++  return access(CEC_NXP_PATH, 0) == 0;
++}
++
++#endif
++
+diff --git a/src/lib/adapter/CuBox/NxpCECAdapterDetection.h b/src/lib/adapter/CuBox/NxpCECAdapterDetection.h
+new file mode 100644
+index 0000000..dde82a2
+--- /dev/null
++++ b/src/lib/adapter/CuBox/NxpCECAdapterDetection.h
+@@ -0,0 +1,41 @@
++#pragma once
++/*
++ * This file is part of the libCEC(R) library.
++ *
++ * libCEC(R) is Copyright (C) 2011-2012 Pulse-Eight Limited.  All rights reserved.
++ * libCEC(R) is an original work, containing original code.
++ *
++ * libCEC(R) is a trademark of Pulse-Eight Limited.
++ *
++ * This program is dual-licensed; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
++ *
++ *
++ * Alternatively, you can license this library under a commercial license,
++ * please contact Pulse-Eight Licensing for more information.
++ *
++ * For more information contact:
++ * Pulse-Eight Licensing       <license@pulse-eight.com>
++ *     http://www.pulse-eight.com/
++ *     http://www.pulse-eight.net/
++ */
++
++namespace CEC
++{
++  class CNxpCECAdapterDetection
++  {
++  public:
++    static bool FindAdapter(void);
++  };
++}
+diff --git a/src/lib/platform/posix/os-socket.h b/src/lib/platform/posix/os-socket.h
+index 7539aab..9d98d9a 100644
+--- a/src/lib/platform/posix/os-socket.h
++++ b/src/lib/platform/posix/os-socket.h
+@@ -36,6 +36,7 @@
+ #include "lib/platform/util/timeutils.h"
+ #include <stdio.h>
+ #include <fcntl.h>
++#include <sys/ioctl.h>
+ #include <sys/socket.h>
+ #include <netinet/in.h>
+ #include <netinet/tcp.h>
+@@ -172,6 +173,20 @@ namespace PLATFORM
+ 
+     return iBytesRead;
+   }
++
++  inline int SocketIoctl(socket_t socket, int *iError, int request, void* data)
++  {
++    if (socket == INVALID_SOCKET_VALUE)
++    {
++      *iError = EINVAL;
++      return -1;
++    }
++
++    int iReturn = ioctl(socket, request, data);
++    if (iReturn < 0)
++      *iError = errno;
++    return iReturn;
++  }
+   //@}
+ 
+   // TCP
+diff --git a/src/lib/platform/posix/os-types.h b/src/lib/platform/posix/os-types.h
+index a365635..261dd03 100644
+--- a/src/lib/platform/posix/os-types.h
++++ b/src/lib/platform/posix/os-types.h
+@@ -56,3 +56,6 @@ typedef socket_t tcp_socket_t;
+ #define INVALID_SOCKET_VALUE        (-1)
+ typedef socket_t serial_socket_t;
+ #define INVALID_SERIAL_SOCKET_VALUE (-1)
++typedef socket_t chardev_socket_t;
++#define INVALID_CHARDEV_SOCKET_VALUE (-1)
++
+diff --git a/src/lib/platform/sockets/cdevsocket.h b/src/lib/platform/sockets/cdevsocket.h
+new file mode 100644
+index 0000000..0cb5486
+--- /dev/null
++++ b/src/lib/platform/sockets/cdevsocket.h
+@@ -0,0 +1,117 @@
++#pragma once
++/*
++ * This file is part of the libCEC(R) library.
++ *
++ * libCEC(R) is Copyright (C) 2011-2012 Pulse-Eight Limited.  All rights reserved.
++ * libCEC(R) is an original work, containing original code.
++ *
++ * libCEC(R) is a trademark of Pulse-Eight Limited.
++ *
++ * This program is dual-licensed; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
++ *
++ *
++ * Alternatively, you can license this library under a commercial license,
++ * please contact Pulse-Eight Licensing for more information.
++ *
++ * For more information contact:
++ * Pulse-Eight Licensing       <license@pulse-eight.com>
++ *     http://www.pulse-eight.com/
++ *     http://www.pulse-eight.net/
++ */
++
++#include "lib/platform/os.h"
++#include "lib/platform/util/buffer.h"
++
++#include <string>
++#include <stdint.h>
++
++#if !defined(__WINDOWS__)
++#include <termios.h>
++#endif
++
++#include "socket.h"
++
++namespace PLATFORM
++{
++  class CCDevSocket : public CCommonSocket<chardev_socket_t>
++  {
++    public:
++      CCDevSocket(const std::string &strName ) :
++        CCommonSocket<chardev_socket_t>(INVALID_CHARDEV_SOCKET_VALUE, strName)
++        #ifdef __WINDOWS__
++        ,m_iCurrentReadTimeout(MAXDWORD)
++        #endif
++      {}
++
++      virtual ~CCDevSocket(void) 
++      { 
++	Close(); 
++      }
++
++      virtual bool Open(uint64_t iTimeoutMs = 0)
++      {
++        (void)iTimeoutMs;
++
++	if (IsOpen())
++          return false;
++
++        m_socket = open(m_strName.c_str(), O_RDWR );
++
++        if (m_socket == INVALID_CHARDEV_SOCKET_VALUE)
++        {
++          m_strError = strerror(errno);
++          return false;
++        }
++
++        return true;
++      }
++      
++      virtual void Close(void)
++      {
++        if (IsOpen())
++        {
++          SocketClose(m_socket);
++          m_socket = INVALID_CHARDEV_SOCKET_VALUE;
++        }
++      }
++      
++      virtual void Shutdown(void)
++      {
++        SocketClose(m_socket);
++      }
++      
++      virtual int Ioctl(int request, void* data)
++      {
++        return IsOpen() ? SocketIoctl(m_socket, &m_iError, request, data) : -1;
++      }
++      
++      virtual ssize_t Write(void* data, size_t len)
++      {
++        return IsOpen() ? SocketWrite(m_socket, &m_iError, data, len) : -1;
++      }
++      
++      virtual ssize_t Read(void* data, size_t len, uint64_t iTimeoutMs = 0)
++      {
++        return IsOpen() ? SocketRead(m_socket, &m_iError, data, len, iTimeoutMs) : -1;
++      }
++
++      virtual bool IsOpen(void)
++      {
++        return m_socket != INVALID_CHARDEV_SOCKET_VALUE;
++      }
++  };
++
++};
++
+-- 
+1.7.4.1
+
