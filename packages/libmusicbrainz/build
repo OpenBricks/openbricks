@@ -1,0 +1,52 @@
+#!/bin/sh
+
+. config/options
+
+get_meta $1
+
+cd $PKG_BUILD_DIR
+
+mkdir -p build-native
+cd build-native
+setup_toolchain host
+cmake -DCMAKE_CROSSCOMPILING=0 ..
+make
+
+cd ..
+mkdir -p build-cross
+cd build-cross
+
+cat > our-toolchain << EOF
+# this one is important
+SET(CMAKE_SYSTEM_NAME Linux)
+#this one not so much
+SET(CMAKE_SYSTEM_VERSION 1)
+
+# specify the cross compiler
+SET(CMAKE_C_COMPILER   $TARGET_CC)
+SET(CMAKE_CXX_COMPILER $TARGET_CXX)
+
+# where is the target environment 
+SET(CMAKE_FIND_ROOT_PATH  $LIB_PREFIX)
+
+# search for programs in the build host directories
+SET(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+# for libraries and headers in the target directories
+SET(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+SET(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+EOF
+
+setup_toolchain target
+cmake -DCMAKE_CROSSCOMPILING=1 \
+      -DCMAKE_TOOLCHAIN_FILE=`pwd`/our-toolchain \
+      -DCMAKE_INSTALL_PREFIX=/usr \
+      -DIMPORT_EXECUTABLES=../build-native/ImportExecutables.cmake ..
+make
+
+
+echo $CFLAGS
+echo $LDFLAGS
+
+make
+make_install
+
