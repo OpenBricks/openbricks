@@ -1,0 +1,140 @@
+#!/bin/sh
+
+PWD=`pwd`
+USER=`id -un`
+GROUP=`id -gn`
+MACHINE=`uname --machine`
+COMMANDLINE=$*
+CHROOT_VERSION=20120920
+CHROOT_SOURCE_URL="http://sources.openbricks.org/devel/precise_obricks_${MACHINE}_${CHROOT_VERSION}.tar.xz"
+CHROOT_DIR=${CHROOT_DIR:-"${HOME}/.openbricks/chroot"}
+
+NEED_CHROOT="yes"
+[ -d ${CHROOT_DIR} ] && [ -z "${IN_CHROOT}" ] || NEED_CHROOT="no"
+
+# Locate all mounts below a specified directory.
+#
+# $1 - The root tree.
+sub_mounts() {
+  # Assume that `mount` outputs a list of mount points in the order
+  # that things were mounted (since it always has and hopefully always
+  # will).  As such, we have to unmount in reverse order to cleanly
+  # unmount submounts (think /dev/pts and /dev).
+  awk -v path="$1" -v len="${#1}" \
+    '(substr($2, 1, len) == path) { print $2 }' /proc/mounts | \
+    tac | \
+    sed -e 's/\\040(deleted)$//'
+  # Hack(zbehan): If a bind mount's source is mysteriously removed,
+  # we'd end up with an orphaned mount with the above string in its name.
+  # It can only be seen through /proc/mounts and will stick around even
+  # when it should be gone already. crosbug.com/31250
+}
+
+safe_umount() {
+  sudo umount "$@"
+}
+
+# Unmounts a directory, if the unmount fails, warn, and then lazily unmount.
+#
+# $1 - The path to unmount.
+safe_umount_tree() {
+  mounts=$(sub_mounts "$1")
+
+  # Hmm, this shouldn't normally happen, but anything is possible.
+  if [ -z "${mounts}" ] ; then
+    return 0
+  fi
+
+  # First try to unmount in one shot to speed things up.
+  if safe_umount -d ${mounts}; then
+    return 0
+  fi
+
+  # Well that didn't work, so lazy unmount remaining ones.
+  mounts=$(sub_mounts "$1")
+  warn "Failed to unmount ${mounts}"
+  warn "Doing a lazy unmount"
+  if ! safe_umount -d -f -l ${mounts}; then
+    mounts=$(sub_mounts "$1")
+    die "Failed to lazily unmount ${mounts}"
+  fi
+}
+
+safe_umount_chroot() {
+  safe_umount_tree ${CHROOT_DIR}
+}
+
+clean_up() {
+  # Perform program exit housekeeping
+  safe_umount_chroot
+  exit
+}
+
+get_url() {
+  local URL=$1
+  local FOLDER=$2
+  wget ${URL} -P ${FOLDER}
+}
+
+fill_passwd() {
+  _U=$1
+  _H=$2
+  _G=`id -gn ${_U}`
+  _UID=`id -u ${_U}`
+  _GID=`id -g ${_U}`
+
+  sudo /bin/sh -c "echo \"${_U}:x:${_UID}:${_GID}:${_G}:${_H}:/bin/sh\" >> ${CHROOT_DIR}/etc/passwd"
+  sudo /bin/sh -c "echo \"${_G}:x:${_GID}:\" >> ${CHROOT_DIR}/etc/group"
+}
+
+# play it safe at the start of the script
+safe_umount_chroot
+
+if [ ! -d "${CHROOT_DIR}" ]
+then
+  printf "\033[33mInstalling chroot in ${CHROOT_DIR}\033[0m\n"
+
+  # Delete chroot
+  sudo rm -rf ${CHROOT_DIR}
+
+  # Create an empty folder
+  mkdir -p ${CHROOT_DIR}
+
+  # Get the tar
+  get_url ${CHROOT_SOURCE_URL} ${CHROOT_DIR}
+
+  # untar chroot
+  sudo tar --strip 1 -C ${CHROOT_DIR} -xvf ${CHROOT_DIR}/*tar*
+fi
+
+if [ "${NEED_CHROOT}" = "yes" ]
+then
+  printf "\033[33mEntering chroot at ${CHROOT_DIR}\033[0m\n"
+
+  # Ensure we clean up in case of emergency
+  trap clean_up HUP INT TERM
+  
+  # Ensure the passwd/group correctness
+  sudo rm -f ${CHROOT_DIR}/etc/passwd ${CHROOT_DIR}/etc/group
+  fill_passwd root /root
+  fill_passwd ${USER} ${HOME}
+
+  # Start mounting all folders
+  sudo mkdir -p ${CHROOT_DIR}${PWD}
+  sudo mount -o bind ${PWD} ${CHROOT_DIR}${PWD}
+  sudo mount -o bind /dev  ${CHROOT_DIR}/dev
+  sudo mount -t devpts none  ${CHROOT_DIR}/dev/pts
+  sudo mount -t proc none  ${CHROOT_DIR}/proc
+  sudo mount -t sysfs none  ${CHROOT_DIR}/sys
+
+  # Go, go, go
+  sudo chroot --userspec=${USER}:${GROUP} ${CHROOT_DIR} \
+      /bin/sh -c \
+      "export IN_CHROOT=yes; cd ${PWD}; ${COMMANDLINE}" 
+
+  # Kill all mounts
+  safe_umount_chroot
+else
+  ${COMMANDLINE}
+fi
+
