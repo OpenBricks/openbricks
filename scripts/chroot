@@ -8,9 +8,9 @@ COMMANDLINE=$*
 CHROOT_VERSION=20120920
 CHROOT_SOURCE_URL="http://sources.openbricks.org/devel/precise_obricks_${MACHINE}_${CHROOT_VERSION}.tar.xz"
 CHROOT_DIR=${CHROOT_DIR:-"${HOME}/.openbricks/chroot"}
+DOWNLOAD_DIR="${PWD}/sources/rootfs"
 
 NEED_CHROOT="yes"
-[ -d ${CHROOT_DIR} ] && [ -z "${IN_CHROOT}" ] || NEED_CHROOT="no"
 
 # Locate all mounts below a specified directory.
 #
@@ -73,7 +73,11 @@ clean_up() {
 get_url() {
   local URL=$1
   local FOLDER=$2
-  wget ${URL} -P ${FOLDER}
+  if [ ! -d ${FOLDER} ]
+  then
+    mkdir -p ${FOLDER}
+    wget ${URL} -P ${FOLDER}
+  fi
 }
 
 fill_passwd() {
@@ -90,7 +94,7 @@ fill_passwd() {
 # play it safe at the start of the script
 safe_umount_chroot
 
-if [ ! -d "${CHROOT_DIR}" ]
+if [ ! -d "${CHROOT_DIR}" ] && [ -z "${IN_CHROOT}" ]
 then
   printf "\033[33mInstalling chroot in ${CHROOT_DIR}\033[0m\n"
 
@@ -101,11 +105,13 @@ then
   mkdir -p ${CHROOT_DIR}
 
   # Get the tar
-  get_url ${CHROOT_SOURCE_URL} ${CHROOT_DIR}
+  get_url ${CHROOT_SOURCE_URL} ${DOWNLOAD_DIR}
 
   # untar chroot
-  sudo tar --strip 1 -C ${CHROOT_DIR} -xvf ${CHROOT_DIR}/*tar*
+  sudo tar --strip 1 -C ${CHROOT_DIR} -xvf ${DOWNLOAD_DIR}/*tar*
 fi
+
+[ -d ${CHROOT_DIR} ] && [ -z "${IN_CHROOT}" ] || NEED_CHROOT="no"
 
 if [ "${NEED_CHROOT}" = "yes" ]
 then
@@ -118,6 +124,9 @@ then
   sudo rm -f ${CHROOT_DIR}/etc/passwd ${CHROOT_DIR}/etc/group
   fill_passwd root /root
   fill_passwd ${USER} ${HOME}
+
+  # Ensure DNS correctness
+  sudo cp /etc/resolv.conf ${CHROOT_DIR}/etc/resolv.conf
 
   # Start mounting all folders
   sudo mkdir -p ${CHROOT_DIR}${PWD}
