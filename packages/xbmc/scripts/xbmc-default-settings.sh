@@ -30,7 +30,19 @@ if grep Snowball /proc/cpuinfo -q ; then
   FULLSCREEN=false
 fi
 
-
+if cat /proc/cpuinfo | grep CuBox -q; then
+  cat > "$ADV_SETTINGS" << EOF
+<advancedsettings>
+  <useddsfanart>true</useddsfanart>
+  <cputempcommand>awk '{print substr(\$0,0,(length(\$0)-3)) "c"}' /sys/devices/platform/dove-temp.0/temp1_input</cputempcommand>
+  <samba>
+    <clienttimeout>10</clienttimeout>
+  </samba>
+  <fullscreen>$FULLSCREEN</fullscreen>
+</advancedsettings>
+EOF
+else
+  echo "There"
   cat > "$ADV_SETTINGS" << EOF
 <advancedsettings>
   <useddsfanart>true</useddsfanart>
@@ -41,6 +53,7 @@ fi
   <fullscreen>$FULLSCREEN</fullscreen>
 </advancedsettings>
 EOF
+fi
 }
 
 set_default_gui_settings () {
