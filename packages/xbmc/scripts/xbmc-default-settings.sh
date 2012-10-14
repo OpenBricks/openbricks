@@ -42,7 +42,6 @@ if cat /proc/cpuinfo | grep CuBox -q; then
 </advancedsettings>
 EOF
 else
-  echo "There"
   cat > "$ADV_SETTINGS" << EOF
 <advancedsettings>
   <useddsfanart>true</useddsfanart>
