@@ -1,0 +1,38 @@
+From 6771ca05b20a114ee08cd8fd295ec3181303cdc6 Mon Sep 17 00:00:00 2001
+From: Rabeeh Khoury <rabeeh@solid-run.com>
+Date: Sat, 13 Oct 2012 15:14:20 +0200
+Subject: [PATCH 2/4] Cached buffer allocation
+
+Use vdec_os_api_dma_alloc_cached instead of vdec_os_api_dma_alloc for allocating buffers.
+This is potentially dangerous patch since allocating the buffers with cached attribute is OK; but it's unclear where the flush would occur to get them to the vmeta hardware engine (since they might be still in the CPU L1 cache)
+
+Signed-off-by: Rabeeh Khoury <rabeeh@solid-run.com>
+---
+ .../DVDCodecs/Video/DVDVideoCodecVMETA.cpp         |    4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp
+index 77b0886..f0be830 100644
+--- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp
++++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp
+@@ -368,7 +368,7 @@ IppCodecStatus CDVDVideoCodecVMETA::DecodeInternal(uint8_t *pData, unsigned int
+ 
+         // make sure we allocate enough space for padding. not sure how many the decoder needs. 65*1024 seems fair enough.
+         pStream->nBufSize = ((*iSize + 65*1024) + 127) & ~127;
+-        pStream->pBuf = (Ipp8u*)m_DllVMETA->vdec_os_api_dma_alloc(pStream->nBufSize, VMETA_STRM_BUF_ALIGN, &pStream->nPhyAddr);
++        pStream->pBuf = (Ipp8u*)m_DllVMETA->vdec_os_api_dma_alloc_cached(pStream->nBufSize, VMETA_STRM_BUF_ALIGN , &pStream->nPhyAddr);
+         if(!pStream->pBuf)
+         {
+           CLog::Log(LOGERROR, "%s::%s Error : Allocate streambuffer\n", CLASSNAME, __func__);
+@@ -413,7 +413,7 @@ IppCodecStatus CDVDVideoCodecVMETA::DecodeInternal(uint8_t *pData, unsigned int
+             m_DllVMETA->vdec_os_api_dma_free(pPicture->pBuf);
+ 
+           pPicture->pBuf = NULL;
+-          pPicture->pBuf = (Ipp8u*)m_DllVMETA->vdec_os_api_dma_alloc(m_VDecInfo.seq_info.dis_buf_size, VMETA_DIS_BUF_ALIGN, &(pPicture->nPhyAddr));
++          pPicture->pBuf = (Ipp8u*)m_DllVMETA->vdec_os_api_dma_alloc_cached(m_VDecInfo.seq_info.dis_buf_size, VMETA_DIS_BUF_ALIGN, &(pPicture->nPhyAddr));
+           pPicture->nBufSize = m_VDecInfo.seq_info.dis_buf_size;
+           //printf("vdec_os_api_dma_alloc pPicture->pBuf 0x%08x nr %d\n", (unsigned int)pPicture->pBuf, (int)pPicture->pUsrData0);
+         }
+-- 
+1.7.9.5
+

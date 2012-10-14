@@ -1,0 +1,43 @@
+From 01006fbbe9bdaea17dca1adad8684e7110045abf Mon Sep 17 00:00:00 2001
+From: Rabeeh Khoury <rabeeh@solid-run.com>
+Date: Sat, 13 Oct 2012 15:22:07 +0200
+Subject: [PATCH 3/4] Vmeta queuing support
+
+Changed Decode function to return VC_BUFFER , even if there are ready to consume frames.
+This way the Decode function will be called more and it's possible to queue up to VMETA_QUEUE_THRESHOLD frames to be decoded before presenting the first frame.
+
+Signed-off-by: Rabeeh Khoury <rabeeh@solid-run.com>
+---
+ .../DVDCodecs/Video/DVDVideoCodecVMETA.cpp         |    9 ++++++---
+ 1 file changed, 6 insertions(+), 3 deletions(-)
+
+diff --git a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp
+index f0be830..e608575 100644
+--- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp
++++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp
+@@ -45,8 +45,9 @@
+ #include "utils/BitstreamConverter.h"
+ 
+ #define STREAM_VDECBUF_SIZE   (2048*1024)  //must equal to or greater than 64k and multiple of 128, because of vMeta limitted
+-#define STREAM_VDECBUF_NUM    5
+-#define STREAM_PICBUF_NUM     16
++#define STREAM_VDECBUF_NUM    16
++#define STREAM_PICBUF_NUM     41
++#define VMETA_QUEUE_THRESHOLD 20
+ 
+ CDVDVideoCodecVMETA::CDVDVideoCodecVMETA()
+ {
+@@ -545,7 +546,9 @@ int CDVDVideoCodecVMETA::Decode(uint8_t *pData, int iSize, double dts, double pt
+ 
+   int ret = VC_BUFFER;
+ 
+-  if(m_output_ready.size())
++  if((iSize == 0) && m_output_ready.size()) /* Demux seems empty  return VC_PICTURE */
++    ret |= VC_PICTURE;
++  if(m_output_ready.size() >= VMETA_QUEUE_THRESHOLD)
+     ret |= VC_PICTURE;
+ 
+   return ret;
+-- 
+1.7.9.5
+
