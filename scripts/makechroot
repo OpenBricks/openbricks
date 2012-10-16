@@ -1,0 +1,118 @@
+#!/bin/sh
+
+set -e
+
+# additional packages
+PACKAGE_LIST="make,g++-4.4"
+PACKAGE_LIST="${PACKAGE_LIST},wget,tar,bzip2,gzip,coreutils,sed,patch,coreutils,gcc,g++,gawk"
+PACKAGE_LIST="${PACKAGE_LIST},libncurses5-dev,libreadline6-dev"
+PACKAGE_LIST="${PACKAGE_LIST},perl,flex,bison,cpio,texinfo,gettext,diff,lzma,libtool,git"
+PACKAGE_LIST="${PACKAGE_LIST},subversion,mercurial"
+
+# enable this if you need java (xbmc?)
+PACKAGE_LIST="${PACKAGE_LIST},openjdk-7-jre-headless"
+
+# uncomment these if you need xconfig etc.
+#PACKAGE_LIST="${PACKAGE_LIST},libgtk2.0-dev,libglib2.0-dev,libglade2-dev"
+#PACKAGE_LIST="${PACKAGE_LIST},qt4-dev-tools"
+
+# files to remove
+CLEANUP_FILES="etc/passwd etc/shadow etc/group etc/gshadow etc/resolf.conf"
+CLEANUP_FILES="var/cache/apt var/lib/apt/lists"
+
+# componenst to be used during installation
+COMPONENTS_LIST="main,restricted,universe,multiverse"
+
+# what version to install
+SUITE="precise"
+
+# date
+DATE=`date '+%Y%m%d'`
+
+# machine/cpu name
+ARCH=`uname --machine`
+case "${ARCH}" in
+  i?86) ARCH=x86
+  ;;
+  amd64) ARCH=x86_64
+  ;;
+esac
+
+UPLOAD_SITE="openbricks.org"
+UPLOAD_FOLDER="/data/openbricks.org/sources/devel/"
+DOWNLOAD_DIR="${PWD}/sources/rootfs/"
+
+make_chroot() {
+
+  case "$1" in
+    x86) ARCH=i386
+    ;;
+    x86_64) ARCH=amd64
+    ;;
+    *) ARCH=$1
+    ;;
+  esac
+
+  # create the debootstrap chroot
+  sudo debootstrap --arch=${ARCH} --include=${PACKAGE_LIST} \
+                   --components=${COMPONENTS_LIST} \
+		   ${SUITE} ${DOWNLOAD_DIR}${TARGET}
+
+  for f in ${CLEANUP_FILES}
+  do
+    echo "Will remove $f"
+    sudo rm -rf ${DOWNLOAD_DIR}${TARGET}/$f
+  done
+}
+
+make_archive() {
+  sudo tar -cJvf ${DOWNLOAD_DIR}${ARCHIVE} -C ${DOWNLOAD_DIR} ${TARGET}
+  sudo rm -rf ${DOWNLOAD_DIR}${TARGET}
+  sudo chmod a+rw ${DOWNLOAD_DIR}${ARCHIVE}
+}
+
+upload_archive() {
+  scp ${DOWNLOAD_DIR}${ARCHIVE} $1@${UPLOAD_SITE}:${UPLOAD_FOLDER}
+}
+
+while getopts "hu:a:" opt; do
+  case $opt in
+    h)
+      echo "$0 will create rootfs archive for building OpenBricks"
+      echo "    -u username     - upload to ${UPLOAD_SITE}${UPLOAD_FOLDER}"
+      echo "    -a x86|x86_64   - select the architecture"
+      echo "    -h              - print this help"
+      exit 1
+      ;;   
+    u)
+      UPLOAD_USER=${OPTARG:-`id -un`}
+      echo "Will use user ${UPLOAD_USER} to upload the created archive"
+      ;;
+    a)
+      ARCH=${OPTARG}
+      echo "Will use arch ${ARCH}"
+      ;;
+    \?)
+      echo "Invalid option: -${OPTARG}" >&2
+      exit 1
+      ;;
+  esac
+done
+
+# where to put it
+TARGET="${SUITE}_obricks_${ARCH}"
+
+# archive name
+ARCHIVE="${TARGET}_${DATE}.tar.xz"
+
+mkdir -p ${DOWNLOAD_DIR} 
+
+make_chroot ${ARCH}
+
+make_archive
+
+if [ -n "${UPLOAD_USER}" ]
+then
+  upload_archive ${UPLOAD_USER}
+fi
+
