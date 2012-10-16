@@ -13,7 +13,7 @@ case "$MACHINE" in
 esac
 
 COMMANDLINE=$*
-CHROOT_VERSION=20120920
+CHROOT_VERSION=20121016
 CHROOT_SOURCE_URL="http://sources.openbricks.org/devel/precise_obricks_${MACHINE}_${CHROOT_VERSION}.tar.xz"
 CHROOT_DIR=${CHROOT_DIR:-"${HOME}/.openbricks/chroot"}
 DOWNLOAD_DIR="${PWD}/sources/rootfs"
@@ -84,8 +84,8 @@ get_url() {
   if [ ! -d ${FOLDER} ]
   then
     mkdir -p ${FOLDER}
-    wget ${URL} -P ${FOLDER}
   fi
+  wget ${URL} -P ${FOLDER}
 }
 
 fill_passwd() {
@@ -102,12 +102,12 @@ fill_passwd() {
 # play it safe at the start of the script
 safe_umount_chroot
 
-if [ ! -d "${CHROOT_DIR}" ] && [ -z "${IN_CHROOT}" ]
+if [ ! -d "${CHROOT_DIR}" ] && [ -z "${IN_CHROOT}" ] || [ "${COMMANDLINE}" = "update" ]
 then
   printf "\033[33mInstalling chroot in ${CHROOT_DIR}\033[0m\n"
 
   # Delete chroot
-  sudo rm -rf ${CHROOT_DIR}
+  sudo rm -rf ${CHROOT_DIR} ${DOWNLOAD_DIR}
 
   # Create an empty folder
   mkdir -p ${CHROOT_DIR}
@@ -119,7 +119,7 @@ then
   sudo tar --strip 1 -C ${CHROOT_DIR} -xvf ${DOWNLOAD_DIR}/*tar*
 fi
 
-[ -d ${CHROOT_DIR} ] && [ -z "${IN_CHROOT}" ] || NEED_CHROOT="no"
+[ -d ${CHROOT_DIR} ] && [ -z "${IN_CHROOT}" ] && [ ! "${COMMANDLINE}" = "update" ] || NEED_CHROOT="no"
 
 if [ "${NEED_CHROOT}" = "yes" ]
 then
@@ -143,6 +143,7 @@ then
   sudo mount -t devpts none  ${CHROOT_DIR}/dev/pts
   sudo mount -t proc none  ${CHROOT_DIR}/proc
   sudo mount -t sysfs none  ${CHROOT_DIR}/sys
+  sudo mount -t tmpfs none  ${CHROOT_DIR}/tmp
 
   # Go, go, go
   sudo chroot --userspec=${USER}:${GROUP} ${CHROOT_DIR} \
@@ -152,6 +153,6 @@ then
   # Kill all mounts
   safe_umount_chroot
 else
-  ${COMMANDLINE}
+  [ "${COMMANDLINE}" = "update" ] || ${COMMANDLINE}
 fi
 
