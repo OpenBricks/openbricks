@@ -1,0 +1,94 @@
+From 55de9139f92d9d1d97d9d33ea2e8b0502c5e24bb Mon Sep 17 00:00:00 2001
+From: Rabeeh Khoury <rabeeh@solid-run.com>
+Date: Thu, 18 Oct 2012 14:48:53 +0200
+Subject: [PATCH 2/2] Select vmeta speed
+
+This adds selection of vmeta speed. 500MHz (default) or 667MHz (over drive).
+The selection is under settings -> System -> Video output
+
+Signed-off-by: Rabeeh Khoury <rabeeh@solid-run.com>
+---
+ language/English/strings.xml                |    4 ++++
+ xbmc/guilib/Resolution.h                    |    7 +++++++
+ xbmc/settings/GUISettings.cpp               |    6 ++++++
+ xbmc/settings/GUIWindowSettingsCategory.cpp |   16 ++++++++++++++++
+ 4 files changed, 33 insertions(+)
+
+diff --git a/language/English/strings.xml b/language/English/strings.xml
+index 3ef2523..9e8aa19 100644
+--- a/language/English/strings.xml
++++ b/language/English/strings.xml
+@@ -2878,4 +2878,8 @@
+   <string id="36030">Connection lost</string>
+   <string id="36031">This user does not have permissions to open the CEC adapter</string>
+   <string id="36032">The port is busy. Only one program can access the CEC adapter</string>
++
++  <string id="37000">Vmeta Clock Speed</string>
++  <string id="37001">500 MHz</string>
++  <string id="37002">667 MHz</string>
+ </strings>
+diff --git a/xbmc/guilib/Resolution.h b/xbmc/guilib/Resolution.h
+index dc8fbc4..18a6817 100644
+--- a/xbmc/guilib/Resolution.h
++++ b/xbmc/guilib/Resolution.h
+@@ -60,6 +60,13 @@ enum VSYNC {
+   VSYNC_DRIVER       =  3
+ };
+ 
++#ifdef TARGET_MARVELL_DOVE
++enum VMETA_CLK {
++  VMETA_CLK_500      = 500,
++  VMETA_CLK_667      = 667
++};
++#endif
++
+ struct OVERSCAN
+ {
+   int left;
+diff --git a/xbmc/settings/GUISettings.cpp b/xbmc/settings/GUISettings.cpp
+index 8d2548e..822be7a 100644
+--- a/xbmc/settings/GUISettings.cpp
++++ b/xbmc/settings/GUISettings.cpp
+@@ -412,6 +412,12 @@ void CGUISettings::Initialize()
+ #endif
+ #endif
+ 
++#ifdef TARGET_MARVELL_DOVE
++  map<int,int> vmeta_clk;
++  vmeta_clk.insert(make_pair(37001,VMETA_CLK_500));
++  vmeta_clk.insert(make_pair(37002,VMETA_CLK_667));
++  AddInt(vs, "videoscreen.vmeta_clk", 37000, VMETA_CLK_500, vmeta_clk, SPIN_CONTROL_TEXT);
++#endif
+   map<int,int> vsync;
+ #if defined(_LINUX) && !defined(__APPLE__)
+   vsync.insert(make_pair(13101,VSYNC_DRIVER));
+diff --git a/xbmc/settings/GUIWindowSettingsCategory.cpp b/xbmc/settings/GUIWindowSettingsCategory.cpp
+index d3b6bef..6fbd69d 100644
+--- a/xbmc/settings/GUIWindowSettingsCategory.cpp
++++ b/xbmc/settings/GUIWindowSettingsCategory.cpp
+@@ -1452,6 +1452,22 @@ void CGUIWindowSettingsCategory::OnSettingChanged(CBaseSettingControl *pSettingC
+ 
+     OnRefreshRateChanged(nextRes);
+   }
++#ifdef TARGET_MARVELL_DOVE
++  else if (strSetting.Equals("videoscreen.vmeta_clk"))
++  {
++    FILE *Fh;
++
++    VMETA_CLK clk = (VMETA_CLK) g_guiSettings.GetInt("videoscreen.vmeta_clk");
++    CLog::Log(LOGERROR, "Changing clock to %d", clk);
++    Fh = fopen("/sys/devices/platform/dove_clocks_sysfs.0/vmeta","w");
++    if (Fh != 0)
++    {
++        fprintf (Fh, "%d",clk*1000000);
++    } else
++      CLog::Log(LOGERROR, "Unable to open vmeta clock settings file");
++    fclose(Fh);
++  }
++#endif
+   else if (strSetting.Equals("videoscreen.vsync"))
+   {
+     int iControlID = pSettingControl->GetID();
+-- 
+1.7.9.5
+
