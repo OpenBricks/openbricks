@@ -1,0 +1,58 @@
+From d05ff1ececf745e2c9b976131d242c00e15534ee Mon Sep 17 00:00:00 2001
+From: Rabeeh Khoury <rabeeh@solid-run.com>
+Date: Thu, 18 Oct 2012 20:26:13 +0200
+Subject: [PATCH] Make vmeta clock settings correct when loading xml
+
+Signed-off-by: Rabeeh Khoury <rabeeh@solid-run.com>
+---
+ xbmc/settings/GUISettings.cpp               |   13 +++++++++++++
+ xbmc/settings/GUIWindowSettingsCategory.cpp |    4 ++--
+ 2 files changed, 15 insertions(+), 2 deletions(-)
+
+diff --git a/xbmc/settings/GUISettings.cpp b/xbmc/settings/GUISettings.cpp
+index 822be7a..8211925 100644
+--- a/xbmc/settings/GUISettings.cpp
++++ b/xbmc/settings/GUISettings.cpp
+@@ -1292,6 +1292,19 @@ void CGUISettings::LoadXML(TiXmlElement *pRootElement, bool hideSettings /* = fa
+   {
+     SetInt("videoscreen.vsync", VSYNC_ALWAYS);
+   }
++  VMETA_CLK clk = (VMETA_CLK) GetInt("videoscreen.vmeta_clk");
++  if ((clk == 500) || (clk == 667))
++  {
++    FILE *Fh;
++    CLog::Log(LOGINFO, "%s : Changing vmeta clock to %d", __FUNCTION__, clk);
++    Fh = fopen("/sys/devices/platform/dove_clocks_sysfs.0/vmeta","w");
++    if (Fh != 0)
++    {
++        fprintf (Fh, "%d",clk*1000000);
++    } else
++      CLog::Log(LOGERROR, "Unable to open vmeta clock settings file on sysfs");
++    fclose(Fh);
++  }
+ #endif
+ #ifdef __APPLE__
+   // trap any previous vsync by driver setting, does not exist on OSX
+diff --git a/xbmc/settings/GUIWindowSettingsCategory.cpp b/xbmc/settings/GUIWindowSettingsCategory.cpp
+index 6fbd69d..0bd41da 100644
+--- a/xbmc/settings/GUIWindowSettingsCategory.cpp
++++ b/xbmc/settings/GUIWindowSettingsCategory.cpp
+@@ -1458,13 +1458,13 @@ void CGUIWindowSettingsCategory::OnSettingChanged(CBaseSettingControl *pSettingC
+     FILE *Fh;
+ 
+     VMETA_CLK clk = (VMETA_CLK) g_guiSettings.GetInt("videoscreen.vmeta_clk");
+-    CLog::Log(LOGERROR, "Changing clock to %d", clk);
++    CLog::Log(LOGDEBUG, "%s : Changing clock to %d", __FUNCTION__, clk);
+     Fh = fopen("/sys/devices/platform/dove_clocks_sysfs.0/vmeta","w");
+     if (Fh != 0)
+     {
+         fprintf (Fh, "%d",clk*1000000);
+     } else
+-      CLog::Log(LOGERROR, "Unable to open vmeta clock settings file");
++      CLog::Log(LOGERROR, "Unable to open vmeta clock settings file on sysfs");
+     fclose(Fh);
+   }
+ #endif
+-- 
+1.7.9.5
+
