@@ -1,0 +1,312 @@
+diff -r -u a/system/peripherals.xml b/system/peripherals.xml
+--- a/system/peripherals.xml	2012-07-11 21:59:17.000000000 +0200
++++ b/system/peripherals.xml	2012-10-20 09:01:46.000000000 +0200
+@@ -28,4 +28,24 @@
+     <setting key="device_name" type="string" value="XBMC" configurable="0" />
+     <setting key="device_type" type="int" value="1" configurable="0" />
+   </peripheral>
++
++  <peripheral vendor_product="0471:1001" bus="builtin" name="Internal CEC Adapter" mapTo="cec">
++    <setting key="enabled" type="bool" value="1" label="305" order="1" />
++    <setting key="activate_source" type="bool" value="1" label="36020" order="2" />
++    <setting key="wake_devices" type="string" value="0" label="36007" order="3" />
++    <setting key="standby_devices" type="string" value="0" label="36008" order="4" />
++    <setting key="cec_standby_screensaver" type="bool" value="0" label="36009" order="5" />
++    <setting key="standby_pc_on_tv_standby" type="enum" value="36028" label="36029" order="6" lvalues="36028|13005|13011" />
++    <setting key="standby_tv_on_pc_standby" type="bool" value="0" label="36026" order="7" />
++    <setting key="send_inactive_source" type="bool" value="1" label="36025" order="8" />
++    <setting key="use_tv_menu_language" type="bool" value="0" label="36018" order="9" />
++    <setting key="physical_address" type="string" label="36021" value="0" order="10" />
++    <setting key="connected_device" type="int" label="36019" value="0" min="0" max="15" step="1" order="12" />
++
++    <setting key="cec_hdmi_port" type="int" value="1" min="1" max="15" label="36015" order="11" configurable="0"/>
++    <setting key="port" type="string" value="" label="36022" order="13" configurable="0" />
++    <setting key="tv_vendor" type="int" value="0" configurable="0" />
++    <setting key="device_name" type="string" value="XBMC" configurable="0" />
++    <setting key="device_type" type="int" value="1" configurable="0" />
++  </peripheral>
+ </peripherals>
+diff -r -u a/xbmc/peripherals/bus/Makefile.in b/xbmc/peripherals/bus/Makefile.in
+--- a/xbmc/peripherals/bus/Makefile.in	2012-06-02 09:14:48.000000000 +0200
++++ b/xbmc/peripherals/bus/Makefile.in	2012-10-20 09:16:54.000000000 +0200
+@@ -1,4 +1,5 @@
+-SRCS=PeripheralBus.cpp
++SRCS=PeripheralBus.cpp \
++    PeripheralBusBuiltin.cpp
+ 
+ ifeq (@USE_LIBUDEV@,1)
+ SRCS+=linux/PeripheralBusUSBLibUdev.cpp
+diff -r -u a/xbmc/peripherals/bus/PeripheralBusBuiltin.cpp b/xbmc/peripherals/bus/PeripheralBusBuiltin.cpp
+--- a/xbmc/peripherals/bus/PeripheralBusBuiltin.cpp	2012-10-20 18:59:59.994813984 +0200
++++ b/xbmc/peripherals/bus/PeripheralBusBuiltin.cpp	2012-10-20 16:06:05.705746369 +0200
+@@ -0,0 +1,56 @@
++/*
++ *      Copyright (C) 2005-2011 Team XBMC
++ *      http://xbmc.org
++ *
++ *  This Program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; either version 2, or (at your option)
++ *  any later version.
++ *
++ *  This Program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with XBMC; see the file COPYING.  If not, write to
++ *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
++ *  http://www.gnu.org/copyleft/gpl.html
++ *
++ */
++
++#include "PeripheralBusBuiltin.h"
++#include "peripherals/Peripherals.h"
++#include "peripherals/devices/PeripheralCecAdapter.h"
++#include "utils/log.h"
++#include "utils/StringUtils.h"
++
++using namespace PERIPHERALS;
++
++CPeripheralBusBuiltin::CPeripheralBusBuiltin(CPeripherals *manager) :
++    CPeripheralBus(manager, PERIPHERAL_BUS_INTERNAL)
++{
++  m_bNeedsPolling = false;
++  m_bDetectionDone = false;
++}
++
++bool CPeripheralBusBuiltin::PerformDeviceScan(PeripheralScanResults &results)
++{
++  if (!m_bDetectionDone)
++  {
++#if defined(HAVE_LIBCEC)
++    CPeripheralCecAdapter::AutoDetectDevices(m_detected);
++#endif
++    
++    m_bDetectionDone = true;
++  }
++    
++  for (size_t i = 0; i < m_detected.size(); i++)
++  {
++    if (!results.ContainsResult(m_detected[i]))
++      results.m_results.push_back(m_detected[i]);
++  }
++
++  return true;
++}
++
+diff -r -u a/xbmc/peripherals/bus/PeripheralBusBuiltin.h b/xbmc/peripherals/bus/PeripheralBusBuiltin.h
+--- a/xbmc/peripherals/bus/PeripheralBusBuiltin.h	2012-10-20 19:00:13.606813417 +0200
++++ b/xbmc/peripherals/bus/PeripheralBusBuiltin.h	2012-10-20 16:03:19.357753327 +0200
+@@ -0,0 +1,43 @@
++#pragma once
++/*
++ *      Copyright (C) 2005-2011 Team XBMC
++ *      http://xbmc.org
++ *
++ *  This Program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; either version 2, or (at your option)
++ *  any later version.
++ *
++ *  This Program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with XBMC; see the file COPYING.  If not, write to
++ *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
++ *  http://www.gnu.org/copyleft/gpl.html
++ *
++ */
++
++#include "peripherals/bus/PeripheralBus.h"
++#include "peripherals/devices/Peripheral.h"
++
++namespace PERIPHERALS
++{
++  class CPeripherals;
++
++  class CPeripheralBusBuiltin : public CPeripheralBus
++  {
++    std::vector<PeripheralScanResult> m_detected;
++    bool m_bDetectionDone;
++
++  public:
++    CPeripheralBusBuiltin(CPeripherals *manager);
++
++    /*!
++     * @see PeripheralBus::PerformDeviceScan()
++     */
++    bool PerformDeviceScan(PeripheralScanResults &results);
++  };
++}
+diff -r -u a/xbmc/peripherals/devices/PeripheralCecAdapter.cpp b/xbmc/peripherals/devices/PeripheralCecAdapter.cpp
+--- a/xbmc/peripherals/devices/PeripheralCecAdapter.cpp	2012-10-20 19:03:47.266804475 +0200
++++ b/xbmc/peripherals/devices/PeripheralCecAdapter.cpp	2012-10-20 16:38:02.955170192 +0200
+@@ -1159,9 +1159,13 @@
+ 
+ bool CPeripheralCecAdapter::TranslateComPort(CStdString &strLocation)
+ {
+-  if (strLocation.Left(18).Equals("peripherals://usb/") && strLocation.Right(4).Equals(".dev"))
++  CStdString strPrefix("peripherals://");
++  strPrefix.append(PeripheralTypeTranslator::BusTypeToString(m_busType));
++  strPrefix.append("/");
++  
++  if (strLocation.Left(strPrefix.length()) == strPrefix && strLocation.Right(4).Equals(".dev"))
+   {
+-    strLocation = strLocation.Right(strLocation.length() - 18);
++    strLocation = strLocation.Right(strLocation.length() - strPrefix.length());
+     strLocation = strLocation.Left(strLocation.length() - 4);
+     return true;
+   }
+@@ -1577,4 +1581,66 @@
+   Create();
+ }
+ 
++bool CPeripheralCecAdapter::AutoDetectDevices(std::vector<PeripheralScanResult> &devices)
++{
++  DllLibCEC dll;
++  bool bOk = false;
++  ICECAdapter *detector;
++  cec_adapter deviceList[16];
++  libcec_configuration config;
++  PeripheralScanResult device;
++  
++  if (dll.Load() && dll.IsLoaded())
++  {
++    detector = dll.CECInitialise(&config);
++
++    if (detector)
++    {
++      if (config.serverVersion >= CEC_LIB_SUPPORTED_VERSION)
++      {
++        int devCount = detector->FindAdapters(deviceList, 16);
++
++        for (int i = 0; i < devCount; i++)
++        {
++          if (detector->GetDeviceInformation(deviceList[i].comm, &config))
++          {
++	    switch (config.adapterType)
++            {
++            case ADAPTERTYPE_RPI:
++              // todo: IDs should be queried !
++              device.m_iVendorId  = 0x2708;
++              device.m_iProductId = 0x1001;
++              break;
++
++            case ADAPTERTYPE_TDA995x:
++              // todo: IDs should be queried !
++              device.m_iVendorId  = 0x0471;
++              device.m_iProductId = 0x1001;
++              break;
++
++            default:
++              device.m_iVendorId  = 0;
++              device.m_iProductId = 0;
++              break;
++            }
++        
++            if (device.m_iVendorId || device.m_iProductId)
++            {
++              device.m_type = PERIPHERAL_CEC;
++              device.m_strLocation = deviceList[i].comm;
++              devices.push_back(device);
++            }
++          }
++        }
++        
++        bOk = true;
++      }
++
++      dll.CECDestroy(detector);
++    }
++  }
++  
++  return bOk;
++}
++
+ #endif
+diff -r -u a/xbmc/peripherals/devices/PeripheralCecAdapter.h b/xbmc/peripherals/devices/PeripheralCecAdapter.h
+--- a/xbmc/peripherals/devices/PeripheralCecAdapter.h	2012-10-20 19:03:47.266804475 +0200
++++ b/xbmc/peripherals/devices/PeripheralCecAdapter.h	2012-10-20 16:38:29.751169073 +0200
+@@ -44,6 +44,7 @@
+ #else
+ 
+ #include "PeripheralHID.h"
++#include "peripherals/bus/PeripheralBus.h"
+ #include "interfaces/AnnouncementManager.h"
+ #include "threads/Thread.h"
+ #include "threads/CriticalSection.h"
+@@ -108,6 +109,8 @@
+     CStdString GetComPort(void);
+ 
+     void PushCecKeypress(const CEC::cec_keypress &key);
++    
++    static bool AutoDetectDevices(std::vector<PeripheralScanResult> &devices);
+ 
+   protected:
+     bool OpenConnection(void);
+@@ -129,8 +132,7 @@
+     void Process(void);
+     void ProcessVolumeChange(void);
+     void SetMenuLanguage(const char *strLanguage);
+-    static bool FindConfigLocation(CStdString &strString);
+-    static bool TranslateComPort(CStdString &strPort);
++    bool TranslateComPort(CStdString &strPort);
+ 
+     DllLibCEC*                        m_dll;
+     CEC::ICECAdapter*                 m_cecAdapter;
+diff -r -u a/xbmc/peripherals/Peripherals.cpp b/xbmc/peripherals/Peripherals.cpp
+--- a/xbmc/peripherals/Peripherals.cpp	2012-07-11 21:59:18.000000000 +0200
++++ b/xbmc/peripherals/Peripherals.cpp	2012-10-20 13:17:35.522169206 +0200
+@@ -29,6 +29,7 @@
+ #include "devices/PeripheralTuner.h"
+ #include "devices/PeripheralCecAdapter.h"
+ #include "bus/PeripheralBusUSB.h"
++#include "bus/PeripheralBusBuiltin.h"
+ #include "dialogs/GUIDialogPeripheralManager.h"
+ 
+ #include "threads/SingleLock.h"
+@@ -76,6 +77,8 @@
+     /* load mappings from peripherals.xml */
+     LoadMappings();
+ 
++    m_busses.push_back(new CPeripheralBusBuiltin(this));
++
+ #if defined(HAVE_PERIPHERAL_BUS_USB)
+     m_busses.push_back(new CPeripheralBusUSB(this));
+ #endif
+diff -r -u a/xbmc/peripherals/PeripheralTypes.h b/xbmc/peripherals/PeripheralTypes.h
+--- a/xbmc/peripherals/PeripheralTypes.h	2012-06-02 09:14:48.000000000 +0200
++++ b/xbmc/peripherals/PeripheralTypes.h	2012-10-20 13:17:24.790169656 +0200
+@@ -35,7 +35,8 @@
+   {
+     PERIPHERAL_BUS_UNKNOWN = 0,
+     PERIPHERAL_BUS_USB,
+-    PERIPHERAL_BUS_PCI
++    PERIPHERAL_BUS_PCI,
++    PERIPHERAL_BUS_INTERNAL
+   };
+ 
+   enum PeripheralFeature
+@@ -135,6 +136,8 @@
+         return "usb";
+       case PERIPHERAL_BUS_PCI:
+         return "pci";
++      case PERIPHERAL_BUS_INTERNAL:
++	return "builtin";
+       default:
+         return "unknown";
+       }
+@@ -149,6 +152,8 @@
+         return PERIPHERAL_BUS_USB;
+       else if (strTypeLowerCase.Equals("pci"))
+         return PERIPHERAL_BUS_PCI;
++      else if (strTypeLowerCase.Equals("builtin"))
++        return PERIPHERAL_BUS_INTERNAL;
+ 
+       return PERIPHERAL_BUS_UNKNOWN;
+     };
