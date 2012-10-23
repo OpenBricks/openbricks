@@ -88,6 +88,17 @@ set_default_gui_settings () {
     <webskin>webinterface.default</webskin>
     <zeroconf>true</zeroconf>
   </services>
+  <lookandfeel>
+    <enablerssfeeds>true</enablerssfeeds>
+    <font>Default</font>
+    <rssedit></rssedit>
+    <skin>skin.confluence</skin>
+    <skincolors>SKINDEFAULT</skincolors>
+    <skintheme>SKINDEFAULT</skintheme>
+    <skinzoom>0</skinzoom>
+    <soundskin>OFF</soundskin>
+    <startupwindow>10000</startupwindow>
+  </lookandfeel>
 </settings>
 EOF
 }
