@@ -9,13 +9,6 @@ $SCRIPTS/unpack $1
 
 cd $PKG_BUILD_DIR
 
-export HOST_CC=$HOST_CC
-export OPT_FLAGS="$CFLAGS"
-export HOST_OPT_FLAGS="$HOST_CFLAGS"
-export X11_INCLUDES=
-export EXTRA_LIB_PATH=
-export DRI_DRIVER_INSTALL_DIR="$XORG_PATH_DRI"
-export DRI_DRIVER_SEARCH_DIR="$XORG_PATH_DRI"
 export ac_cv_prog_PYTHON2="$ROOT/$TOOLCHAIN/bin/python"
 
 # DRI: Direct Rendering Interface
@@ -45,40 +38,31 @@ if pkg_uses $1 wayland; then
   EGL_DISPLAYS="wayland,$EGL_DISPLAYS"
 fi
 
-# build the internal compiler
-setup_toolchain host
-do_configure \
-  --disable-selinux \
-  --enable-glx-tls \
-  --enable-dri \
-  --with-dri-drivers="$DRI_DRIVERS" \
-  --with-gallium-drivers="$GALLIUM_DRIVERS" \
-  $GALLIUM_EGL \
-  --enable-opengl \
-  --enable-gles1 \
-  --enable-gles2 \
-  $GALLIUM_OVG \
-  $GALLIUM_LLVM \
-  --enable-shared-glapi \
-  --enable-shared-dricore \
-  --enable-driglx-direct \
-  --enable-glu \
-  $VDPAU \
-  $XVMC \
+builtin_compiler() {
+  # build the internal compiler
+  setup_toolchain host
 
-make \
-  CC="$HOST_CC" \
-  CXX="$HOST_CXX" \
-  CFLAGS="$HOST_CFLAGS" \
-  CXXFLAGS="$HOST_CXXFLAGS" \
-  LDFLAGS="$HOST_LDFLAGS" \
-  -C src/glsl builtin_compiler
+  LIBDRM_CFLAGS="a" LIBDRM_LIBS="a" \
+  DRIGL_CFLAGS="a" DRIGL_LIBS="a" \
+  INTEL_CFLAGS="a" INTEL_LIBS="a" \
+  NOUVEAU_CFLAGS="a" NOUVEAU_LIBS="a" \
+  RADEON_CFLAGS="a" RADEON_LIBS="a" \
+  ./configure \
+    --enable-shared \
+    --disable-static \
+    --disable-dri \
+    --disable-gallium-llvm \
+    --with-dri-drivers="" \
+    --with-gallium-drivers=""
 
-cp -PR src/glsl/builtin_compiler $ROOT/$TOOLCHAIN/bin
-cp src/glsl/Makefile src/glsl/Makefile.orig
-sed -e "s#\.\/builtin_compiler#$ROOT/$TOOLCHAIN/bin/builtin_compiler#g" \
-  -i src/glsl/Makefile
-make -C src/glsl clean
+  make -C src/glsl builtin_compiler
+
+  cp -PR src/glsl/builtin_compiler $ROOT/$TOOLCHAIN/bin
+
+  make -C src/glsl clean
+}
+
+builtin_compiler
 
 setup_toolchain target
 
@@ -110,7 +94,9 @@ do_configure target \
   $VDPAU \
   $XVMC \
 
-
+cp src/glsl/Makefile src/glsl/Makefile.orig
+sed -e "s#\.\/builtin_compiler#$ROOT/$TOOLCHAIN/bin/builtin_compiler#g" \
+  -i src/glsl/Makefile
 
 # now build Mesa for target
 make
