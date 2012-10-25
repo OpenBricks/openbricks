@@ -34,7 +34,7 @@ if cat /proc/cpuinfo | grep CuBox -q; then
   cat > "$ADV_SETTINGS" << EOF
 <advancedsettings>
   <useddsfanart>true</useddsfanart>
-  <cputempcommand>awk '{print substr(\$0,0,(length(\$0)-3)) "c"}' /sys/devices/platform/dove-temp.0/temp1_input</cputempcommand>
+  <gputempcommand>awk '{print substr(\$0,0,(length(\$0)-3)) "c"}' /sys/devices/platform/dove-temp.0/temp1_input</gputempcommand>
   <samba>
     <clienttimeout>10</clienttimeout>
   </samba>
