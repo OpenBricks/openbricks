@@ -1,7 +1,35 @@
-diff -N -r -u a/drivers/video/dovefb/dovefb_gfx.c b/drivers/video/dovefb/dovefb_gfx.c
---- a/drivers/video/dovefb/dovefb_gfx.c	2012-08-25 12:42:19.000000000 +0200
-+++ b/drivers/video/dovefb/dovefb_gfx.c	2012-10-21 15:44:19.000000000 +0200
-@@ -56,6 +56,12 @@
+diff --git a/drivers/video/dovefb/dovefb_base.c b/drivers/video/dovefb/dovefb_base.c
+index 5d030eb..1a106a5 100644
+--- a/drivers/video/dovefb/dovefb_base.c
++++ b/drivers/video/dovefb/dovefb_base.c
+@@ -1119,6 +1119,14 @@ failed:
+ 	return ret;
+ }
+ 
++static void dovefb_shutdown(struct platform_device *pdev)
++{
++	struct dovefb_info *dfi = platform_get_drvdata(pdev);
++	struct fb_info *fi = dfi->gfx_plane->fb_info;
++	
++	(*dovefb_gfx_ops.fb_blank)(FB_BLANK_POWERDOWN, fi);
++}
++
+ #ifdef CONFIG_PM
+ static int dovefb_suspend(struct platform_device *pdev, pm_message_t mesg)
+ {
+@@ -1232,6 +1240,7 @@ static int dovefb_resume(struct platform_device *pdev)
+ 
+ static struct platform_driver dovefb_driver = {
+ 	.probe		= dovefb_probe,
++	.shutdown	= dovefb_shutdown,
+ #ifdef CONFIG_PM
+ 	.suspend	= dovefb_suspend,
+ 	.resume		= dovefb_resume,
+diff --git a/drivers/video/dovefb/dovefb_gfx.c b/drivers/video/dovefb/dovefb_gfx.c
+index 731d28a..30bb811 100644
+--- a/drivers/video/dovefb/dovefb_gfx.c
++++ b/drivers/video/dovefb/dovefb_gfx.c
+@@ -56,6 +56,12 @@ static int dovefb_fill_edid(struct fb_info *fi,
  static int wait_for_vsync(struct dovefb_layer_info *dfli);
  static void dovefb_set_defaults(struct dovefb_layer_info *dfli);
  
@@ -14,7 +42,7 @@ diff -N -r -u a/drivers/video/dovefb/dovefb_gfx.c b/drivers/video/dovefb/dovefb_
  #define AXI_BASE_CLK	(2000000000ll)	/* 2000MHz */
  
  static const u8 edid_header[] = {
-@@ -545,9 +551,6 @@
+@@ -545,9 +551,6 @@ static u8 *make_analog_fake_edid(void)
  
  	return edid_block;
  }
@@ -24,7 +52,7 @@ diff -N -r -u a/drivers/video/dovefb/dovefb_gfx.c b/drivers/video/dovefb/dovefb_
  
  static int dovefb_gfx_set_par(struct fb_info *fi)
  {
-@@ -628,7 +631,7 @@
+@@ -628,7 +631,7 @@ static int dovefb_gfx_set_par(struct fb_info *fi)
  	printk(KERN_INFO "Setting HDMI TX resolution to %dx%d%c @ %d\n",
  		m->xres, m->yres, (m->vmode & FB_VMODE_INTERLACED) ? 'i' : 'p',
  		m->refresh);
@@ -33,7 +61,7 @@ diff -N -r -u a/drivers/video/dovefb/dovefb_gfx.c b/drivers/video/dovefb/dovefb_
  		(m->vmode & FB_VMODE_INTERLACED) ? 1 : 0, m->refresh))
  		printk(KERN_ERR "Setting HDMI TX mode failed\n");
  #endif
-@@ -1175,15 +1178,13 @@
+@@ -1175,15 +1178,13 @@ static u8 *pull_edid_from_i2c(int busid, int addr)
  }
  #endif
  
@@ -51,10 +79,95 @@ diff -N -r -u a/drivers/video/dovefb/dovefb_gfx.c b/drivers/video/dovefb/dovefb_
  	nxp_edid = tda19988_get_edid(&num_of_blocks);
  	if (nxp_edid == NULL) /* EDID not ready */
  		return NULL;
-diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/cfg/tmdlHdmiCEC_IW.h b/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/cfg/tmdlHdmiCEC_IW.h
---- a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/cfg/tmdlHdmiCEC_IW.h	2012-08-25 12:42:19.000000000 +0200
-+++ b/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/cfg/tmdlHdmiCEC_IW.h	2012-10-21 15:44:19.000000000 +0200
-@@ -141,7 +141,7 @@
+diff --git a/drivers/video/dovefb/nxp_hdmi/Makefile b/drivers/video/dovefb/nxp_hdmi/Makefile
+index c406b23..9d492d3 100755
+--- a/drivers/video/dovefb/nxp_hdmi/Makefile
++++ b/drivers/video/dovefb/nxp_hdmi/Makefile
+@@ -125,6 +125,9 @@ obj-y += hdmitx.o
+ hdmitx-objs := tda998x.o
+ hdmicec-objs := tda998x_cec.o
+ 
++#hdmitx-objs += tda998x_i2c.o
++hdmicec-objs += tda998x_i2c.o
++
+ # NXP comps
+ ifeq ($(TDA_TX),TDA19989)
+ hdmitx-objs += $(TXSRC)/tmdlHdmiTx.o
+diff --git a/drivers/video/dovefb/nxp_hdmi/comps/tmbslTDA9989/src/tmbslTDA9989_Misc.c b/drivers/video/dovefb/nxp_hdmi/comps/tmbslTDA9989/src/tmbslTDA9989_Misc.c
+index 855069b..1dee229 100755
+--- a/drivers/video/dovefb/nxp_hdmi/comps/tmbslTDA9989/src/tmbslTDA9989_Misc.c
++++ b/drivers/video/dovefb/nxp_hdmi/comps/tmbslTDA9989/src/tmbslTDA9989_Misc.c
+@@ -893,7 +893,7 @@ tmbslTDA9989HwHandleInterrupt
+         /* Has the EDID_blk_rd interrupt occurs */
+         if ((regVal & E_MASKREG_P00_INT_FLAGS_2_edid_blk_rd) != 0)
+         {
+-             fInterruptStatus = fInterruptStatus | (1 << HDMITX_CALLBACK_INT_EDID_BLK_READ);
++           fInterruptStatus = fInterruptStatus | (1 << HDMITX_CALLBACK_INT_EDID_BLK_READ);
+         }
+     }
+ 
+@@ -962,29 +962,35 @@ tmbslTDA9989HwHandleInterrupt
+ 
+            if (fInterruptStatus & (1 << HDMITX_CALLBACK_INT_EDID_BLK_READ))
+            {
+-               err = EdidBlockAvailable(txUnit,&sendEdidCallback);
+-               RETIF(err != TM_OK, err)
+-               if (sendEdidCallback == False)
++               if (pDis->hotPlugStatus == HDMITX_HOTPLUG_ACTIVE)
+                {
+-                   /* Read EDID not finished clear callback */
+-                   fInterruptStatus &= ~(1 << HDMITX_CALLBACK_INT_EDID_BLK_READ);
+-               }
+-               else {
+-                #ifdef TMFL_TDA9989_PIXEL_CLOCK_ON_DDC
+-
+-                if ( (pDis->vinFmt == HDMITX_VFMT_16_1920x1080p_60Hz) || (pDis->vinFmt == HDMITX_VFMT_31_1920x1080p_50Hz)) {
+-
+-                err = setHwRegisterField(pDis, 
+-                                 E_REG_P02_PLL_SERIAL_3_RW, 
+-                                 E_MASKREG_P02_PLL_SERIAL_3_srl_ccir,
+-                                 0x00);
+-                RETIF_REG_FAIL(err)
++                   err = EdidBlockAvailable(txUnit,&sendEdidCallback);
++                   RETIF(err != TM_OK, err)
++                   if (sendEdidCallback == False)
++                   {
++                       /* Read EDID not finished clear callback */
++                       fInterruptStatus &= ~(1 << HDMITX_CALLBACK_INT_EDID_BLK_READ);
++                   }
++                   else {
++                    #ifdef TMFL_TDA9989_PIXEL_CLOCK_ON_DDC
++    
++                    if ( (pDis->vinFmt == HDMITX_VFMT_16_1920x1080p_60Hz) || (pDis->vinFmt == HDMITX_VFMT_31_1920x1080p_50Hz)) {
++    
++                    err = setHwRegisterField(pDis, 
++                                     E_REG_P02_PLL_SERIAL_3_RW, 
++                                     E_MASKREG_P02_PLL_SERIAL_3_srl_ccir,
++                                     0x00);
++                    RETIF_REG_FAIL(err)
++                    }
++    
++                   #endif /* TMFL_TDA9989_PIXEL_CLOCK_ON_DDC */
++                   }
++                }
++                else
++                {
++                    ClearEdidRequest(txUnit);
++                    fInterruptStatus &= ~(1 << HDMITX_CALLBACK_INT_EDID_BLK_READ);
+                 }
+-
+-               #endif /* TMFL_TDA9989_PIXEL_CLOCK_ON_DDC */
+-               }
+-
+-
+            }
+       }
+ 
+diff --git a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/cfg/tmdlHdmiCEC_IW.h b/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/cfg/tmdlHdmiCEC_IW.h
+index 332e3dd..fea74bc 100755
+--- a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/cfg/tmdlHdmiCEC_IW.h
++++ b/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/cfg/tmdlHdmiCEC_IW.h
+@@ -141,7 +141,7 @@ tmErrorCode_t tmdlHdmiTxIWTaskStart(tmdlHdmiTxIWTaskHandle_t handle);
              - TMDL_ERR_DLHDMIRX_NO_RESOURCES: the resource is not available
  
  ******************************************************************************/
@@ -63,13 +176,11 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/cfg/tmdlHdmiCEC_
  
  /*============================================================================*/
  
-diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/cfg/tmdlHdmiCEC_Linux.c b/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/cfg/tmdlHdmiCEC_Linux.c
---- a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/cfg/tmdlHdmiCEC_Linux.c	2012-08-25 12:42:19.000000000 +0200
-+++ b/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/cfg/tmdlHdmiCEC_Linux.c	2012-10-21 15:44:19.000000000 +0200
+diff --git a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/cfg/tmdlHdmiCEC_Linux.c b/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/cfg/tmdlHdmiCEC_Linux.c
+index 611e6bf..25586eb 100755
+--- a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/cfg/tmdlHdmiCEC_Linux.c
++++ b/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/cfg/tmdlHdmiCEC_Linux.c
 @@ -1,6 +1,27 @@
--/*============================================================================*/
--/*                             INCLUDE FILES                                  */
--/*============================================================================*/
 +/*****************************************************************************/
 +/*                                                                           */
 +/* This program is free software; you can redistribute it and/or modify      */
@@ -88,9 +199,10 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/cfg/tmdlHdmiCEC_
 +/*                                                                           */
 +/*****************************************************************************/
 +
-+/*============================================================================*/
+ /*============================================================================*/
+-/*                             INCLUDE FILES                                  */
 +/*                       INCLUDE FILES                                        */
-+/*============================================================================*/
+ /*============================================================================*/
 +/* The following includes are used by I2C access function. If                 */
 +/* you need to rewrite these functions for your own SW infrastructure, then   */
 +/* it can be removed                                                          */
@@ -258,10 +370,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/cfg/tmdlHdmiCEC_
 -
 -static int blockread_reg(struct i2c_client *client, u16 data_length,
 -		  u8 reg, u16 alength, u8 *val, u16 *out_len)
-+/* The following function must be rewritten by the customer to fit its own    */
-+/* SW infrastructure. This function allows reading through I2C bus.           */
-+static tmErrorCode_t cecI2cReadFunction(tmdlHdmiCecSysArgs_t *pSysArgs)
- {
+-{
 -   int err = 0;
 -   struct i2c_msg msg[1];
 -   u8 data[2];
@@ -354,11 +463,8 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/cfg/tmdlHdmiCEC_
 -   return 0;
 -#endif
 -}
-+   struct i2c_client *client = cecGetThisI2cClient();
- 
-+   RETIF(!client || !client->adapter || 
-+          client->addr != pSysArgs->slaveAddr, TM_ERR_NULL_DATAINFUNC)
- 
+-
+-
 -static int write_reg(struct i2c_client *client, u8 reg, u8 val)
 -{
 -   int err = 0;
@@ -400,18 +506,14 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/cfg/tmdlHdmiCEC_
 -      schedule_timeout(msecs_to_jiffies(20));
 -      goto retry;
 -   }
-+   RETIF(tda998x_i2c_read_regs(
-+            client, pSysArgs->lenData, 
-+            pSysArgs->firstRegister, pSysArgs->pData) == 0, TM_OK)
- 
+-
 -   return err;
-+   return TMDL_ERR_DLHDMICEC_I2C_WRITE;
- }
- 
+-}
+-
 -static int read_reg(struct i2c_client *client, u16 data_length, u8 reg, u8 *val)
 +/* The following function must be rewritten by the customer to fit its own    */
-+/* SW infrastructure. This function allows writing through I2C bus.           */
-+static tmErrorCode_t cecI2cWriteFunction(tmdlHdmiCecSysArgs_t *pSysArgs)
++/* SW infrastructure. This function allows reading through I2C bus.           */
++static tmErrorCode_t cecI2cReadFunction(tmdlHdmiCecSysArgs_t *pSysArgs)
  {
 -   int err = 0;
 -   struct i2c_msg msg[1];
@@ -426,20 +528,26 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/cfg/tmdlHdmiCEC_
 -   msg->flags = I2C_M_WR;
 -   msg->len = 1;
 -   msg->buf = data;
--
++   struct i2c_client *client = cecGetThisI2cClient();
+ 
 -   data[0] = reg;
 -   err = i2c_transfer(client->adapter, msg, 1);
 -   dev_dbg(&client->dev, "<%s> i2c Read1 reg=%x val=%d "
 -	   "flags=%d err=%d\n",
 -	   __func__, reg, data[1], msg->flags, err);
--
++   RETIF(!client || !client->adapter || 
++          client->addr != pSysArgs->slaveAddr, TM_ERR_NULL_DATAINFUNC)
+ 
 -   if (err >= 0) {
 -      mdelay(3);
 -      msg->flags = I2C_M_RD;
 -      msg->len = data_length;
 -      err = i2c_transfer(client->adapter, msg, 1);
 -   }
--
++   RETIF(tda998x_i2c_read_regs(
++            client, pSysArgs->lenData, 
++            pSysArgs->firstRegister, pSysArgs->pData) == 0, TM_OK)
+ 
 -   if (err >= 0) {
 -      *val = 0;
 -      if (data_length == 1)
@@ -456,22 +564,26 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/cfg/tmdlHdmiCEC_
 -	   "*val=%d flags=%d err=%d\n",
 -	   __func__, reg, *val, msg->flags, err);
 -   return err;
--}
-+   struct i2c_client *client = cecGetThisI2cClient();
++   return TMDL_ERR_DLHDMICEC_I2C_WRITE;
+ }
  
-+   RETIF(!client || !client->adapter ||
-+         client->addr != pSysArgs->slaveAddr, TM_ERR_NULL_DATAOUTFUNC)
- 
+-
 -tmErrorCode_t I2cReadFunction (tmdlHdmiCecSysArgs_t *pSysArgs)
--{
++/* The following function must be rewritten by the customer to fit its own    */
++/* SW infrastructure. This function allows writing through I2C bus.           */
++static tmErrorCode_t cecI2cWriteFunction(tmdlHdmiCecSysArgs_t *pSysArgs)
+ {
 -   tmErrorCode_t errCode = TM_OK;
 -   u16 outLenght=0;
 -   struct i2c_client *client=cecGetThisI2cClient();
 -   u32 client_main_addr=client->addr;
--
++   struct i2c_client *client = cecGetThisI2cClient();
+ 
 -   /* DevLib needs address control, so let it be */ 
 -   client->addr=pSysArgs->slaveAddr;
--
++   RETIF(!client || !client->adapter ||
++         client->addr != pSysArgs->slaveAddr, TM_ERR_NULL_DATAOUTFUNC)
+ 
 -   if (pSysArgs->lenData == 1) {
 -      /* single byte */
 -      errCode = read_reg(cecGetThisI2cClient(),1,pSysArgs->firstRegister,pSysArgs->pData);
@@ -524,19 +636,11 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/cfg/tmdlHdmiCEC_
 -   
 -   /* restore default client address */
 -   client->addr=client_main_addr;
--
--   return errCode;
--
--}
 +static tmdlHdmiCecCapabilities_t CeccapabilitiesList = {
 +    TMDL_HDMICEC_DEVICE_UNKNOWN, CEC_VERSION_1_3a
 +};
  
--static tmErrorCode_t tmdlHdmiTxIWWait
--(
--    UInt16 duration
--)
--{
+-   return errCode;
 +static tmdlHdmiCecDriverConfigTable_t CecdriverConfigTable[MAX_UNITS] = {
 +    {
 +    COMMAND_TASK_PRIORITY_0,
@@ -549,16 +653,22 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/cfg/tmdlHdmiCEC_
 +    }
 +};
  
--    mdelay((unsigned long)duration);
- 
--    return(TM_OK);
 -}
+ 
+-static tmErrorCode_t tmdlHdmiTxIWWait
+-(
+-    UInt16 duration
+-)
+-{
 +/**
 +    \brief This function allows to the main driver to retrieve its
 +           configuration parameters.
-+
+ 
+-    mdelay((unsigned long)duration);
 +    \param pConfig Pointer to the config structure
-+
+ 
+-    return(TM_OK);
+-}
 +    \return The call result:
 +            - TM_OK: the call was successful
 +            - TMDL_ERR_DLHDMICEC_BAD_UNIT_NUMBER: the unit number is wrong or
@@ -570,7 +680,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/cfg/tmdlHdmiCEC_
  tmErrorCode_t tmdlHdmiCecCfgGetConfig
  (
      tmUnitSelect_t                 unit,
-@@ -430,7 +145,8 @@
+@@ -430,7 +145,8 @@ tmErrorCode_t tmdlHdmiCecCfgGetConfig
      *pConfig = CecdriverConfigTable[unit];
  
      return(TM_OK);
@@ -580,10 +690,11 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/cfg/tmdlHdmiCEC_
  /*============================================================================*/
  /*                            END OF FILE                                     */
  /*============================================================================*/
-diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/src/tmdlHdmiCEC.c b/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/src/tmdlHdmiCEC.c
---- a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/src/tmdlHdmiCEC.c	2012-08-25 12:42:19.000000000 +0200
-+++ b/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/src/tmdlHdmiCEC.c	2012-10-21 15:44:19.000000000 +0200
-@@ -229,9 +229,7 @@
+diff --git a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/src/tmdlHdmiCEC.c b/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/src/tmdlHdmiCEC.c
+index 859a7a7..629b06c9 100755
+--- a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/src/tmdlHdmiCEC.c
++++ b/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/src/tmdlHdmiCEC.c
+@@ -229,9 +229,7 @@ tmErrorCode_t tmdlHdmiCecHandleInterrupt
    unsigned char  I2c_ReadBuffer[19] ;   /* I2C Read data buffer */
    tmdlHdmiCecDriverConfigTable_t *pDis; /* Pointer to Device Instance Structure */
    tmdlHdmiCecUnitConfig_t        *pCecObject; /* Pointer to Cec Object */
@@ -593,7 +704,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/src/tmdlHdmiCEC.
  
  
    pDis = &gtmdlHdmiCecDriverConfigTable[instance];
-@@ -250,52 +248,35 @@
+@@ -250,52 +248,35 @@ tmErrorCode_t tmdlHdmiCecHandleInterrupt
  #endif
  
    errCode = getCecHwRegisters(pDis, E_REG_CDR0,I2c_ReadBuffer,19);
@@ -667,7 +778,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/src/tmdlHdmiCEC.
  }
  
  //==========================================================================
-@@ -2443,13 +2424,16 @@
+@@ -2443,13 +2424,16 @@ tmErrorCode_t tmdlHdmiCecSetTimerProgramTitle
    /* check if unit corresponding to instance is opened */
    RETIF(UnitTable[Instance].opened == False, TMDL_ERR_DLHDMICEC_RESOURCE_NOT_OWNED)
  
@@ -685,7 +796,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/src/tmdlHdmiCEC.
  
    I2c_Buffer[0] = (unsigned char)MessLength;
  
-@@ -2462,12 +2446,12 @@
+@@ -2462,12 +2446,12 @@ tmErrorCode_t tmdlHdmiCecSetTimerProgramTitle
  
    I2c_Buffer[3] = CEC_OPCODE_SET_TIMER_PROGRAM_TITLE ;      /* Set Timer Program Title*/
  
@@ -703,7 +814,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/src/tmdlHdmiCEC.
    RETIF(errCode != TM_OK, errCode)
  
    /* Save Datas of the CEC message send */
-@@ -5694,6 +5678,9 @@
+@@ -5694,6 +5678,9 @@ tmErrorCode_t tmdlHdmiCecVendorCommand
    /* check if unit corresponding to instance is opened */
    RETIF(UnitTable[Instance].opened == False, TMDL_ERR_DLHDMICEC_RESOURCE_NOT_OWNED)
  
@@ -713,7 +824,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/src/tmdlHdmiCEC.
    /* check if instance state is correct */
    //RETIF(UnitTable[Instance].state != STATE_NOT_INITIALIZED, TMDL_ERR_DLHDMICEC_INVALID_STATE)
  
-@@ -5714,12 +5701,12 @@
+@@ -5714,12 +5701,12 @@ tmErrorCode_t tmdlHdmiCecVendorCommand
  
    I2c_Buffer[3] = CEC_OPCODE_VENDOR_COMMAND ;       /* Vendor Command*/
  
@@ -731,7 +842,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/src/tmdlHdmiCEC.
    RETIF(errCode != TM_OK, errCode)
  
    /* Save Datas of the CEC message send */
-@@ -5778,6 +5765,9 @@
+@@ -5778,6 +5765,9 @@ tmErrorCode_t tmdlHdmiCecVendorCommandWithID
    /* check if unit corresponding to instance is opened */
    RETIF(UnitTable[Instance].opened == False, TMDL_ERR_DLHDMICEC_RESOURCE_NOT_OWNED)
  
@@ -741,7 +852,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/src/tmdlHdmiCEC.
    /* check if instance state is correct */
    //RETIF(UnitTable[Instance].state != STATE_NOT_INITIALIZED, TMDL_ERR_DLHDMICEC_INVALID_STATE)
  
-@@ -5801,12 +5791,12 @@
+@@ -5801,12 +5791,12 @@ tmErrorCode_t tmdlHdmiCecVendorCommandWithID
    I2c_Buffer[5] = (unsigned char)(VendorID >> 8);
    I2c_Buffer[6] = (unsigned char)VendorID;          /* LSByte of Vendor ID*/
  
@@ -758,7 +869,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/src/tmdlHdmiCEC.
    RETIF(errCode != TM_OK, errCode)
  
    /* Save Datas of the CEC message send */
-@@ -5862,6 +5852,9 @@
+@@ -5862,6 +5852,9 @@ tmErrorCode_t tmdlHdmiCecVendorRemoteButtonDown
    /* check if unit corresponding to instance is opened */
    RETIF(UnitTable[Instance].opened == False, TMDL_ERR_DLHDMICEC_RESOURCE_NOT_OWNED)
  
@@ -768,7 +879,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/src/tmdlHdmiCEC.
    /* check if instance state is correct */
    //RETIF(UnitTable[Instance].state != STATE_NOT_INITIALIZED, TMDL_ERR_DLHDMICEC_INVALID_STATE)
  
-@@ -5880,14 +5873,14 @@
+@@ -5880,14 +5873,14 @@ tmErrorCode_t tmdlHdmiCecVendorRemoteButtonDown
    I2c_Buffer[2] |= ReceiverLogicalAddress & 0x0F;                                   /* Receiver logical Address*/
  
    I2c_Buffer[3] = CEC_OPCODE_VENDOR_REMOTE_BUTTON_DOWN ;    /* Vendor Remote Button Down Opcode*/
@@ -790,7 +901,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/src/tmdlHdmiCEC.
    RETIF(errCode != TM_OK, errCode)
  
    /* Save Datas of the CEC message send */
-@@ -6010,6 +6003,9 @@
+@@ -6010,6 +6003,9 @@ tmErrorCode_t tmdlHdmiCecSetOsdString
    /* check if unit corresponding to instance is opened */
    RETIF(UnitTable[Instance].opened == False, TMDL_ERR_DLHDMICEC_RESOURCE_NOT_OWNED)
  
@@ -800,7 +911,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/src/tmdlHdmiCEC.
    /* check if instance state is correct */
    //RETIF(UnitTable[Instance].state != STATE_NOT_INITIALIZED, TMDL_ERR_DLHDMICEC_INVALID_STATE)
  
-@@ -6018,9 +6014,9 @@
+@@ -6018,9 +6014,9 @@ tmErrorCode_t tmdlHdmiCecSetOsdString
    //======To do : make a prepare message function with parameter
    /* Set OSD String command */
  
@@ -812,7 +923,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/src/tmdlHdmiCEC.
  
    I2c_Buffer[1] = 0x00;     /* Request CEC data */
  
-@@ -6031,12 +6027,13 @@
+@@ -6031,12 +6027,13 @@ tmErrorCode_t tmdlHdmiCecSetOsdString
  
    I2c_Buffer[3] = CEC_OPCODE_SET_OSD_STRING ;       /* Set Osd String*/
    I2c_Buffer[4] = DisplayControl;                   /*Display Control*/
@@ -831,7 +942,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/src/tmdlHdmiCEC.
    RETIF(errCode != TM_OK, errCode)
  
    /* Save Datas of the CEC message send */
-@@ -6156,6 +6153,9 @@
+@@ -6156,6 +6153,9 @@ tmErrorCode_t tmdlHdmiCecSetOsdName
    /* check if unit corresponding to instance is opened */
    RETIF(UnitTable[Instance].opened == False, TMDL_ERR_DLHDMICEC_RESOURCE_NOT_OWNED)
  
@@ -841,7 +952,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/src/tmdlHdmiCEC.
    /* check if instance state is correct */
    //RETIF(UnitTable[Instance].state != STATE_NOT_INITIALIZED, TMDL_ERR_DLHDMICEC_INVALID_STATE)
  
-@@ -6164,9 +6164,9 @@
+@@ -6164,9 +6164,9 @@ tmErrorCode_t tmdlHdmiCecSetOsdName
    //======To do : make a prepare message function with parameter
    /* Set OSD Name command */
  
@@ -853,7 +964,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/src/tmdlHdmiCEC.
    
    I2c_Buffer[1] = 0x00;     /* Request CEC data */
  
-@@ -6176,12 +6176,13 @@
+@@ -6176,12 +6176,13 @@ tmErrorCode_t tmdlHdmiCecSetOsdName
    I2c_Buffer[2] |= ReceiverLogicalAddress & 0x0F;                                   /* Receiver logical Address*/
  
    I2c_Buffer[3] = CEC_OPCODE_SET_OSD_NAME ;     /* Set Osd Name*/
@@ -872,7 +983,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/src/tmdlHdmiCEC.
    RETIF(errCode != TM_OK, errCode)
  
    /* Save Datas of the CEC message send */
-@@ -7423,13 +7424,12 @@
+@@ -7423,13 +7424,12 @@ tmErrorCode_t tmdlHdmiCecSendMessage(
     UInt16       lenData
  )
  {
@@ -887,7 +998,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/src/tmdlHdmiCEC.
    unsigned char  MessLength;             /* Local Message length*/
    
    tmdlHdmiCecDriverConfigTable_t *pDis; /* Pointer to Device Instance Structure */
-@@ -7440,40 +7440,42 @@
+@@ -7440,40 +7440,42 @@ tmErrorCode_t tmdlHdmiCecSendMessage(
    /* check if unit corresponding to instance is opened */
    RETIF(UnitTable[instance].opened == False, TMDL_ERR_DLHDMICEC_RESOURCE_NOT_OWNED)
    
@@ -949,9 +1060,10 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiCEC/src/tmdlHdmiCEC.
  }
  
  
-diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiTx/cfg/TDA9989/tmdlHdmiTx_Linux_cfg.c b/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiTx/cfg/TDA9989/tmdlHdmiTx_Linux_cfg.c
---- a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiTx/cfg/TDA9989/tmdlHdmiTx_Linux_cfg.c	2012-08-25 12:42:19.000000000 +0200
-+++ b/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiTx/cfg/TDA9989/tmdlHdmiTx_Linux_cfg.c	2012-10-21 15:44:19.000000000 +0200
+diff --git a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiTx/cfg/TDA9989/tmdlHdmiTx_Linux_cfg.c b/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiTx/cfg/TDA9989/tmdlHdmiTx_Linux_cfg.c
+index 07f3283..e06b366 100755
+--- a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiTx/cfg/TDA9989/tmdlHdmiTx_Linux_cfg.c
++++ b/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiTx/cfg/TDA9989/tmdlHdmiTx_Linux_cfg.c
 @@ -37,39 +37,35 @@
  /*============================================================================*/
  /*                       INCLUDE FILES                                        */
@@ -1009,7 +1121,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiTx/cfg/TDA9989/tmdlH
  
  /* I2C adress of the unit                                                     */
  /* Put there the I2C slave adress of the Tx transmitter IC                    */
-@@ -199,252 +195,43 @@
+@@ -199,252 +195,43 @@ const tmdlHdmiTxCfgVideoSignalCCIR656 videoPortMapping_CCIR656[MAX_UNITS][6] = {
      }
  }; 
  
@@ -1210,10 +1322,14 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiTx/cfg/TDA9989/tmdlH
 -   tmErrorCode_t errCode = TM_OK;
 -   struct i2c_client *client=GetThisI2cClient();
 -   u32 client_main_addr=client->addr;
--
++   struct i2c_client *client = (pSysArgs->slaveAddr == UNIT_I2C_ADDRESS_0) ? 
++				txGetThisI2cClient() : cecGetThisI2cClient();
+ 
 -   /* DevLib needs address control, so let it be */ 
 -   client->addr=pSysArgs->slaveAddr;
--
++   RETIF(!client || !client->adapter || 
++         client->addr != pSysArgs->slaveAddr, TM_ERR_NULL_DATAINFUNC)
+ 
 -   if (pSysArgs->lenData == 1) {
 -      /* single byte */
 -      errCode = read_reg(GetThisI2cClient(),1,pSysArgs->firstRegister,pSysArgs->pData);
@@ -1228,17 +1344,11 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiTx/cfg/TDA9989/tmdlH
 -   
 -   /* restore default client address */
 -   client->addr=client_main_addr;
-+   struct i2c_client *client = (pSysArgs->slaveAddr == UNIT_I2C_ADDRESS_0) ? 
-+				txGetThisI2cClient() : cecGetThisI2cClient();
-+
-+   RETIF(!client || !client->adapter || 
-+         client->addr != pSysArgs->slaveAddr, TM_ERR_NULL_DATAINFUNC)
- 
--    return errCode;
 +   RETIF(tda998x_i2c_read_regs(
 +	    client, pSysArgs->lenData, 
 +	    pSysArgs->firstRegister, pSysArgs->pData) == 0, TM_OK)
-+
+ 
+-    return errCode;
 +   return (pSysArgs->slaveAddr == UNIT_I2C_ADDRESS_0) ?
 +      TMDL_ERR_DLHDMITX_I2C_WRITE : TMDL_ERR_DLHDMICEC_I2C_WRITE;
  }
@@ -1252,7 +1362,9 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiTx/cfg/TDA9989/tmdlH
 -   tmErrorCode_t  errCode = TM_OK;
 -   struct i2c_client *client=GetThisI2cClient();
 -   u32 client_main_addr=client->addr;
--
++   struct i2c_client *client = (pSysArgs->slaveAddr == UNIT_I2C_ADDRESS_0) ? 
++				txGetThisI2cClient() : cecGetThisI2cClient();
+ 
 -   /* DevLib needs address control, so let it be */ 
 -   client->addr=pSysArgs->slaveAddr;
 -   
@@ -1270,9 +1382,6 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiTx/cfg/TDA9989/tmdlH
 -   
 -   /* restore default client address */
 -   client->addr=client_main_addr;
-+   struct i2c_client *client = (pSysArgs->slaveAddr == UNIT_I2C_ADDRESS_0) ? 
-+				txGetThisI2cClient() : cecGetThisI2cClient();
-+
 +   RETIF(!client || !client->adapter ||
 +         client->addr != pSysArgs->slaveAddr, TM_ERR_NULL_DATAOUTFUNC)
 +
@@ -1286,7 +1395,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiTx/cfg/TDA9989/tmdlH
  }
  
  
-@@ -497,7 +284,6 @@
+@@ -497,7 +284,6 @@ tmErrorCode_t tmdlHdmiTxIWSemaphoreCreate
         return TMDL_ERR_DLHDMITX_NO_RESOURCES;
      }
      
@@ -1294,22 +1403,10 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/comps/tmdlHdmiTx/cfg/TDA9989/tmdlH
      sema_init(mutex,1);
      *pHandle = (tmdlHdmiTxIWSemHandle_t)mutex;
  
-diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/Makefile b/drivers/video/dovefb/nxp_hdmi/Makefile
---- a/drivers/video/dovefb/nxp_hdmi/Makefile	2012-08-25 12:42:19.000000000 +0200
-+++ b/drivers/video/dovefb/nxp_hdmi/Makefile	2012-10-21 15:44:19.000000000 +0200
-@@ -125,6 +125,9 @@
- hdmitx-objs := tda998x.o
- hdmicec-objs := tda998x_cec.o
- 
-+#hdmitx-objs += tda998x_i2c.o
-+hdmicec-objs += tda998x_i2c.o
-+
- # NXP comps
- ifeq ($(TDA_TX),TDA19989)
- hdmitx-objs += $(TXSRC)/tmdlHdmiTx.o
-diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x.c b/drivers/video/dovefb/nxp_hdmi/tda998x.c
---- a/drivers/video/dovefb/nxp_hdmi/tda998x.c	2012-08-28 13:14:11.000000000 +0200
-+++ b/drivers/video/dovefb/nxp_hdmi/tda998x.c	2012-10-21 15:44:19.000000000 +0200
+diff --git a/drivers/video/dovefb/nxp_hdmi/tda998x.c b/drivers/video/dovefb/nxp_hdmi/tda998x.c
+index 2e9fd06..3875a40 100755
+--- a/drivers/video/dovefb/nxp_hdmi/tda998x.c
++++ b/drivers/video/dovefb/nxp_hdmi/tda998x.c
 @@ -41,7 +41,9 @@
  /* local */
  #include "tda998x_version.h"
@@ -1334,7 +1431,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x.c b/drivers/video/dovefb/n
  #ifdef ANDROID_DSS
  static struct omap_video_timings video_640x480at60Hz_panel_timings = {
     .x_res          = 640,
-@@ -202,16 +206,15 @@
+@@ -202,16 +206,15 @@ MODULE_PARM_DESC(major, "The major number of the device mapper");
  /* 
   *  Get main and unique I2C Client driver handle
   */
@@ -1354,19 +1451,19 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x.c b/drivers/video/dovefb/n
  {
     switch (err & 0x0FFF)
        {
-@@ -779,16 +782,21 @@
+@@ -779,16 +782,21 @@ void show_video(tda_instance *this) {
  static void interrupt_polling(struct work_struct *dummy)
  {
     tda_instance *this=&our_instance;
 -   int err=0;
 +   tmdlHdmiTxEvent_t prevEvent;
 +   int err=0, loopCnt=0;
-+
-+   do {
-+      prevEvent = this->tda.event;
  
 -   /* Tx part */
 -   TRY(tmdlHdmiTxHandleInterrupt(this->tda.instance));
++   do {
++      prevEvent = this->tda.event;
++
 +      /* Tx part */
 +      TRY(tmdlHdmiTxHandleInterrupt(this->tda.instance));
  
@@ -1383,7 +1480,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x.c b/drivers/video/dovefb/n
  
   TRY_DONE:
  
-@@ -852,7 +860,10 @@
+@@ -852,7 +860,10 @@ void register_cec_interrupt(cec_callback_t fct)
  {
     tda_instance *this=&our_instance;
  
@@ -1395,7 +1492,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x.c b/drivers/video/dovefb/n
  }
  EXPORT_SYMBOL(register_cec_interrupt);
  
-@@ -860,6 +871,7 @@
+@@ -860,6 +871,7 @@ void unregister_cec_interrupt(void)
  {
     tda_instance *this=&our_instance;
  
@@ -1403,7 +1500,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x.c b/drivers/video/dovefb/n
     this->driver.cec_callback = NULL;
  }
  EXPORT_SYMBOL(unregister_cec_interrupt);
-@@ -906,7 +918,7 @@
+@@ -906,7 +918,7 @@ static void eventCallbackTx(tmdlHdmiTxEvent_t event)
  
     this->tda.event=event;
     if (TMDL_HDMITX_HDCP_INACTIVE != event) {
@@ -1412,7 +1509,20 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x.c b/drivers/video/dovefb/n
     }
  
     switch (event) {
-@@ -1405,9 +1417,10 @@
+@@ -979,11 +991,9 @@ static void eventCallbackTx(tmdlHdmiTxEvent_t event)
+       break;
+    }
+ 
++ TRY_DONE:
+    this->driver.poll_done=true;
+    wake_up_interruptible(&this->driver.wait);
+-   
+- TRY_DONE:
+-   (void)0;
+ }
+ 
+ /*
+@@ -1405,9 +1415,10 @@ static long this_cdev_ioctl(struct file *pFile, unsigned int cmd, unsigned long
     }
  
     if (_IOC_DIR(cmd) & _IOC_READ) 
@@ -1425,7 +1535,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x.c b/drivers/video/dovefb/n
     if (err) {
        printk(KERN_ERR "hdmitx:%s:argument access denied (check address vs value)\n",__func__);
        printk(KERN_ERR "_IOC_DIR:%d arg:%lx\n",_IOC_DIR(cmd),arg);
-@@ -1899,7 +1912,7 @@
+@@ -1899,7 +1910,7 @@ static int this_i2c_probe(struct i2c_client *client, const struct i2c_device_id
  
  /* CuBox specific stuff */
  /* Addions to get EDID stuff out of the transmitter driver */
@@ -1434,7 +1544,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x.c b/drivers/video/dovefb/n
  {
  	tda_instance* this = &our_instance;
  	if (!initialized) return NULL;
-@@ -1915,14 +1928,13 @@
+@@ -1915,14 +1926,13 @@ char *tda19988_get_edid(int *num_of_blocks)
  	return  this->tda.raw_edid;
  }
  
@@ -1451,7 +1561,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x.c b/drivers/video/dovefb/n
  {640,	480,	0,	60,	TMDL_HDMITX_VFMT_01_640x480p_60Hz},
  {720,	480,	0,	60,	TMDL_HDMITX_VFMT_02_720x480p_60Hz},
  {720,	480,	0,	60,	TMDL_HDMITX_VFMT_03_720x480p_60Hz},
-@@ -1994,40 +2006,33 @@
+@@ -1994,45 +2004,40 @@ struct res_to_vmode resolution_to_video_format[] = {
  {1024,	768,	1,	87,	TMDL_HDMITX_VFMT_PC_1024x768i_87Hz},
  };
  
@@ -1507,8 +1617,18 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x.c b/drivers/video/dovefb/n
 +			mode,hz,resolution_to_video_format[mode].hz);
  
  	if (initialized) {
- 		this->tda.setio.video_in.format = mode;
-@@ -2390,7 +2395,6 @@
+-		this->tda.setio.video_in.format = mode;
+-		this->tda.setio.video_out.format = mode;
+-		show_video(this);
++	    if (this->tda.setio.video_in.format != mode) {
++            this->tda.setio.video_in.format = mode;
++            this->tda.setio.video_out.format = mode;
++    		show_video(this);
++    	}
+ 	} else {
+ 		saved_mode = mode;
+ 	}
+@@ -2390,7 +2395,6 @@ static int __init tx_init(void)
     /* 
        general device context
     */
@@ -1516,26 +1636,33 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x.c b/drivers/video/dovefb/n
     sema_init(&this->driver.sem,1);
     
     /*
-@@ -2419,6 +2423,11 @@
- 	show_video(this);
-    }
+@@ -2414,9 +2418,14 @@ static int __init tx_init(void)
  
-+   /* enable cec callback */
-+   if (cec_callback) {
-+	this->driver.cec_callback = cec_callback;
+    /* set video mode */
+    if (saved_mode >= 0) {
+-	this->tda.setio.video_in.format = saved_mode;
+-	this->tda.setio.video_out.format = saved_mode;
+-	show_video(this);
++      this->tda.setio.video_in.format = saved_mode;
++	  this->tda.setio.video_out.format = saved_mode;
++	  show_video(this);
 +   }
 +
-    return 0;
++   /* enable cec callback */
++   if (cec_callback) {
++	  this->driver.cec_callback = cec_callback;
+    }
  
-  init_out:
-@@ -2475,3 +2484,4 @@
+    return 0;
+@@ -2475,3 +2484,4 @@ module_exit(tx_exit);
  MODULE_LICENSE("GPL");
  MODULE_AUTHOR("Andre Lepine <andre.lepine@nxp.com>");
  MODULE_DESCRIPTION(HDMITX_NAME " driver");
 +
-diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c
---- a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c	2012-08-25 12:42:19.000000000 +0200
-+++ b/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c	2012-10-21 15:44:19.000000000 +0200
+diff --git a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c
+index dfe1f5f..ff79f31 100755
+--- a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c
++++ b/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c
 @@ -30,7 +30,7 @@
  #include <linux/delay.h>
  #include <linux/interrupt.h>
@@ -1555,7 +1682,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
  
  /*
   *
-@@ -60,8 +62,8 @@
+@@ -60,8 +62,8 @@ static const struct i2c_device_id this_i2c_id[] = {
     { CEC_NAME, 0 },
     { },
  };
@@ -1565,7 +1692,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
  
  #ifdef TWL4030_HACK
  /* AL : hack to bypass keypad */
-@@ -69,24 +71,12 @@
+@@ -69,24 +71,12 @@ struct input_dev *gkp_input;
  extern struct input_dev *get_twm4030_input(void);
  #endif
  
@@ -1591,7 +1718,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
  module_param_named(verbose,param_verbose,int,S_IRUGO | S_IWUSR);
  MODULE_PARM_DESC(verbose, "Make the driver verbose");
  module_param_named(major, param_major, int, S_IRUGO);
-@@ -110,12 +100,11 @@
+@@ -110,12 +100,11 @@ MODULE_PARM_DESC(addr, "Physical address (until EDID received)");
  
  
  /* 
@@ -1606,7 +1733,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
  }
  
  /*
-@@ -152,6 +141,9 @@
+@@ -152,6 +141,9 @@ static char *hdmi_cec_err_string(int err)
        }
  }
  
@@ -1616,7 +1743,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
  char *cec_opcode(int op)
  {
     switch (op)
-@@ -320,6 +312,12 @@
+@@ -320,6 +312,12 @@ static char *cec_ioctl(int io)
        case CEC_IOCTL_DISABLE_CALIBRATION_CMD: {return "CEC_IOCTL_DISABLE_CALIBRATION_CMD";break;}
        case CEC_IOCTL_SEND_MSG_CMD: {return "CEC_IOCTL_SEND_MSG_CMD";break;}
        case CEC_IOCTL_SET_REGISTER_CMD: {return "CEC_IOCTL_SET_REGISTER_CMD";break;}
@@ -1629,7 +1756,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
        default : {return "unknown";break;}
        }
  }
-@@ -447,12 +445,20 @@
+@@ -447,12 +445,20 @@ static void cec_on(cec_instance *this)
  
     disable_irq(gpio_to_irq(TDA_IRQ_CALIB));
  
@@ -1653,7 +1780,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
     this->cec.clock = TMDL_HDMICEC_CLOCK_FRO;
     TRY(tmdlHdmiCecEnableCalibration(this->cec.inst,this->cec.clock));
     msleep(10);
-@@ -476,14 +482,12 @@
+@@ -476,14 +482,12 @@ static void cec_on(cec_instance *this)
     this->cec.setup.cecClockSource = this->cec.clock;
     TRY(tmdlHdmiCecInstanceSetup(this->cec.inst,&this->cec.setup));
  
@@ -1671,7 +1798,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
  }
  
  /*
-@@ -503,52 +507,115 @@
+@@ -503,52 +507,120 @@ static void cec_standby(cec_instance *this)
  }
  
  /*
@@ -1733,6 +1860,10 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
     
 -   LOG(KERN_INFO,"%s called\n",__func__);
 +   LOG(KERN_INFO,"called\n");
++   
++   /* sync with this_cdev_write */
++   down(&this->driver.sem);
++
  
     /* switch on/off CEC */
 -   if (!get_hpd_status() &&                     \
@@ -1774,11 +1905,11 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
 +            if (this->cec.phy_addr != 0xFFFF) {
 +               this->cec.rx_addr = get_next_logical_addr(
 +                  this->cec.device_type, CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST);
-+	       TRY(tmdlHdmiCecPollingMessage(this->cec.inst, this->cec.rx_addr));
++               TRY(tmdlHdmiCecPollingMessage(this->cec.inst, this->cec.rx_addr));
 +            }
 +            else {
 +               this->cec.rx_addr = CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST;
-+	    }
++            }
 +         } 
 +         else {
 +            // Todo: how to notify libCEC about this ??
@@ -1793,7 +1924,6 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
 -         TRY(tmdlHdmiCecHandleInterrupt(this->cec.inst));
 -         msleep(200);
 -         TRY(tmdlHdmiCecActiveSource(this->cec.inst,this->cec.phy_addr));
--         this->cec.source_status = CEC_POWER_STATUS_ON;
 +         LOG(KERN_INFO,"EDID received in CEC_POWER_STATUS_STANDBY\n");
 +
 +         if( !this->param.passive) {
@@ -1802,13 +1932,24 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
 +            TRY(tmdlHdmiCecHandleInterrupt(this->cec.inst));
 +            msleep(200);
 +            TRY(tmdlHdmiCecActiveSource(this->cec.inst,this->cec.phy_addr));
-+            this->cec.source_status = CEC_POWER_STATUS_ON;
-+            goto TRY_DONE;
-+	 }
++         }
++         
+          this->cec.source_status = CEC_POWER_STATUS_ON;
++         goto TRY_DONE;
        }
     }
  #endif
-@@ -613,7 +680,7 @@
+@@ -583,6 +655,9 @@ static void cec_interrupt(struct work_struct *dummy)
+     
+  TRY_DONE:
+ 
++   /* sync with this_cdev_write */
++   up(&this->driver.sem);
++
+    /* setup next tick */
+    if (!this->driver.deinit_req) {
+       /* setup next polling */
+@@ -613,7 +688,7 @@ void polling_timeout(unsigned long arg)
           printk(KERN_INFO "Fake Rx message\n");
           this->driver.timer.data=0;
  
@@ -1817,7 +1958,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
           this->cec.frame.addr = 4; /* 0-->4 (TV-->MediaPlayer1) */
           this->cec.frame.data[0]=0x46; /* opcode: "GiveOsd" */
           this->cec.frame.service = CEC_RX_DONE;
-@@ -659,6 +726,7 @@
+@@ -659,6 +734,7 @@ static void user_control(int key, int press)
  }
  #endif
  
@@ -1825,7 +1966,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
  /*
   *  CEC callback
   */
-@@ -668,18 +736,81 @@
+@@ -668,18 +744,81 @@ static void eventCallbackCEC(tmdlHdmiCecEvent_t event, unsigned char *data, unsi
     cec_instance *this=&our_instance;
     int opcode;
     int initiator,receiver;
@@ -1912,7 +2053,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
            this->cec.frame.data[0],                                      \
            this->cec.frame.data[1],                                      \
            this->cec.frame.data[2],                                      \
-@@ -843,11 +974,11 @@
+@@ -843,11 +982,11 @@ static void eventCallbackCEC(tmdlHdmiCecEvent_t event, unsigned char *data, unsi
     }
     else if (event == TMDL_HDMICEC_CALLBACK_STATUS) {
  
@@ -1927,7 +2068,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
        opcode=this->cec.frame.data[0];
        this->cec.frame.service = CEC_TX_DONE;
  
-@@ -876,12 +1007,12 @@
+@@ -876,12 +1015,12 @@ static void eventCallbackCEC(tmdlHdmiCecEvent_t event, unsigned char *data, unsi
              }
           }
           else {
@@ -1942,7 +2083,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
           }
        }
  
-@@ -900,7 +1031,7 @@
+@@ -900,7 +1039,7 @@ static void eventCallbackCEC(tmdlHdmiCecEvent_t event, unsigned char *data, unsi
  /*
   *  DevLib CEC opening
   */
@@ -1951,7 +2092,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
  {
     int err=0;
  
-@@ -913,20 +1044,21 @@
+@@ -913,20 +1052,21 @@ static int hdmi_cec_init(cec_instance *this)
  
  /*    this->cec.version = CEC_VERSION_1_4; */
     this->cec.version = CEC_VERSION_1_3a;
@@ -1986,7 +2127,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
  
   TRY_DONE:
     return err;
-@@ -951,29 +1083,34 @@
+@@ -951,29 +1091,34 @@ static int hdmi_cec_init(cec_instance *this)
  
  static int this_cdev_open(struct inode *pInode, struct file *pFile)
  {
@@ -2029,7 +2170,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
  
     up(&this->driver.sem);
     return 0;
-@@ -995,9 +1132,10 @@
+@@ -995,9 +1140,10 @@ static long this_cdev_ioctl(struct file *pFile, unsigned int cmd, unsigned long
     }
  
     if (_IOC_DIR(cmd) & _IOC_READ) 
@@ -2042,7 +2183,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
     if (err) {
        printk(KERN_ERR "hdmicec:%s:argument access denied (check address vs value)\n",__func__);
        printk(KERN_ERR "_IOC_DIR:%d arg:%lx\n",_IOC_DIR(cmd),arg);
-@@ -1010,6 +1148,82 @@
+@@ -1010,6 +1156,82 @@ static long this_cdev_ioctl(struct file *pFile, unsigned int cmd, unsigned long
  
     switch ( _IOC_NR(cmd) )
        {
@@ -2125,7 +2266,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
        case CEC_VERBOSE_ON_CMD:
           {
              printk(KERN_INFO "verbose on\n");
-@@ -1203,9 +1417,11 @@
+@@ -1203,9 +1425,11 @@ static long this_cdev_ioctl(struct file *pFile, unsigned int cmd, unsigned long
  
        case CEC_IOCTL_RX_ADDR_CMD:
           {
@@ -2140,7 +2281,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
              break;
           }
  
-@@ -1821,6 +2037,110 @@
+@@ -1821,6 +2045,102 @@ static long this_cdev_ioctl(struct file *pFile, unsigned int cmd, unsigned long
  }
  
  /*
@@ -2165,8 +2306,6 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
 +      bytes_returned += sizeof(cec_frame);
 +   }
 +
-+//LOG(KERN_INFO,"%d bytes\n",bytes_returned);
-+
 +   return bytes_returned;
 +}
 +
@@ -2186,16 +2325,12 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
 +   if (frame->size < 3 || frame->size > sizeof(cec_frame))
 +      return -EINVAL; 
 +   
-+
 +   down(&this->driver.sem);
 +
 +   if (this->driver.write_pending || this->cec.source_status != CEC_POWER_STATUS_ON) {
 +      up(&this->driver.sem);
 +      return -EAGAIN;
 +   }
-+
-+//printk(KERN_INFO "%s: %02x %02x%02x%02x%02x (%d)\n", __func__, 
-+//  frame->addr,frame->data[0],frame->data[1],frame->data[2],frame->data[3], frame->size);
 +
 +   if (this->cec.rx_addr == CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST ||
 +       (frame->addr & 0xf0) != (CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST << 4)) {
@@ -2207,8 +2342,6 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
 +      LOG(KERN_ERR,"initiator 'Broadcast' is not supported !\n");
 +      goto TRY_DONE;
 +   }
-+
-+//LOG(KERN_INFO,"%d bytes\n",bytes_written);
 +
 +   up(&this->driver.sem);
 +   return bytes_written;
@@ -2233,10 +2366,10 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
 +      poll_wait(pFile, &this->driver.wait_write, poll_data);
 +
 +      if (this->driver.read_queue_head != this->driver.read_queue_tail)
-+   	 mask |= POLLIN | POLLRDNORM;	/* readable */
++         mask |= POLLIN | POLLRDNORM;	/* readable */
 +
-+      if (!this->driver.write_pending)
-+   	 mask |= POLLOUT | POLLWRNORM;	/* writable */
++      if (!this->driver.write_pending && this->cec.source_status == CEC_POWER_STATUS_ON)
++         mask |= POLLOUT | POLLWRNORM;	/* writable */
 +
 +   } else {
 +      mask |= POLLIN | POLLRDNORM | POLLOUT | POLLWRNORM;
@@ -2251,7 +2384,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
   *  ioctl driver :: releasing
   */
  static int this_cdev_release(struct inode *pInode, struct file *pFile)
-@@ -1830,15 +2150,25 @@
+@@ -1830,15 +2150,25 @@ static int this_cdev_release(struct inode *pInode, struct file *pFile)
  
     LOG(KERN_INFO,"called\n");
  
@@ -2280,7 +2413,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
        pFile->private_data = NULL;
     }
     else {
-@@ -1868,17 +2198,8 @@
+@@ -1868,17 +2198,8 @@ static int __devinit this_i2c_probe(struct i2c_client *client, const struct i2c_
        return -ENODEV;
     }
  
@@ -2300,7 +2433,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
  
     tmdlHdmiCecGetSWVersion(&this->cec.sw_version);
     LOG(KERN_INFO,"HDMI CEC SW Version:%lu.%lu compatibility:%lu\n", \
-@@ -1888,6 +2209,14 @@
+@@ -1888,6 +2209,14 @@ static int __devinit this_i2c_probe(struct i2c_client *client, const struct i2c_
  
     /* I2C ok, then let's startup CEC */
  
@@ -2315,7 +2448,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
     /* prepare event */
     this->driver.poll_done = true; /* currently idle */
     init_waitqueue_head(&this->driver.wait);
-@@ -1905,7 +2234,7 @@
+@@ -1905,7 +2234,7 @@ static int __devinit this_i2c_probe(struct i2c_client *client, const struct i2c_
     /* FRO calibration */
     err=gpio_request(TDA_IRQ_CALIB,"tda19989 calibration");
     if (err < 0) {
@@ -2324,7 +2457,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
        goto i2c_out;
     }
     /* turn GPIO into IRQ */
-@@ -1919,9 +2248,8 @@
+@@ -1919,9 +2248,8 @@ static int __devinit this_i2c_probe(struct i2c_client *client, const struct i2c_
     }
  #endif
  
@@ -2335,7 +2468,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
  
     if (get_hpd_status()) {
        cec_on(this);
-@@ -1938,7 +2266,7 @@
+@@ -1938,7 +2266,7 @@ static int __devinit this_i2c_probe(struct i2c_client *client, const struct i2c_
   i2c_out:
     LOG(KERN_INFO,"HDMICEC eject: this->driver.i2c_client removed\n");
     tmdlHdmiCecClose(this->cec.inst);
@@ -2344,7 +2477,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
     this->driver.i2c_client = NULL;
  
     return err;
-@@ -1961,7 +2289,7 @@
+@@ -1961,7 +2289,7 @@ static int this_i2c_remove(struct i2c_client *client)
                __func__);
        return -ENODEV;
     }
@@ -2353,7 +2486,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
     this->driver.i2c_client = NULL;
  
     return err;
-@@ -1990,6 +2318,9 @@
+@@ -1990,6 +2318,9 @@ static struct file_operations this_cdev_fops = {
   open:     this_cdev_open,
   release:  this_cdev_release,
   unlocked_ioctl: this_cdev_ioctl,
@@ -2363,7 +2496,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
  };
  
  /*
-@@ -2008,6 +2339,8 @@
+@@ -2008,6 +2339,8 @@ static int __init cec_init(void)
     this->param.verbose = param_verbose;
     this->param.major = param_major;
     this->param.minor = param_minor;
@@ -2372,7 +2505,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
     /* Hello word */
     printk(KERN_INFO "%s(%s) %d.%d.%d compiled: %s %s %s\n", HDMICEC_NAME, TDA_NAME, TDA_VERSION_MAJOR,
            TDA_VERSION_MINOR, TDA_VERSION_PATCHLEVEL, __DATE__, __TIME__, TDA_VERSION_EXTRA);
-@@ -2051,8 +2384,8 @@
+@@ -2051,8 +2384,8 @@ static int __init cec_init(void)
        this->param.major = MAJOR(dev);
     }
  
@@ -2383,7 +2516,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
  
     this->driver.class = class_create(THIS_MODULE, HDMICEC_NAME);
     if (IS_ERR(this->driver.class)) {
-@@ -2063,7 +2396,7 @@
+@@ -2063,7 +2396,7 @@ static int __init cec_init(void)
     this->driver.dev = device_create(this->driver.class, NULL, dev, NULL, HDMICEC_NAME);
  
     this->driver.devno = dev;
@@ -2392,7 +2525,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
     if (err){
        printk(KERN_INFO "unable to add device for %s, ipp_driver.devno=%d %s\n",HDMICEC_NAME,this->driver.devno,ERR_TO_STR(err));
        device_destroy(this->driver.class,this->driver.devno);
-@@ -2080,7 +2413,6 @@
+@@ -2080,7 +2413,6 @@ static int __init cec_init(void)
     /* 
        general device context
     */
@@ -2400,7 +2533,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
     sema_init(&this->driver.sem,1);
     this->driver.deinit_req=0;
     
-@@ -2119,7 +2451,7 @@
+@@ -2119,7 +2451,7 @@ static void __exit cec_exit(void)
  #endif
  
     /* unregister cdevice */
@@ -2409,7 +2542,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
     unregister_chrdev_region(this->driver.devno, MAX_MINOR);
  
     /* unregister device */
-@@ -2128,7 +2460,6 @@
+@@ -2128,7 +2460,6 @@ static void __exit cec_exit(void)
  
     /* unregister i2c */
     i2c_del_driver(&this_i2c_driver);
@@ -2417,10 +2550,11 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dove
  }
  
  
-diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.h b/drivers/video/dovefb/nxp_hdmi/tda998x_cec.h
---- a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.h	2012-08-25 12:42:19.000000000 +0200
-+++ b/drivers/video/dovefb/nxp_hdmi/tda998x_cec.h	2012-10-21 15:44:19.000000000 +0200
-@@ -70,6 +70,7 @@
+diff --git a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.h b/drivers/video/dovefb/nxp_hdmi/tda998x_cec.h
+index 2a06e95..abe42f5 100755
+--- a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.h
++++ b/drivers/video/dovefb/nxp_hdmi/tda998x_cec.h
+@@ -70,6 +70,7 @@ typedef void (*cec_callback_t) (struct work_struct *dummy);
  typedef struct {
     /* module params */
     struct { 
@@ -2428,7 +2562,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.h b/drivers/video/dove
        int verbose;
        int major;
        int minor;
-@@ -87,12 +88,21 @@
+@@ -87,12 +88,21 @@ typedef struct {
        bool poll_done;
        int deinit_req;
        struct timer_list timer;
@@ -2451,9 +2585,11 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.h b/drivers/video/dove
        unsigned char initiator;
        cec_version version;
        cec_sw_version sw_version;
-diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_exports.h b/drivers/video/dovefb/nxp_hdmi/tda998x_exports.h
---- a/drivers/video/dovefb/nxp_hdmi/tda998x_exports.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/video/dovefb/nxp_hdmi/tda998x_exports.h	2012-10-21 15:44:19.000000000 +0200
+diff --git a/drivers/video/dovefb/nxp_hdmi/tda998x_exports.h b/drivers/video/dovefb/nxp_hdmi/tda998x_exports.h
+new file mode 100644
+index 0000000..9fcb5ba
+--- /dev/null
++++ b/drivers/video/dovefb/nxp_hdmi/tda998x_exports.h
 @@ -0,0 +1,35 @@
 +/*****************************************************************************/
 +/*                                                                           */
@@ -2490,9 +2626,11 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_exports.h b/drivers/video/
 +
 +#endif
 +
-diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_i2c.c b/drivers/video/dovefb/nxp_hdmi/tda998x_i2c.c
---- a/drivers/video/dovefb/nxp_hdmi/tda998x_i2c.c	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/video/dovefb/nxp_hdmi/tda998x_i2c.c	2012-10-21 15:44:19.000000000 +0200
+diff --git a/drivers/video/dovefb/nxp_hdmi/tda998x_i2c.c b/drivers/video/dovefb/nxp_hdmi/tda998x_i2c.c
+new file mode 100644
+index 0000000..3daf9af
+--- /dev/null
++++ b/drivers/video/dovefb/nxp_hdmi/tda998x_i2c.c
 @@ -0,0 +1,135 @@
 +/*****************************************************************************/
 +/*                                                                           */
@@ -2629,9 +2767,11 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_i2c.c b/drivers/video/dove
 +}
 +
 +
-diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_i2c.h b/drivers/video/dovefb/nxp_hdmi/tda998x_i2c.h
---- a/drivers/video/dovefb/nxp_hdmi/tda998x_i2c.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/drivers/video/dovefb/nxp_hdmi/tda998x_i2c.h	2012-10-21 15:44:19.000000000 +0200
+diff --git a/drivers/video/dovefb/nxp_hdmi/tda998x_i2c.h b/drivers/video/dovefb/nxp_hdmi/tda998x_i2c.h
+new file mode 100644
+index 0000000..2f5adcd
+--- /dev/null
++++ b/drivers/video/dovefb/nxp_hdmi/tda998x_i2c.h
 @@ -0,0 +1,31 @@
 +/*****************************************************************************/
 +/*                                                                           */
@@ -2664,10 +2804,11 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_i2c.h b/drivers/video/dove
 +
 +#endif
 +
-diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_ioctl.h b/drivers/video/dovefb/nxp_hdmi/tda998x_ioctl.h
---- a/drivers/video/dovefb/nxp_hdmi/tda998x_ioctl.h	2012-08-25 12:42:19.000000000 +0200
-+++ b/drivers/video/dovefb/nxp_hdmi/tda998x_ioctl.h	2012-10-21 15:44:19.000000000 +0200
-@@ -772,15 +772,28 @@
+diff --git a/drivers/video/dovefb/nxp_hdmi/tda998x_ioctl.h b/drivers/video/dovefb/nxp_hdmi/tda998x_ioctl.h
+index 192615b..da07a83 100755
+--- a/drivers/video/dovefb/nxp_hdmi/tda998x_ioctl.h
++++ b/drivers/video/dovefb/nxp_hdmi/tda998x_ioctl.h
+@@ -772,15 +772,28 @@ typedef struct {
    } cec_send_msg;
  */
  
@@ -2699,7 +2840,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_ioctl.h b/drivers/video/do
  typedef tmSWVersion_t cec_sw_version;
  typedef tmPowerState_t cec_power;
  typedef tmdlHdmiCecInstanceSetup_t cec_setup;
-@@ -810,6 +823,9 @@
+@@ -810,6 +823,9 @@ typedef tmdlHdmiCECDeviceType_t cec_device_type;
  
  /* service */
  enum {
@@ -2709,7 +2850,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_ioctl.h b/drivers/video/do
     CEC_WAITING = 0x80,
     CEC_RELEASE,
     CEC_RX_DONE,
-@@ -912,7 +928,13 @@
+@@ -912,7 +928,13 @@ enum {
     CEC_IOCTL_ENABLE_CALIBRATION_CMD,
     CEC_IOCTL_DISABLE_CALIBRATION_CMD,
     CEC_IOCTL_SEND_MSG_CMD,
@@ -2724,7 +2865,7 @@ diff -N -r -u a/drivers/video/dovefb/nxp_hdmi/tda998x_ioctl.h b/drivers/video/do
  };
  
  
-@@ -1010,7 +1032,15 @@
+@@ -1010,7 +1032,15 @@ enum {
  #define CEC_IOCTL_DISABLE_EVENT      _IOWR(CEC_IOCTL_BASE,CEC_IOCTL_DISABLE_EVENT_CMD,cec_event)
  #define CEC_IOCTL_ENABLE_CALIBRATION      _IOWR(CEC_IOCTL_BASE,CEC_IOCTL_ENABLE_CALIBRATION_CMD,cec_clock)
  #define CEC_IOCTL_DISABLE_CALIBRATION      _IO(CEC_IOCTL_BASE,CEC_IOCTL_DISABLE_CALIBRATION_CMD)
