@@ -1,24 +1,53 @@
 #!/bin/sh
 
+append_config() {
+  cat >> /etc/wpa_supplicant/wpa_supplicant.conf <<EOF
+network={
+ssid="$1"
+proto=WPA RSN
+key_mgmt=WPA-PSK
+psk="$2"
+}
+EOF
+}
+
+# first interface
 . /etc/network
 
 [ "$NETWORK_BACKEND" = udhcpc ] || exit 1
+
+cat > /etc/wpa_supplicant/wpa_supplicant.conf <<EOF
+update_config=1
+ctrl_interface=/var/run/wpa_supplicant
+EOF
 
 [ -z "$IFACE" ] && IFACE=eth0
 
 [ -n "$SSID" -a "$SECURITY" = "WEP" ] && iwconfig $IFACE essid $SSID key $PASSPHRASE
 if [ -n "$SSID" -a "$SECURITY" = "PSK" ] ; then
-  cat > /etc/wpa_supplicant/wpa_supplicant.conf <<EOF
-update_config=1
-ctrl_interface=/var/run/wpa_supplicant
+  append_config $SSID $PASSPHRASE
 
-network={
-ssid="$SSID"
-proto=WPA RSN
-key_mgmt=WPA-PSK
-psk="$PASSPHRASE"
-}
-EOF
+  systemctl stop wpa_supplicant.service
+  /usr/sbin/wpa_supplicant -c /etc/wpa_supplicant/wpa_supplicant.conf -i $IFACE &
+fi
+
+ifconfig $IFACE up
+udhcpc -s /bin/assign-ip -i $IFACE
+
+## check for a second network interface
+. /etc/network2
+
+if [ "$ENABLE" = "false" ] ; then
+  echo "No 2nd interface configured, leaving ..."
+  exit 0
+fi
+
+[ "$NETWORK_BACKEND" = udhcpc ] || exit 1
+[ -z "$IFACE" ] && IFACE=eth1
+
+[ -n "$SSID" -a "$SECURITY" = "WEP" ] && iwconfig $IFACE essid $SSID key $PASSPHRASE
+if [ -n "$SSID" -a "$SECURITY" = "PSK" ] ; then
+  append_config $SSID $PASSPHRASE
 
   systemctl stop wpa_supplicant.service
   /usr/sbin/wpa_supplicant -c /etc/wpa_supplicant/wpa_supplicant.conf -i $IFACE &
