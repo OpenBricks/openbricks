@@ -11,6 +11,19 @@ psk="$2"
 EOF
 }
 
+wait_for_slow_device () {
+  COUNT="1 2 3 4 5 6 7 8 9"
+  for i in $COUNT; do
+    if [ -f /sys/class/net/$1/address ] ; then 
+      echo "found /sys/class/net/$1/address"
+      break
+    else
+      echo "Waiting for $1 : try $i"
+      sleep $i
+    fi
+  done
+}
+
 # first interface
 . /etc/network
 
@@ -22,7 +35,9 @@ ctrl_interface=/var/run/wpa_supplicant
 EOF
 
 [ -z "$IFACE" ] && IFACE=eth0
-
+if [ "$WAIT_FOR_SLOW_DEVICE" = true ] ; then
+  wait_for_slow_device $IFACE
+fi
 [ -n "$SSID" -a "$SECURITY" = "WEP" ] && iwconfig $IFACE essid $SSID key $PASSPHRASE
 if [ -n "$SSID" -a "$SECURITY" = "PSK" ] ; then
   append_config $SSID $PASSPHRASE
@@ -44,7 +59,9 @@ fi
 
 [ "$NETWORK_BACKEND" = udhcpc ] || exit 1
 [ -z "$IFACE" ] && IFACE=eth1
-
+if [ "$WAIT_FOR_SLOW_DEVICE" = true ] ; then
+  wait_for_slow_device $IFACE
+fi
 [ -n "$SSID" -a "$SECURITY" = "WEP" ] && iwconfig $IFACE essid $SSID key $PASSPHRASE
 if [ -n "$SSID" -a "$SECURITY" = "PSK" ] ; then
   append_config $SSID $PASSPHRASE
