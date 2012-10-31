@@ -12,7 +12,7 @@ all: binaries
 .stamps/kconfiginit:
 	scripts/kconfiginit
 
-config silentoldconfig oldconfig menuconfig xconfig gconfig: .stamps/kconfiginit build/config/Kconfig.version build/config/Kconfig.arch build/config/Kconfig.platform build/config/Kconfig.machine build/config/Kconfig.flavours build/config/Kconfig.packages build/config/Kconfig.use
+config silentoldconfig oldconfig menuconfig nconfig xconfig gconfig: .stamps/kconfiginit build/config/Kconfig.version build/config/Kconfig.arch build/config/Kconfig.platform build/config/Kconfig.machine build/config/Kconfig.flavours build/config/Kconfig.packages build/config/Kconfig.use
 	scripts/checkdeps $@
 	scripts/kconfiggenerate $@
 	scripts/kconfig2options
