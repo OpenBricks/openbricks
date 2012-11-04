@@ -8,8 +8,14 @@ if [ ! -b "$DEVICE" ] || [ ! -f "$ROOTFS" -a ! -d "$ROOTFS" ]; then
   exit 1
 fi
 
-if [ "`id -u`" -ne 0 ]; then
+if [ "$(id -u)" -ne 0 ]; then
   echo "Please run this program as root."
+  exit 1
+fi
+
+if [ -z "$(which parted)" ]; then
+  echo "Please install parted."
+  exit 2
 fi
 
 echo "I'm about to overwrite ${DEVICE}. All existing data will be lost."
@@ -19,8 +25,10 @@ done
 [ "$REPLY" = n -o "$REPLY" = no ] && exit
 
 grep -q $DEVICE /proc/mounts && grep $DEVICE /proc/mounts | cut -f2 -d\ | xargs umount
-dd if=/dev/zero of=$DEVICE bs=512 count=4
-/bin/echo -e 'o\nn\np\n1\n\n\nt\n83\nw\n' | fdisk $DEVICE
+
+parted -s $DEVICE mktable msdos
+parted -s --align=opt $DEVICE mkpart primary 0% 100%
+
 echo $DEVICE | grep -q mmc && OPT=p
 root_part=${DEVICE}${OPT}1
 mkfs.ext4 -L GEEXBOX $root_part
