@@ -1404,7 +1404,7 @@ index 07f3283..e06b366 100755
      *pHandle = (tmdlHdmiTxIWSemHandle_t)mutex;
  
 diff --git a/drivers/video/dovefb/nxp_hdmi/tda998x.c b/drivers/video/dovefb/nxp_hdmi/tda998x.c
-index 2e9fd06..3875a40 100755
+index 2e9fd06..eca28c9 100755
 --- a/drivers/video/dovefb/nxp_hdmi/tda998x.c
 +++ b/drivers/video/dovefb/nxp_hdmi/tda998x.c
 @@ -41,7 +41,9 @@
@@ -1451,6 +1451,48 @@ index 2e9fd06..3875a40 100755
  {
     switch (err & 0x0FFF)
        {
+@@ -705,8 +708,8 @@ static int tda_spy(int verbose)
+ /*
+  * On HDCP
+  */
+-void hdcp_on(tda_instance *this) {
+-
++void hdcp_on(tda_instance *this)
++{
+    int err=0;
+ 
+    if (this->tda.hdcp_status != HDCP_IS_NOT_INSTALLED) { /* check HDCP is installed ... */
+@@ -728,8 +731,8 @@ void hdcp_on(tda_instance *this) {
+ /*
+  * Off HDCP
+  */
+-void hdcp_off(tda_instance *this) {
+-
++void hdcp_off(tda_instance *this)
++{
+    int err=0;
+ 
+    if (this->tda.hdcp_status != HDCP_IS_NOT_INSTALLED) { /* check HDCP is installed ... */
+@@ -745,15 +748,15 @@ void hdcp_off(tda_instance *this) {
+ /*
+  * Run video
+  */
+-void show_video(tda_instance *this) {
+-
++void show_video(tda_instance *this)
++{
+    int err=0;
+ 
+    if (this->tda.rx_device_active) { /* check RxSens */
+       if (this->tda.hot_plug_detect == TMDL_HDMITX_HOTPLUG_ACTIVE) { /* should be useless, but legacy... */
+          if (this->tda.power == tmPowerOn) { /* check CEC or DSS didn't switch it off */
+-            if (this->tda.src_address != 0xFFFF) { /* check EDID has been received */
+-				hdcp_off(this);
++            if (this->tda.src_address != NO_PHY_ADDR) { /* check EDID has been received */
++               hdcp_off(this);
+                TRY(tmdlHdmiTxSetInputOutput(this->tda.instance,         \
+                                             this->tda.setio.video_in,   \
+                                             this->tda.setio.video_out,  \
 @@ -779,16 +782,21 @@ void show_video(tda_instance *this) {
  static void interrupt_polling(struct work_struct *dummy)
  {
@@ -1458,12 +1500,12 @@ index 2e9fd06..3875a40 100755
 -   int err=0;
 +   tmdlHdmiTxEvent_t prevEvent;
 +   int err=0, loopCnt=0;
++
++   do {
++      prevEvent = this->tda.event;
  
 -   /* Tx part */
 -   TRY(tmdlHdmiTxHandleInterrupt(this->tda.instance));
-+   do {
-+      prevEvent = this->tda.event;
-+
 +      /* Tx part */
 +      TRY(tmdlHdmiTxHandleInterrupt(this->tda.instance));
  
@@ -1480,6 +1522,15 @@ index 2e9fd06..3875a40 100755
  
   TRY_DONE:
  
+@@ -830,7 +838,7 @@ static void hdcp_check(struct work_struct *dummy)
+       if (this->tda.rx_device_active) { /* check RxSens */
+          if (this->tda.hot_plug_detect == TMDL_HDMITX_HOTPLUG_ACTIVE) { /* should be useless, but legacy... */
+             if (this->tda.power == tmPowerOn) { /* check CEC didn't switch it off */
+-               if (this->tda.src_address != 0xFFFF) { /* check EDID has been received */
++               if (this->tda.src_address != NO_PHY_ADDR) { /* check EDID has been received */
+                   hdcp_off(this);
+                   hdcp_on(this);				  
+                }
 @@ -852,7 +860,10 @@ void register_cec_interrupt(cec_callback_t fct)
  {
     tda_instance *this=&our_instance;
@@ -1509,7 +1560,41 @@ index 2e9fd06..3875a40 100755
     }
  
     switch (event) {
-@@ -979,11 +991,9 @@ static void eventCallbackTx(tmdlHdmiTxEvent_t event)
+@@ -914,10 +926,13 @@ static void eventCallbackTx(tmdlHdmiTxEvent_t event)
+       TRY(tmdlHdmiTxGetEdidSourceAddress(this->tda.instance,        \
+                                          &new_addr));
+       LOG(KERN_INFO,"phy.@:%x\n",new_addr);
+-      /*       if (this->tda.src_address == new_addr) { */
+-      /*          break; */
+-      /*       } */
++
++      if (new_addr == this->tda.src_address)
++         break;
++
+       this->tda.src_address = new_addr;
++      this->tda.src_address_prev = NO_PHY_ADDR;
++
+ #if defined (TMFL_TDA19989) || defined (TMFL_TDA9984) 
+       tda_spy(this->param.verbose>=1);
+ #endif
+@@ -950,11 +965,14 @@ static void eventCallbackTx(tmdlHdmiTxEvent_t event)
+       break;
+    case TMDL_HDMITX_HPD_ACTIVE: /* HDMI is so funny u can get RxSens without being plugged !!! */
+       this->tda.hot_plug_detect = TMDL_HDMITX_HOTPLUG_ACTIVE;
+-      show_video(this);
++      this->tda.src_address = this->tda.src_address_prev;
++      this->tda.src_address_prev = NO_PHY_ADDR;
+       break;
+    case TMDL_HDMITX_HPD_INACTIVE: /* unplug */
+       this->tda.hot_plug_detect = TMDL_HDMITX_HOTPLUG_INACTIVE;
+-      this->tda.src_address = 0xFFFF;
++      if (this->tda.rx_device_active)
++         this->tda.src_address_prev = this->tda.src_address;
++      this->tda.src_address = NO_PHY_ADDR;
+       break;
+ #if defined (TMFL_TDA19989) || defined (TMFL_TDA9984) 
+    case TMDL_HDMITX_HDCP_INACTIVE: /* HDCP drops off */
+@@ -979,11 +997,9 @@ static void eventCallbackTx(tmdlHdmiTxEvent_t event)
        break;
     }
  
@@ -1522,7 +1607,15 @@ index 2e9fd06..3875a40 100755
  }
  
  /*
-@@ -1405,9 +1415,10 @@ static long this_cdev_ioctl(struct file *pFile, unsigned int cmd, unsigned long
+@@ -1086,6 +1102,7 @@ static int hdmi_tx_init(tda_instance *this)
+    this->tda.setio.sink = TMDL_HDMITX_SINK_EDID; /* Don't skip edid reading */
+    /*    this->tda.src_address = 0x1000; /\* debug *\/ */
+    this->tda.src_address = NO_PHY_ADDR; /* it's unref */
++   this->tda.src_address_prev = NO_PHY_ADDR;
+    initialized = 1;
+  TRY_DONE:
+    return err;
+@@ -1405,9 +1422,10 @@ static long this_cdev_ioctl(struct file *pFile, unsigned int cmd, unsigned long
     }
  
     if (_IOC_DIR(cmd) & _IOC_READ) 
@@ -1535,7 +1628,7 @@ index 2e9fd06..3875a40 100755
     if (err) {
        printk(KERN_ERR "hdmitx:%s:argument access denied (check address vs value)\n",__func__);
        printk(KERN_ERR "_IOC_DIR:%d arg:%lx\n",_IOC_DIR(cmd),arg);
-@@ -1899,7 +1910,7 @@ static int this_i2c_probe(struct i2c_client *client, const struct i2c_device_id
+@@ -1899,7 +1917,7 @@ static int this_i2c_probe(struct i2c_client *client, const struct i2c_device_id
  
  /* CuBox specific stuff */
  /* Addions to get EDID stuff out of the transmitter driver */
@@ -1544,7 +1637,7 @@ index 2e9fd06..3875a40 100755
  {
  	tda_instance* this = &our_instance;
  	if (!initialized) return NULL;
-@@ -1915,14 +1926,13 @@ char *tda19988_get_edid(int *num_of_blocks)
+@@ -1915,14 +1933,13 @@ char *tda19988_get_edid(int *num_of_blocks)
  	return  this->tda.raw_edid;
  }
  
@@ -1561,7 +1654,7 @@ index 2e9fd06..3875a40 100755
  {640,	480,	0,	60,	TMDL_HDMITX_VFMT_01_640x480p_60Hz},
  {720,	480,	0,	60,	TMDL_HDMITX_VFMT_02_720x480p_60Hz},
  {720,	480,	0,	60,	TMDL_HDMITX_VFMT_03_720x480p_60Hz},
-@@ -1994,45 +2004,40 @@ struct res_to_vmode resolution_to_video_format[] = {
+@@ -1994,45 +2011,40 @@ struct res_to_vmode resolution_to_video_format[] = {
  {1024,	768,	1,	87,	TMDL_HDMITX_VFMT_PC_1024x768i_87Hz},
  };
  
@@ -1628,7 +1721,7 @@ index 2e9fd06..3875a40 100755
  	} else {
  		saved_mode = mode;
  	}
-@@ -2390,7 +2395,6 @@ static int __init tx_init(void)
+@@ -2390,7 +2402,6 @@ static int __init tx_init(void)
     /* 
        general device context
     */
@@ -1636,7 +1729,7 @@ index 2e9fd06..3875a40 100755
     sema_init(&this->driver.sem,1);
     
     /*
-@@ -2414,9 +2418,14 @@ static int __init tx_init(void)
+@@ -2414,9 +2425,14 @@ static int __init tx_init(void)
  
     /* set video mode */
     if (saved_mode >= 0) {
@@ -1654,11 +1747,23 @@ index 2e9fd06..3875a40 100755
     }
  
     return 0;
-@@ -2475,3 +2484,4 @@ module_exit(tx_exit);
+@@ -2475,3 +2491,4 @@ module_exit(tx_exit);
  MODULE_LICENSE("GPL");
  MODULE_AUTHOR("Andre Lepine <andre.lepine@nxp.com>");
  MODULE_DESCRIPTION(HDMITX_NAME " driver");
 +
+diff --git a/drivers/video/dovefb/nxp_hdmi/tda998x.h b/drivers/video/dovefb/nxp_hdmi/tda998x.h
+index 08d742b..839c64b 100755
+--- a/drivers/video/dovefb/nxp_hdmi/tda998x.h
++++ b/drivers/video/dovefb/nxp_hdmi/tda998x.h
+@@ -128,6 +128,7 @@ typedef struct {
+       tda_edid_latency edid_latency;
+ #endif
+       unsigned short src_address;
++      unsigned short src_address_prev;
+       unsigned char raw_edid[EDID_BLOCK_COUNT*EDID_BLOCK_SIZE];
+       tda_capabilities capabilities;
+       tda_event event;
 diff --git a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c
 index dfe1f5f..ff79f31 100755
 --- a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c
