@@ -42,12 +42,12 @@ set_default_gui_settings () {
   cp /etc/xbmc/guisettings.xml $GUI_SETTINGS
 
   if cat /proc/cpuinfo | grep CuBox -q; then
-    cp /etc/xbmc/cubox-guisettings.xml $ADV_SETTINGS
+    cp /etc/xbmc/cubox-guisettings.xml $GUI_SETTINGS
   fi 
 
-  sed -i -e "s,TZ,$TZ,g" \
-         -e "s,TZ_COUNTRY,$TZ_COUNTRY,g" \
-         $ADV_SETTINGS
+  sed -i -e "s,TZ_COUNTRY,$TZ_COUNTRY," \
+         -e "s,TZ,$TZ," \
+         $GUI_SETTINGS
 }
 
 set_default_sources () {
