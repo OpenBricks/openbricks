@@ -1,0 +1,37 @@
+#!/bin/sh
+
+. config/options
+
+get_meta $1
+
+$SCRIPTS/build linux
+
+cd $PKG_BUILD_DIR
+
+mkdir -p data data-iso data-extracted work .install/$XORG_PATH_MODULES/drivers .install/usr/lib/dri .install/usr/lib
+tar xjf VirtualBox.tar.bz2 -C data
+isoinfo -i data/additions/VBoxGuestAdditions.iso -x /VBOXLINUXADDITIONS.RUN\;1 > data-iso/VBoxLinuxAdditions.run
+sh data-iso/VBoxLinuxAdditions.run --noexec --target data-extracted
+
+if [ "$TARGET_ARCH" = i386 ]; then
+  fic="data-extracted/VBoxGuestAdditions-x86.tar.bz2"
+else
+  fic="data-extractedVBoxGuestAdditions-amd64.tar.bz2"
+fi
+
+tar xjf $fic -C work
+
+make -C work/src/vboxguest-4.2.4 \
+     CC=${CC} \
+     KERN_VER=$(kernel_version) \
+     KERN_DIR=$(kernel_path)
+
+mkdir -p .install/lib/modules/$(kernel_version)/kernel/drivers/misc
+cp work/src/vboxguest-4.2.4/*.ko .install/lib/modules/$(kernel_version)/kernel/drivers/misc
+
+get_meta xorg-server
+XVER=`echo $PKG_VERSION | sed 's/\.//' | cut -d. -f1`
+
+cp work/lib/VBoxGuestAdditions/vboxvideo_drv_${XVER}.so .install/$XORG_PATH_MODULES/drivers/vboxvideo_drv.so
+cp work/lib/VBoxOGL.so .install/usr/lib/dri/vboxvideo_dri.so
+cp -R work/lib/* .install/usr/lib
