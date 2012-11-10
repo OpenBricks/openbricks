@@ -70,7 +70,7 @@ do_install() {
     # Create ESP (EFI System Partition) and root partition if an EFI based installation requested/possible
     INSTALL_EFI_PART=${INSTALL_DEV}1
     parted -s --align=opt $INSTALL_DEV mkpart primary 0% $INSTALL_ESP_SIZE >> $LOGFILE 2>&1
-    mkfs.vfat $INSTALL_EFI_PART >> $LOGFILE 2>&1
+    mkfs.vfat $INSTALL_EFI_PART -n ESP >> $LOGFILE 2>&1
 
     INSTALL_PART=${INSTALL_DEV}2
     parted -s --align=opt $INSTALL_DEV mkpart primary $INSTALL_ESP_SIZE 100% >> $LOGFILE 2>&1
@@ -109,6 +109,10 @@ do_install() {
   cp -P /.root/vmlinuz $INSTALL_MOUNT/boot/ >> $LOGFILE 2>&1
   cp -P /.root/initrd $INSTALL_MOUNT/boot/ >> $LOGFILE 2>&1
 
+  # Add SSD batch discard if needed
+  if [ "$INSTALL_SSD" = 0 ]; then
+    echo "* */4 * * * fstrim /" > $INSTALL_MOUNT/var/spool/cron/crontabs/root
+  fi
 
   progress_install 90 "Installing the boot loader"
   if [ "$INSTALL_EFI" = 0 ]; then
@@ -145,11 +149,6 @@ do_install() {
     extlinux --install $INSTALL_MOUNT/boot >> $LOGFILE 2>&1
     umount $INSTALL_MOUNT >> $LOGFILE 2>&1
     cat /usr/share/syslinux/mbr.bin > $INSTALL_DEV
-  fi
-
-  # Add SSD batch discard if needed
-  if [ "$INSTALL_SSD" = 0 ]; then
-    echo "* */4 * * * fstrim /" > $INSTALL_MOUNT/var/spool/cron/crontabs/root
   fi
 
   progress_install 100 "Done"
