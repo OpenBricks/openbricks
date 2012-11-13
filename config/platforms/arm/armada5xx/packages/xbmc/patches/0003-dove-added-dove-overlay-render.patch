@@ -17,7 +17,7 @@ new file mode 100644
 index 0000000..82502d5
 --- /dev/null
 +++ b/xbmc/cores/VideoRenderers/DoveOverlayRenderer.cpp
-@@ -0,0 +1,610 @@
+@@ -0,0 +1,612 @@
 +/*
 + *      Copyright (C) 2012 Team XBMC
 + *      http://www.solid-run.com
@@ -47,6 +47,8 @@ index 0000000..82502d5
 +#endif
 +
 +#if defined(HAS_MARVELL_DOVE)
++
++#include <GLES/gl.h>
 +
 +#undef COLOR_KEY_BLACK
 +#define COLOR_KEY_ALPHA
@@ -120,13 +122,13 @@ index 0000000..82502d5
 +
 +  CalcNormalDisplayRect(view.x1, view.y1, view.Width(), view.Height(), GetAspectRatio() * g_settings.m_fPixelRatio, g_settings.m_fZoomAmount, g_settings.m_fVerticalShift);
 +
-+  if (CONF_FLAGS_FORMAT_MASK(m_iFlags) == CONF_FLAGS_FORMAT_UYVY)
++  if (m_format == RENDER_FMT_UYVY422)
 +  {
 +    m_overlaySurface.videoMode = DOVEFB_VMODE_YUV422PACKED_SWAPYUorV;
 +    m_overlaySurface.viewPortInfo.ycPitch = (m_sourceRect.x2 - m_sourceRect.x1) * 2;
 +    m_overlaySurface.viewPortInfo.uvPitch = 0;
 +  } 
-+  else if (CONF_FLAGS_FORMAT_MASK(m_iFlags) == CONF_FLAGS_FORMAT_YV12)
++  else if (m_format == RENDER_FMT_YUV420P)
 +  {
 +    m_overlaySurface.videoMode = DOVEFB_VMODE_YUV420PLANAR;
 +    m_overlaySurface.viewPortInfo.ycPitch = m_sourceRect.x2 - m_sourceRect.x1;
@@ -143,18 +145,17 @@ index 0000000..82502d5
 +
 +}
 +
-+bool CDoveOverlayRenderer::Configure(unsigned int width, unsigned int height, unsigned int d_width, unsigned int d_height, 
-+                                     float fps, unsigned int flags, unsigned int format)
++bool CDoveOverlayRenderer::Configure(unsigned int width, unsigned int height, unsigned int d_width, unsigned int d_height, float fps, unsigned int flags, ERenderFormat format, unsigned extended_format, unsigned int orientation)
 +{
-+  if (CONF_FLAGS_FORMAT_MASK(flags) == CONF_FLAGS_FORMAT_NV12)
++  if (format == RENDER_FMT_NV12)
 +  {
 +    CLog::Log(LOGERROR, "%s::%s - Bad format\n", CLASSNAME, __func__);
 +    return false;
 +  }
 +
-+  if (CONF_FLAGS_FORMAT_MASK(flags) != CONF_FLAGS_FORMAT_UYVY && CONF_FLAGS_FORMAT_MASK(flags) != CONF_FLAGS_FORMAT_YV12)
++  if (format != RENDER_FMT_UYVY422 && format != RENDER_FMT_YUV420P)
 +  {
-+    CLog::Log(LOGERROR, "%s::%s - Unkown format 0x%x", CLASSNAME, __func__, CONF_FLAGS_FORMAT_MASK(flags));
++    CLog::Log(LOGERROR, "%s::%s - Unknown format 0x%x", CLASSNAME, __func__, format);
 +    return false;
 +  }
 +
@@ -167,6 +168,7 @@ index 0000000..82502d5
 +  m_sourceWidth   = width;
 +  m_sourceHeight  = height;
 +  m_iFlags        = flags;
++  m_format        = format;
 +
 +  // Calculate the input frame aspect ratio.
 +  CalculateFrameAspectRatio(d_width, d_height);
@@ -432,7 +434,7 @@ index 0000000..82502d5
 +  else
 +  {
 +    // Software decoding. Allocate buffer for ouput
-+    if(CONF_FLAGS_FORMAT_MASK(m_iFlags) != CONF_FLAGS_FORMAT_YV12)
++    if(m_format != RENDER_FMT_YUV420P)
 +      return false;
 +
 +    unsigned int memSize = (pDvdVideoPicture->iLineSize[0] * pDvdVideoPicture->iHeight) +
@@ -633,7 +635,7 @@ new file mode 100644
 index 0000000..320cc1c
 --- /dev/null
 +++ b/xbmc/cores/VideoRenderers/DoveOverlayRenderer.h
-@@ -0,0 +1,206 @@
+@@ -0,0 +1,207 @@
 +/*
 + *      Copyright (C) 2012 Team XBMC
 + *      http://xbmc.org
@@ -700,12 +702,12 @@ index 0000000..320cc1c
 +  float bottom;
 +};
 +
-+enum EFIELDSYNC
++/*enum EFIELDSYNC
 +{
 +  FS_NONE,
 +  FS_TOP, // FS_ODD,
 +  FS_BOT  // FS_EVEN
-+};
++};*/
 +
 +struct YUVRANGE
 +{
@@ -779,8 +781,8 @@ index 0000000..320cc1c
 +
 +    // Player functions
 +    virtual void ManageDisplay();
-+    virtual bool Configure(unsigned int width, unsigned int height, unsigned int d_width, unsigned int d_height, 
-+                           float fps, unsigned int flags, unsigned int format);
++    virtual bool Configure(unsigned int width, unsigned int height, unsigned int d_width, unsigned int d_height,  
++                           float fps, unsigned int flags, ERenderFormat format, unsigned extended_format, unsigned int orientation);
 +    virtual bool IsConfigured() { return m_bConfigured; }
 +    virtual int          GetImage(YV12Image *image, int source = AUTOSOURCE, bool readonly = false);
 +    virtual void         ReleaseImage(int source, bool preserve = false);
@@ -810,6 +812,7 @@ index 0000000..320cc1c
 +
 +    bool          m_bConfigured;
 +    unsigned int  m_iFlags;
++    ERenderFormat m_format;
 +
 +    YV12Image     m_yuvBuffers[NUM_BUFFERS];
 +    unsigned int  m_currentBuffer;

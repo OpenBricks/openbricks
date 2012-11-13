@@ -1,23 +1,21 @@
-From 9a252b114a55fd9d6c55196f49a98bca0f2e8059 Mon Sep 17 00:00:00 2001
+From 3fc60133e6d96c927b45062aa947fbfff6ae0f3f Mon Sep 17 00:00:00 2001
 From: Rabeeh Khoury <rabeeh@solid-run.com>
-Date: Thu, 18 Oct 2012 11:51:13 +0200
-Subject: [PATCH 1/2] vsync always enabled
-
-By default, always enable vertical blank sync
+Date: Sat, 10 Nov 2012 22:42:15 +0200
+Subject: [PATCH] By default, always enable vertical blank sync
 
 Signed-off-by: Rabeeh Khoury <rabeeh@solid-run.com>
 ---
- xbmc/settings/GUISettings.cpp |    7 +++++++
- 1 file changed, 7 insertions(+)
+ xbmc/settings/GUISettings.cpp |   21 +++++++++++++++++++++
+ 1 file changed, 21 insertions(+)
 
 diff --git a/xbmc/settings/GUISettings.cpp b/xbmc/settings/GUISettings.cpp
-index 967f31e..8d2548e 100644
+index 564f319..58778bf 100644
 --- a/xbmc/settings/GUISettings.cpp
 +++ b/xbmc/settings/GUISettings.cpp
-@@ -1280,6 +1280,13 @@ void CGUISettings::LoadXML(TiXmlElement *pRootElement, bool hideSettings /* = fa
-   CLog::Log(LOGINFO, "MP3 pass through is %s", GetBool("audiooutput.passthroughmp3") ? "enabled" : "disabled");
+@@ -1371,12 +1371,33 @@ void CGUISettings::LoadXML(TiXmlElement *pRootElement, bool hideSettings /* = fa
+   CLog::Log(LOGINFO, "DTS pass through is %s", GetBool("audiooutput.dtspassthrough") ? "enabled" : "disabled");
+   CLog::Log(LOGINFO, "AAC pass through is %s", GetBool("audiooutput.passthroughaac") ? "enabled" : "disabled");
  
-   g_guiSettings.m_LookAndFeelResolution = GetResolution();
 +#ifdef TARGET_MARVELL_DOVE
 +  // For Marvell dove driver; always enable vsync
 +  if (GetInt("videoscreen.vsync") == VSYNC_DRIVER)
@@ -25,9 +23,29 @@ index 967f31e..8d2548e 100644
 +    SetInt("videoscreen.vsync", VSYNC_ALWAYS);
 +  }
 +#endif
- #ifdef __APPLE__
++
+ #if defined(TARGET_DARWIN)
    // trap any previous vsync by driver setting, does not exist on OSX
    if (GetInt("videoscreen.vsync") == VSYNC_DRIVER)
+   {
+     SetInt("videoscreen.vsync", VSYNC_ALWAYS);
+   }
++  VMETA_CLK clk = (VMETA_CLK) GetInt("videoscreen.vmeta_clk");
++  if ((clk == 500) || (clk == 667))
++  {
++    FILE *Fh;
++    CLog::Log(LOGINFO, "%s : Changing vmeta clock to %d", __FUNCTION__, clk);
++    Fh = fopen("/sys/devices/platform/dove_clocks_sysfs.0/vmeta","w");
++    if (Fh != 0)
++    {
++        fprintf (Fh, "%d",clk*1000000);
++    } else
++      CLog::Log(LOGERROR, "Unable to open vmeta clock settings file on sysfs");
++    fclose(Fh);
++  }
+ #endif
+  // DXMERGE: This might have been useful?
+  // g_videoConfig.SetVSyncMode((VSYNC)GetInt("videoscreen.vsync"));
 -- 
 1.7.9.5
 
