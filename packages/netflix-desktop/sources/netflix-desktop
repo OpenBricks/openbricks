@@ -2,6 +2,7 @@
 
 export WINEPREFIX="${HOME}/.netflix-desktop"
 DRIVEC="${WINEPREFIX}/drive_c"
+PLAYREADY="${DRIVEC}/users/Public/Application Data/Microsoft/PlayReady"
 
 if [ ! -d ${DRIVEC}/netflix-profile ]; then
   echo "Copying browser profile..."
@@ -12,11 +13,24 @@ fi
 
 if [ ! -f "${DRIVEC}/Program Files/Mozilla Firefox/firefox.exe" ]; then
   echo "Installing Mozilla Firefox..."
-  wine "/usr/share/wine/firefox/FirefoxSetup.exe" /S > /dev/null
+  wine "/usr/share/wine/firefox/FirefoxSetup.exe" /S > /dev/null 2>&1
 fi
+
 if [ ! -f "${DRIVEC}/Program Files/Microsoft Silverlight/sllauncher.exe" ]; then
   echo "Installing Microsoft Silverlight..."
-  wine "/usr/share/wine/silverlight/Silverlight.exe" /q > /dev/null
+  wine "/usr/share/wine/silverlight/Silverlight.exe" /q > /dev/null 2>&1
+fi
+
+# Ugly workaround for the lack of user_xattr support in tmpfs
+if [ ! -f ${DRIVEC}/playready.ext2 ]; then
+  echo "Setting up PlayReady..."
+  dd if=/dev/zero of=${DRIVEC}/playready.ext2 bs=1M count=10
+  mke2fs -qF ${DRIVEC}/playready.ext2
+fi
+
+if [ ! -f "${PLAYREADY}/.mounted" ]; then
+  mount -t ext2 -o loop,user_xattr ${DRIVEC}/playready.ext2 "${PLAYREADY}"
+  touch "${PLAYREADY}/.mounted"
 fi
 
 wine "C:\\Program Files\\Mozilla Firefox\\firefox.exe" \
