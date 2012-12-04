@@ -29,6 +29,8 @@ set_default_advanced_settings () {
 
   if cat /proc/cpuinfo | grep CuBox -q; then
     cp /etc/xbmc/cubox-advancedsettings.xml $ADV_SETTINGS
+    mkdir -p /root/.xbmc/userdata/peripheral_data
+    cp /etc/xbmc/builtin_0471_1001.xml /root/.xbmc/userdata/peripheral_data/builtin_0471_1001.xml
   fi 
 }
 
