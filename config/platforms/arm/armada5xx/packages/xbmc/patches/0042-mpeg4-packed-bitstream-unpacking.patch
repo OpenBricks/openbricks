@@ -1,0 +1,341 @@
+From 3a2cd19485cce62c9d56b685680c0b11b4487023 Mon Sep 17 00:00:00 2001
+From: Rabeeh Khoury <rabeeh@solid-run.com>
+Date: Tue, 4 Dec 2012 21:26:39 +0200
+Subject: [PATCH] mpeg4 packed bitstream unpacking
+
+This patch ported from the vmeta gstreamer plugin, unpacks packed bitstream and then forwards to vmeta
+It detects two VOPs in a buffer and sends two distinct buffers to vmeta.
+Also the null VOPs are removed from the stream.
+
+Signed-off-by: Rabeeh Khoury <rabeeh@solid-run.com>
+---
+ .../DVDCodecs/Video/DVDVideoCodecVMETA.cpp         |  263 ++++++++++++++++++--
+ .../dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h |    4 +
+ 2 files changed, 243 insertions(+), 24 deletions(-)
+
+diff --git a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp
+index b7b3281..186811d 100644
+--- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp
++++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp
+@@ -64,6 +64,9 @@ CDVDVideoCodecVMETA::CDVDVideoCodecVMETA()
+ 
+   m_pDecState         = NULL;
+   m_pCbTable          = NULL;
++  m_itime_inc_bits    = -1;
++  m_low_delay         = -1;
++  m_codec_species     = -1;
+ }
+ 
+ CDVDVideoCodecVMETA::~CDVDVideoCodecVMETA()
+@@ -143,6 +146,7 @@ bool CDVDVideoCodecVMETA::Open(CDVDStreamInfo &hints, CDVDCodecOptions &options)
+       m_VDecParSet.strm_fmt = IPP_VIDEO_STRM_FMT_MPG4;
+       m_video_codec_name = "vmeta-mpeg4";
+       bSendCodecConfig = true;
++      m_codec_species = 2; /* TODO - Better detect xvid, and divx versions */
+       break;
+     
+     case CODEC_ID_MPEG2VIDEO:
+@@ -508,38 +512,58 @@ IppCodecStatus CDVDVideoCodecVMETA::DecodeInternal(uint8_t *pData, unsigned int
+ int CDVDVideoCodecVMETA::Decode(uint8_t *pData, int iSize, double dts, double pts)
+ {
+   IppCodecStatus retCodec;
+-
+-  if (pData || iSize > 0)
++  uint8_t *digest_ret;
++  int rounds = 1, i, iSize2nd=0;
++  if ((m_VDecParSet.strm_fmt == IPP_VIDEO_STRM_FMT_MPG4) && (pData))
+   {
+-    unsigned int demuxer_bytes = (unsigned int)iSize;
+-    uint8_t *demuxer_content = pData;
++    digest_ret = digest_mpeg4_inbuf(pData, iSize);
++    if ((uint32_t)digest_ret == 0xffffffff) rounds = 0; // Skip null VOP
++    else if ((uint32_t)digest_ret)
++    {
++      iSize2nd = (pData+iSize) - digest_ret;
++      iSize = digest_ret - pData;
++      rounds = 2;
++    }
++  }
+ 
+-    if(m_video_convert)
++  for (i = 0; i < rounds; i++) {
++    // MPEG4 packed bitstream second VOP. Change pointers to point to second VOP
++    if (i == 1) {
++      pData = pData + iSize;
++      iSize = iSize2nd;
++    }
++    if (pData || iSize > 0)
+     {
+-      m_converter->Convert(pData, iSize);
+-      demuxer_bytes = m_converter->GetConvertSize();
+-      demuxer_content = m_converter->GetConvertBuffer();
+-      if(!demuxer_bytes && demuxer_bytes < 1)
++      unsigned int demuxer_bytes = (unsigned int)iSize;
++      uint8_t *demuxer_content = pData;
++
++      if(m_video_convert)
+       {
+-        return VC_BUFFER;
++        m_converter->Convert(pData, iSize);
++        demuxer_bytes = m_converter->GetConvertSize();
++        demuxer_content = m_converter->GetConvertBuffer();
++        if(!demuxer_bytes && demuxer_bytes < 1)
++        {
++          return VC_BUFFER;
++        }
+       }
+-    }
+ 
+-    m_pts_queue.push(pts);
++      m_pts_queue.push(pts);
+ 
+-    double start = CDVDClock::GetAbsoluteClock();
+-    for(;;)
+-    {
+-      retCodec = DecodeInternal(demuxer_content, &demuxer_bytes, dts, pts);
+-      if(retCodec == IPP_STATUS_FRAME_COMPLETE || retCodec == IPP_STATUS_NEED_INPUT || retCodec == IPP_STATUS_ERR)
+-        break;
+-
+-      // decoding timeout.
+-      // TODO: should we store the decoding data and try it on the next decode again ?
+-      if((CDVDClock::GetAbsoluteClock() - start) > (double)DVD_MSEC_TO_TIME(500))
++      double start = CDVDClock::GetAbsoluteClock();
++      for(;;)
+       {
+-        CLog::Log(LOGERROR, "%s::%s decoder timeout\n", CLASSNAME, __func__);
+-        break;
++        retCodec = DecodeInternal(demuxer_content, &demuxer_bytes, dts, pts);
++        if(retCodec == IPP_STATUS_FRAME_COMPLETE || retCodec == IPP_STATUS_NEED_INPUT || retCodec == IPP_STATUS_ERR)
++          break;
++
++        // decoding timeout.
++        // TODO: should we store the decoding data and try it on the next decode again ?
++        if((CDVDClock::GetAbsoluteClock() - start) > (double)DVD_MSEC_TO_TIME(500))
++        {
++          CLog::Log(LOGERROR, "%s::%s decoder timeout\n", CLASSNAME, __func__);
++          break;
++        }
+       }
+     }
+   }
+@@ -681,4 +705,195 @@ void CDVDVideoCodecVMETA::Reset(void)
+     m_pts_queue.pop();
+ 
+ }
++
++/* mpeg4v2 packed bitstream unpacking code - based on code from Marvell vmeta gstreamer plugin */
++#define PACKSTM_SKIPVOP_MAXLEN  15	//15 is just a rough estimation
++#define MPEG2_SCID_SEQ          0xb3
++#define MPEG2_SCID_SEQEND       0xb7
++#define MPEG2_SCID_PIC          0x00
++#define MPEG2_SCID_GOP          0xb8
++#define MPEG4_SCID_VOP          0xb6
++static int parse_mpeg4_TIB(unsigned char* p, int len, int* plow_delay)
++{
++#define __GETnBITS_InByte(B, Bitoff, N, Code)	{Code = (B<<(24+Bitoff))>>(32-N); Bitoff += N;}
++  unsigned int SCode;
++  if(len < 9)
++  {
++    //at least, 4byte VOL startcode and 34 bits contain vop_time_increment_resolution
++    return -1;
++  }
++  //ISO 14496-2, sec 6.2.3
++  //seek video object layer startcode
++  SCode = ((unsigned int)p[0]<<16) | ((unsigned int)p[1]<<8) | ((unsigned int)p[2]);
++  len -= 3;
++  p += 3;
++  while(len > 0) {
++    SCode = (SCode<<8) | *p++ ;
++    len--;
++    if((SCode>>4) == (0x00000120>>4))
++      break;
++  }
++  if(len < 5) //at least, should have 34 bits to contain vop_time_increment_resolution
++    return -1;
++
++  if((p[0]&127) == 5 && (p[1]&128) == 0) //video_object_type_indication
++    return -1;
++  else
++  {
++    unsigned int vtir, code, Byte = *++p;
++    int time_inc_bits;;
++    int bitoff;
++    len--;
++    if(Byte & 0x40)
++    {	//is_object_layer_identifier
++      len--;
++      if(len<=0) {return -1;}
++      Byte = *++p;
++      bitoff = 1;
++    } else
++	bitoff = 2;
++
++    __GETnBITS_InByte(Byte, bitoff, 4, code);  //aspect_ratio_info
++    if(code == 0xf) {
++      len -= 2;
++      if(len<=0) return -1;
++      p += 2;
++      Byte = *p;
++    }
++    __GETnBITS_InByte(Byte, bitoff, 1, code);  //vol_control_parameters
++    if(len<3) return -1;  //video_object_layer_shape+marker_bit+vop_time_increment_resolution have 19bits at least
++    if(code) {
++      len--;
++      Byte = *++p;
++      bitoff = bitoff + 2 - 8;
++      __GETnBITS_InByte(Byte, bitoff, 1, code);//low_delay
++      *plow_delay = code;
++      CLog::Log(LOGDEBUG, "found mpeg4 stream low_delay %d\n", code);
++      __GETnBITS_InByte(Byte, bitoff, 1, code);//vbv_parameters
++      if(code)
++      {
++        len -= 10;
++        if(len<=0) return -1;
++        p += 10;
++        bitoff -= 1;
++        Byte = *p;
++      }
++    }
++    //video_object_layer_shape
++    code = (((Byte<<8)|p[1])<<(16+bitoff)) >> 30;
++    bitoff += 2;
++    if(bitoff >= 8)
++    {
++      bitoff -= 8;
++      len--;
++      p++;
++    }
++    if(code != 0)  //only support video_object_layer_shape==rectangular
++    return -2;
++    //vop_time_increment_resolution
++    if(len < 3)
++      return -1;
++    vtir = (((unsigned int)p[0]<<16)|((unsigned int)p[1]<<8)|(unsigned int)p[2])<<(8+1+bitoff);
++    if((vtir>>16) == 0)
++      return -3;
++
++    CLog::Log(LOGDEBUG, "parse_mpeg4_TIB parsed vtir %d\n", vtir>>16);
++    vtir -= 0x10000;
++    for(time_inc_bits = 16; time_inc_bits>0; time_inc_bits--)
++    {
++      if(((int)vtir) < 0)
++        break;
++      vtir <<= 1;
++    }
++    if(time_inc_bits == 0)
++      time_inc_bits = 1;
++    CLog::Log(LOGDEBUG, "parse_mpeg4_TIB() parsed time_inc_bits %d\n", time_inc_bits);
++    return time_inc_bits;
++  }
++}
++
++static unsigned char* Seek4bytesCode(unsigned char* pData, int len, unsigned int n4byteCode)
++{
++  if(len >= 4)
++  {
++    unsigned int code = (pData[0]<<16) | (pData[1]<<8) | (pData[2]);
++    len -= 3;
++    pData += 3;
++    while(len > 0)
++    {
++      code = (code<<8) | *pData++ ;
++      len--;
++      if(code == n4byteCode)
++      {
++        return pData-4;
++      }
++    }
++  }
++  return NULL;
++}
++
++static int is_MPEG4_SkipVop(unsigned char* pData, int len, int itime_inc_bits_len)
++{
++  if(len > 4 && len <= PACKSTM_SKIPVOP_MAXLEN && itime_inc_bits_len > 0)
++  {
++    //probably, we needn't to check the frame coding type, check the data length is enough
++    unsigned char* p = Seek4bytesCode(pData, len, 0x00000100 | MPEG4_SCID_VOP);
++    if(p != NULL) {
++      p += 4;
++      len -= (p-pData);
++      if(len > 0 && (p[0] >> 6) == 1) {
++        //the skip frame for packed stream is always P frame
++        //iso 14496-2: sec 6.2.5
++        int bitoffset = 2;
++        unsigned int modulo_time_base;
++        do
++        {
++          modulo_time_base = (p[0]<<bitoffset)&0x80;
++          bitoffset = (bitoffset+1) & 7;
++          if(bitoffset == 0)
++          {
++            len--;
++            p++;
++          }
++        } while(modulo_time_base!=0 && len>0);
++        bitoffset = bitoffset + 2 + itime_inc_bits_len;
++        if(bitoffset >= (len<<3)) //if((len<<3)<bitoffset+1)
++          return 0;
++        else
++          return ((p[bitoffset>>3]<<(bitoffset&7))&0x80) == 0;
++      }
++    }
++  }
++  return 0;
++}
++
++static unsigned char* seek2ndVop(unsigned char* pData, int len)
++{
++  unsigned char* p = Seek4bytesCode(pData, len, 0x00000100 | MPEG4_SCID_VOP);
++  unsigned char* p2 = NULL;
++  if(p!=NULL)
++    p2 = Seek4bytesCode(p+4, len-(p+4-pData), 0x00000100 | MPEG4_SCID_VOP);
++  return p2;
++}
++
++
++uint8_t * CDVDVideoCodecVMETA::digest_mpeg4_inbuf(uint8_t *pData, int iSize)
++{
++  unsigned char* p2ndVop = NULL;
++  if(iSize == 1 && *pData == 0x7f)
++    //stuffing bits, spec 14496-2: sec 5.2.3, 5.2.4
++    return (uint8_t *)0xfffffffe;
++
++  if(m_itime_inc_bits< 0)
++    m_itime_inc_bits = parse_mpeg4_TIB(pData, iSize, &m_low_delay);
++
++  if((m_low_delay != 1) && (m_codec_species >=2))
++  {
++    //in avi file, xvid & divx probably use "packed bitstream"(if no bvop, impossible to use "packed bitstream"), those skip vop should be ignored
++    if(is_MPEG4_SkipVop(pData, iSize, m_itime_inc_bits))
++      return (uint8_t *)0xffffffff; // skip VOP
++    p2ndVop = seek2ndVop(pData, iSize);
++  }
++  return p2ndVop;
++}
+ #endif
+diff --git a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h
+index cf7d68d..8fa5349 100644
+--- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h
++++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h
+@@ -54,6 +54,7 @@ public:
+   bool ClearPicture(DVDVideoPicture* pDvdVideoPicture);
+   int  GetFrameCount() { return m_Frames; };
+   const char* GetName() { return m_video_codec_name.c_str(); };
++  uint8_t * digest_mpeg4_inbuf(uint8_t *pData, int iSize);
+ protected:
+   // Video format
+   bool                            m_drop_state;
+@@ -85,6 +86,9 @@ protected:
+   std::queue<double>              m_pts_queue;
+ 
+   unsigned int                    m_Frames;
++  int                             m_itime_inc_bits;
++  int                             m_low_delay;
++  int                             m_codec_species;
+ 
+   DllLibMiscGen                   *m_DllMiscGen;
+   DllLibVMETA                     *m_DllVMETA;
+-- 
+1.7.9.5
+
