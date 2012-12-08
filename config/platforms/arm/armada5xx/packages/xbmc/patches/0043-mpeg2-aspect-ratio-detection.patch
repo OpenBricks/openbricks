@@ -1,0 +1,118 @@
+diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp
+--- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp	2012-12-08 12:53:59.037417526 +0100
++++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp	2012-12-08 13:45:21.249288619 +0100
+@@ -512,20 +512,31 @@
+ int CDVDVideoCodecVMETA::Decode(uint8_t *pData, int iSize, double dts, double pts)
+ {
+   IppCodecStatus retCodec;
+-  uint8_t *digest_ret;
+   int rounds = 1, i, iSize2nd=0;
+-  if ((m_VDecParSet.strm_fmt == IPP_VIDEO_STRM_FMT_MPG4) && (pData))
++  
++  if (pData)
+   {
+-    digest_ret = digest_mpeg4_inbuf(pData, iSize);
+-    if ((uint32_t)digest_ret == 0xffffffff) rounds = 0; // Skip null VOP
+-    else if ((uint32_t)digest_ret)
+-    {
+-      iSize2nd = (pData+iSize) - digest_ret;
+-      iSize = digest_ret - pData;
+-      rounds = 2;
++    if (m_VDecParSet.strm_fmt == IPP_VIDEO_STRM_FMT_MPG4)
++    {
++      uint8_t *digest_ret = digest_mpeg4_inbuf(pData, iSize);
++      
++      if ((uint32_t)digest_ret == 0xffffffff)
++      {
++        rounds = 0; // Skip null VOP
++      }
++      else if ((uint32_t)digest_ret)
++      {
++        iSize2nd = (pData+iSize) - digest_ret;
++        iSize = digest_ret - pData;
++        rounds = 2;
++      }
+     }
+-  }
+-
++    else if (m_VDecParSet.strm_fmt == IPP_VIDEO_STRM_FMT_MPG2)
++    {
++      digest_mpeg2_inbuf(pData, iSize);
++    }
++  }  
++  
+   for (i = 0; i < rounds; i++) {
+     // MPEG4 packed bitstream second VOP. Change pointers to point to second VOP
+     if (i == 1) {
+@@ -896,4 +907,47 @@
+   }
+   return p2ndVop;
+ }
++
++
++uint8_t * CDVDVideoCodecVMETA::digest_mpeg2_inbuf(uint8_t *pData, int iSize)
++{
++  uint8_t *pSeqHead = Seek4bytesCode(pData, iSize, 0x00000100|MPEG2_SCID_SEQ);
++
++  if (pSeqHead)
++  {
++    iSize -= pSeqHead - pData;
++
++    if (iSize >= 12)
++    {
++      int width, height, aspect_ratio_code;
++      
++      width  = (pSeqHead[4] << 4) | (pSeqHead[5] >> 4);
++      height = ((pSeqHead[5] & 0x0f) << 8) | pSeqHead[6];
++      aspect_ratio_code = pSeqHead[7] >> 4;
++      
++      switch (aspect_ratio_code)
++      {
++      case 2:                   // IAR 4:3  
++          m_decoded_width = (height * 4) / 3;
++          break;
++      case 3:                   // IAR 16:9
++          m_decoded_width = (height * 16) / 9;
++          break;
++      case 4:                   // IAR 2.21:1
++          m_decoded_width = (height * 221) / 100;
++          break;
++      default:                  // PAR 1:1
++          m_decoded_width = width;
++      }
++      
++      m_decoded_height = height;
++
++      return pSeqHead;
++    }
++  }
++
++  return 0;
++}
++
++
+ #endif
+diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h
+--- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h	2012-12-08 12:53:59.041417525 +0100
++++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h	2012-12-08 13:14:42.045365538 +0100
+@@ -54,7 +54,11 @@
+   bool ClearPicture(DVDVideoPicture* pDvdVideoPicture);
+   int  GetFrameCount() { return m_Frames; };
+   const char* GetName() { return m_video_codec_name.c_str(); };
++  
++private:  
+   uint8_t * digest_mpeg4_inbuf(uint8_t *pData, int iSize);
++  uint8_t * digest_mpeg2_inbuf(uint8_t *pData, int iSize);
++  
+ protected:
+   // Video format
+   bool                            m_drop_state;
+@@ -78,7 +82,7 @@
+ 
+   std::queue<IppVmetaBitstream*>  m_input_available;
+   std::vector<IppVmetaBitstream*> m_input_buffers;
+-  unsigned int m_input_size;
++  unsigned int                    m_input_size;
+ 
+   std::queue<IppVmetaPicture*>    m_output_ready;
+   std::queue<IppVmetaPicture*>    m_output_available;
