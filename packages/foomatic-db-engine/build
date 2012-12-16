@@ -1,0 +1,43 @@
+#!/bin/sh
+
+. config/options
+
+get_meta $1
+
+cd $PKG_BUILD_DIR
+
+if ! [ -f $ROOT/$TOOLCHAIN/bin/xml2-config-target ] ; then 
+  cp $LIB_PREFIX/bin/xml2-config $ROOT/$TOOLCHAIN/bin/xml2-config-target
+fi
+
+export XML2_CONFIG=$ROOT/$TOOLCHAIN/bin/xml2-config-target
+export PERL=$ROOT/$TOOLCHAIN/bin/perl
+    export PERL_MM_USE_DEFAULT=1
+    export PERLCONFIGTARGET="yes"
+    export PERL_INC=$LIB_PREFIX/lib/perl5/$PERL_V/CORE
+    export PERL_LIB=$LIB_PREFIX/lib/perl5/$PERL_V
+    export PERL_ARCHLIB=$LIB_PREFIX/lib/perl5/$PERL_V
+    export PERLHOSTLIB=$ROOT/$TOOLCHAIN/lib/
+    export PERL5LIB="${PERL_ARCHLIB}"
+    export PERL_CMD="$ROOT/$TOOLCHAIN/bin/perl"
+    export PERL_SITELIB="usr/lib/perl5/$PERL_V"
+do_configure --disable-gscheck
+
+sed -i -e "s:PERLPREFIX=@EXECPREFIX@:PERLPREFIX=/usr:" Makefile
+make
+make_install
+
+fich=`find .install -name .packlist`
+P=`pwd`
+echo "fixing $fich"
+sed -i -e "s:$P/.install::g" $fich
+
+fic=`find .install ! -type d`
+echo "fixing $fich"
+fich=`find .install -name .packlist`
+  for i in $fic ; do
+    if grep $ROOT/$TOOLCHAIN/bin/perl $i ; then
+    sed -i -e "s:#!$ROOT/$TOOLCHAIN/bin/perl:#!/usr/bin/perl:" $i
+  fi
+  echo  "fixing $i"
+done
