@@ -14,24 +14,20 @@ SOURCES="$USERDATA/sources.xml"
 set_default_advanced_settings () {
   [ -f "$ADV_SETTINGS" ] && return
 
-  cp /etc/xbmc/generic-advancedsettings.xml $ADV_SETTINGS
-
-  ## Now overwrite with specific config files
-
-  if dmesg | grep "OMAP4 Panda board" -q ; then
+  if grep -q "OMAP4 Panda board" /proc/cpuinfo; then
     cp /etc/xbmc/panda-advancedsettings.xml $ADV_SETTINGS
     cp /etc/xbmc/panda-playercorefactory.xml $CORE_FACTORY
-  fi
-
-  if grep Snowball /proc/cpuinfo -q ; then 
+  elif grep -q Snowball /proc/cpuinfo -q ; then
     cp /etc/xbmc/snowball-advancedsettings.xml $ADV_SETTINGS
-  fi
-
-  if cat /proc/cpuinfo | grep CuBox -q; then
+  elif grep -q CuBox /proc/cpuinfo; then
     cp /etc/xbmc/cubox-advancedsettings.xml $ADV_SETTINGS
-    mkdir -p /root/.xbmc/userdata/peripheral_data
-    cp /etc/xbmc/builtin_0471_1001.xml /root/.xbmc/userdata/peripheral_data/builtin_0471_1001.xml
-  fi 
+    mkdir -p $USERDATA/peripheral_data
+    cp /etc/xbmc/builtin_0471_1001.xml $USERDATA/peripheral_data/
+  elif grep -q BCM2708 /proc/cpuinfo; then
+    cp /etc/xbmc/rpi-advancedsettings.xml $ADV_SETTINGS
+  else
+    cp /etc/xbmc/generic-advancedsettings.xml $ADV_SETTINGS
+  fi
 }
 
 set_default_gui_settings () {
