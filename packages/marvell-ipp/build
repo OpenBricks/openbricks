@@ -8,18 +8,28 @@ mkdir -p .install/include/marvell-ipp
 cp include/* .install/include/marvell-ipp
 
 mkdir -p .install/usr/lib
-cp -P bin/*.so* .install/usr/lib
-if [ "$ARM_HARDFLOAT_ABI" = yes ] ; then 
-  cp lib-hard/*.so* .install/usr/lib
+
+if [ "$ARM_HARDFLOAT_ABI" = yes ] ; then
+  ## rebuild libmiscgen.so ...
+  cd example/misc/build/wmmx2_linux
+  export MY_PATH_GNU_BIN=$ROOT/$TOOLCHAIN/bin
+  export MY_TOOLCHAIN_PREFIX=$TARGET_NAME
+  export MY_CFLAGS="-mcpu=cortex-a9"
+  export MY_LIBDIR="lib-hard"
+  export MAKEFLAGS=-j1
+  make -f makefile_miscGen
+  cd -
+
+  ## copy hardfp - libs
+  cp -P lib-hard/*.so* .install/usr/lib
+
+  ## create missing link
+  cd .install/usr/lib
+  ln -s libcodecvmetadec.so.1 libcodecvmetadec.so
+  cd -
+else
+  ## copy softfp/iwmmxt - libs
+  cp -P bin/*.so* .install/usr/lib
 fi
 
-## rebuild libmiscgen.so ...
-cd example/misc/build/wmmx2_linux
-export MY_PATH_GNU_BIN=$ROOT/$TOOLCHAIN/bin 
-export MY_TOOLCHAIN_PREFIX=$TARGET_NAME 
-export MY_CFLAGS="-mcpu=cortex-a9"
-export MAKEFLAGS=-j1
-make -f makefile_miscGen
-cd -
-
-cp lib/libmiscgen.so .install/usr/lib
+  chmod +x .install/usr/lib/*.so*
