@@ -1,5 +1,5 @@
 diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodec.h b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodec.h
---- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodec.h	2012-12-30 22:24:08.373825020 +0100
+--- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodec.h	2012-12-31 19:41:10.241354677 +0100
 +++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodec.h	2012-12-30 19:09:50.000000000 +0100
 @@ -70,12 +70,13 @@
        struct __CVBuffer *cvBufferRef;
@@ -18,8 +18,8 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodec.h b/xbmc/cores/dv
  
    double       iRepeatPicture;
 diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp
---- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp	2012-12-30 22:24:12.781824837 +0100
-+++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp	2012-12-30 19:09:50.000000000 +0100
+--- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp	2012-12-31 19:41:14.873354484 +0100
++++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp	2012-12-31 19:38:37.000000000 +0100
 @@ -31,7 +31,6 @@
  #include "DynamicDll.h"
  
@@ -28,7 +28,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
  #include "DVDClock.h"
  
  #include <sys/time.h>
-@@ -40,14 +39,49 @@
+@@ -40,14 +39,51 @@
  #ifdef CLASSNAME
  #undef CLASSNAME
  #endif
@@ -47,9 +47,11 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
 +
 +
 +#define ALIGN(x, n)             (((x) + (n) - 1) & (~((n) - 1)))
++#define ALIGN_OFFSET(x, n)      ((((x) - 1) ^ ((n) - 1)) & ((n) - 1))
++
 +#define PADDED_SIZE(s)          ALIGN((s), 128) // align to multiple of 128 (vMeta requirement)
++#define PADDING_LEN(s)          ALIGN_OFFSET((s), 128) 
 +#define PADDING_BYTE            0x88            // the vmeta decoder needs a padding of 0x88 at the end of a frame
-+#define PADDING_RESERVE         (65*1024U)      //
 +
 +#define STREAM_VDECBUF_SIZE     (320*1024U)     // must equal to or greater than 64k and multiple of 128
 +#define STREAM_VDECBUF_NUM      8               // number of stream buffers
@@ -82,7 +84,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
  
  CDVDVideoCodecVMETA::CDVDVideoCodecVMETA()
  {
-@@ -57,7 +91,8 @@
+@@ -57,7 +93,8 @@
    m_converter         = NULL;
    m_video_convert     = false;
    m_video_codec_name  = "";
@@ -92,7 +94,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
  
    m_DllMiscGen        = new DllLibMiscGen();
    m_DllVMETA          = new DllLibVMETA();
-@@ -69,37 +104,38 @@
+@@ -69,37 +106,38 @@
    m_codec_species     = -1;
  }
  
@@ -145,7 +147,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
      }
    }
    else
-@@ -108,13 +144,15 @@
+@@ -108,13 +146,15 @@
      {
        m_extrasize = hints.extrasize;
        m_extradata = (uint8_t *)malloc(m_extrasize);
@@ -164,7 +166,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
    switch (hints.codec)
    {
      case CODEC_ID_H264:
-@@ -141,35 +179,44 @@
+@@ -141,35 +181,44 @@
        m_VDecParSet.strm_fmt = IPP_VIDEO_STRM_FMT_H264;
      }
      break;
@@ -215,7 +217,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
    }
  
    m_VDecParSet.opt_fmt = IPP_YCbCr422I;
-@@ -178,7 +225,7 @@
+@@ -178,7 +227,7 @@
  
    if(m_DllMiscGen->miscInitGeneralCallbackTable(&m_pCbTable) != 0)
    {
@@ -224,7 +226,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
      Dispose();
      return false;
    }
-@@ -186,536 +233,603 @@
+@@ -186,536 +235,607 @@
    ret = m_DllVMETA->DecoderInitAlloc_Vmeta(&m_VDecParSet, m_pCbTable, &m_pDecState);
    if(ret != IPP_STATUS_NOERR)
    {
@@ -363,10 +365,10 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
    }
  
 -  m_input_buffers.clear();
- 
+-
 -  while(!m_input_available.empty())
 -    m_input_available.pop();
--
+ 
 -  for (size_t i = 0; i < m_output_buffers.size(); i++)
 +  m_output_ready.flushAll();
 +  m_output_available.flushAll();
@@ -383,12 +385,12 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
    }
  
 -  m_output_buffers.clear();
- 
+-
 -  while(!m_output_available.empty())
 -    m_output_available.pop();
 -
 -  m_Frames        = 0;
--
+ 
 -  m_DllVMETA->Unload();
 -  m_DllMiscGen->Unload();
 +  if (m_DllVMETA)
@@ -417,6 +419,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
 +
  IppCodecStatus CDVDVideoCodecVMETA::SendCodecConfig()
  {
++  unsigned paddingLen;
    IppCodecStatus retCodec;
 -
 -  if(m_extradata == NULL || m_extrasize == 0 || m_pDecState == NULL || m_input_available.empty())
@@ -443,13 +446,14 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
    }
  
    memcpy(pStream->pBuf, m_extradata, m_extrasize);
--
++  pStream->nDataLen = m_extrasize;
++  pStream->nFlag    = IPP_VMETA_STRM_BUF_END_OF_UNIT;
+ 
 -  retCodec = m_DllVMETA->DecoderPushBuffer_Vmeta(IPP_VMETA_BUF_TYPE_STRM, (void *)pStream, m_pDecState);
 -
-+  pStream->nDataLen = PADDED_SIZE(m_extrasize);
-+  if (pStream->nDataLen > m_extrasize)
-+    memset(pStream->pBuf + m_extrasize, PADDING_BYTE, pStream->nDataLen - m_extrasize);
-+  pStream->nFlag = IPP_VMETA_STRM_BUF_END_OF_UNIT;
++  paddingLen = PADDING_LEN(m_extrasize);
++  if (paddingLen)
++    memset(pStream->pBuf + m_extrasize, PADDING_BYTE, paddingLen);
 +  
 +  retCodec = m_DllVMETA->DecoderPushBuffer_Vmeta(IPP_VMETA_BUF_TYPE_STRM, pStream, m_pDecState);
    if(retCodec != IPP_STATUS_NOERR)
@@ -544,16 +548,16 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
 +      }
 +      else
 +      {
-+        memcpy(pStream->pBuf, pData, std::min<uint32_t>(dataLen, (uint32_t)iSize));
++        memcpy(pStream->pBuf, pData, std::min<uint32_t>(dataLen, iSize));
 +        dataLen = (uint32_t)iSize;
 +      }
 +
 +      // did it fit in ?
-+      if (ALIGN(dataLen, 1024) + PADDING_RESERVE > pStream->nBufSize)
++      if (PADDED_SIZE(dataLen) > pStream->nBufSize)
 +      {
 +        m_DllVMETA->vdec_os_api_dma_free(pStream->pBuf);
 +
-+        dataLen = ALIGN(dataLen, 1024) + PADDING_RESERVE;
++        dataLen = ALIGN(dataLen, 65536) + 65536;
 +        pStream->pBuf = (Ipp8u *)m_DllVMETA->vdec_os_api_dma_alloc_cached(
 +                              dataLen, VMETA_STRM_BUF_ALIGN, &pStream->nPhyAddr);
 +        pStream->nBufSize = dataLen;
@@ -571,7 +575,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
 -        pStream->nDataLen = *iSize;
 +        else
 +        {
-+          memcpy(pStream->pBuf, pData, std::min<uint32_t>(dataLen, (uint32_t)iSize));
++          memcpy(pStream->pBuf, pData, std::min<uint32_t>(dataLen, iSize));
 +          dataLen = (uint32_t)iSize;
 +        }
 +      }
@@ -581,18 +585,19 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
          pStream->nFlag = IPP_VMETA_STRM_BUF_END_OF_UNIT;
 -        memset(pStream->pBuf, 0x88, pStream->nBufSize);
 -        memcpy(pStream->pBuf, pData, *iSize);
--
++        pStream->nDataLen = dataLen;
+ 
 -        retCodec = m_DllVMETA->DecoderPushBuffer_Vmeta(IPP_VMETA_BUF_TYPE_STRM, (void *)pStream, m_pDecState);
-+        pStream->nDataLen = PADDED_SIZE(dataLen);
-+        if (pStream->nDataLen > dataLen)
-+          memset(pStream->pBuf + dataLen, PADDING_BYTE, pStream->nDataLen - dataLen);
++        dataLen = PADDING_LEN(dataLen);
++        if (dataLen)
++          memset(pStream->pBuf + pStream->nDataLen, PADDING_BYTE, dataLen);
 +        
 +        if( !m_input_ready.putTail(pStream) )
 +        {
 +          CLog::Log(LOGERROR, "%s::%s m_input_ready fifo overflow", CLASSNAME, __func__);
  
 -        if(retCodec != IPP_STATUS_NOERR)
-+          pStream->nDataLen = 0;
++          CLEAR_STREAMBUF(pStream);
 +          m_input_available.putTail(pStream);
 +          break;
 +        }
@@ -608,11 +613,10 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
 +      }
 +      else
 +      {
-+        CLog::Log(LOGERROR, "%s::%s converter returned 0 bytes", CLASSNAME, __func__);
++        CLog::Log(LOGERROR, "%s::%s converter returned nothing !", CLASSNAME, __func__);
  
 -        m_input_available.pop();
 -        *iSize = 0;
-+        pStream->nDataLen = 0;
 +        m_input_available.putTail(pStream);
        }
 +    }
@@ -777,11 +781,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
          {
 -          suspendRet = m_DllVMETA->DecodeSendCmd_Vmeta(IPPVC_PAUSE, NULL, NULL, m_pDecState);
 -          if(suspendRet == IPP_STATUS_NOERR) 
-+          m_DllVMETA->vdec_os_api_suspend_ready();
-+          
-+          suspendRet = m_DllVMETA->DecodeSendCmd_Vmeta(IPPVC_RESUME, NULL, NULL, m_pDecState);
-+          if (suspendRet != IPP_STATUS_NOERR)
-           {
+-          {
 -            m_DllVMETA->vdec_os_api_suspend_ready();
 -            suspendRet = m_DllVMETA->DecodeSendCmd_Vmeta(IPPVC_RESUME, NULL, NULL, m_pDecState);
 -            if(suspendRet != IPP_STATUS_NOERR) 
@@ -790,7 +790,11 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
 -            }
 -          }
 -          else
--          {
++          m_DllVMETA->vdec_os_api_suspend_ready();
++          
++          suspendRet = m_DllVMETA->DecodeSendCmd_Vmeta(IPPVC_RESUME, NULL, NULL, m_pDecState);
++          if (suspendRet != IPP_STATUS_NOERR)
+           {
 -            CLog::Log(LOGERROR, "%s::%s pause failed\n", CLASSNAME, __func__);
 +            CLog::Log(LOGERROR, "%s::%s resume failed", CLASSNAME, __func__);
            }
@@ -1178,7 +1182,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
  
  /* mpeg4v2 packed bitstream unpacking code - based on code from Marvell vmeta gstreamer plugin */
  #define PACKSTM_SKIPVOP_MAXLEN  15	//15 is just a rough estimation
-@@ -723,8 +837,10 @@
+@@ -723,8 +843,10 @@
  #define MPEG2_SCID_SEQEND       0xb7
  #define MPEG2_SCID_PIC          0x00
  #define MPEG2_SCID_GOP          0xb8
@@ -1190,7 +1194,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
  {
  #define __GETnBITS_InByte(B, Bitoff, N, Code)	{Code = (B<<(24+Bitoff))>>(32-N); Bitoff += N;}
    unsigned int SCode;
-@@ -762,7 +878,7 @@
+@@ -762,7 +884,7 @@
        Byte = *++p;
        bitoff = 1;
      } else
@@ -1199,7 +1203,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
  
      __GETnBITS_InByte(Byte, bitoff, 4, code);  //aspect_ratio_info
      if(code == 0xf) {
-@@ -779,7 +895,7 @@
+@@ -779,7 +901,7 @@
        bitoff = bitoff + 2 - 8;
        __GETnBITS_InByte(Byte, bitoff, 1, code);//low_delay
        *plow_delay = code;
@@ -1208,7 +1212,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
        __GETnBITS_InByte(Byte, bitoff, 1, code);//vbv_parameters
        if(code)
        {
-@@ -808,7 +924,7 @@
+@@ -808,7 +930,7 @@
      if((vtir>>16) == 0)
        return -3;
  
@@ -1217,7 +1221,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
      vtir -= 0x10000;
      for(time_inc_bits = 16; time_inc_bits>0; time_inc_bits--)
      {
-@@ -818,12 +934,12 @@
+@@ -818,12 +940,12 @@
      }
      if(time_inc_bits == 0)
        time_inc_bits = 1;
@@ -1232,7 +1236,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
  {
    if(len >= 4)
    {
-@@ -843,12 +959,12 @@
+@@ -843,12 +965,12 @@
    return NULL;
  }
  
@@ -1247,7 +1251,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
      if(p != NULL) {
        p += 4;
        len -= (p-pData);
-@@ -878,19 +994,17 @@
+@@ -878,19 +1000,17 @@
    return 0;
  }
  
@@ -1273,7 +1277,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
    if(iSize == 1 && *pData == 0x7f)
      //stuffing bits, spec 14496-2: sec 5.2.3, 5.2.4
      return (uint8_t *)0xfffffffe;
-@@ -909,7 +1023,7 @@
+@@ -909,7 +1029,7 @@
  }
  
  
@@ -1282,7 +1286,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
  {
    uint8_t *pSeqHead = Seek4bytesCode(pData, iSize, 0x00000100|MPEG2_SCID_SEQ);
  
-@@ -920,14 +1034,14 @@
+@@ -920,14 +1040,14 @@
      if (iSize >= 12)
      {
        int width, height, aspect_ratio_code;
@@ -1300,7 +1304,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
            m_decoded_width = (height * 4) / 3;
            break;
        case 3:                   // IAR 16:9
-@@ -939,7 +1053,7 @@
+@@ -939,7 +1059,7 @@
        default:                  // PAR 1:1
            m_decoded_width = width;
        }
@@ -1310,8 +1314,8 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
  
        return pSeqHead;
 diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h
---- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h	2012-12-30 22:24:12.785824837 +0100
-+++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h	2012-12-30 19:09:50.000000000 +0100
+--- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h	2012-12-31 19:41:14.873354484 +0100
++++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h	2012-12-31 19:39:03.000000000 +0100
 @@ -26,10 +26,105 @@
  
  #include "DllVMETA.h"
@@ -1499,7 +1503,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h b/xbmc/cor
 +
  #endif
 diff -aur a/xbmc/cores/VideoRenderers/DoveOverlayRenderer.cpp b/xbmc/cores/VideoRenderers/DoveOverlayRenderer.cpp
---- a/xbmc/cores/VideoRenderers/DoveOverlayRenderer.cpp	2012-12-30 22:24:12.161824863 +0100
+--- a/xbmc/cores/VideoRenderers/DoveOverlayRenderer.cpp	2012-12-31 19:41:14.221354511 +0100
 +++ b/xbmc/cores/VideoRenderers/DoveOverlayRenderer.cpp	2012-12-30 19:09:50.000000000 +0100
 @@ -37,7 +37,6 @@
  #include "utils/log.h"
@@ -1661,7 +1665,7 @@ diff -aur a/xbmc/cores/VideoRenderers/DoveOverlayRenderer.cpp b/xbmc/cores/Video
    return 0;
  }
 diff -aur a/xbmc/cores/VideoRenderers/DoveOverlayRenderer.h b/xbmc/cores/VideoRenderers/DoveOverlayRenderer.h
---- a/xbmc/cores/VideoRenderers/DoveOverlayRenderer.h	2012-12-30 22:24:12.161824863 +0100
+--- a/xbmc/cores/VideoRenderers/DoveOverlayRenderer.h	2012-12-31 19:41:14.221354511 +0100
 +++ b/xbmc/cores/VideoRenderers/DoveOverlayRenderer.h	2012-12-30 19:09:50.000000000 +0100
 @@ -37,9 +37,6 @@
  class CRenderCapture;
@@ -1675,7 +1679,7 @@ diff -aur a/xbmc/cores/VideoRenderers/DoveOverlayRenderer.h b/xbmc/cores/VideoRe
  #define IMAGE_FLAG_WRITING   0x01 /* image is in use after a call to GetImage, caller may be reading or writing */
 diff -aur a/xbmc/utils/BitstreamConverter.cpp b/xbmc/utils/BitstreamConverter.cpp
 --- a/xbmc/utils/BitstreamConverter.cpp	2012-12-02 13:09:11.000000000 +0100
-+++ b/xbmc/utils/BitstreamConverter.cpp	2012-12-30 21:44:23.000000000 +0100
++++ b/xbmc/utils/BitstreamConverter.cpp	2012-12-31 19:38:42.000000000 +0100
 @@ -424,6 +424,10 @@
    m_dllAvUtil         = NULL;
    m_dllAvFormat       = NULL;
@@ -1742,7 +1746,7 @@ diff -aur a/xbmc/utils/BitstreamConverter.cpp b/xbmc/utils/BitstreamConverter.cp
        if (!m_sps_pps_context.first_idr && unit_type == 1)
            m_sps_pps_context.first_idr = 1;
      }
-@@ -827,44 +828,92 @@
+@@ -827,44 +828,95 @@
    return true;
  
  fail:
@@ -1772,55 +1776,50 @@ diff -aur a/xbmc/utils/BitstreamConverter.cpp b/xbmc/utils/BitstreamConverter.cp
 -    ((uint8_t*)(p))[2] = (d) >> 8; \
 -    ((uint8_t*)(p))[1] = (d) >> 16; \
 -    ((uint8_t*)(p))[0] = (d) >> 24; }
--
--  uint32_t offset = *poutbuf_size;
--  uint8_t nal_header_size = offset ? 3 : 4;
--
--  *poutbuf_size += sps_pps_size + in_size + nal_header_size;
--  *poutbuf = (uint8_t*)realloc(*poutbuf, *poutbuf_size);
--  if (sps_pps)
--    memcpy(*poutbuf + offset, sps_pps, sps_pps_size);
 +  uint32_t offset = m_byteStreamSize;
 +  uint32_t nal_header_size = offset ?  3 : 4;
++
++  m_byteStreamSize += sps_pps_size + in_size + nal_header_size;
+ 
+-  uint32_t offset = *poutbuf_size;
+-  uint8_t nal_header_size = offset ? 3 : 4;
++  if (m_byteStreamAlloc < 0)
++  {
++    m_byteStreamBuffer = (uint8_t*)realloc(m_byteStreamBuffer, m_byteStreamSize);
++  }
++  else if (m_byteStreamSize > m_byteStreamAlloc)
++  {
++    return;
++  }
++
++  uint8_t *p = m_byteStreamBuffer + offset;
+ 
+-  *poutbuf_size += sps_pps_size + in_size + nal_header_size;
+-  *poutbuf = (uint8_t*)realloc(*poutbuf, *poutbuf_size);
+   if (sps_pps)
+-    memcpy(*poutbuf + offset, sps_pps, sps_pps_size);
++    memcpy(p, sps_pps, sps_pps_size);
++
++  p += sps_pps_size + nal_header_size;
  
 -  memcpy(*poutbuf + sps_pps_size + nal_header_size + offset, in, in_size);
--  if (!offset)
-+  m_byteStreamSize += sps_pps_size + in_size + nal_header_size;
+   if (!offset)
++    p[-4] = 0x00;
 +
-+  if (m_byteStreamAlloc < 0)
-   {
--    CHD_WB32(*poutbuf + sps_pps_size, 1);
-+    m_byteStreamBuffer = (uint8_t*)realloc(m_byteStreamBuffer, m_byteStreamSize);
-+    if (sps_pps)
-+      memcpy(m_byteStreamBuffer + offset, sps_pps, sps_pps_size);
-   }
--  else
-+  else if (m_byteStreamSize > m_byteStreamAlloc)
-   {
--    (*poutbuf + offset + sps_pps_size)[0] = 0;
--    (*poutbuf + offset + sps_pps_size)[1] = 0;
--    (*poutbuf + offset + sps_pps_size)[2] = 1;
-+    return;
-   }
-+
-+  uint8_t *p = m_byteStreamBuffer + offset + sps_pps_size + nal_header_size;
-+
-+  if (!offset)
-+    p[-4] = 0;
-+
-+  p[-3] = 0;
-+  p[-2] = 0;
-+  p[-1] = 1;
++  p[-3] = 0x00;
++  p[-2] = 0x00;
++  p[-1] = 0x01;
 +
 +  memcpy(p, in, in_size);
- }
- 
++}
++
 +bool CBitstreamConverter::Convert(uint8_t *pData, int iSize, uint8_t *pBuffer, uint32_t *pBuffSize)
 +{
 +  uint32_t buffSize = *pBuffSize;
 +  
 +  if (pData && m_codec == CODEC_ID_H264 && m_to_annexb)
-+  {
+   {
+-    CHD_WB32(*poutbuf + sps_pps_size, 1);
 +    if (!m_convert_bitstream)
 +    {
 +      if( buffSize > (uint32_t)iSize)
@@ -1840,10 +1839,14 @@ diff -aur a/xbmc/utils/BitstreamConverter.cpp b/xbmc/utils/BitstreamConverter.cp
 +
 +    *pBuffSize = m_byteStreamSize;
 +    return true;
-+  }
+   }
+-  else
 +
 +  if (Convert(pData, iSize))
-+  {
+   {
+-    (*poutbuf + offset + sps_pps_size)[0] = 0;
+-    (*poutbuf + offset + sps_pps_size)[1] = 0;
+-    (*poutbuf + offset + sps_pps_size)[2] = 1;
 +    uint32_t convSize = GetConvertSize();
 +
 +    if (buffSize > convSize)
@@ -1853,15 +1856,16 @@ diff -aur a/xbmc/utils/BitstreamConverter.cpp b/xbmc/utils/BitstreamConverter.cp
 +    
 +    *pBuffSize = convSize;
 +    return true;
-+  }
+   }
 +  
 +  *pBuffSize = 0;
 +  return false;
-+}
+ }
  
+-
 diff -aur a/xbmc/utils/BitstreamConverter.h b/xbmc/utils/BitstreamConverter.h
 --- a/xbmc/utils/BitstreamConverter.h	2012-12-02 13:09:11.000000000 +0100
-+++ b/xbmc/utils/BitstreamConverter.h	2012-12-30 19:09:50.000000000 +0100
++++ b/xbmc/utils/BitstreamConverter.h	2012-12-31 19:38:50.000000000 +0100
 @@ -118,11 +118,13 @@
    void Close(void);
    bool NeedConvert(void) { return m_convert_bitstream; };
@@ -1883,7 +1887,7 @@ diff -aur a/xbmc/utils/BitstreamConverter.h b/xbmc/utils/BitstreamConverter.h
 -  bool BitstreamConvert(uint8_t* pData, int iSize, uint8_t **poutbuf, int *poutbuf_size);
 -  void BitstreamAllocAndCopy( uint8_t **poutbuf, int *poutbuf_size,
 +  bool BitstreamConvert(uint8_t* pData, int iSize);
-+  void BitstreamAllocAndCopy(
++  inline void BitstreamAllocAndCopy(
      const uint8_t *sps_pps, uint32_t sps_pps_size, const uint8_t *in, uint32_t in_size);
  
    typedef struct omx_bitstream_ctx {
