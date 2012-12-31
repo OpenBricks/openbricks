@@ -17,7 +17,7 @@ set_default_advanced_settings () {
   if grep -q "OMAP4 Panda board" /proc/cpuinfo; then
     cp /etc/xbmc/panda-advancedsettings.xml $ADV_SETTINGS
     cp /etc/xbmc/panda-playercorefactory.xml $CORE_FACTORY
-  elif grep -q Snowball /proc/cpuinfo -q ; then
+  elif grep -q Snowball /proc/cpuinfo; then
     cp /etc/xbmc/snowball-advancedsettings.xml $ADV_SETTINGS
   elif grep -q CuBox /proc/cpuinfo; then
     cp /etc/xbmc/cubox-advancedsettings.xml $ADV_SETTINGS
@@ -33,13 +33,18 @@ set_default_advanced_settings () {
 set_default_gui_settings () {
   [ -f "$GUI_SETTINGS" ] && return
 
-  [ "x$TZ" = "x" ] && TZ=$( ls -l /etc/localtime | sed 's/.*\/usr\/share\/zoneinfo\///')
-  [ "x$TZ" = "x" ] || TZ_COUNTRY_CODE=$( grep $TZ /usr/share/zoneinfo/zone.tab | cut -f1|head -n 1)
-  [ "x$TZ_COUNTRY_CODE" = "x" ] || TZ_COUNTRY=$( grep $TZ_COUNTRY_CODE /usr/share/zoneinfo/iso3166.tab | cut -f2|head -n 1)
+  ZONEINFO="/usr/share/zoneinfo"
+  if [ -z "$TZ" ]; then
+    TZ=`readlink /etc/localtime`
+    TZ=${TZ#${ZONEINFO}}
+    TZ_COUNTRY_CODE=`grep $TZ $ZONEINFO/zone.tab | cut -f1 | head -1`
+  fi
+  [ -n "$TZ_COUNTRY_CODE" ] \
+    TZ_COUNTRY=`grep $TZ_COUNTRY_CODE $ZONEINFO/iso3166.tab | cut -f2 | head -1`
 
   cp /etc/xbmc/guisettings.xml $GUI_SETTINGS
 
-  if cat /proc/cpuinfo | grep CuBox -q; then
+  if grep -q CuBox /proc/cpuinfo; then
     cp /etc/xbmc/cubox-guisettings.xml $GUI_SETTINGS
   fi 
 
@@ -59,4 +64,9 @@ set_default_gui_settings
 set_default_sources
 
 # remote
-if [ -f /usr/share/xbmc/system/Lircmap.xml ] && [ ! -f $USERDATA/Lircmap.xml ]; then cp /usr/share/xbmc/system/Lircmap.xml "$USERDATA"; fi
+if [ -f /usr/share/xbmc/system/Lircmap.xml ] && [ ! -f $USERDATA/Lircmap.xml ]
+then
+  cp /usr/share/xbmc/system/Lircmap.xml "$USERDATA"
+fi
+
+exit 0
