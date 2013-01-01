@@ -1,25 +1,6 @@
-diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodec.h b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodec.h
---- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodec.h	2012-12-31 19:41:10.241354677 +0100
-+++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodec.h	2012-12-30 19:09:50.000000000 +0100
-@@ -70,12 +70,13 @@
-       struct __CVBuffer *cvBufferRef;
-     };
-   };
-+
- #ifdef HAS_MARVELL_DOVE
-   struct {
--    void *vmeta;
-+    struct _IppVideoPicture *vmeta;
-   };
- #endif
--
-+    
-   unsigned int iFlags;
- 
-   double       iRepeatPicture;
-diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp
---- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp	2012-12-31 19:41:14.873354484 +0100
-+++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp	2012-12-31 19:38:37.000000000 +0100
+diff -aur --unidirectional-new-file a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp
+--- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp	2013-01-01 17:44:07.447810518 +0100
++++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp	2013-01-01 16:34:17.000000000 +0100
 @@ -31,7 +31,6 @@
  #include "DynamicDll.h"
  
@@ -28,7 +9,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
  #include "DVDClock.h"
  
  #include <sys/time.h>
-@@ -40,14 +39,51 @@
+@@ -40,14 +39,50 @@
  #ifdef CLASSNAME
  #undef CLASSNAME
  #endif
@@ -46,15 +27,15 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
 +//#define ENABLE_PTS              // honour presentation time stamps
 +
 +
-+#define ALIGN(x, n)             (((x) + (n) - 1) & (~((n) - 1)))
-+#define ALIGN_OFFSET(x, n)      ((((x) - 1) ^ ((n) - 1)) & ((n) - 1))
++#define ALIGN_SIZE(x, n)        (((x) + (n) - 1) & (~((n) - 1)))
++#define ALIGN_OFFSET(x, n)      ((-(x)) & ((n) - 1))
 +
-+#define PADDED_SIZE(s)          ALIGN((s), 128) // align to multiple of 128 (vMeta requirement)
-+#define PADDING_LEN(s)          ALIGN_OFFSET((s), 128) 
++#define PADDED_SIZE(s)          ALIGN_SIZE((s), 128)    // align to multiple of 128 (vMeta requirement)
++#define PADDING_LEN(s)          ALIGN_OFFSET((s), 128)  // align to multiple of 128 (vMeta requirement) 
 +#define PADDING_BYTE            0x88            // the vmeta decoder needs a padding of 0x88 at the end of a frame
 +
 +#define STREAM_VDECBUF_SIZE     (320*1024U)     // must equal to or greater than 64k and multiple of 128
-+#define STREAM_VDECBUF_NUM      8               // number of stream buffers
++#define STREAM_VDECBUF_NUM      7               // number of stream buffers
 +#define STREAM_PICBUF_NUM       24              // number of picture buffers
 +#define VMETA_QUEUE_HIGHMARK    22              // maximal # of buffered pictures
 +#define VMETA_QUEUE_LOWMARK     2               // minimal # of buffered pictures
@@ -80,11 +61,10 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
 +  } while (0)
 +#endif
 +
-+
  
  CDVDVideoCodecVMETA::CDVDVideoCodecVMETA()
  {
-@@ -57,7 +93,8 @@
+@@ -57,7 +92,8 @@
    m_converter         = NULL;
    m_video_convert     = false;
    m_video_codec_name  = "";
@@ -94,7 +74,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
  
    m_DllMiscGen        = new DllLibMiscGen();
    m_DllVMETA          = new DllLibVMETA();
-@@ -69,37 +106,38 @@
+@@ -69,37 +105,38 @@
    m_codec_species     = -1;
  }
  
@@ -147,7 +127,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
      }
    }
    else
-@@ -108,13 +146,15 @@
+@@ -108,13 +145,15 @@
      {
        m_extrasize = hints.extrasize;
        m_extradata = (uint8_t *)malloc(m_extrasize);
@@ -166,7 +146,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
    switch (hints.codec)
    {
      case CODEC_ID_H264:
-@@ -141,35 +181,44 @@
+@@ -141,35 +180,44 @@
        m_VDecParSet.strm_fmt = IPP_VIDEO_STRM_FMT_H264;
      }
      break;
@@ -217,7 +197,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
    }
  
    m_VDecParSet.opt_fmt = IPP_YCbCr422I;
-@@ -178,7 +227,7 @@
+@@ -178,7 +226,7 @@
  
    if(m_DllMiscGen->miscInitGeneralCallbackTable(&m_pCbTable) != 0)
    {
@@ -226,7 +206,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
      Dispose();
      return false;
    }
-@@ -186,536 +235,607 @@
+@@ -186,536 +234,607 @@
    ret = m_DllVMETA->DecoderInitAlloc_Vmeta(&m_VDecParSet, m_pCbTable, &m_pDecState);
    if(ret != IPP_STATUS_NOERR)
    {
@@ -557,7 +537,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
 +      {
 +        m_DllVMETA->vdec_os_api_dma_free(pStream->pBuf);
 +
-+        dataLen = ALIGN(dataLen, 65536) + 65536;
++        dataLen = ALIGN_SIZE(dataLen, 65536) + 65536;
 +        pStream->pBuf = (Ipp8u *)m_DllVMETA->vdec_os_api_dma_alloc_cached(
 +                              dataLen, VMETA_STRM_BUF_ALIGN, &pStream->nPhyAddr);
 +        pStream->nBufSize = dataLen;
@@ -742,10 +722,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
 +      m_DllVMETA->DecoderPopBuffer_Vmeta(IPP_VMETA_BUF_TYPE_PIC, (void **)&pPicture, m_pDecState);
 +      
 +      if (pPicture)
-       {
--        m_DllVMETA->DecoderPopBuffer_Vmeta(IPP_VMETA_BUF_TYPE_STRM, &pPopTmp, m_pDecState);
--        pStream = (IppVmetaBitstream*)pPopTmp;
--        if(pStream == NULL)
++      {
 +        pPicture->pUsrData1 = (void *)m_frame_no;
 +        m_frame_no++;
 +
@@ -757,7 +734,10 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
 +      }
 +
 +      while (m_numBufSubmitted)
-+      {
+       {
+-        m_DllVMETA->DecoderPopBuffer_Vmeta(IPP_VMETA_BUF_TYPE_STRM, &pPopTmp, m_pDecState);
+-        pStream = (IppVmetaBitstream*)pPopTmp;
+-        if(pStream == NULL)
 +        m_DllVMETA->DecoderPopBuffer_Vmeta(IPP_VMETA_BUF_TYPE_STRM, (void **)&pStream, m_pDecState);
 +
 +        if (!pStream)
@@ -781,7 +761,11 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
          {
 -          suspendRet = m_DllVMETA->DecodeSendCmd_Vmeta(IPPVC_PAUSE, NULL, NULL, m_pDecState);
 -          if(suspendRet == IPP_STATUS_NOERR) 
--          {
++          m_DllVMETA->vdec_os_api_suspend_ready();
++          
++          suspendRet = m_DllVMETA->DecodeSendCmd_Vmeta(IPPVC_RESUME, NULL, NULL, m_pDecState);
++          if (suspendRet != IPP_STATUS_NOERR)
+           {
 -            m_DllVMETA->vdec_os_api_suspend_ready();
 -            suspendRet = m_DllVMETA->DecodeSendCmd_Vmeta(IPPVC_RESUME, NULL, NULL, m_pDecState);
 -            if(suspendRet != IPP_STATUS_NOERR) 
@@ -790,11 +774,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
 -            }
 -          }
 -          else
-+          m_DllVMETA->vdec_os_api_suspend_ready();
-+          
-+          suspendRet = m_DllVMETA->DecodeSendCmd_Vmeta(IPPVC_RESUME, NULL, NULL, m_pDecState);
-+          if (suspendRet != IPP_STATUS_NOERR)
-           {
+-          {
 -            CLog::Log(LOGERROR, "%s::%s pause failed\n", CLASSNAME, __func__);
 +            CLog::Log(LOGERROR, "%s::%s resume failed", CLASSNAME, __func__);
            }
@@ -1002,6 +982,8 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
 -
 -    /* data[1] and data[2] are not needed in UYVY */
 -    pDvdVideoPicture->data[0]         = pDisplayStart;
+-    pDvdVideoPicture->iLineSize[0]    = ALIGN (pPicture->pic.picWidth, 4);
+-    pDvdVideoPicture->data[1]         = 0;
 +  IppVmetaPicture       *pPicture;
 +  
 +  pDvdVideoPicture->dts             = DVD_NOPTS_VALUE;
@@ -1020,8 +1002,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
 +    pDvdVideoPicture->data[0]         = (Ipp8u *)(pPicture->pic.ppPicPlane[0]) +
 +                                        (pPicture->pic.picROI.y * pPicture->pic.picPlaneStep[0]) +
 +                                        (pPicture->pic.picROI.x << 1);
-     pDvdVideoPicture->iLineSize[0]    = ALIGN (pPicture->pic.picWidth, 4);
--    pDvdVideoPicture->data[1]         = 0;
++    pDvdVideoPicture->iLineSize[0]    = ALIGN_SIZE(pPicture->pic.picWidth, 4);
 +    pDvdVideoPicture->data[1]         = 0;      // not needed in UYVY
      pDvdVideoPicture->iLineSize[1]    = 0;
 -    pDvdVideoPicture->data[2]         = 0;
@@ -1182,7 +1163,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
  
  /* mpeg4v2 packed bitstream unpacking code - based on code from Marvell vmeta gstreamer plugin */
  #define PACKSTM_SKIPVOP_MAXLEN  15	//15 is just a rough estimation
-@@ -723,8 +843,10 @@
+@@ -723,8 +842,10 @@
  #define MPEG2_SCID_SEQEND       0xb7
  #define MPEG2_SCID_PIC          0x00
  #define MPEG2_SCID_GOP          0xb8
@@ -1194,7 +1175,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
  {
  #define __GETnBITS_InByte(B, Bitoff, N, Code)	{Code = (B<<(24+Bitoff))>>(32-N); Bitoff += N;}
    unsigned int SCode;
-@@ -762,7 +884,7 @@
+@@ -762,7 +883,7 @@
        Byte = *++p;
        bitoff = 1;
      } else
@@ -1203,7 +1184,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
  
      __GETnBITS_InByte(Byte, bitoff, 4, code);  //aspect_ratio_info
      if(code == 0xf) {
-@@ -779,7 +901,7 @@
+@@ -779,7 +900,7 @@
        bitoff = bitoff + 2 - 8;
        __GETnBITS_InByte(Byte, bitoff, 1, code);//low_delay
        *plow_delay = code;
@@ -1212,7 +1193,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
        __GETnBITS_InByte(Byte, bitoff, 1, code);//vbv_parameters
        if(code)
        {
-@@ -808,7 +930,7 @@
+@@ -808,7 +929,7 @@
      if((vtir>>16) == 0)
        return -3;
  
@@ -1221,7 +1202,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
      vtir -= 0x10000;
      for(time_inc_bits = 16; time_inc_bits>0; time_inc_bits--)
      {
-@@ -818,12 +940,12 @@
+@@ -818,12 +939,12 @@
      }
      if(time_inc_bits == 0)
        time_inc_bits = 1;
@@ -1236,7 +1217,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
  {
    if(len >= 4)
    {
-@@ -843,12 +965,12 @@
+@@ -843,12 +964,12 @@
    return NULL;
  }
  
@@ -1251,7 +1232,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
      if(p != NULL) {
        p += 4;
        len -= (p-pData);
-@@ -878,19 +1000,17 @@
+@@ -878,19 +999,17 @@
    return 0;
  }
  
@@ -1277,7 +1258,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
    if(iSize == 1 && *pData == 0x7f)
      //stuffing bits, spec 14496-2: sec 5.2.3, 5.2.4
      return (uint8_t *)0xfffffffe;
-@@ -909,7 +1029,7 @@
+@@ -909,7 +1028,7 @@
  }
  
  
@@ -1286,7 +1267,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
  {
    uint8_t *pSeqHead = Seek4bytesCode(pData, iSize, 0x00000100|MPEG2_SCID_SEQ);
  
-@@ -920,14 +1040,14 @@
+@@ -920,14 +1039,14 @@
      if (iSize >= 12)
      {
        int width, height, aspect_ratio_code;
@@ -1304,7 +1285,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
            m_decoded_width = (height * 4) / 3;
            break;
        case 3:                   // IAR 16:9
-@@ -939,7 +1059,7 @@
+@@ -939,7 +1058,7 @@
        default:                  // PAR 1:1
            m_decoded_width = width;
        }
@@ -1313,119 +1294,25 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/c
        m_decoded_height = height;
  
        return pSeqHead;
-diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h
---- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h	2012-12-31 19:41:14.873354484 +0100
-+++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h	2012-12-31 19:39:03.000000000 +0100
-@@ -26,10 +26,105 @@
+diff -aur --unidirectional-new-file a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h
+--- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h	2013-01-01 17:44:07.451810518 +0100
++++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h	2013-01-01 14:23:33.000000000 +0100
+@@ -26,10 +26,11 @@
  
  #include "DllVMETA.h"
  
 -#include <queue>
 -#include <vector>
-+#include <list>
- 
--#define ALIGN(x, n) (((x) + (n) - 1) & (~((n) - 1)))
-+namespace vmeta
-+{
-+  template <class T, int S>
-+  class FiFo
-+  {
-+    int  head;
-+    int  tail;
-+    T    data[S];
-+
-+  public:
-+    FiFo() { tail = head = 0; }
-+
-+    const int getCapacity() const { return S-1; }
-+    bool isEmpty() const { return head == tail; }
-+    bool isFull() const { return ((tail + 1) % S) == head; }
-+
-+    int usedCount() const
-+    {
-+      int c = tail - head;
-+      return ( c >= 0 ) ?  c : c + S;
-+    }
-+
-+    int freeCount() const
-+    {
-+      int c = head - tail - 1;
-+      return ( c >= 0 ) ?  c : c + S;
-+    }
-+
-+    void flushAll() { head = tail; }
-+
-+
-+    const T *peekHeadPtr() const
-+    {
-+      return isEmpty() ?  0 : &data[head];
-+    }
-+
-+    T peekHead() const
-+    {
-+      return isEmpty() ?  T(0) : data[head];
-+    }
-+
-+    bool nextHead()
-+    {
-+      if( !isEmpty() )
-+      {
-+        head = (head + 1) % S;
-+        return true;
-+      }
-+
-+      return false;
-+    }
-+
-+    bool getHead(T &item)
-+    {
-+      if( !isEmpty() )
-+      {
-+        item = data[head];
-+        head = (head + 1) % S;
-+        return true;
-+      }
-+
-+      item = T(0);
-+      return false;
-+    }
-+
-+    bool putTail(const T &item)
-+    {
-+      int next = (tail + 1) % S;
-+
-+      if(next != head)
-+      {
-+        data[tail] = item;
-+        tail = next;
-+        return true;
-+      }
-+
-+      return false;
-+    }
-+
-+    bool putTail(const T *item)
-+    {
-+      int next = (tail + 1) % S;
-+
-+      if(next != head)
-+      {
-+        data[tail] = *item;
-+        tail = next;
-+        return true;
-+      }
-+
-+      return false;
-+    }
-+  };
-+};
-+
++#include "utils/FastFifo.h"
 +#define STREAM_FIFO_SIZE        16      // most efficient, when a power of 2
 +#define PICTURE_FIFO_SIZE       32      // most efficient, when a power of 2
  
+-#define ALIGN(x, n) (((x) + (n) - 1) & (~((n) - 1)))
++#include <list>
+ 
  class CBitstreamConverter;
  class DllLibMiscGen;
-@@ -44,20 +139,19 @@
+@@ -44,20 +45,19 @@
    // Required overrides
    bool Open(CDVDStreamInfo &hints, CDVDCodecOptions &options);
    void Dispose(void);
@@ -1454,7 +1341,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h b/xbmc/cor
    
  protected:
    // Video format
-@@ -67,10 +161,8 @@
+@@ -67,10 +67,8 @@
    unsigned int                    m_picture_width;
    unsigned int                    m_picture_height;
    bool                            m_is_open;
@@ -1466,7 +1353,7 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h b/xbmc/cor
    CBitstreamConverter             *m_converter;
    bool                            m_video_convert;
    CStdString                      m_video_codec_name;
-@@ -80,16 +172,20 @@
+@@ -80,16 +78,20 @@
    IppVmetaDecInfo                 m_VDecInfo;
    void                            *m_pDecState;
  
@@ -1481,13 +1368,13 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h b/xbmc/cor
 +  std::list<IppVmetaBitstream*>   m_input_buffers;
 +  std::list<IppVmetaPicture*>     m_output_buffers;
 +  
-+  vmeta::FiFo<IppVmetaBitstream*, STREAM_FIFO_SIZE>     m_input_available;
-+  vmeta::FiFo<IppVmetaBitstream*, STREAM_FIFO_SIZE>     m_input_ready;
++  FastFiFo<IppVmetaBitstream*, STREAM_FIFO_SIZE> m_input_available;
++  FastFiFo<IppVmetaBitstream*, STREAM_FIFO_SIZE> m_input_ready;
 + 
-+  vmeta::FiFo<IppVmetaPicture*, PICTURE_FIFO_SIZE>      m_output_available;
-+  vmeta::FiFo<IppVmetaPicture*, PICTURE_FIFO_SIZE>      m_output_ready;
++  FastFiFo<IppVmetaPicture*, PICTURE_FIFO_SIZE>  m_output_available;
++  FastFiFo<IppVmetaPicture*, PICTURE_FIFO_SIZE>  m_output_ready;
 +
-+  vmeta::FiFo<double, PICTURE_FIFO_SIZE>                m_pts_queue;
++  FastFiFo<double, PICTURE_FIFO_SIZE>            m_pts_queue;
 +  
 +  unsigned int                    m_frame_no;
 +  unsigned int                    m_numBufSubmitted;
@@ -1496,409 +1383,129 @@ diff -aur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h b/xbmc/cor
    int                             m_itime_inc_bits;
    int                             m_low_delay;
    int                             m_codec_species;
-@@ -97,4 +193,5 @@
+@@ -97,4 +99,5 @@
    DllLibMiscGen                   *m_DllMiscGen;
    DllLibVMETA                     *m_DllVMETA;
  };
 +
  #endif
-diff -aur a/xbmc/cores/VideoRenderers/DoveOverlayRenderer.cpp b/xbmc/cores/VideoRenderers/DoveOverlayRenderer.cpp
---- a/xbmc/cores/VideoRenderers/DoveOverlayRenderer.cpp	2012-12-31 19:41:14.221354511 +0100
-+++ b/xbmc/cores/VideoRenderers/DoveOverlayRenderer.cpp	2012-12-30 19:09:50.000000000 +0100
-@@ -37,7 +37,6 @@
- #include "utils/log.h"
- #include <stdlib.h>
- #include <malloc.h>
--#include "utils/fastmemcpy.h"
- #include "guilib/GraphicContext.h"
- 
- #if defined(CLASSNAME)
-@@ -103,12 +102,13 @@
- 
-   CalcNormalDisplayRect(view.x1, view.y1, view.Width(), view.Height(), GetAspectRatio() * g_settings.m_fPixelRatio, g_settings.m_fZoomAmount, g_settings.m_fVerticalShift);
- 
-+  OutputBuffer    &currPict = m_SoftPicture[m_currentBuffer];
+diff -aur --unidirectional-new-file a/xbmc/utils/FastFifo.h b/xbmc/utils/FastFifo.h
+--- a/xbmc/utils/FastFifo.h	1970-01-01 01:00:00.000000000 +0100
++++ b/xbmc/utils/FastFifo.h	2013-01-01 14:23:33.000000000 +0100
+@@ -0,0 +1,116 @@
++/*
++ *      Copyright (C) 2012 Team XBMC
++ *      http://www.xbmc.org
++ *
++ *  This Program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; either version 2, or (at your option)
++ *  any later version.
++ *
++ *  This Program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with XBMC; see the file COPYING.  If not, write to
++ *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
++ *  http://www.gnu.org/copyleft/gpl.html
++ *
++ */
 +
-   if (m_format == RENDER_FMT_UYVY422)
-   {
--    int delta;
-     m_overlaySurface.videoMode = DOVEFB_VMODE_YUV422PACKED_SWAPYUorV;
--    if (m_SoftPicture[m_currentBuffer].iLineSize[0])
--      m_overlaySurface.viewPortInfo.ycPitch = m_SoftPicture[m_currentBuffer].iLineSize[0] * 2;
-+    if (currPict.iLineSize[0])
-+      m_overlaySurface.viewPortInfo.ycPitch = currPict.iLineSize[0] * 2;
-     else
-       m_overlaySurface.viewPortInfo.ycPitch = (m_sourceRect.x2 - m_sourceRect.x1) * 2;
-     m_overlaySurface.viewPortInfo.uvPitch = 0;
-@@ -116,10 +116,10 @@
-   else if (m_format == RENDER_FMT_YUV420P)
-   {
-     m_overlaySurface.videoMode = DOVEFB_VMODE_YUV420PLANAR;
--    if (m_SoftPicture[m_currentBuffer].iLineSize[0])
-+    if (currPict.iLineSize[0])
-     {
--      m_overlaySurface.viewPortInfo.ycPitch = m_SoftPicture[m_currentBuffer].iLineSize[0];
--      m_overlaySurface.viewPortInfo.uvPitch = m_SoftPicture[m_currentBuffer].iLineSize[1];
-+      m_overlaySurface.viewPortInfo.ycPitch = currPict.iLineSize[0];
-+      m_overlaySurface.viewPortInfo.uvPitch = currPict.iLineSize[1];
-     } else
-     {
-       m_overlaySurface.viewPortInfo.ycPitch = m_sourceRect.x2 - m_sourceRect.x1;
-@@ -314,7 +314,8 @@
- 
-   ManageDisplay(false);
- 
--  IppVmetaPicture *pPicture = m_SoftPicture[m_currentBuffer].pPicture;
-+  OutputBuffer    &currPict = m_SoftPicture[m_currentBuffer];
-+  IppVmetaPicture *pPicture = currPict.pPicture;
- 
-   struct shm_private_info info;
-   info.method = SHM_VMETA;
-@@ -336,17 +337,17 @@
-   //ioctl by Solid-Run not in marvel kernel
-   if (m_format == RENDER_FMT_UYVY422) /* Typically frames from vMeta */
-   {
--    phy_addr[0] = (unsigned int) m_SoftPicture[m_currentBuffer].buf[0];
--    phy_addr[1] = (unsigned int) m_SoftPicture[m_currentBuffer].buf[0];
--    phy_addr[2] = (unsigned int) m_SoftPicture[m_currentBuffer].buf[0];
-+    phy_addr[0] = (unsigned int) currPict.buf[0];
-+    phy_addr[1] = (unsigned int) currPict.buf[0];
-+    phy_addr[2] = (unsigned int) currPict.buf[0];
-     m_next_frame_present = true;
-     if(ioctl(m_overlayfd, DOVEFB_IOCTL_NEXT_FRAME_PRESENT, &phy_addr) != 0)
-       CLog::Log(LOGERROR, "%s::%s - Error flipping\n", CLASSNAME, __func__);
-   } else if (m_format == RENDER_FMT_YUV420P)
-   {
--    phy_addr[0] = (unsigned int) m_SoftPicture[m_currentBuffer].buf[0];
--    phy_addr[1] = (unsigned int) m_SoftPicture[m_currentBuffer].buf[1];
--    phy_addr[2] = (unsigned int) m_SoftPicture[m_currentBuffer].buf[2];
-+    phy_addr[0] = (unsigned int) currPict.buf[0];
-+    phy_addr[1] = (unsigned int) currPict.buf[1];
-+    phy_addr[2] = (unsigned int) currPict.buf[2];
-     m_next_frame_present = true;
-     if(ioctl(m_overlayfd, DOVEFB_IOCTL_NEXT_FRAME_PRESENT, &phy_addr) != 0)
-       CLog::Log(LOGERROR, "%s::%s - Error flipping\n", CLASSNAME, __func__);
-@@ -412,21 +413,22 @@
- 
- unsigned int CDoveOverlayRenderer::DrawSlice(DVDVideoPicture *pDvdVideoPicture)
- {
--  Ipp32u nPhyAddr = 0;
--  Ipp32u nBufSize = 0;
-+  Ipp32u          nPhyAddr = 0;
-+  Ipp32u          nBufSize = 0;
-+  OutputBuffer    &currPict = m_SoftPicture[m_currentBuffer];
-+  IppVmetaPicture *pPicture = pDvdVideoPicture->vmeta;
- 
--  if(pDvdVideoPicture->vmeta)
-+  if(pPicture)
-   {
--    IppVmetaPicture *pPicture = (IppVmetaPicture *)pDvdVideoPicture->vmeta;
-     nPhyAddr = pPicture->nPhyAddr;
-     nBufSize = pPicture->nBufSize;
-   }
- 
--  IppVmetaPicture *pPicture = m_SoftPicture[m_currentBuffer].pPicture;
-+  pPicture = currPict.pPicture;
- 
--  m_SoftPicture[m_currentBuffer].buf[0] = NULL;
--  m_SoftPicture[m_currentBuffer].buf[1] = NULL;
--  m_SoftPicture[m_currentBuffer].buf[2] = NULL;
-+  currPict.buf[0] = NULL;
-+  currPict.buf[1] = NULL;
-+  currPict.buf[2] = NULL;
- 
-   if(!pPicture)
-     return false;
-@@ -434,19 +436,20 @@
-   /* Save the original data buffers and pitch */
-   for (int i = 0 ; i < 4 ; i ++)
-   {
--        m_SoftPicture[m_currentBuffer].iLineSize[i] = pDvdVideoPicture->iLineSize[i];
--        m_SoftPicture[m_currentBuffer].data[i] = pDvdVideoPicture->data[i];
-+    currPict.iLineSize[i] = pDvdVideoPicture->iLineSize[i];
-+    currPict.data[i] = pDvdVideoPicture->data[i];
-   }
-+  
-   if(nPhyAddr)
-   {
-     // Decoder allocated buffer
-     pPicture->nPhyAddr = nPhyAddr;
-     pPicture->nBufSize = nBufSize;
--    m_SoftPicture[m_currentBuffer].bFree = false;
--    m_SoftPicture[m_currentBuffer].buf[0] = (unsigned char *)pPicture->nPhyAddr;
--    m_SoftPicture[m_currentBuffer].buf[1] = (unsigned char *)pPicture->nPhyAddr + 
-+    currPict.bFree = false;
-+    currPict.buf[0] = (unsigned char *)pPicture->nPhyAddr;
-+    currPict.buf[1] = (unsigned char *)pPicture->nPhyAddr + 
-       (pDvdVideoPicture->iLineSize[0] * pDvdVideoPicture->iHeight);
--    m_SoftPicture[m_currentBuffer].buf[2] = (unsigned char *)pPicture->nPhyAddr + 
-+    currPict.buf[2] = (unsigned char *)pPicture->nPhyAddr + 
-       (pDvdVideoPicture->iLineSize[0] * pDvdVideoPicture->iHeight) +
-       (pDvdVideoPicture->iLineSize[1] * pDvdVideoPicture->iHeight / 2);
-   } 
-@@ -468,20 +471,20 @@
-       CLog::Log(LOGERROR, "%s::%s - Failed to alloc memory\n", CLASSNAME, __func__);
-       return false;
-     }
--    m_SoftPicture[m_currentBuffer].bFree = true;
--    m_SoftPicture[m_currentBuffer].buf[0] = (unsigned char *)pPicture->nPhyAddr;
--    m_SoftPicture[m_currentBuffer].buf[1] = (unsigned char *)pPicture->nPhyAddr + 
-+    currPict.bFree = true;
-+    currPict.buf[0] = (unsigned char *)pPicture->nPhyAddr;
-+    currPict.buf[1] = (unsigned char *)pPicture->nPhyAddr + 
-       (pDvdVideoPicture->iLineSize[0] * pDvdVideoPicture->iHeight);
--    m_SoftPicture[m_currentBuffer].buf[2] = (unsigned char *)pPicture->nPhyAddr + 
-+    currPict.buf[2] = (unsigned char *)pPicture->nPhyAddr + 
-       (pDvdVideoPicture->iLineSize[0] * pDvdVideoPicture->iHeight) +
-       (pDvdVideoPicture->iLineSize[1] * pDvdVideoPicture->iHeight / 2);
-     unsigned char *dst = (unsigned char *)pPicture->pBuf;
- 
--    fast_memcpy( dst, (unsigned char *)pDvdVideoPicture->data[0], pDvdVideoPicture->iLineSize[0] * pDvdVideoPicture->iHeight );
-+    memcpy( dst, (unsigned char *)pDvdVideoPicture->data[0], pDvdVideoPicture->iLineSize[0] * pDvdVideoPicture->iHeight );
-     dst += pDvdVideoPicture->iLineSize[0] * pDvdVideoPicture->iHeight;
--    fast_memcpy( dst, (unsigned char *)pDvdVideoPicture->data[1], pDvdVideoPicture->iLineSize[1] * pDvdVideoPicture->iHeight / 2 );
-+    memcpy( dst, (unsigned char *)pDvdVideoPicture->data[1], pDvdVideoPicture->iLineSize[1] * pDvdVideoPicture->iHeight / 2 );
-     dst += pDvdVideoPicture->iLineSize[1] * pDvdVideoPicture->iHeight / 2;
--    fast_memcpy( dst, (unsigned char *)pDvdVideoPicture->data[2], pDvdVideoPicture->iLineSize[2] * pDvdVideoPicture->iHeight / 2 );
-+    memcpy( dst, (unsigned char *)pDvdVideoPicture->data[2], pDvdVideoPicture->iLineSize[2] * pDvdVideoPicture->iHeight / 2 );
-   }
-   return 0;
- }
-diff -aur a/xbmc/cores/VideoRenderers/DoveOverlayRenderer.h b/xbmc/cores/VideoRenderers/DoveOverlayRenderer.h
---- a/xbmc/cores/VideoRenderers/DoveOverlayRenderer.h	2012-12-31 19:41:14.221354511 +0100
-+++ b/xbmc/cores/VideoRenderers/DoveOverlayRenderer.h	2012-12-30 19:09:50.000000000 +0100
-@@ -37,9 +37,6 @@
- class CRenderCapture;
- class CBaseTexture;
- 
--#undef ALIGN
--#define ALIGN(value, alignment) (((value)+((alignment)-1))&~((alignment)-1))
--
- #define AUTOSOURCE -1
- 
- #define IMAGE_FLAG_WRITING   0x01 /* image is in use after a call to GetImage, caller may be reading or writing */
-diff -aur a/xbmc/utils/BitstreamConverter.cpp b/xbmc/utils/BitstreamConverter.cpp
---- a/xbmc/utils/BitstreamConverter.cpp	2012-12-02 13:09:11.000000000 +0100
-+++ b/xbmc/utils/BitstreamConverter.cpp	2012-12-31 19:38:42.000000000 +0100
-@@ -424,6 +424,10 @@
-   m_dllAvUtil         = NULL;
-   m_dllAvFormat       = NULL;
-   m_convert_bytestream = false;
-+  
-+  m_byteStreamSize    = 0;
-+  m_byteStreamAlloc   = -1;
-+  m_byteStreamBuffer  = NULL;
- }
- 
- CBitstreamConverter::~CBitstreamConverter()
-@@ -591,21 +595,18 @@
-     {
-       if(m_to_annexb)
-       {
--        int demuxer_bytes = iSize;
--  
--        uint8_t *demuxer_content = pData;
--
-         if (m_convert_bitstream)
-         {
-           // convert demuxer packet from bitstream to bytestream (AnnexB)
--          int bytestream_size = 0;
--          uint8_t *bytestream_buff = NULL;
--
--          BitstreamConvert(demuxer_content, demuxer_bytes, &bytestream_buff, &bytestream_size);
--          if (bytestream_buff && (bytestream_size > 0))
-+          m_byteStreamSize = 0;
-+          m_byteStreamAlloc = -1;
-+          m_byteStreamBuffer = 0;
-+          
-+          BitstreamConvert(pData, iSize);
-+          if (m_byteStreamBuffer && m_byteStreamSize > 0)
-           {
--            m_convertSize   = bytestream_size;
--            m_convertBuffer = bytestream_buff;
-+            m_convertSize   = m_byteStreamSize;
-+            m_convertBuffer = m_byteStreamBuffer;
-           }
-           else
-           {
-@@ -774,7 +775,7 @@
-   return true;
- }
- 
--bool CBitstreamConverter::BitstreamConvert(uint8_t* pData, int iSize, uint8_t **poutbuf, int *poutbuf_size)
-+bool CBitstreamConverter::BitstreamConvert(uint8_t* pData, int iSize)
- {
-   // based on h264_mp4toannexb_bsf.c (ffmpeg)
-   // which is Copyright (c) 2007 Benoit Fouet <benoit.fouet@free.fr>
-@@ -809,13 +810,13 @@
-     // prepend only to the first type 5 NAL unit of an IDR picture
-     if (m_sps_pps_context.first_idr && unit_type == 5)
-     {
--      BitstreamAllocAndCopy(poutbuf, poutbuf_size,
-+      BitstreamAllocAndCopy(
-         m_sps_pps_context.sps_pps_data, m_sps_pps_context.size, buf, nal_size);
-       m_sps_pps_context.first_idr = 0;
-     }
-     else
-     {
--      BitstreamAllocAndCopy(poutbuf, poutbuf_size, NULL, 0, buf, nal_size);
-+      BitstreamAllocAndCopy(NULL, 0, buf, nal_size);
-       if (!m_sps_pps_context.first_idr && unit_type == 1)
-           m_sps_pps_context.first_idr = 1;
-     }
-@@ -827,44 +828,95 @@
-   return true;
- 
- fail:
--  free(*poutbuf);
--  *poutbuf = NULL;
--  *poutbuf_size = 0;
-+  if (m_byteStreamAlloc < 0)
-+  {
-+    free(m_byteStreamBuffer);
-+    m_byteStreamBuffer = 0;
-+  }
-+  
-+  m_byteStreamSize = 0;
-   return false;
- }
- 
--void CBitstreamConverter::BitstreamAllocAndCopy( uint8_t **poutbuf, int *poutbuf_size,
-+void CBitstreamConverter::BitstreamAllocAndCopy(
-     const uint8_t *sps_pps, uint32_t sps_pps_size, const uint8_t *in, uint32_t in_size)
- {
-   // based on h264_mp4toannexb_bsf.c (ffmpeg)
-   // which is Copyright (c) 2007 Benoit Fouet <benoit.fouet@free.fr>
-   // and Licensed GPL 2.1 or greater
- 
--  #define CHD_WB32(p, d) { \
--    ((uint8_t*)(p))[3] = (d); \
--    ((uint8_t*)(p))[2] = (d) >> 8; \
--    ((uint8_t*)(p))[1] = (d) >> 16; \
--    ((uint8_t*)(p))[0] = (d) >> 24; }
-+  uint32_t offset = m_byteStreamSize;
-+  uint32_t nal_header_size = offset ?  3 : 4;
++#pragma once
 +
-+  m_byteStreamSize += sps_pps_size + in_size + nal_header_size;
- 
--  uint32_t offset = *poutbuf_size;
--  uint8_t nal_header_size = offset ? 3 : 4;
-+  if (m_byteStreamAlloc < 0)
-+  {
-+    m_byteStreamBuffer = (uint8_t*)realloc(m_byteStreamBuffer, m_byteStreamSize);
-+  }
-+  else if (m_byteStreamSize > m_byteStreamAlloc)
-+  {
-+    return;
-+  }
-+
-+  uint8_t *p = m_byteStreamBuffer + offset;
- 
--  *poutbuf_size += sps_pps_size + in_size + nal_header_size;
--  *poutbuf = (uint8_t*)realloc(*poutbuf, *poutbuf_size);
-   if (sps_pps)
--    memcpy(*poutbuf + offset, sps_pps, sps_pps_size);
-+    memcpy(p, sps_pps, sps_pps_size);
-+
-+  p += sps_pps_size + nal_header_size;
- 
--  memcpy(*poutbuf + sps_pps_size + nal_header_size + offset, in, in_size);
-   if (!offset)
-+    p[-4] = 0x00;
-+
-+  p[-3] = 0x00;
-+  p[-2] = 0x00;
-+  p[-1] = 0x01;
-+
-+  memcpy(p, in, in_size);
-+}
-+
-+bool CBitstreamConverter::Convert(uint8_t *pData, int iSize, uint8_t *pBuffer, uint32_t *pBuffSize)
++template <class T, int S>
++class FastFiFo
 +{
-+  uint32_t buffSize = *pBuffSize;
-+  
-+  if (pData && m_codec == CODEC_ID_H264 && m_to_annexb)
-   {
--    CHD_WB32(*poutbuf + sps_pps_size, 1);
-+    if (!m_convert_bitstream)
-+    {
-+      if( buffSize > (uint32_t)iSize)
-+        buffSize = iSize;
++  int  head;
++  int  tail;
++  T    data[S];
 +
-+      memcpy(pBuffer, pData, buffSize);
-+      
-+      *pBuffSize = iSize;
++public:
++  FastFiFo() { tail = head = 0; }
++
++  const int getCapacity() const { return S-1; }
++  bool isEmpty() const { return head == tail; }
++  bool isFull() const { return ((tail + 1) % S) == head; }
++
++  int usedCount() const
++  {
++    int c = tail - head;
++    return ( c >= 0 ) ?  c : c + S;
++  }
++
++  int freeCount() const
++  {
++    int c = head - tail - 1;
++    return ( c >= 0 ) ?  c : c + S;
++  }
++
++  void flushAll() { head = tail; }
++
++
++  const T *peekHeadPtr() const
++  {
++    return isEmpty() ?  0 : &data[head];
++  }
++
++  T peekHead() const
++  {
++    return isEmpty() ?  T(0) : data[head];
++  }
++
++  bool nextHead()
++  {
++    if( !isEmpty() )
++    {
++      head = (head + 1) % S;
 +      return true;
 +    }
-+    
-+    m_byteStreamBuffer = pBuffer;
-+    m_byteStreamAlloc = buffSize;
-+    m_byteStreamSize = 0;
 +
-+    BitstreamConvert(pData, iSize);
++    return false;
++  }
 +
-+    *pBuffSize = m_byteStreamSize;
-+    return true;
-   }
--  else
++  bool getHead(T &item)
++  {
++    if( !isEmpty() )
++    {
++      item = data[head];
++      head = (head + 1) % S;
++      return true;
++    }
 +
-+  if (Convert(pData, iSize))
-   {
--    (*poutbuf + offset + sps_pps_size)[0] = 0;
--    (*poutbuf + offset + sps_pps_size)[1] = 0;
--    (*poutbuf + offset + sps_pps_size)[2] = 1;
-+    uint32_t convSize = GetConvertSize();
++    item = T(0);
++    return false;
++  }
 +
-+    if (buffSize > convSize)
-+      buffSize = convSize;
++  bool putTail(const T &item)
++  {
++    int next = (tail + 1) % S;
 +
-+    memcpy(pBuffer, GetConvertBuffer(), buffSize);
-+    
-+    *pBuffSize = convSize;
-+    return true;
-   }
-+  
-+  *pBuffSize = 0;
-+  return false;
- }
- 
--
-diff -aur a/xbmc/utils/BitstreamConverter.h b/xbmc/utils/BitstreamConverter.h
---- a/xbmc/utils/BitstreamConverter.h	2012-12-02 13:09:11.000000000 +0100
-+++ b/xbmc/utils/BitstreamConverter.h	2012-12-31 19:38:50.000000000 +0100
-@@ -118,11 +118,13 @@
-   void Close(void);
-   bool NeedConvert(void) { return m_convert_bitstream; };
-   bool Convert(uint8_t *pData, int iSize);
-+  bool Convert(uint8_t *pData, int iSize, uint8_t *pBuffer, uint32_t *pBuffSize);
-   uint8_t *GetConvertBuffer(void);
-   int GetConvertSize();
-   uint8_t *GetExtraData(void);
-   int GetExtraSize();
-   void parseh264_sps(const uint8_t *sps, const uint32_t sps_size, bool *interlaced, int32_t *max_ref_frames);
-+  
- protected:
-   // bytestream (Annex B) to bistream conversion support.
-   void nal_bs_init(nal_bitstream *bs, const uint8_t *data, size_t size);
-@@ -136,8 +138,8 @@
-   const int isom_write_avcc(AVIOContext *pb, const uint8_t *data, int len);
-   // bitstream to bytestream (Annex B) conversion support.
-   bool BitstreamConvertInit(void *in_extradata, int in_extrasize);
--  bool BitstreamConvert(uint8_t* pData, int iSize, uint8_t **poutbuf, int *poutbuf_size);
--  void BitstreamAllocAndCopy( uint8_t **poutbuf, int *poutbuf_size,
-+  bool BitstreamConvert(uint8_t* pData, int iSize);
-+  inline void BitstreamAllocAndCopy(
-     const uint8_t *sps_pps, uint32_t sps_pps_size, const uint8_t *in, uint32_t in_size);
- 
-   typedef struct omx_bitstream_ctx {
-@@ -147,6 +149,10 @@
-       uint32_t size;
-   } omx_bitstream_ctx;
- 
-+  int               m_byteStreamSize;
-+  int               m_byteStreamAlloc;
-+  uint8_t           *m_byteStreamBuffer;
++    if(next != head)
++    {
++      data[tail] = item;
++      tail = next;
++      return true;
++    }
 +
-   uint8_t           *m_convertBuffer;
-   int               m_convertSize;
-   uint8_t           *m_inputBuffer;
++    return false;
++  }
++
++  bool putTail(const T *item)
++  {
++    int next = (tail + 1) % S;
++
++    if(next != head)
++    {
++      data[tail] = *item;
++      tail = next;
++      return true;
++    }
++
++    return false;
++  }
++};
++
++
