@@ -8,3 +8,35 @@ mkdir -p .install/boot
 cp -P boot/*.elf boot/*.dat boot/bootcode.bin .install/boot/
 echo "$DISTRONAME $TARGET_ARCH $DISTRO_VERSION (C) 2002-2013" \
   > .install/boot/issue.txt
+
+if [ "$RPI_SDTV_COLORBURST" = yes ]; then
+  no_colorburst=0
+else
+  no_colorburst=1
+fi
+cat > .install/boot/config.txt <<EOF
+sdtv_mode=$RPI_SDTV_MODE
+sdtv_aspect=$RPI_SDTV_ASPECT
+sdtv_disable_colourburst=$no_colorburst
+EOF
+
+if [ -n "$RPI_MPEG2_LICENSE" ]; then
+  echo "decode_MPG2=$RPI_MPEG2_LICENSE" >> .install/boot/config.txt
+fi
+
+if [ -n "$RPI_VC1_LICENSE" ]; then
+  echo "decode_WVC1=$RPI_VC1_LICENSE" >> .install/boot/config.txt
+fi
+
+CMDLINE="dwc_otg.lpm_enable=0 console=ttyAMA0,115200 root=/dev/mmcblk0p2 rootfstype=ext4 rootwait"
+if [ "$RPI_USE_CMA" = yes ]; then
+  CMDLINE="$CMDLINE coherent_pool=2M cma=2M smsc95xx.turbo_mode=N"
+  cat >> .install/boot/config.txt <<EOF
+gpu_mem_256=160
+gpu_mem_512=316
+cma_lwm=16
+cma_hwm=32
+EOF
+fi
+echo "$CMDLINE" > .install/boot/cmdline.txt
+
