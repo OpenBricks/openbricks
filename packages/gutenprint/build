@@ -1,0 +1,32 @@
+#!/bin/sh
+
+. config/options
+get_meta $1
+
+cd $PKG_BUILD_DIR
+
+## Build extract-strings
+do_configure host --without-libiconv-prefix --without-cups --without-readline --without-foomatic --without-foomatic3 --disable-nls --disable-shared
+make -C src/xml extract-strings
+cp src/xml/extract-strings .
+
+make distclean
+
+## target build
+sed -i 's/xmli18n-tmp.h: xml-stamp extract-strings/xmli18n-tmp.h: xml-stamp/' src/xml/Makefile.in
+sed -i 's%\./extract-strings%./extract-strings-host%' src/xml/Makefile.in
+do_configure --with-modules=dlopen \
+	  --disable-libgutenprintui2  \
+	  --with-cups --enable-cups-level3-ppds --enable-globalized-cups-ppds \
+	  --without-foomatic --without-foomatic3 \
+	  --disable-test \
+	  --enable-nls
+
+ln -s ../../extract-strings src/xml/extract-strings-host
+
+make
+make_install
+
+ln -sf `basename .install/usr/bin/ijsgutenprint.*` .install/usr/bin/ijsgutenprint
+sed -i "s%$ROOT/$TOOLCHAIN/bin/perl%/usr/bin/perl%" .install/usr/sbin/cups-genppdupdate
+
