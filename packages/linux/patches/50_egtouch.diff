@@ -1,0 +1,61 @@
+diff -Naur linux-3.6.7-ori/drivers/input/evdev.c linux-3.6.7/drivers/input/evdev.c
+--- linux-3.6.7-ori/drivers/input/evdev.c	2012-11-17 22:21:23.000000000 +0100
++++ linux-3.6.7/drivers/input/evdev.c	2013-01-12 15:59:33.380168362 +0100
+@@ -1046,8 +1046,18 @@
+ 
+ MODULE_DEVICE_TABLE(input, evdev_ids);
+ 
++static bool evdev_match(struct input_handler *handler, struct input_dev *dev)
++{
++	/* Avoid EETI USB touchscreens */
++	#define VID_EETI 0x0EEF
++	if ((BUS_USB == dev->id.bustype) && (VID_EETI == dev->id.vendor))
++	  return false;
++	return true;
++}
++
+ static struct input_handler evdev_handler = {
+ 	.event		= evdev_event,
++	.match		= evdev_match, /* Added by EETI*/
+ 	.connect	= evdev_connect,
+ 	.disconnect	= evdev_disconnect,
+ 	.fops		= &evdev_fops,
+diff -Naur linux-3.6.7-ori/drivers/input/joydev.c linux-3.6.7/drivers/input/joydev.c
+--- linux-3.6.7-ori/drivers/input/joydev.c	2012-11-17 22:21:23.000000000 +0100
++++ linux-3.6.7/drivers/input/joydev.c	2013-01-12 16:09:06.020149547 +0100
+@@ -791,6 +791,10 @@
+ 	if (test_bit(EV_KEY, dev->evbit) && test_bit(BTN_DIGI, dev->keybit))
+ 		return false;
+ 
++	/* Avoid EETI virtual devices */
++	#define VID_EETI 0x0EEF
++	if (( BUS_VIRTUAL == dev->id.bustype) && (VID_EETI == dev->id.vendor))
++		return false;
+ 	return true;
+ }
+ 
+diff -Naur linux-3.6.7-ori/drivers/input/mousedev.c linux-3.6.7/drivers/input/mousedev.c
+--- linux-3.6.7-ori/drivers/input/mousedev.c	2012-11-17 22:21:23.000000000 +0100
++++ linux-3.6.7/drivers/input/mousedev.c	2013-01-12 16:03:47.708160006 +0100
+@@ -1054,8 +1054,21 @@
+ 
+ MODULE_DEVICE_TABLE(input, mousedev_ids);
+ 
++static bool mousedev_match(struct input_handler *handler, struct input_dev *dev)
++{
++	/* Avoid EETI USB touchscreens */
++	#define VID_EETI 0x0EEF
++	if ((BUS_USB == dev->id.bustype) && (VID_EETI == dev->id.vendor))
++	  return false;
++	/* Avoid EETI virtual devices */
++	if ((BUS_VIRTUAL == dev->id.bustype) && (VID_EETI == dev->id.vendor))
++	  return false;
++	return true;
++}
++
+ static struct input_handler mousedev_handler = {
+ 	.event =	mousedev_event,
++	.match =	mousedev_match, /* Added by EETI */
+ 	.connect =	mousedev_connect,
+ 	.disconnect =	mousedev_disconnect,
+ 	.fops =		&mousedev_fops,
