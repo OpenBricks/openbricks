@@ -1,0 +1,102 @@
+diff --git a/sound/soc/kirkwood/kirkwood-i2s.c b/sound/soc/kirkwood/kirkwood-i2s.c
+index 39d0ccf..2125f8f 100644
+--- a/sound/soc/kirkwood/kirkwood-i2s.c
++++ b/sound/soc/kirkwood/kirkwood-i2s.c
+@@ -267,8 +267,8 @@ static int kirkwood_i2s_hw_params(struct snd_pcm_substream *substream,
+ 	struct kirkwood_dma_data *priv = snd_soc_dai_get_drvdata(dai);
+ 	unsigned int i2s_reg, reg, n;
+ 	unsigned long i2s_value, value;
+-	priv->i2s = 1;
+-	priv->spdif = 1;
++	priv->i2s = priv->use_i2s;
++	priv->spdif = priv->use_spdif;
+ 	priv->iec958 = 0;
+ 
+ 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+@@ -318,17 +318,19 @@ static int kirkwood_i2s_hw_params(struct snd_pcm_substream *substream,
+ 		break;
+ 	case SNDRV_PCM_FORMAT_IEC958_SUBFRAME_LE:
+ 	case SNDRV_PCM_FORMAT_IEC958_SUBFRAME_BE:
+-		if (substream->stream == SNDRV_PCM_STREAM_CAPTURE)
+-			return -EINVAL;
+ 		i2s_value |= KIRKWOOD_I2S_CTL_SIZE_16;
+ 		value |= KIRKWOOD_PLAYCTL_SIZE_16_C;
+ 		priv->i2s = 0;
+-		priv->iec958 = 1;
++		priv->iec958 = priv->spdif;
+ 		break;
+ 	default:
+-		return -EINVAL;
++		priv->i2s = 0;
++		priv->spdif = 0;
+ 	}
+ 
++	if (!priv->i2s && !priv->spdif)
++		return -EINVAL;
++
+ 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+ 		value &= ~KIRKWOOD_PLAYCTL_MONO_MASK;
+ 		if (params_channels(params) == 1)
+@@ -384,8 +386,9 @@ static int kirkwood_i2s_play_trigger(struct snd_pcm_substream *substream,
+ 		/* configure audio & enable i2s playback */
+ 		value = readl(priv->io + KIRKWOOD_PLAYCTL);
+ 		value &= ~KIRKWOOD_PLAYCTL_BURST_MASK;
+-		value &= ~(KIRKWOOD_PLAYCTL_PAUSE | KIRKWOOD_PLAYCTL_I2S_MUTE
+-				| KIRKWOOD_PLAYCTL_SPDIF_EN);
++		value &= ~(KIRKWOOD_PLAYCTL_PAUSE 
++			| KIRKWOOD_PLAYCTL_I2S_MUTE | KIRKWOOD_PLAYCTL_I2S_EN
++			| KIRKWOOD_PLAYCTL_SPDIF_MUTE | KIRKWOOD_PLAYCTL_SPDIF_EN);
+ 
+ 		if (priv->burst == 32)
+ 			value |= KIRKWOOD_PLAYCTL_BURST_32;
+@@ -404,7 +407,7 @@ static int kirkwood_i2s_play_trigger(struct snd_pcm_substream *substream,
+ 	case SNDRV_PCM_TRIGGER_STOP:
+ 		/* stop audio, disable interrupts */
+ 		value = readl(priv->io + KIRKWOOD_PLAYCTL);
+-		value |= KIRKWOOD_PLAYCTL_PAUSE | KIRKWOOD_PLAYCTL_I2S_MUTE;
++		value |= KIRKWOOD_PLAYCTL_PAUSE | KIRKWOOD_PLAYCTL_I2S_MUTE | KIRKWOOD_PLAYCTL_SPDIF_MUTE;
+ 		writel(value, priv->io + KIRKWOOD_PLAYCTL);
+ 
+ 		value = readl(priv->io + KIRKWOOD_INT_MASK);
+@@ -420,14 +423,14 @@ static int kirkwood_i2s_play_trigger(struct snd_pcm_substream *substream,
+ 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
+ 	case SNDRV_PCM_TRIGGER_SUSPEND:
+ 		value = readl(priv->io + KIRKWOOD_PLAYCTL);
+-		value |= KIRKWOOD_PLAYCTL_PAUSE | KIRKWOOD_PLAYCTL_I2S_MUTE;
++		value |= KIRKWOOD_PLAYCTL_PAUSE | KIRKWOOD_PLAYCTL_I2S_MUTE | KIRKWOOD_PLAYCTL_SPDIF_MUTE;
+ 		writel(value, priv->io + KIRKWOOD_PLAYCTL);
+ 		break;
+ 
+ 	case SNDRV_PCM_TRIGGER_RESUME:
+ 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
+ 		value = readl(priv->io + KIRKWOOD_PLAYCTL);
+-		value &= ~(KIRKWOOD_PLAYCTL_PAUSE | KIRKWOOD_PLAYCTL_I2S_MUTE);
++		value &= ~(KIRKWOOD_PLAYCTL_PAUSE | KIRKWOOD_PLAYCTL_I2S_MUTE | KIRKWOOD_PLAYCTL_SPDIF_MUTE);
+ 		writel(value, priv->io + KIRKWOOD_PLAYCTL);
+ 		break;
+ 
+@@ -646,6 +649,11 @@ static __devinit int kirkwood_i2s_dev_probe(struct platform_device *pdev)
+ 	}
+ 
+ 	priv->burst = data->burst;
++
++	// TODO: extend kirkwood_asoc_platform_data to control this from outside !
++	priv->use_i2s = (pdev->id == 0);
++	priv->use_spdif = (pdev->id == 1);
++
+ 	priv->clk = clk_get(&pdev->dev, NULL);
+ 	if (IS_ERR(priv->clk)) {
+ 		dev_err(&pdev->dev, "no clock\n");
+diff --git a/sound/soc/kirkwood/kirkwood.h b/sound/soc/kirkwood/kirkwood.h
+index f7c4b6d..9e6464d 100644
+--- a/sound/soc/kirkwood/kirkwood.h
++++ b/sound/soc/kirkwood/kirkwood.h
+@@ -167,6 +167,8 @@ struct kirkwood_dma_data {
+ 	int i2s;
+ 	int spdif;
+ 	int iec958;
++	int use_i2s;
++	int use_spdif;
+ };
+ 
+ #endif

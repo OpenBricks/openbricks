@@ -1,0 +1,107 @@
+diff --git a/sound/soc/kirkwood/kirkwood-i2s.c b/sound/soc/kirkwood/kirkwood-i2s.c
+index 6a96f32..39d0ccf 100644
+--- a/sound/soc/kirkwood/kirkwood-i2s.c
++++ b/sound/soc/kirkwood/kirkwood-i2s.c
+@@ -45,8 +45,7 @@
+ 	(SNDRV_PCM_FMTBIT_S16_LE | \
+ 	 SNDRV_PCM_FMTBIT_S24_LE | \
+ 	 SNDRV_PCM_FMTBIT_S32_LE | \
+-	 SNDRV_PCM_FMTBIT_IEC958_SUBFRAME_LE | \
+-	 SNDRV_PCM_FMTBIT_IEC958_SUBFRAME_BE)
++	 SNDRV_PCM_FMTBIT_IEC958_SUBFRAME_LE)
+ 
+ static inline void kirkwood_set_dco(void __iomem *io, unsigned long rate);
+ 
+@@ -139,20 +138,21 @@ int kirkwood_i2s_control_iec958_dflt_put(struct snd_kcontrol *kcontrol,
+ 	kirkwood_i2s_dump_iec958(__func__, &ucontrol->value.iec958);
+ #endif
+ 
+-	reg  = readl(priv->io+KIRKWOOD_SPDIF_PLAYCTL);
+-	nreg = reg & ~(KIRKWOOD_SPDIF_NON_PCM | KIRKWOOD_SPDIF_REG_VALIDITY);
+-	if (ucontrol->value.iec958.status[0] & IEC958_AES0_NONAUDIO)
+-		nreg |= KIRKWOOD_SPDIF_NON_PCM | KIRKWOOD_SPDIF_REG_VALIDITY;
+-	writel(nreg, priv->io+KIRKWOOD_SPDIF_PLAYCTL);
+-
+ 	for(n=0; n<6; n++) {
+ 		reg = (ucontrol->value.iec958.status[4*n+3] << 24) |
+-			(ucontrol->value.iec958.status[4*n+2] << 16) |
+-			(ucontrol->value.iec958.status[4*n+1] << 8) |
+-			(ucontrol->value.iec958.status[4*n+0]);
++		      (ucontrol->value.iec958.status[4*n+2] << 16) |
++		      (ucontrol->value.iec958.status[4*n+1] << 8) |
++		      (ucontrol->value.iec958.status[4*n+0]);
+ 		writel(reg, priv->io + KIRKWOOD_SPDIF_STATUS0_L + (4*n));
+ 		writel(reg, priv->io + KIRKWOOD_SPDIF_STATUS0_R + (4*n));
+ 	}
++
++	reg  = readl(priv->io+KIRKWOOD_SPDIF_PLAYCTL);
++	nreg = reg & ~(KIRKWOOD_SPDIF_NON_PCM | KIRKWOOD_SPDIF_REG_VALIDITY);
++	if (ucontrol->value.iec958.status[0] & IEC958_AES0_NONAUDIO)
++		nreg |= KIRKWOOD_SPDIF_NON_PCM | KIRKWOOD_SPDIF_REG_VALIDITY;
++	writel(nreg, priv->io+KIRKWOOD_SPDIF_PLAYCTL);
++	
+ 	return (nreg != reg);
+ }
+ 
+@@ -167,7 +167,6 @@ const struct snd_kcontrol_new kirkwood_i2s_iec958_controls[] = {
+ 	.put =		kirkwood_i2s_control_iec958_dflt_put,
+ },
+ };
+-EXPORT_SYMBOL(kirkwood_i2s_iec958_controls);
+ 
+ 
+ static int kirkwood_i2s_set_fmt(struct snd_soc_dai *cpu_dai,
+@@ -266,7 +265,7 @@ static int kirkwood_i2s_hw_params(struct snd_pcm_substream *substream,
+ 				 struct snd_soc_dai *dai)
+ {
+ 	struct kirkwood_dma_data *priv = snd_soc_dai_get_drvdata(dai);
+-	unsigned int i2s_reg, reg;
++	unsigned int i2s_reg, reg, n;
+ 	unsigned long i2s_value, value;
+ 	priv->i2s = 1;
+ 	priv->spdif = 1;
+@@ -336,11 +335,26 @@ static int kirkwood_i2s_hw_params(struct snd_pcm_substream *substream,
+ 			value |= KIRKWOOD_PLAYCTL_MONO_BOTH;
+ 		else
+ 			value |= KIRKWOOD_PLAYCTL_MONO_OFF;
++
++		// enforce PCM mode, when not sending non-linear bitstreams
++		if (priv->spdif && !priv->iec958) {
++			writel(readl(priv->io+KIRKWOOD_SPDIF_PLAYCTL) &
++				~(KIRKWOOD_SPDIF_NON_PCM | KIRKWOOD_SPDIF_REG_VALIDITY),
++			       priv->io+KIRKWOOD_SPDIF_PLAYCTL);
++
++			for (n=0; n<6; n++) {
++				writel(0, priv->io + KIRKWOOD_SPDIF_STATUS0_L + (4*n));
++				writel(0, priv->io + KIRKWOOD_SPDIF_STATUS0_R + (4*n));
++			}
++		}
+ 	}
+ 
+ 	writel(i2s_value, priv->io+i2s_reg);
+ 	writel(value, priv->io+reg);
+ 
++	DPRINTK("pcm format = 0x%04x, spdif_playctl = 0x%08x\n", 
++		params_format(params), readl(priv->io+KIRKWOOD_SPDIF_PLAYCTL));
++
+ 	return 0;
+ }
+ 
+@@ -383,7 +397,7 @@ static int kirkwood_i2s_play_trigger(struct snd_pcm_substream *substream,
+ 			value |= KIRKWOOD_PLAYCTL_SPDIF_EN;
+ 		writel(value, priv->io + KIRKWOOD_PLAYCTL);
+ #ifdef KWI2SDEBUG
+-		kirkwood_i2s_dump_spdif(__func__, priv);
++//		kirkwood_i2s_dump_spdif(__func__, priv);
+ #endif		
+ 		break;
+ 
+@@ -650,8 +664,6 @@ static __devinit int kirkwood_i2s_dev_probe(struct platform_device *pdev)
+ 		} else {
+ 			dev_info(&pdev->dev, "found external clock\n");
+ 			clk_prepare_enable(priv->extclk);
+-			kirkwood_i2s_dai.playback.channels_min = 1;
+-			kirkwood_i2s_dai.playback.channels_max = 8;
+ 			kirkwood_i2s_dai.playback.rates = 
+ 				SNDRV_PCM_RATE_8000_192000 |
+ 				SNDRV_PCM_RATE_CONTINUOUS |
