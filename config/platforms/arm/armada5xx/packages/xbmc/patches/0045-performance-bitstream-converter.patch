@@ -1,6 +1,6 @@
-diff -aur --unidirectional-new-file a/xbmc/utils/BitstreamConverter.cpp b/xbmc/utils/BitstreamConverter.cpp
---- a/xbmc/utils/BitstreamConverter.cpp	2012-12-31 14:19:40.000000000 +0100
-+++ b/xbmc/utils/BitstreamConverter.cpp	2013-01-01 14:23:33.000000000 +0100
+diff -aur --unidirectional-new-file a/xbmc/utils/BitstreamConverter.cpp b1/xbmc/utils/BitstreamConverter.cpp
+--- a/xbmc/utils/BitstreamConverter.cpp	2013-01-12 11:50:57.000000000 +0100
++++ b1/xbmc/utils/BitstreamConverter.cpp	2013-01-19 14:11:57.000000000 +0100
 @@ -424,6 +424,10 @@
    m_dllAvUtil         = NULL;
    m_dllAvFormat       = NULL;
@@ -42,7 +42,12 @@ diff -aur --unidirectional-new-file a/xbmc/utils/BitstreamConverter.cpp b/xbmc/u
            }
            else
            {
-@@ -774,7 +775,7 @@
+@@ -770,11 +771,12 @@
+   m_sps_pps_context.sps_pps_data = out;
+   m_sps_pps_context.size = total_size;
+   m_sps_pps_context.first_idr = 1;
++  m_first_idr_state = 1;
+ 
    return true;
  }
  
@@ -51,7 +56,7 @@ diff -aur --unidirectional-new-file a/xbmc/utils/BitstreamConverter.cpp b/xbmc/u
  {
    // based on h264_mp4toannexb_bsf.c (ffmpeg)
    // which is Copyright (c) 2007 Benoit Fouet <benoit.fouet@free.fr>
-@@ -809,13 +810,13 @@
+@@ -809,13 +811,13 @@
      // prepend only to the first type 5 NAL unit of an IDR picture
      if (m_sps_pps_context.first_idr && unit_type == 5)
      {
@@ -67,7 +72,7 @@ diff -aur --unidirectional-new-file a/xbmc/utils/BitstreamConverter.cpp b/xbmc/u
        if (!m_sps_pps_context.first_idr && unit_type == 1)
            m_sps_pps_context.first_idr = 1;
      }
-@@ -827,44 +828,95 @@
+@@ -827,44 +829,100 @@
    return true;
  
  fail:
@@ -99,11 +104,11 @@ diff -aur --unidirectional-new-file a/xbmc/utils/BitstreamConverter.cpp b/xbmc/u
 -    ((uint8_t*)(p))[0] = (d) >> 24; }
 +  uint32_t offset = m_byteStreamSize;
 +  uint32_t nal_header_size = offset ?  3 : 4;
-+
-+  m_byteStreamSize += sps_pps_size + in_size + nal_header_size;
  
 -  uint32_t offset = *poutbuf_size;
 -  uint8_t nal_header_size = offset ? 3 : 4;
++  m_byteStreamSize += sps_pps_size + in_size + nal_header_size;
++
 +  if (m_byteStreamAlloc < 0)
 +  {
 +    m_byteStreamBuffer = (uint8_t*)realloc(m_byteStreamBuffer, m_byteStreamSize);
@@ -134,7 +139,7 @@ diff -aur --unidirectional-new-file a/xbmc/utils/BitstreamConverter.cpp b/xbmc/u
 +  memcpy(p, in, in_size);
 +}
 +
-+bool CBitstreamConverter::Convert(uint8_t *pData, int iSize, uint8_t *pBuffer, uint32_t *pBuffSize)
++bool CBitstreamConverter::Convert(uint8_t *pData, int iSize, uint8_t *pBuffer, uint32_t *pBuffSize, bool retry)
 +{
 +  uint32_t buffSize = *pBuffSize;
 +  
@@ -152,6 +157,11 @@ diff -aur --unidirectional-new-file a/xbmc/utils/BitstreamConverter.cpp b/xbmc/u
 +      return true;
 +    }
 +    
++    if (retry)
++      m_sps_pps_context.first_idr = m_first_idr_state;
++    else
++      m_first_idr_state = m_sps_pps_context.first_idr;
++
 +    m_byteStreamBuffer = pBuffer;
 +    m_byteStreamAlloc = buffSize;
 +    m_byteStreamSize = 0;
@@ -184,14 +194,14 @@ diff -aur --unidirectional-new-file a/xbmc/utils/BitstreamConverter.cpp b/xbmc/u
  }
  
 -
-diff -aur --unidirectional-new-file a/xbmc/utils/BitstreamConverter.h b/xbmc/utils/BitstreamConverter.h
---- a/xbmc/utils/BitstreamConverter.h	2012-12-31 14:19:40.000000000 +0100
-+++ b/xbmc/utils/BitstreamConverter.h	2013-01-01 14:23:33.000000000 +0100
+diff -aur --unidirectional-new-file a/xbmc/utils/BitstreamConverter.h b1/xbmc/utils/BitstreamConverter.h
+--- a/xbmc/utils/BitstreamConverter.h	2013-01-12 11:50:57.000000000 +0100
++++ b1/xbmc/utils/BitstreamConverter.h	2013-01-19 13:36:24.000000000 +0100
 @@ -118,11 +118,13 @@
    void Close(void);
    bool NeedConvert(void) { return m_convert_bitstream; };
    bool Convert(uint8_t *pData, int iSize);
-+  bool Convert(uint8_t *pData, int iSize, uint8_t *pBuffer, uint32_t *pBuffSize);
++  bool Convert(uint8_t *pData, int iSize, uint8_t *pBuffer, uint32_t *pBuffSize, bool retry);
    uint8_t *GetConvertBuffer(void);
    int GetConvertSize();
    uint8_t *GetExtraData(void);
@@ -212,15 +222,15 @@ diff -aur --unidirectional-new-file a/xbmc/utils/BitstreamConverter.h b/xbmc/uti
      const uint8_t *sps_pps, uint32_t sps_pps_size, const uint8_t *in, uint32_t in_size);
  
    typedef struct omx_bitstream_ctx {
-@@ -147,6 +149,10 @@
+@@ -147,6 +149,11 @@
        uint32_t size;
    } omx_bitstream_ctx;
  
 +  int               m_byteStreamSize;
 +  int               m_byteStreamAlloc;
 +  uint8_t           *m_byteStreamBuffer;
++  uint8_t           m_first_idr_state;    
 +
    uint8_t           *m_convertBuffer;
    int               m_convertSize;
    uint8_t           *m_inputBuffer;
-
