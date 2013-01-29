@@ -1,0 +1,45 @@
+From c0ac6a303425e215337c98afd76fcb27d2f0f16b Mon Sep 17 00:00:00 2001
+From: Rabeeh Khoury <rabeeh@solid-run.com>
+Date: Tue, 29 Jan 2013 20:57:29 +0200
+Subject: [PATCH] Wrong usage of BMM cache flushing
+
+Wrong usage of flushing API.
+Instead of using the dmac_map_area, dmac_flush_range must be used since the first is restricted to kernel space only and the latter can accept both kernel and user area.
+The reason is the BMM allocates and maps buffers into a user area where the addresses that can be used are not kernel.
+
+This fixes an issue that cache flushing BMM buffers allocated to vmeta makes a kernel panic
+
+Signed-off-by: Rabeeh Khoury <rabeeh@solid-run.com>
+---
+ drivers/misc/bmm_drv.c |   12 ++----------
+ 1 file changed, 2 insertions(+), 10 deletions(-)
+
+diff --git a/drivers/misc/bmm_drv.c b/drivers/misc/bmm_drv.c
+index 45dcdbc..3e9ba90 100644
+--- a/drivers/misc/bmm_drv.c
++++ b/drivers/misc/bmm_drv.c
+@@ -589,19 +589,11 @@ void bmm_consistent_sync(unsigned long start, size_t size, int direction)
+ 
+ 	switch (direction) {
+ 	case BMM_DMA_FROM_DEVICE:	/* invalidate only */
+-#if 1
+-		dmac_map_area((void *)start, size, DMA_FROM_DEVICE);
+-#else
+-		dmac_inv_range((void *)start, (void *)end);
+-#endif
++		dmac_flush_range((void *)start, (void *)end);
+ 		outer_inv_range(paddr, paddr + size);
+ 		break;
+ 	case BMM_DMA_TO_DEVICE:		/* writeback only */
+-#if 1
+-		dmac_map_area((void *)start, size, DMA_TO_DEVICE);
+-#else
+-		dmac_clean_range((void *)start, (void *)end);
+-#endif
++		dmac_flush_range((void *)start, (void *)end);
+ 		outer_clean_range(paddr, paddr + size);
+ 		break;
+ 	case BMM_DMA_BIDIRECTIONAL:	/* writeback and invalidate */
+-- 
+1.7.9.5
+
