@@ -39,38 +39,11 @@ if pkg_uses $1 wayland; then
   EGL_DISPLAYS="wayland,$EGL_DISPLAYS"
 fi
 
-builtin_compiler() {
-  # build the internal compiler
-  setup_toolchain host
-  NOCONFIGURE=yes ./autogen.sh
-
-  LIBDRM_CFLAGS="a" LIBDRM_LIBS="a" \
-  DRIGL_CFLAGS="a" DRIGL_LIBS="a" \
-  INTEL_CFLAGS="a" INTEL_LIBS="a" \
-  NOUVEAU_CFLAGS="a" NOUVEAU_LIBS="a" \
-  RADEON_CFLAGS="a" RADEON_LIBS="a" \
-  GLPROTO_CFLAGS="a" GLPROTO_LIBS="a" \
-  DRI2PROTO_CFLAGS="a" DRI2PROTO_LIBS="a" \
-  ./configure \
-    --enable-shared \
-    --disable-static \
-    --disable-dri \
-    --disable-gallium-llvm \
-    --with-dri-drivers="" \
-    --with-gallium-drivers=""
-
-  make -C src/glsl builtin_compiler
-
-  cp -PR src/glsl/builtin_compiler $ROOT/$TOOLCHAIN/bin
-
-  make -C src/glsl clean
-}
-
-builtin_compiler
-
 setup_toolchain target
 
 NOCONFIGURE=yes ./autogen.sh
+
+export CXX_FOR_BUILD="$HOST_CXX"
 
 # LLVM Hack
 sed -i 's%LLVM_LIBS=".*"%LLVM_LIBS="-lLLVM-$LLVM_VERSION"%' configure
@@ -100,12 +73,18 @@ do_configure target \
   $XVMC \
   $OSMESA \
 
-cp src/glsl/Makefile src/glsl/Makefile.orig
-sed -e "s#\.\/builtin_compiler#$ROOT/$TOOLCHAIN/bin/builtin_compiler#g" \
-  -i src/glsl/Makefile
-
 # now build Mesa for target
-make
+if ! make  ; then
+  echo "fixing it"
+  ranlib src/glsl/builtin_compiler/.libs/libglslcore.a
+  ranlib src/glsl/builtin_compiler/.libs/libglcpp.a
+  a=`grep "dependency_libs=" src/glsl/builtin_compiler/libglslcore.la | cut -d"'" -f2`
+  sed -e "s%$a%%" -i src/glsl/builtin_compiler/libglslcore.la
+  cd src/glsl/builtin_compiler
+  make
+  cd -
+  make
+fi
 make_install
 
 # hack runtime DRI driver dir path
