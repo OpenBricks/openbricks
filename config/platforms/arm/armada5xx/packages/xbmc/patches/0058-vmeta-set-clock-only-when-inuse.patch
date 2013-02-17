@@ -1,0 +1,139 @@
+diff -aur --unidirectional-new-file a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp
+--- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp	2013-02-17 17:03:13.842884382 +0100
++++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp	2013-02-17 16:55:56.000000000 +0100
+@@ -43,6 +43,7 @@
+ #define CLASSNAME "CDVDVideoCodecVMETA"
+ 
+ #include "utils/BitstreamConverter.h"
++#include "settings/GUISettings.h"
+ 
+ 
+ #define ENABLE_MPEG1            // use vMeta for MPEG1 decoding
+@@ -103,15 +104,37 @@
+   m_itime_inc_bits    = -1;
+   m_low_delay         = -1;
+   m_codec_species     = -1;
++  
++  SetHardwareClock(g_guiSettings.GetInt("videoscreen.vmeta_clk"));
+ }
+ 
+ 
+ CDVDVideoCodecVMETA::~CDVDVideoCodecVMETA()
+ {
+   Dispose();
++  
++  SetHardwareClock(VMETA_CLK_500);
+ }
+ 
+ 
++void CDVDVideoCodecVMETA::SetHardwareClock(int clkRate)
++{
++  int clkFreqHz = (clkRate == VMETA_CLK_667) ? 667000000 : 500000000;
++  
++  CLog::Log(LOGINFO, "%s : Changing vmeta clock to %d MHz", __FUNCTION__, clkFreqHz / 1000000);
++
++  FILE *Fh = fopen("/sys/devices/platform/dove_clocks_sysfs.0/vmeta","w");
++
++  if (Fh != 0)
++  {
++    fprintf (Fh, "%d", clkFreqHz);
++    fclose(Fh);
++  }
++  else
++    CLog::Log(LOGERROR, "Unable to open vmeta clock settings file on sysfs");
++}
++
++ 
+ bool CDVDVideoCodecVMETA::Open(CDVDStreamInfo &hints, CDVDCodecOptions &options)
+ {
+   if (!m_DllVMETA->Load() || !m_DllMiscGen->Load())
+diff -aur --unidirectional-new-file a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h
+--- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h	2013-02-17 17:03:12.338884445 +0100
++++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h	2013-02-17 16:48:11.000000000 +0100
+@@ -52,7 +52,8 @@
+   bool ClearPicture(DVDVideoPicture *pDvdVideoPicture);
+   const char *GetName() { return m_video_codec_name.c_str(); };
+ 
+-private:  
++private:
++  void SetHardwareClock(int clkRate);
+   IppCodecStatus SendCodecConfig();
+   IppCodecStatus DecodeInternal();
+ 
+diff -aur --unidirectional-new-file a/xbmc/settings/GUISettings.cpp b/xbmc/settings/GUISettings.cpp
+--- a/xbmc/settings/GUISettings.cpp	2013-02-17 17:03:14.166884370 +0100
++++ b/xbmc/settings/GUISettings.cpp	2013-02-17 16:51:36.000000000 +0100
+@@ -1420,47 +1420,14 @@
+   CLog::Log(LOGINFO, "DTS pass through is %s", GetBool("audiooutput.dtspassthrough") ? "enabled" : "disabled");
+   CLog::Log(LOGINFO, "AAC pass through is %s", GetBool("audiooutput.passthroughaac") ? "enabled" : "disabled");
+ 
+-#ifdef TARGET_MARVELL_DOVE
+-  // For Marvell dove driver; always enable vsync
+-  if (GetInt("videoscreen.vsync") == VSYNC_DRIVER)
+-  {
+-    SetInt("videoscreen.vsync", VSYNC_ALWAYS);
+-  }
+-  VMETA_CLK clk = (VMETA_CLK) GetInt("videoscreen.vmeta_clk");
+-  if ((clk == 500) || (clk == 667))
+-  {
+-    FILE *Fh;
+-    CLog::Log(LOGINFO, "%s : Changing vmeta clock to %d", __FUNCTION__, clk);
+-    Fh = fopen("/sys/devices/platform/dove_clocks_sysfs.0/vmeta","w");
+-    if (Fh != 0)
+-    {
+-        fprintf (Fh, "%d",clk*1000000);
+-    } else
+-      CLog::Log(LOGERROR, "Unable to open vmeta clock settings file on sysfs");
+-    fclose(Fh);
+-  }
+-#endif
+-
+-#if defined(TARGET_DARWIN)
++#if defined(TARGET_DARWIN) || defined(TARGET_MARVELL_DOVE)
+   // trap any previous vsync by driver setting, does not exist on OSX
+   if (GetInt("videoscreen.vsync") == VSYNC_DRIVER)
+   {
+     SetInt("videoscreen.vsync", VSYNC_ALWAYS);
+   }
+-  VMETA_CLK clk = (VMETA_CLK) GetInt("videoscreen.vmeta_clk");
+-  if ((clk == 500) || (clk == 667))
+-  {
+-    FILE *Fh;
+-    CLog::Log(LOGINFO, "%s : Changing vmeta clock to %d", __FUNCTION__, clk);
+-    Fh = fopen("/sys/devices/platform/dove_clocks_sysfs.0/vmeta","w");
+-    if (Fh != 0)
+-    {
+-        fprintf (Fh, "%d",clk*1000000);
+-    } else
+-      CLog::Log(LOGERROR, "Unable to open vmeta clock settings file on sysfs");
+-    fclose(Fh);
+-  }
+ #endif
++
+  // DXMERGE: This might have been useful?
+  // g_videoConfig.SetVSyncMode((VSYNC)GetInt("videoscreen.vsync"));
+ 
+diff -aur --unidirectional-new-file a/xbmc/settings/GUIWindowSettingsCategory.cpp b/xbmc/settings/GUIWindowSettingsCategory.cpp
+--- a/xbmc/settings/GUIWindowSettingsCategory.cpp	2013-02-17 17:03:13.010884418 +0100
++++ b/xbmc/settings/GUIWindowSettingsCategory.cpp	2013-02-17 16:53:16.000000000 +0100
+@@ -1476,20 +1476,6 @@
+     OnRefreshRateChanged(nextRes);
+   }
+ #ifdef TARGET_MARVELL_DOVE
+-  else if (strSetting.Equals("videoscreen.vmeta_clk"))
+-  {
+-    FILE *Fh;
+-
+-    VMETA_CLK clk = (VMETA_CLK) g_guiSettings.GetInt("videoscreen.vmeta_clk");
+-    CLog::Log(LOGDEBUG, "%s : Changing clock to %d", __FUNCTION__, clk);
+-    Fh = fopen("/sys/devices/platform/dove_clocks_sysfs.0/vmeta","w");
+-    if (Fh != 0)
+-    {
+-        fprintf (Fh, "%d",clk*1000000);
+-    } else
+-      CLog::Log(LOGERROR, "Unable to open vmeta clock settings file on sysfs");
+-    fclose(Fh);
+-  }
+   else if (strSetting.Equals("videoscreen.graphics_scaling"))
+   {
+     /* Fake as resolution changed - this to refresh aspect ratios of fonts vs. graphics */
