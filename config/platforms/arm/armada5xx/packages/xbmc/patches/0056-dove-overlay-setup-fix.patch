@@ -1,0 +1,83 @@
+diff -aur --unidirectional-new-file a/xbmc/cores/VideoRenderers/DoveOverlayRenderer.cpp b/xbmc/cores/VideoRenderers/DoveOverlayRenderer.cpp
+--- a/xbmc/cores/VideoRenderers/DoveOverlayRenderer.cpp	2013-02-17 13:17:18.695451297 +0100
++++ b/xbmc/cores/VideoRenderers/DoveOverlayRenderer.cpp	2013-02-17 13:15:58.843454637 +0100
+@@ -73,6 +73,7 @@
+ void CDoveOverlayRenderer::ManageDisplay(bool first)
+ {
+   CRect view;
++  int srcMode, interpolation;
+   struct _sOvlySurface tmp_overlaySurface;
+ 
+   memcpy (&tmp_overlaySurface, &m_overlaySurface, sizeof(struct _sOvlySurface));
+@@ -155,6 +156,26 @@
+       CLog::Log(LOGERROR, "%s::%s - Failed to setup video port offset", CLASSNAME, __func__);
+     }
+   }
++  
++  if (first) 
++  {
++    srcMode = SHM_VMETA;
++    if (ioctl(m_overlayfd, DOVEFB_IOCTL_SET_SRC_MODE, &srcMode) != 0)
++    {
++      CLog::Log(LOGERROR, "%s::%s - Failed to set source mode", CLASSNAME, __func__);
++    }
++
++    /* Scaler is set differently when using graphics scaler */
++    GRAPHICS_SCALING scale = (GRAPHICS_SCALING) g_guiSettings.GetInt("videoscreen.graphics_scaling");
++    if (scale == GR_SCALE_100 || scale == -1)
++    {
++      interpolation = 3;  // bi-linear interpolation
++      if (ioctl(m_overlayfd, DOVEFB_IOCTL_SET_INTERPOLATION_MODE, &interpolation) != 0)
++      {
++        CLog::Log(LOGERROR, "%s::%s - Failed to setup video interpolation mode", CLASSNAME, __func__);
++      }
++    }
++  }
+ }
+ 
+ 
+@@ -201,22 +222,17 @@
+   int srcMode = SHM_NORMAL;
+   if (ioctl(m_overlayfd, DOVEFB_IOCTL_SET_SRC_MODE, &srcMode) == -1)
+   {
+-    CLog::Log(LOGERROR, "%s::%s - Failed set source mode", CLASSNAME, __func__);
++    CLog::Log(LOGERROR, "%s::%s - Failed to set source mode", CLASSNAME, __func__);
+     return false;
+   }
+-#if 0  
+-  GRAPHICS_SCALING scale = (GRAPHICS_SCALING) g_guiSettings.GetInt("videoscreen.graphics_scaling");
+-  if (scale == -1) scale=GR_SCALE_100;
+-  if (scale == GR_SCALE_100) /* Scaler is set differently when using graphics scaler */
++
++  int interpolation = 0; // interpolation off
++  if (ioctl(m_overlayfd, DOVEFB_IOCTL_SET_INTERPOLATION_MODE, &interpolation) == -1)
+   {
+-    int interpolation = 3; // bi-linear interpolation
+-    if (ioctl(m_overlayfd, DOVEFB_IOCTL_SET_INTERPOLATION_MODE, &interpolation) != 0)
+-    {
+-      CLog::Log(LOGERROR, "%s::%s - Failed to setup video interpolation mode", CLASSNAME, __func__);
+-      return false;
+-    }
++    CLog::Log(LOGERROR, "%s::%s - Failed to setup video interpolation mode", CLASSNAME, __func__);
++    return false;
+   }
+-#endif
++
+   struct _sColorKeyNAlpha alpha;
+ 
+   memset (&alpha, 0, sizeof(alpha));
+@@ -271,13 +287,7 @@
+   if (!m_bConfigured)
+     return;
+ 
+-  ManageDisplay(m_enabled);
+-
+-  if (m_enabled == 0) 
+-  {
+-    int srcMode = SHM_VMETA;
+-    ioctl(m_overlayfd, DOVEFB_IOCTL_SET_SRC_MODE, &srcMode);
+-  }
++  ManageDisplay(!m_enabled);
+ 
+   m_overlaySurface.videoBufferAddr.frameID = 0;
+ 
