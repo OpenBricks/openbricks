@@ -1,0 +1,101 @@
+diff -ur vdr-1.7.28.liemi/config.c vdr-1.7.28.liemi.js/config.c
+--- vdr-1.7.28.liemi/config.c	2012-05-11 13:06:57.000000000 +0200
++++ vdr-1.7.28.liemi.js/config.c	2012-06-10 12:39:17.624671705 +0200
+@@ -394,6 +394,9 @@
+   StandardCompliance = STANDARD_DVB;
+   MarginStart = 2;
+   MarginStop = 10;
++  JumpSeconds = 60;
++  JumpSecondsSlow = 10;
++  JumpSecondsRepeat = 300;
+   AudioLanguages[0] = -1;
+   DisplaySubtitles = 0;
+   SubtitleLanguages[0] = -1;
+@@ -589,6 +592,9 @@
+   else if (!strcasecmp(Name, "StandardCompliance"))  StandardCompliance = atoi(Value);
+   else if (!strcasecmp(Name, "MarginStart"))         MarginStart        = atoi(Value);
+   else if (!strcasecmp(Name, "MarginStop"))          MarginStop         = atoi(Value);
++  else if (!strcasecmp(Name, "JumpSeconds"))         JumpSeconds        = atoi(Value); 
++  else if (!strcasecmp(Name, "JumpSecondsSlow"))     JumpSecondsSlow    = atoi(Value);
++  else if (!strcasecmp(Name, "JumpSecondsRepeat"))   JumpSecondsRepeat  = atoi(Value);
+   else if (!strcasecmp(Name, "AudioLanguages"))      return ParseLanguages(Value, AudioLanguages);
+   else if (!strcasecmp(Name, "DisplaySubtitles"))    DisplaySubtitles   = atoi(Value);
+   else if (!strcasecmp(Name, "SubtitleLanguages"))   return ParseLanguages(Value, SubtitleLanguages);
+@@ -687,6 +693,9 @@
+   Store("StandardCompliance", StandardCompliance);
+   Store("MarginStart",        MarginStart);
+   Store("MarginStop",         MarginStop);
++  Store("JumpSeconds",        JumpSeconds);
++  Store("JumpSecondsSlow",    JumpSecondsSlow);
++  Store("JumpSecondsRepeat",  JumpSecondsRepeat);
+   StoreLanguages("AudioLanguages", AudioLanguages);
+   Store("DisplaySubtitles",   DisplaySubtitles);
+   StoreLanguages("SubtitleLanguages", SubtitleLanguages);
+Nur in vdr-1.7.28.liemi.js/: config.c.orig.
+diff -ur vdr-1.7.28.liemi/config.h vdr-1.7.28.liemi.js/config.h
+--- vdr-1.7.28.liemi/config.h	2012-06-10 12:40:10.889325966 +0200
++++ vdr-1.7.28.liemi.js/config.h	2012-06-10 12:39:17.625671717 +0200
+@@ -269,6 +269,7 @@
+   int TimeTransponder;
+   int StandardCompliance;
+   int MarginStart, MarginStop;
++  int JumpSeconds, JumpSecondsSlow, JumpSecondsRepeat;
+   int AudioLanguages[I18N_MAX_LANGUAGES + 1];
+   int DisplaySubtitles;
+   int SubtitleLanguages[I18N_MAX_LANGUAGES + 1];
+Nur in vdr-1.7.28.liemi.js/: config.h.orig.
+diff -ur vdr-1.7.28.liemi/menu.c vdr-1.7.28.liemi.js/menu.c
+--- vdr-1.7.28.liemi/menu.c	2012-06-10 12:40:10.893326015 +0200
++++ vdr-1.7.28.liemi.js/menu.c	2012-06-10 12:39:17.626671730 +0200
+@@ -3276,6 +3276,9 @@
+   Add(new cMenuEditBoolItem(tr("Setup.Replay$Show replay mode"), &data.ShowReplayMode));
+   Add(new cMenuEditBoolItem(tr("Setup.Replay$Show remaining time"), &data.ShowRemainingTime));
+   Add(new cMenuEditIntItem(tr("Setup.Replay$Resume ID"), &data.ResumeID, 0, 99));
++  Add(new cMenuEditIntItem( tr("Setup.Recording$Jump Seconds"), &data.JumpSeconds));
++  Add(new cMenuEditIntItem( tr("Setup.Recording$Jump Seconds Slow"), &data.JumpSecondsSlow));
++  Add(new cMenuEditIntItem( tr("Setup.Recording$Jump Seconds (Repeat)"), &data.JumpSecondsRepeat));
+ }
+ 
+ void cMenuSetupReplay::Store(void)
+@@ -5021,13 +5024,15 @@
+     case kRight:   Forward(); break;
+     case kRed:     TimeSearch(); break;
+     case kGreen|k_Repeat:
+-    case kGreen:   SkipSeconds(-60); break;
+-    case kYellow|k_Repeat:
+-    case kYellow:  SkipSeconds( 60); break;
++                   SkipSeconds(-(Setup.JumpSecondsRepeat)); break;
++    case kGreen:   SkipSeconds(-(Setup.JumpSeconds)); break;
+     case k1|k_Repeat:
+-    case k1:       SkipSeconds(-20); break;
++    case k1:       SkipSeconds(-Setup.JumpSecondsSlow); break;
+     case k3|k_Repeat:
+-    case k3:       SkipSeconds( 20); break;
++    case k3:       SkipSeconds( Setup.JumpSecondsSlow); break;
++    case kYellow|k_Repeat:
++                   SkipSeconds(Setup.JumpSecondsRepeat); break;
++    case kYellow:  SkipSeconds(Setup.JumpSeconds); break;
+     case kPrev|k_Repeat:
+     case kPrev:    if (lastSkipTimeout.TimedOut()) {
+                       lastSkipSeconds = REPLAYCONTROLSKIPSECONDS;
+Nur in vdr-1.7.28.liemi.js/: menu.c.orig.
+diff -ur vdr-1.7.28.liemi/po/de_DE.po vdr-1.7.28.liemi.js/po/de_DE.po
+--- vdr-1.7.28.liemi/po/de_DE.po	2012-06-10 12:40:10.895326040 +0200
++++ vdr-1.7.28.liemi.js/po/de_DE.po	2012-06-10 12:39:17.627671743 +0200
+@@ -855,6 +855,15 @@
+ msgid "Button$Scan"
+ msgstr "Scan"
+ 
++msgid "Setup.Recording$Jump Seconds"
++msgstr "Sprungweite in Sekunden"
++
++msgid "Setup.Recording$Jump Seconds Slow"
++msgstr "Sprungweite in Sekunden langsam"
++
++msgid "Setup.Recording$Jump Seconds (Repeated)"
++msgstr "Sprungweite in Sek. (wiederh.)"
++
+ msgid "Setup.EPG$EPG scan timeout (h)"
+ msgstr "Zeit bis zur EPG-Aktualisierung (h)"
+ 
+Nur in vdr-1.7.28.liemi.js/po: de_DE.po.orig.
