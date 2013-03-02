@@ -1,0 +1,157 @@
+#!/bin/sh -e
+
+DEVICE="$1"
+ROOTFS="$2"
+DEFAULT_TARGET="(undefined)"
+
+# define target machine
+TARGET=$DEFAULT_TARGET
+[ -n "$3" ] && TARGET="$3"
+
+# check target machine
+fs_types=""
+boot_part_size="64M"
+case $TARGET in
+#don't remove the following comment
+#begin_targets
+  cubox)       fs_types="ext4"       ;;
+  raspberrypi) fs_types="fat32 ext4" ;;
+  igepv2)      fs_types="fat32 ext2" ;  boot_part_size="16M" ;; 
+  pandaboard)  fs_types="fat32 ext4" ;;
+  snowball-v5) fs_types="fat32 ext4" ;;
+  efikamx)     fs_types="undefined"  ;;
+  ac100)       fs_types="undefined"  ;;
+  harmony)     fs_types="undefined"  ;;
+  sabrelite)   fs_types="undefined"  ;;
+#end_targets
+#don't remove the preceeding comment
+esac
+
+
+if [ ! -b "$DEVICE" ] || [ ! -f "$ROOTFS" -a ! -d "$ROOTFS" ] || [ -z "$fs_types" ] ; then
+  echo "Usage: $0 <device> <rootfs|rootfs-archive> [target-machine]\n"
+
+  echo "Default target-machine type is:"
+  echo "  $DEFAULT_TARGET\n"
+
+  echo "Supported target-machine types are:"
+  curr=`cat $0`
+  curr=${curr#*#begin_targets}
+  curr=${curr%%#end_targets*}
+  while [ "$prev" != "$curr" ] ; do
+    echo " "${curr%%)*}
+    prev=$curr
+    curr=${curr#*;;}
+  done
+  
+  exit 1
+fi
+
+if [ "`id -u`" -ne 0 ] ; then
+  echo "Notice: Please run this program as root."
+  exit 1
+fi
+
+echo "I'm about to overwrite \033[1m${DEVICE}\033[0m . All existing data will be lost !"
+until [ "$REPLY" = y -o "$REPLY" = yes ] || [ "$REPLY" = n -o "$REPLY" = no ] ; do
+  read -p "Do you want to continue (y/n) ? " REPLY
+done
+[ "$REPLY" = n -o "$REPLY" = no ] && exit
+
+
+# prepare "mkfs" command
+create_mkfs_command () {
+  local mkfs_cmd=""
+
+  local mkfs_fat16="mkfs.vfat -F 16 -n $2 $3"
+  local mkfs_fat32="mkfs.vfat -F 32 -n $2 $3"
+  local mkfs_ext2="mkfs.ext2 -L $2 $3"
+  local mkfs_ext3="mkfs.ext3 -L $2 $3"
+  local mkfs_ext4="mkfs.ext4 -L $2 $3"
+  local mkfs_xfs="mkfs.xfs -L $2 $3"
+
+  eval mkfs_cmd=\$mkfs_$1
+  echo "$mkfs_cmd"
+}
+
+# count partitions and check their types
+part_count=0
+boot_part_type="83"
+for fs_type in $fs_types ; do
+  mkfs_cmd=`create_mkfs_command $fs_type "noname" "-"`
+  
+  if [ -z "$mkfs_cmd" ] ; then
+    echo "Fatal: unknown filesystem type: '$fs_type'"
+    exit 1
+  fi
+ 
+  if [ $part_count -eq 0 ] ; then 
+    case $fs_type in
+      fat16)  boot_part_type="6" ;;
+      fat32)  boot_part_type="c" ;;
+    esac
+  fi
+  
+  part_count=`expr $part_count + 1`
+done
+
+# define partitions and prepare "fdisk" command
+echo $DEVICE | grep -q mmc && OPT=p
+partition_0=${DEVICE}${OPT}1 ; label_0="BOOT"
+partition_1=${DEVICE}${OPT}2 ; label_1="GEEXBOX"
+
+if [ $part_count -lt 2 ] ; then
+  fdisk_input="o\nn\np\n1\n\n\nt\n${boot_part_type}\na\n1\nw\n"
+  partition_1=$partition_0
+  label_0=$label_1
+else
+  fdisk_input="o\nn\np\n1\n\n+${boot_part_size}\nt\n${boot_part_type}\nn\np\n2\n\n\na\n1\nw\n"
+fi
+fdisk_cmd="echo -e \"$fdisk_input\" | fdisk $DEVICE"
+
+echo "\n#### Creating partion(s)..."
+grep -q $DEVICE /proc/mounts && grep $DEVICE /proc/mounts | cut -f2 -d\ | xargs umount
+dd if=/dev/zero of=$DEVICE bs=512 count=4 > /dev/null
+sh -c "$fdisk_cmd" > /dev/null
+fdisk -l $DEVICE
+
+echo "\n#### Creating file system(s)..."
+part_count=0
+for fs_type in $fs_types ; do
+  eval label=\$label_${part_count}
+  eval partition=\$partition_${part_count}
+  mkfs_cmd=`create_mkfs_command $fs_type $label $partition`
+  
+  sh -c "$mkfs_cmd" > /dev/null
+  
+  part_count=`expr $part_count + 1`
+done
+
+echo "\n#### Mounting..."
+mountdir=`mktemp -d`
+mount $partition_1 $mountdir
+if [ "$partition_1" != "$partition_0" ] ; then
+  mkdir -p $mountdir/boot
+  mount $partition_0 $mountdir/boot
+fi
+
+echo "\n#### Copying files..."
+if [ -d "$ROOTFS" ]; then
+  cp -PR $ROOTFS/* $mountdir
+else
+  tar --no-same-owner -xjf $ROOTFS -C $mountdir
+fi
+
+echo "\n#### Flushing buffers..."
+sync
+
+echo "\n#### Unmounting..."
+if [ "$partition_1" != "$partition_0" ] ; then
+  umount $mountdir/boot
+  rmdir $mountdir/boot
+fi
+umount $mountdir
+rmdir $mountdir
+sync
+
+echo "\n#### Done.\n"
