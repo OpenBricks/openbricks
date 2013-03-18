@@ -1,0 +1,30 @@
+#!/bin/sh
+
+. config/options
+
+export MAKEFLAGS=-j1
+
+cd $BUILD/$1*
+
+setup_toolchain host
+./config
+
+sed -i Makefile \
+   -e "s:\/usr\/local\/ssl:\/usr:"
+
+make CC=$HOST_CC LD=$HOST_LD RANLIB=$HOST_RANLIB depend
+make CC=$HOST_CC LD=$HOST_LD RANLIB=$HOST_RANLIB all
+
+install_dir="`pwd`/.install"
+install_dir_debug="`pwd`/.install-debuginfo"
+mkdir -p $install_dir
+make CC=$HOST_CC LD=$HOST_LD RANLIB=$HOST_RANLIB INSTALL_PREFIX="$install_dir" install_sw
+
+if [ -d .install/usr/lib64 ]; then
+  mkdir .install/usr/lib
+  mv .install/usr/lib64/* .install/usr/lib/
+  rmdir .install/usr/lib64
+fi
+
+fix_libs $install_dir
+strip_libs $install_dir $install_dir_debug
