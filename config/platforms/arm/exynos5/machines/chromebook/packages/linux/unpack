@@ -1,0 +1,63 @@
+#!/bin/sh
+
+. config/options
+
+$SCRIPTS/installdev make
+$SCRIPTS/installdev sed
+
+do_unselect_opt () {
+  sed -i "s%^CONFIG_$1=.*%# CONFIG_$1 is not set%" $LINUX/.config
+}
+
+do_unselect () {
+  pkg_uses $1 $2 || \
+    sed -i "s%^CONFIG_$3=.*%# CONFIG_$3 is not set%" $LINUX/.config
+}
+
+do_select () {
+  echo ">>>>>>>>>>>>>>>>>>>>>>> search CONFIG_$1 $2"
+  sed -i "s%# CONFIG_HEADERS_CHECK is not set*%CONFIG_HEADERS_CHECK=n%" $LINUX/.config
+  #sed -i "s%^# CONFIG_$1 is not set%CONFIG_$1=$2%" $LINUX/.config
+}
+
+LINUX=`ls -d $ROOT/$BUILD/$1-[0-9]*`
+
+case $TARGET_ARCH in
+  arm)
+    TARGET_LINUX_ARCH=arm
+    ;;
+  *)
+    echo "Not supported architecture $TARGET_ARCH on Snowball"
+    exit 1
+    ;;
+esac
+
+# try to guess the appropriate kernel configuration file
+KERNEL_CFG_FILE="$CONFIG_MACHINE/$1.conf"
+
+[ ! -f $KERNEL_CFG_FILE ] && \
+  KERNEL_CFG_FILE="$CONFIG_PLATFORM/$1.conf"
+
+[ ! -f $KERNEL_CFG_FILE ] && \
+  KERNEL_CFG_FILE="$CONFIG_PLATFORM_GENERIC/$1.conf"
+
+if [ ! -f "$KERNEL_CFG_FILE" ]; then
+  echo "Unable to find a matching kernel configuration file !!"
+  exit 1
+fi
+
+echo "Using kernel config from: $KERNEL_CFG_FILE"
+
+sed -i -e "s|^HOSTCC[[:space:]]*=.*$|HOSTCC = $HOST_CC|" \
+       -e "s|^HOSTCXX[[:space:]]*=.*$|HOSTCXX = $HOST_CXX|" \
+       -e "s|^ARCH[[:space:]]*?=.*$|ARCH = $TARGET_LINUX_ARCH|" \
+       -e "s|^CROSS_COMPILE[[:space:]]*?=.*$|CROSS_COMPILE = $TARGET_PREFIX|" \
+       $LINUX/Makefile
+
+cp $KERNEL_CFG_FILE $LINUX/.config
+
+do_select HEADERS_CHECK n
+
+yes '
+' | make -C $LINUX oldconfig
+make -C $LINUX prepare1

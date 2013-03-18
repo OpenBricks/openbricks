@@ -1,0 +1,56 @@
+#!/bin/sh
+
+. config/options
+
+unset LDFLAGS
+
+cd $(kernel_path)
+
+. $CONFIG_MACHINE/meta
+
+make zImage
+make modules
+make exynos5250-snow.dtb
+
+install_dir="`pwd`/.install"
+debug_dir="`pwd`/.install-debuginfo/usr/lib/debug"
+rm -rf $install_dir $debug_dir
+mkdir -p $install_dir/lib/firmware $debug_dir
+
+make modules_install \
+  INSTALL_MOD_PATH=.install \
+  DEPMOD=$ROOT/$TOOLCHAIN/bin/depmod \
+
+kmod_dir="$install_dir/lib/modules/$(kernel_version)"
+
+if [ -d .install/lib/firmware ]; then
+  mv .install/lib/firmware .install/firmware
+else
+  mkdir -p .install/firmware
+fi
+rm -f $kmod_dir/build $kmod_dir/source $kmod_dir/modules.*
+strip_kmods "$kmod_dir" "$debug_dir"
+
+mkdir -p .install/boot
+cp arch/$TARGET_ARCH/boot/zImage .install/boot
+cp -r arch/$TARGET_ARCH/boot/*dtb .install/boot/
+
+cp $MACHINE_PACKAGES/$1/scripts/kernel.its kernel.its 
+
+sed -i "s:KERNEL_PATH:$(kernel_path):g" kernel.its
+
+PATH=$PATH:./scripts/dtc/ \
+mkimage -f kernel.its ./.install/boot/kernel.itb
+
+cp $MACHINE_PACKAGES/$1/scripts/config.txt config.txt
+
+vbutil_kernel \
+  --pack ./.install/boot/kernel.img \
+  --keyblock $ROOT/$TOOLCHAIN/share/devkeys/kernel.keyblock \
+  --version 1 \
+  --signprivate $ROOT/$TOOLCHAIN/share/devkeys/kernel_data_key.vbprivk \
+  --config config.txt \
+  --vmlinuz ./.install/boot/kernel.itb \
+  --arch arm
+
+exit 0
