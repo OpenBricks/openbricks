@@ -21,8 +21,6 @@ set_default_advanced_settings () {
     cp /etc/xbmc/snowball-advancedsettings.xml $ADV_SETTINGS
   elif grep -q CuBox /proc/cpuinfo; then
     cp /etc/xbmc/cubox-advancedsettings.xml $ADV_SETTINGS
-    mkdir -p $USERDATA/peripheral_data
-    cp /etc/xbmc/builtin_0471_1001.xml $USERDATA/peripheral_data/
   elif grep -q BCM2708 /proc/cpuinfo; then
     cp /etc/xbmc/rpi-advancedsettings.xml $ADV_SETTINGS
   else
