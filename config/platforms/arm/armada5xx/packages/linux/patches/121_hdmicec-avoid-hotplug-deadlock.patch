@@ -1,0 +1,37 @@
+diff --git a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c
+index 07d8cb0..7a90ef5 100755
+--- a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c
++++ b/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c
+@@ -499,6 +499,11 @@ static void cec_standby(cec_instance *this)
+    this->cec.power = tmPowerStandby;
+    TRY(tmdlHdmiCecSetPowerState(this->cec.inst,this->cec.power));
+    
++   if (this->driver.raw_mode && this->driver.write_pending) {
++     this->driver.write_pending = 0;
++     wake_up_interruptible(&this->driver.wait_write);
++   }
++   
+    LOG(KERN_INFO,"on --> standby\n");
+ 
+  TRY_DONE:
+@@ -784,16 +789,16 @@ static void eventCallbackCEC(tmdlHdmiCecEvent_t event, unsigned char *data, unsi
+             initiator = (frame->addr >> 4) & 0x0F;
+             receiver  = frame->addr & 0x0F;
+             opcode    = frame->data[0];
+-            LOG(KERN_INFO,"hdmicec:ACK:[%x--->%x] %s lenght:%d [%02x %02x %02x %02x]\n",
+-	      initiator,receiver,cec_rxstatus(opcode),length, 
++            LOG(KERN_INFO,"hdmicec:ACK:[%x--->%x] %s length:%d [%02x %02x %02x %02x]\n",
++              initiator,receiver,cec_rxstatus(opcode),length, 
+               frame->data[0], frame->data[1], frame->data[2], frame->data[3]);
+ 
+             this->driver.read_queue_tail = new_tail;
+          }
+ 
+-	 this->driver.write_pending = 0;
+-         wake_up_interruptible(&this->driver.wait_read);
++         this->driver.write_pending = 0;
+          wake_up_interruptible(&this->driver.wait_write);
++         wake_up_interruptible(&this->driver.wait_read);
+ 
+       } else {
+          LOG(KERN_ERR,"Oups ! Callback got invalid event %d !\n",event);
