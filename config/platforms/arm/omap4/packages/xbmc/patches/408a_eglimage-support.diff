@@ -1,0 +1,199 @@
+diff --git a/system/shaders/yuv2rgb_egl_image_external_gles.glsl b/system/shaders/yuv2rgb_egl_image_external_gles.glsl
+new file mode 100644
+index 0000000..6914f88
+--- /dev/null
++++ b/system/shaders/yuv2rgb_egl_image_external_gles.glsl
+@@ -0,0 +1,46 @@
++/*
++ *      Copyright (C) 2010 Team XBMC
++ *      http://www.xbmc.org
++ *
++ *  This Program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; either version 2, or (at your option)
++ *  any later version.
++ *
++ *  This Program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with XBMC; see the file COPYING.  If not, write to
++ *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
++ *  http://www.gnu.org/copyleft/gpl.html
++ *
++ */
++
++/*
++ * The texture object uses the GL_TEXTURE_EXTERNAL_OES texture target, which
++ * is defined by the GL_OES_EGL_image_external OpenGL ES extension. This
++ * limits how the texture may be used. Each time the texture is bound it
++ * must be bound to the GL_TEXTURE_EXTERNAL_OES target rather than the
++ * GL_TEXTURE_2D target. Additionally, any OpenGL ES 2.0 shader that samples
++ * from the texture must declare its use of this extension using, for example,
++ * an "#extension GL_OES_EGL_image_external : require" directive. Such shaders
++ * must also access the texture using the samplerExternalOES GLSL sampler type.
++ */
++
++#extension GL_OES_EGL_image_external : require
++
++precision mediump float;
++
++uniform samplerExternalOES m_samp;
++varying vec2   m_cord;
++uniform float  m_alpha;
++
++void main()
++{
++  vec4 rgb = texture2D(m_samp, m_cord);
++  rgb.a = m_alpha;
++  gl_FragColor = rgb;
++}
+diff --git a/system/shaders/yuv2rgb_vertex_egl_image_external_gles.glsl b/system/shaders/yuv2rgb_vertex_egl_image_external_gles.glsl
+new file mode 100644
+index 0000000..c3f1f14
+--- /dev/null
++++ b/system/shaders/yuv2rgb_vertex_egl_image_external_gles.glsl
+@@ -0,0 +1,33 @@
++/*
++ *      Copyright (C) 2010 Team XBMC
++ *      http://www.xbmc.org
++ *
++ *  This Program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; either version 2, or (at your option)
++ *  any later version.
++ *
++ *  This Program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with XBMC; see the file COPYING.  If not, write to
++ *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
++ *  http://www.gnu.org/copyleft/gpl.html
++ *
++ */
++
++attribute vec4 m_attrpos;
++attribute vec2 m_attrcord;
++varying vec2 m_cord;
++uniform mat4 m_proj;
++uniform mat4 m_model;
++
++void main ()
++{
++  mat4 mvp    = m_proj * m_model;
++  gl_Position = mvp * m_attrpos;
++  m_cord      = m_attrcord;
++}
+diff --git a/xbmc/cores/VideoRenderers/VideoShaders/YUV2RGBShader.cpp b/xbmc/cores/VideoRenderers/VideoShaders/YUV2RGBShader.cpp
+index fa9f68a..f46d3c4 100644
+--- a/xbmc/cores/VideoRenderers/VideoShaders/YUV2RGBShader.cpp
++++ b/xbmc/cores/VideoRenderers/VideoShaders/YUV2RGBShader.cpp
+@@ -263,6 +263,62 @@ bool BaseYUV2RGBGLSLShader::OnEnabled()
+ }
+ #endif
+ 
++
++//////////////////////////////////////////////////////////////////////
++// EGLImageExternalShader - YUV2RGB GL_OES_EGL_image_external extension
++// NOTE: this is a bit ugly, because don't have separate Y/U/V textures
++// (we just hijack the Y texture for now), and don't really have all
++// these other parameters (CSC matrix, etc..)
++//////////////////////////////////////////////////////////////////////
++
++EGLImageExternalShader::EGLImageExternalShader()
++{
++#ifdef HAS_GL
++#  error "Is this supported in GL??"
++#elif HAS_GLES == 2
++
++  m_width   = 1;
++  m_height  = 1;
++  m_hYTex   = -1;
++  m_hVertex = -1;
++  m_hYcoord = -1;
++  m_hProj   = -1;
++  m_hModel  = -1;
++  m_hAlpha  = -1;
++
++  VertexShader()->LoadSource("yuv2rgb_vertex_egl_image_external_gles.glsl", m_defines);
++  PixelShader()->LoadSource("yuv2rgb_egl_image_external_gles.glsl", m_defines);
++#endif
++}
++
++void EGLImageExternalShader::OnCompiledAndLinked()
++{
++  m_hAlpha  = glGetUniformLocation(ProgramHandle(), "m_alpha");
++  m_hProj   = glGetUniformLocation(ProgramHandle(), "m_proj");
++  m_hModel  = glGetUniformLocation(ProgramHandle(), "m_model");
++  m_hVertex = glGetAttribLocation(ProgramHandle(),  "m_attrpos");
++  m_hYcoord = glGetAttribLocation(ProgramHandle(),  "m_attrcord");
++  m_hYTex   = glGetUniformLocation(ProgramHandle(), "m_samp");
++
++printf("m_hVertex=%d, m_hYcoord=%d, m_hYTex=%d\n", m_hVertex, m_hYcoord, m_hYTex);
++printf("m_hAlpha=%d, m_hProj=%d, m_hModel=%d", m_hAlpha, m_hProj, m_hModel);
++
++  VerifyGLState();
++}
++
++bool EGLImageExternalShader::OnEnabled()
++{
++  // set shader attributes once enabled
++  glUniform1i(m_hYTex, 0);
++  glUniformMatrix4fv(m_hProj,  1, GL_FALSE, m_proj);
++  glUniformMatrix4fv(m_hModel, 1, GL_FALSE, m_model);
++  glUniform1f(m_hAlpha, m_alpha);
++
++  VerifyGLState();
++  return true;
++}
++
++
+ //////////////////////////////////////////////////////////////////////
+ // YUV2RGBProgressiveShader - YUV2RGB with no deinterlacing
+ // Use for weave deinterlacing / progressive
+diff --git a/xbmc/cores/VideoRenderers/VideoShaders/YUV2RGBShader.h b/xbmc/cores/VideoRenderers/VideoShaders/YUV2RGBShader.h
+index bcc3a17..b6e2d49 100644
+--- a/xbmc/cores/VideoRenderers/VideoShaders/YUV2RGBShader.h
++++ b/xbmc/cores/VideoRenderers/VideoShaders/YUV2RGBShader.h
+@@ -164,6 +164,36 @@ void CalculateYUVMatrix(TransformMatrix &matrix
+   };
+ #endif
+ 
++  class EGLImageExternalShader : public BaseYUV2RGBShader, public CGLSLShaderProgram
++  {
++  public:
++    EGLImageExternalShader();
++    virtual void SetWidth(int w)     { m_width  = w; }
++    virtual void SetHeight(int h)    { m_height = h; }
++    virtual GLint GetVertexLoc() { return m_hVertex; }
++    virtual GLint GetYcoordLoc() { return m_hYcoord; }
++
++    virtual void SetMatrices(GLfloat *p, GLfloat *m) { m_proj = p; m_model = m; }
++    virtual void SetAlpha(GLfloat alpha) { m_alpha = alpha; }
++
++  protected:
++    void OnCompiledAndLinked();
++    bool OnEnabled();
++
++    string m_defines;
++    int   m_width;
++    int   m_height;
++    GLint m_hYTex;
++    GLint m_hVertex;
++    GLint m_hYcoord;
++    GLint m_hProj;
++    GLint m_hModel;
++    GLint m_hAlpha;
++    GLfloat *m_proj;
++    GLfloat *m_model;
++    GLfloat  m_alpha;
++  };
++
+   class YUV2RGBProgressiveShader : public BaseYUV2RGBGLSLShader
+   {
+   public:

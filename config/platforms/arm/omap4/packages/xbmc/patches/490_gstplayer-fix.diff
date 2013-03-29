@@ -1,0 +1,116 @@
+diff --git a/configure.in b/configure.in
+index 402bf29..db27a3f 100644
+--- a/configure.in
++++ b/configure.in
+@@ -505,7 +505,7 @@ AC_ARG_ENABLE([libcap],
+ 
+ AC_ARG_ENABLE([player],
+   [AS_HELP_STRING([--enable-player],
+-  [enable additional players from a list of comma separated names, (default is none, choices are amlplayer, omxplayer)])],
++  [enable additional players from a list of comma separated names, (default is none, choices are amlplayer, omxplayer, gstplayer)])],
+   [add_players=$enableval],
+   [add_players=no])
+ 
+diff --git a/xbmc/cores/gstplayer/GstPlayer.cpp b/xbmc/cores/gstplayer/GstPlayer.cpp
+index 365f1b4..37a7338 100644
+--- a/xbmc/cores/gstplayer/GstPlayer.cpp
++++ b/xbmc/cores/gstplayer/GstPlayer.cpp
+@@ -55,6 +55,7 @@
+ #include "dialogs/GUIDialogKaiToast.h"
+ #include "utils/StringUtils.h"
+ #include "Util.h"
++#include "URL.h"
+ #include "DVDInputStreams/DVDInputStream.h"
+ #include "DVDInputStreams/DVDInputStreamFile.h"
+ #include "DVDInputStreams/DVDFactoryInputStream.h"
+@@ -893,7 +894,7 @@ CCriticalSection TIRawVideoEGLImageHandle::m_monitorLock;
+ 
+ CGstPlayer::CGstPlayer(IPlayerCallback& callback)
+ : IPlayer(callback),
+-  CThread(),
++  CThread("CGstPlayer"),
+   m_ready(true)
+ {
+   m_bStop = true;
+@@ -1087,15 +1088,13 @@ int CGstPlayer::OutputPicture(GstBuffer * gstbuffer)
+     }
+ 
+     if (pPicture->eglImageHandle) {
+-      pPicture->format = DVDVideoPicture::FMT_EGLIMG;
+-      flags = CONF_FLAGS_FORMAT_EGLIMG;
++      pPicture->format = RENDER_FMT_EGLIMG;
+     } else if (format==GST_STR_FOURCC("NV12")) {
+       pPicture->data[0] = GST_BUFFER_DATA(gstbuffer);
+       pPicture->data[1] = GST_BUFFER_DATA(gstbuffer)+m_output.width*m_output.height;
+       pPicture->iLineSize[0] = pPicture->iWidth;
+       pPicture->iLineSize[1] = pPicture->iWidth;
+-      pPicture->format = DVDVideoPicture::FMT_NV12;
+-      flags = CONF_FLAGS_FORMAT_NV12;
++      pPicture->format = RENDER_FMT_NV12;
+     } else if (format==GST_STR_FOURCC("I420")) {
+       pPicture->data[0] = GST_BUFFER_DATA(gstbuffer);
+       pPicture->data[1] = GST_BUFFER_DATA(gstbuffer)+m_output.width*m_output.height;
+@@ -1103,8 +1102,7 @@ int CGstPlayer::OutputPicture(GstBuffer * gstbuffer)
+       pPicture->iLineSize[0] = pPicture->iWidth;
+       pPicture->iLineSize[1] = pPicture->iWidth/2;
+       pPicture->iLineSize[2] = pPicture->iWidth/2;
+-      pPicture->format = DVDVideoPicture::FMT_YUV420P;
+-      flags = CONF_FLAGS_FORMAT_YV12;
++      pPicture->format = RENDER_FMT_YUV420P;
+     } else {
+       CLog::Log(LOGERROR, "Unsupport output format");
+       return -1;
+@@ -1116,7 +1114,7 @@ int CGstPlayer::OutputPicture(GstBuffer * gstbuffer)
+ 
+ 
+   if ((m_output.width!=pPicture->iWidth) || (m_output.height!=pPicture->iHeight)){
+-    if(!g_renderManager.Configure(pPicture->iWidth, pPicture->iHeight, pPicture->iDisplayWidth, pPicture->iDisplayHeight, config_framerate, flags, pPicture->extended_format))
++    if(!g_renderManager.Configure(pPicture->iWidth, pPicture->iHeight, pPicture->iDisplayWidth, pPicture->iDisplayHeight, config_framerate, flags, pPicture->format, pPicture->extended_format, 0))
+     {
+       CLog::Log(LOGNOTICE, "Failed to configure renderer");
+       return -1;
+@@ -1896,7 +1894,7 @@ __int64 CGstPlayer::GetTime()
+ }
+ 
+ // return length in seconds.. this should be changed to return in milleseconds throughout xbmc
+-int CGstPlayer::GetTotalTime()
++int64_t CGstPlayer::GetTotalTime()
+ {
+   int totaltime = 0;
+   if (m_playbin){
+@@ -1906,7 +1904,7 @@ int CGstPlayer::GetTotalTime()
+     totaltime = duration/1000000000;
+   }
+   //CLog::Log(LOGNOTICE, "---[%s]--- %d", __FUNCTION__, totaltime);
+-  return totaltime;
++  return (int64_t)totaltime;
+ }
+ 
+ void CGstPlayer::SetPlaybackRate(int iSpeed, gint64 pos)
+diff --git a/xbmc/cores/gstplayer/GstPlayer.h b/xbmc/cores/gstplayer/GstPlayer.h
+index aeb6f1a..fe289a6 100644
+--- a/xbmc/cores/gstplayer/GstPlayer.h
++++ b/xbmc/cores/gstplayer/GstPlayer.h
+@@ -96,7 +96,7 @@ public:
+ 
+   virtual void SeekTime(__int64 iTime);
+   virtual __int64 GetTime();
+-  virtual int GetTotalTime();
++  virtual int64_t GetTotalTime();
+   virtual void ToFFRW(int iSpeed);
+   virtual void DoAudioWork()                                    {}
+   
+diff --git a/xbmc/cores/playercorefactory/PlayerCoreFactory.cpp b/xbmc/cores/playercorefactory/PlayerCoreFactory.cpp
+index 243627b..1cbb9c9 100644
+--- a/xbmc/cores/playercorefactory/PlayerCoreFactory.cpp
++++ b/xbmc/cores/playercorefactory/PlayerCoreFactory.cpp
+@@ -294,7 +294,8 @@ bool CPlayerCoreFactory::LoadConfiguration(TiXmlElement* pConfig, bool clear)
+ #endif
+ 
+ #if defined(HAS_GSTPLAYER)
+-    CPlayerCoreConfig* gstplayer = new CPlayerCoreConfig("GstPlayer", EPC_GSTPLAYER, NULL);
++    CPlayerCoreConfig* gstplayer = new CPlayerCoreConfig("GSTPlayer", EPC_GSTPLAYER, NULL);
++    gstplayer->m_bPlaysAudio = true;
+     gstplayer->m_bPlaysVideo = true;
+     s_vecCoreConfigs.push_back(gstplayer);
+ #endif
