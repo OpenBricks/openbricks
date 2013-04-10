@@ -1,0 +1,278 @@
+diff -aur --unidirectional-new-file a/xbmc/cores/AudioEngine/Utils/AEConvert.cpp b/xbmc/cores/AudioEngine/Utils/AEConvert.cpp
+--- a/xbmc/cores/AudioEngine/Utils/AEConvert.cpp	2013-03-18 22:37:48.292281709 +0100
++++ b/xbmc/cores/AudioEngine/Utils/AEConvert.cpp	2013-03-18 22:40:07.204275900 +0100
+@@ -50,19 +50,26 @@
+ 
+ #define INT32_SCALE (-1.0f / INT_MIN)
+ 
+-static inline int safeRound(double f)
++template <int L> inline int safeRound(float f, const float offset = 0.5)
+ {
++  double d = f * ((float)L + offset);
++
+   /* if the value is larger then we can handle, then clamp it */
+-  if (f >= INT_MAX)
+-    return INT_MAX;
+-  if (f <= INT_MIN)
+-    return INT_MIN;
+-
+-  /* if the value is out of the MathUtils::round_int range, then round it normally */
+-  if (f <= static_cast<double>(INT_MIN / 2) - 1.0 || f >= static_cast <double>(INT_MAX / 2) + 1.0)
+-    return (int)floor(f+0.5);
++  if (d >= L)
++    return L;
++  if (d < -L-1)
++    return -L-1;
++
++#ifndef DISABLE_MATHUTILS_ASM_ROUND_INT
++  if (L >= (INT_MAX / 2) + 1)
++  {
++    /* if the value is out of the MathUtils::round_int range, then round it normally */
++    if (d <= static_cast<double>(INT_MIN / 2) - 1.0 || d >= static_cast <double>(INT_MAX / 2) + 1.0)
++      return (int)floor(d+0.5);
++  }
++#endif
+ 
+-  return MathUtils::round_int(f);
++  return MathUtils::round_int(d);
+ }
+ 
+ CAEConvert::AEConvertToFn CAEConvert::ToFloat(enum AEDataFormat dataFormat)
+@@ -390,7 +397,7 @@
+   /* work around invalid alignment */
+   while ((((uintptr_t)data & 0xF) || ((uintptr_t)dest & 0xF)) && count > 0)
+   {
+-    dest[0] = safeRound((data[0] + 1.0f) * ((float)INT8_MAX+.5f));
++    dest[0] = 128 + safeRound<INT8_MAX>(data[0]);
+     ++data;
+     ++dest;
+     --count;
+@@ -416,7 +423,7 @@
+     if (odd == 1)
+     {
+       _mm_empty();
+-      dest[0] = safeRound((data[0] + 1.0f) * ((float)INT8_MAX+.5f));
++      dest[0] = 128 + safeRound<INT8_MAX>(data[0]);
+     }
+     else
+     {
+@@ -449,7 +456,7 @@
+   _mm_empty();
+   #else /* no SSE */
+   for (uint32_t i = 0; i < samples; ++i)
+-    *dest++ = safeRound((*data++ + 1.0f) * ((float)INT8_MAX+.5f));
++    *dest++ = 128 + safeRound<INT8_MAX>(*data++);
+   #endif
+ 
+   return samples;
+@@ -464,7 +471,7 @@
+   /* work around invalid alignment */
+   while ((((uintptr_t)data & 0xF) || ((uintptr_t)dest & 0xF)) && count > 0)
+   {
+-    dest[0] = safeRound(data[0] * ((float)INT8_MAX+.5f));
++    dest[0] = safeRound<INT8_MAX>(data[0]);
+     ++data;
+     ++dest;
+     --count;
+@@ -484,7 +491,7 @@
+     if (odd == 1)
+     {
+       _mm_empty();
+-      dest[0] = safeRound(data[0] * ((float)INT8_MAX+.5f));
++      dest[0] = safeRound<INT8_MAX>(data[0]);
+     }
+     else
+     {
+@@ -508,7 +515,7 @@
+   _mm_empty();
+   #else /* no SSE */
+   for (uint32_t i = 0; i < samples; ++i)
+-    *dest++ = safeRound(*data++ * ((float)INT8_MAX+.5f));
++    *dest++ = safeRound<INT8_MAX>(*data++);
+   #endif
+ 
+   return samples;
+@@ -531,7 +538,7 @@
+     _mm_empty()
+   */
+   if (unaligned == 1)
+-    dst[0] = Endian_SwapLE16(safeRound(data[0] * ((float)INT16_MAX + CAEUtil::FloatRand1(-0.5f, 0.5f))));
++    dst[0] = Endian_SwapLE16(safeRound<INT16_MAX>(data[0], CAEUtil::FloatRand1(-0.5f, 0.5f)));
+ 
+   MEMALIGN(16, static const __m128  mul) = _mm_set_ps1((float)INT16_MAX);
+   MEMALIGN(16, __m128  rand);
+@@ -634,14 +641,14 @@
+     float rand[4];
+     CAEUtil::FloatRand4(-0.5f, 0.5f, rand);
+ 
+-    *dst++ = Endian_SwapLE16(safeRound(*data++ * ((float)INT16_MAX + rand[0])));
+-    *dst++ = Endian_SwapLE16(safeRound(*data++ * ((float)INT16_MAX + rand[1])));
+-    *dst++ = Endian_SwapLE16(safeRound(*data++ * ((float)INT16_MAX + rand[2])));
+-    *dst++ = Endian_SwapLE16(safeRound(*data++ * ((float)INT16_MAX + rand[3])));
++    *dst++ = Endian_SwapLE16(safeRound<INT16_MAX>(*data++, rand[0]));
++    *dst++ = Endian_SwapLE16(safeRound<INT16_MAX>(*data++, rand[1]));
++    *dst++ = Endian_SwapLE16(safeRound<INT16_MAX>(*data++, rand[2]));
++    *dst++ = Endian_SwapLE16(safeRound<INT16_MAX>(*data++, rand[3]));
+   }
+ 
+   for(; i < samples; ++i)
+-    *dst++ = Endian_SwapLE16(safeRound(*data++ * ((float)INT16_MAX + CAEUtil::FloatRand1(-0.5f, 0.5f))));
++    *dst++ = Endian_SwapLE16(safeRound<INT16_MAX>(*data++, CAEUtil::FloatRand1(-0.5f, 0.5f)));
+ 
+   #endif
+ 
+@@ -665,7 +672,7 @@
+     _mm_empty()
+   */
+   if (unaligned == 1)
+-     dst[0] = Endian_SwapBE16(safeRound(data[0] * ((float)INT16_MAX + CAEUtil::FloatRand1(-0.5f, 0.5f))));
++     dst[0] = Endian_SwapBE16(safeRound<INT16_MAX>(data[0], CAEUtil::FloatRand1(-0.5f, 0.5f)));
+ 
+   MEMALIGN(16, static const __m128  mul) = _mm_set_ps1((float)INT16_MAX);
+   MEMALIGN(16, __m128  rand);
+@@ -768,14 +775,14 @@
+     float rand[4];
+     CAEUtil::FloatRand4(-0.5f, 0.5f, rand);
+ 
+-    *dst++ = Endian_SwapBE16(safeRound(*data++ * ((float)INT16_MAX + rand[0])));
+-    *dst++ = Endian_SwapBE16(safeRound(*data++ * ((float)INT16_MAX + rand[1])));
+-    *dst++ = Endian_SwapBE16(safeRound(*data++ * ((float)INT16_MAX + rand[2])));
+-    *dst++ = Endian_SwapBE16(safeRound(*data++ * ((float)INT16_MAX + rand[3])));
++    *dst++ = Endian_SwapBE16(safeRound<INT16_MAX>(*data++, rand[0]));
++    *dst++ = Endian_SwapBE16(safeRound<INT16_MAX>(*data++, rand[1]));
++    *dst++ = Endian_SwapBE16(safeRound<INT16_MAX>(*data++, rand[2]));
++    *dst++ = Endian_SwapBE16(safeRound<INT16_MAX>(*data++, rand[3]));
+   }
+ 
+   for(; i < samples; ++i, data++, dst++)
+-    *dst++ = Endian_SwapBE16(safeRound(*data++ * ((float)INT16_MAX + CAEUtil::FloatRand1(-0.5f, 0.5f))));
++    *dst++ = Endian_SwapBE16(safeRound<INT16_MAX>(*data++, CAEUtil::FloatRand1(-0.5f, 0.5f)));
+ 
+   #endif
+ 
+@@ -793,7 +800,7 @@
+   /* work around invalid alignment */
+   while ((((uintptr_t)data & 0xF) || ((uintptr_t)dest & 0xF)) && count > 0)
+   {
+-    dst[0] = safeRound(data[0] * ((float)INT24_MAX+.5f));
++    dst[0] = safeRound<INT24_MAX>(data[0]);
+     ++data;
+     ++dst;
+     --count;
+@@ -812,7 +819,7 @@
+   {
+     const uint32_t odd = samples - even;
+     if (odd == 1)
+-      dst[0] = safeRound(data[0] * ((float)INT24_MAX+.5f));
++      dst[0] = safeRound<INT24_MAX>(data[0]);
+     else
+     {
+       __m128 in;
+@@ -837,7 +844,7 @@
+   _mm_empty();
+   #else /* no SSE */
+   for (uint32_t i = 0; i < samples; ++i)
+-    *dst++ = safeRound(*data++ * ((float)INT24_MAX+.5f)) & 0x00FFFFFF;
++    *dst++ = safeRound<INT24_MAX>(*data++) & 0x00FFFFFF;
+   #endif
+ 
+   return samples << 2;
+@@ -864,7 +871,7 @@
+   /* work around invalid alignment */
+   while ((((uintptr_t)data & 0xF) || ((uintptr_t)dest & 0xF)) && count > 0)
+   {
+-    *((uint32_t*)(dest)) = (safeRound(*data * ((float)INT24_MAX+.5f)) & 0xFFFFFF) << leftShift;
++    *((uint32_t*)(dest)) = (safeRound<INT24_MAX>(*data) & 0x00FFFFFF) << leftShift;
+     ++dest;
+     --count;
+   }
+@@ -886,7 +893,7 @@
+   {
+     const uint32_t odd = samples - even;
+     if (odd == 1)
+-      dst[0] = safeRound(data[0] * ((float)INT24_MAX+.5f)) & 0xFFFFFF;
++      dst[0] = safeRound<INT24_MAX>(data[0]) & 0x00FFFFFF;
+     else
+     {
+       __m128 in;
+@@ -916,7 +923,7 @@
+   _mm_empty();
+   #else /* no SSE */
+   for (uint32_t i = 0; i < samples; ++i, ++data, dest += 3)
+-    *((uint32_t*)(dest)) = (safeRound(*data * ((float)INT24_MAX+.5f)) & 0xFFFFFF) << leftShift;
++    *((uint32_t*)(dest)) = (safeRound<INT24_MAX>(*data) & 0xFFFFFF) << leftShift;
+   #endif
+ 
+   return samples * 3;
+@@ -932,7 +939,7 @@
+   /* work around invalid alignment */
+   while ((((uintptr_t)data & 0xF) || ((uintptr_t)dest & 0xF)) && count > 0)
+   {
+-    dst[0] = safeRound(data[0] * (float)INT32_MAX);
++    dst[0] = safeRound<INT32_MAX>(data[0], 0.0);
+     ++data;
+     ++dst;
+     --count;
+@@ -955,7 +962,7 @@
+     const uint32_t odd = samples - even;
+     if (odd == 1)
+     {
+-      dst[0] = safeRound(data[0] * (float)INT32_MAX);
++      dst[0] = safeRound<INT32_MAX>(data[0], 0.0);
+       dst[0] = Endian_SwapLE32(dst[0]);
+     }
+     else
+@@ -988,7 +995,7 @@
+   /* no SIMD */
+   for (uint32_t i = 0; i < samples; ++i, ++data, ++dst)
+   {
+-    dst[0] = safeRound(data[0] * (float)INT32_MAX);
++    dst[0] = safeRound<INT32_MAX>(data[0], 0.0);
+     dst[0] = Endian_SwapLE32(dst[0]);
+   }
+   #endif
+@@ -1024,7 +1031,7 @@
+ 
+   if (samples & 0x1)
+   {
+-    dst[0] = safeRound(data[0] * (float)INT32_MAX);
++    dst[0] = safeRound<INT32_MAX>(data[0], 0.0);
+     dst[0] = Endian_SwapLE32(dst[0]);
+   }
+ #endif
+@@ -1041,7 +1048,7 @@
+   /* work around invalid alignment */
+   while ((((uintptr_t)data & 0xF) || ((uintptr_t)dest & 0xF)) && count > 0)
+   {
+-    dst[0] = safeRound(data[0] * (float)INT32_MAX);
++    dst[0] = safeRound<INT32_MAX>(data[0], 0.0);
+     ++data;
+     ++dst;
+     --count;
+@@ -1064,7 +1071,7 @@
+     const uint32_t odd = samples - even;
+     if (odd == 1)
+     {
+-      dst[0] = safeRound(data[0] * (float)INT32_MAX);
++      dst[0] = safeRound<INT32_MAX>(data[0], 0.0);
+       dst[0] = Endian_SwapBE32(dst[0]);
+     }
+     else
+@@ -1096,7 +1103,7 @@
+   /* no SIMD */
+   for (uint32_t i = 0; i < samples; ++i, ++data, ++dst)
+   {
+-    dst[0] = safeRound(data[0] * (float)INT32_MAX);
++    dst[0] = safeRound<INT32_MAX>(data[0], 0.0);
+     dst[0] = Endian_SwapBE32(dst[0]);
+   }
+   #endif
+@@ -1132,7 +1139,7 @@
+ 
+   if (samples & 0x1)
+   {
+-    dst[0] = safeRound(data[0] * (float)INT32_MAX);
++    dst[0] = safeRound<INT32_MAX>(data[0], 0.0);
+     dst[0] = Endian_SwapBE32(dst[0]);
+   }
+ #endif
