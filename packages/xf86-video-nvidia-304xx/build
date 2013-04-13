@@ -1,0 +1,57 @@
+#!/bin/sh
+
+. config/options
+
+require_glibc $1
+
+$SCRIPTS/build linux
+
+get_meta $1
+
+do_symlink() {
+  local lib=$1
+  local dest=$2
+
+  ln -s $lib.so.$PKG_VERSION $dest/$lib.so.1
+  ln -s $lib.so.1 $dest/$lib.so
+}
+
+cd $BUILD/$1*
+
+# purge any .install dir
+rm -rf .install
+
+# Kernel module
+#sed -i -e '/CFLAGS="$CFLAGS/s:-I$SOURCES/arch/x86/include:& -I$OUTPUT/arch/x86/include/generated:' kernel/conftest.sh
+(cd kernel; echo "make module CC=$CC SYSSRC=$(kernel_path) SYSOUT=$(kernel_path)" ; make module CC=$CC SYSSRC=$(kernel_path) SYSOUT=$(kernel_path))
+
+mkdir -p .install/lib/modules/$(kernel_version)/kernel/drivers/video
+cp -P kernel/nvidia.ko .install/lib/modules/$(kernel_version)/kernel/drivers/video
+
+# X.org driver
+mkdir -p .install/$XORG_PATH_MODULES/drivers
+cp -P nvidia_drv.so .install/$XORG_PATH_MODULES/drivers
+
+# System Libs
+mkdir -p .install/usr/lib/tls
+cp -P libnvidia-tls.so.$PKG_VERSION .install/usr/lib
+do_symlink libnvidia-tls .install/usr/lib
+
+cp -P tls/libnvidia-tls.so.$PKG_VERSION .install/usr/lib/tls
+do_symlink libnvidia-tls .install/usr/lib/tls
+
+# OpenGL libs
+cp -P libnvidia-glcore.so.$PKG_VERSION .install/usr/lib
+do_symlink libnvidia-glcore .install/usr/lib
+
+mkdir -p .install/usr/lib/nvidia
+cp -P libGL.so.$PKG_VERSION .install/usr/lib/nvidia/libGL.so.1
+cp -P libglx.so.$PKG_VERSION .install/usr/lib/nvidia/libglx.so
+
+# VDPAU libs
+if pkg_uses $1 vdpau; then
+  cp -P libvdpau_nvidia.so.$PKG_VERSION .install/usr/lib
+  do_symlink libvdpau_nvidia .install/usr/lib
+fi
+
+exit 0
