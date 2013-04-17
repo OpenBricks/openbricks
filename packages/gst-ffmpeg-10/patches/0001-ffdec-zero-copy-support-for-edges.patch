@@ -1,0 +1,1302 @@
+From 0ce0572355645b2820b7fc4378c0abbe84fdca06 Mon Sep 17 00:00:00 2001
+From: Rob Clark <rob@ti.com>
+Date: Tue, 31 Aug 2010 11:54:12 -0500
+Subject: [PATCH 1/3] ffdec: zero copy support for edges
+
+Increase the frame size to add padding, and use a crop event to crop out
+the edges in the display.  This avoids the need to memcpy for codecs that
+don't support CODEC_FLAG_EMU_EDGE.  Currently only enabled for ffvp8, but
+could be enabled for other codecs which still disable direct rendering
+(VP5, VP6*, H264).
+---
+ ext/ffmpeg/gstffmpegcodecmap.c    |  412 ++++++++++++++++++++++++-------------
+ ext/ffmpeg/gstffmpegcodecmap.h    |    5 +-
+ ext/ffmpeg/gstffmpegdec.c         |   41 +++--
+ ext/ffmpeg/gstffmpegdeinterlace.c |    4 +-
+ ext/ffmpeg/gstffmpegdemux.c       |    8 +-
+ ext/ffmpeg/gstffmpegenc.c         |   12 +-
+ ext/ffmpeg/gstffmpegmux.c         |    4 +-
+ ext/ffmpeg/gstffmpegscale.c       |    4 +-
+ ext/ffmpeg/gstffmpegutils.c       |   34 +++-
+ ext/ffmpeg/gstffmpegutils.h       |   10 +-
+ 10 files changed, 353 insertions(+), 181 deletions(-)
+
+diff --git a/ext/ffmpeg/gstffmpegcodecmap.c b/ext/ffmpeg/gstffmpegcodecmap.c
+index 42cad1a..91e3278 100644
+--- a/ext/ffmpeg/gstffmpegcodecmap.c
++++ b/ext/ffmpeg/gstffmpegcodecmap.c
+@@ -32,6 +32,7 @@
+ 
+ #include "gstffmpeg.h"
+ #include "gstffmpegcodecmap.h"
++#include "gstffmpegutils.h"
+ 
+ #include <gst/pbutils/codec-utils.h>
+ 
+@@ -185,8 +186,8 @@ gst_ff_channel_layout_to_gst (guint64 channel_layout, guint channels)
+  * but I'm too lazy today. Maybe later.
+  */
+ static GstCaps *
+-gst_ff_vid_caps_new (AVCodecContext * context, enum CodecID codec_id,
+-    const char *mimetype, const char *fieldname, ...)
++gst_ff_vid_caps_new (AVCodecContext * context, gboolean use_border,
++    enum CodecID codec_id, const char *mimetype, const char *fieldname, ...)
+ {
+   GstStructure *structure = NULL;
+   GstCaps *caps = NULL;
+@@ -198,10 +199,22 @@ gst_ff_vid_caps_new (AVCodecContext * context, enum CodecID codec_id,
+   /* fixed, non probing context */
+   if (context != NULL && context->width != -1) {
+     gint num, denom;
++    gint width, height;
+ 
+-    caps = gst_caps_new_simple (mimetype,
+-        "width", G_TYPE_INT, context->width,
+-        "height", G_TYPE_INT, context->height, NULL);
++    width = context->width;
++    height = context->height;
++
++    if (use_border) {
++      width += 2 * EDGE_WIDTH;
++      height += 2 * EDGE_WIDTH;
++
++      /* this is a bit ugly.. need to find a cleaner way to know any additional
++       * padding that is required..  but common codecs need picture to be a
++       * multiple of 16x16 macroblocks...
++       */
++      width = (width + 15) & ~0x0f;
++      height = (height + 15) & ~0x0f;
++    }
+ 
+     num = context->time_base.den / context->ticks_per_frame;
+     denom = context->time_base.num;
+@@ -216,7 +229,9 @@ gst_ff_vid_caps_new (AVCodecContext * context, enum CodecID codec_id,
+       denom = 1;
+     }
+     GST_LOG ("setting framerate: %d/%d", num, denom);
+-    gst_caps_set_simple (caps,
++    caps = gst_caps_new_simple (mimetype,
++        "width", G_TYPE_INT, width,
++        "height", G_TYPE_INT, height,
+         "framerate", GST_TYPE_FRACTION, num, denom, NULL);
+   } else {
+     /* so we are after restricted caps in this case */
+@@ -508,7 +523,7 @@ gst_ff_aud_caps_new (AVCodecContext * context, enum CodecID codec_id,
+ 
+ GstCaps *
+ gst_ffmpeg_codecid_to_caps (enum CodecID codec_id,
+-    AVCodecContext * context, gboolean encode)
++    AVCodecContext * context, gboolean use_border, gboolean encode)
+ {
+   GstCaps *caps = NULL;
+   gboolean buildcaps = FALSE;
+@@ -518,7 +533,7 @@ gst_ffmpeg_codecid_to_caps (enum CodecID codec_id,
+   switch (codec_id) {
+     case CODEC_ID_MPEG1VIDEO:
+       /* FIXME: bitrate */
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/mpeg",
++      caps = gst_ff_vid_caps_new (context, use_border, codec_id, "video/mpeg",
+           "mpegversion", G_TYPE_INT, 1,
+           "systemstream", G_TYPE_BOOLEAN, FALSE, NULL);
+       break;
+@@ -526,7 +541,7 @@ gst_ffmpeg_codecid_to_caps (enum CodecID codec_id,
+     case CODEC_ID_MPEG2VIDEO:
+       if (encode) {
+         /* FIXME: bitrate */
+-        caps = gst_ff_vid_caps_new (context, codec_id, "video/mpeg",
++        caps = gst_ff_vid_caps_new (context, use_border, codec_id, "video/mpeg",
+             "mpegversion", G_TYPE_INT, 2,
+             "systemstream", G_TYPE_BOOLEAN, FALSE, NULL);
+       } else {
+@@ -544,20 +559,22 @@ gst_ffmpeg_codecid_to_caps (enum CodecID codec_id,
+ 
+     case CODEC_ID_H263:
+       if (encode) {
+-        caps = gst_ff_vid_caps_new (context, codec_id, "video/x-h263",
+-            "variant", G_TYPE_STRING, "itu",
+-            "h263version", G_TYPE_STRING, "h263", NULL);
++        caps =
++            gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-h263",
++            "variant", G_TYPE_STRING, "itu", "h263version", G_TYPE_STRING,
++            "h263", NULL);
+       } else {
+         /* don't pass codec_id, we can decode other variants with the H263
+          * decoder that don't have specific size requirements
+          */
+-        caps = gst_ff_vid_caps_new (context, CODEC_ID_NONE, "video/x-h263",
+-            "variant", G_TYPE_STRING, "itu", NULL);
++        caps =
++            gst_ff_vid_caps_new (context, use_border, CODEC_ID_NONE,
++            "video/x-h263", "variant", G_TYPE_STRING, "itu", NULL);
+       }
+       break;
+ 
+     case CODEC_ID_H263P:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-h263",
++      caps = gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-h263",
+           "variant", G_TYPE_STRING, "itu",
+           "h263version", G_TYPE_STRING, "h263p", NULL);
+       if (encode && context) {
+@@ -572,12 +589,15 @@ gst_ffmpeg_codecid_to_caps (enum CodecID codec_id,
+       break;
+ 
+     case CODEC_ID_H263I:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-intel-h263",
+-          "variant", G_TYPE_STRING, "intel", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id,
++          "video/x-intel-h263", "variant", G_TYPE_STRING, "intel", NULL);
+       break;
+ 
+     case CODEC_ID_H261:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-h261", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-h261",
++          NULL);
+       break;
+ 
+     case CODEC_ID_RV10:
+@@ -603,8 +623,9 @@ gst_ffmpeg_codecid_to_caps (enum CodecID codec_id,
+       }
+ 
+       /* FIXME: context->sub_id must be filled in during decoding */
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-pn-realvideo",
+-          "systemstream", G_TYPE_BOOLEAN, FALSE,
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id,
++          "video/x-pn-realvideo", "systemstream", G_TYPE_BOOLEAN, FALSE,
+           "rmversion", G_TYPE_INT, version, NULL);
+       if (context) {
+         gst_caps_set_simple (caps, "format", G_TYPE_INT, context->sub_id, NULL);
+@@ -712,15 +733,21 @@ gst_ffmpeg_codecid_to_caps (enum CodecID codec_id,
+        * MJPEG-B and sp5x decoding...)? */
+     case CODEC_ID_MJPEG:
+     case CODEC_ID_LJPEG:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "image/jpeg", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "image/jpeg",
++          NULL);
+       break;
+ 
+     case CODEC_ID_SP5X:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/sp5x", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "video/sp5x",
++          NULL);
+       break;
+ 
+     case CODEC_ID_MJPEGB:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-mjpeg-b", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-mjpeg-b",
++          NULL);
+       break;
+ 
+     case CODEC_ID_MPEG4:
+@@ -729,41 +756,43 @@ gst_ffmpeg_codecid_to_caps (enum CodecID codec_id,
+          * the AVI fourcc 'DIVX', but 'mp4v' for Quicktime... */
+         switch (context->codec_tag) {
+           case GST_MAKE_FOURCC ('D', 'I', 'V', 'X'):
+-            caps = gst_ff_vid_caps_new (context, codec_id, "video/x-divx",
+-                "divxversion", G_TYPE_INT, 5, NULL);
++            caps =
++                gst_ff_vid_caps_new (context, use_border, codec_id,
++                "video/x-divx", "divxversion", G_TYPE_INT, 5, NULL);
+             break;
+           case GST_MAKE_FOURCC ('m', 'p', '4', 'v'):
+           default:
+             /* FIXME: bitrate */
+-            caps = gst_ff_vid_caps_new (context, codec_id, "video/mpeg",
+-                "systemstream", G_TYPE_BOOLEAN, FALSE,
++            caps =
++                gst_ff_vid_caps_new (context, use_border, codec_id,
++                "video/mpeg", "systemstream", G_TYPE_BOOLEAN, FALSE,
+                 "mpegversion", G_TYPE_INT, 4, NULL);
+             break;
+         }
+       } else {
+         /* The trick here is to separate xvid, divx, mpeg4, 3ivx et al */
+-        caps = gst_ff_vid_caps_new (context, codec_id, "video/mpeg",
++        caps = gst_ff_vid_caps_new (context, use_border, codec_id, "video/mpeg",
+             "mpegversion", G_TYPE_INT, 4,
+             "systemstream", G_TYPE_BOOLEAN, FALSE, NULL);
+         if (encode) {
+-          gst_caps_append (caps, gst_ff_vid_caps_new (context, codec_id,
+-                  "video/x-divx", "divxversion", G_TYPE_INT, 5, NULL));
+-        } else {
+-          gst_caps_append (caps, gst_ff_vid_caps_new (context, codec_id,
+-                  "video/x-divx", "divxversion", GST_TYPE_INT_RANGE, 4, 5,
++          gst_caps_append (caps, gst_ff_vid_caps_new (context, use_border,
++                  codec_id, "video/x-divx", "divxversion", G_TYPE_INT, 5,
+                   NULL));
+-          gst_caps_append (caps, gst_ff_vid_caps_new (context, codec_id,
+-                  "video/x-xvid", NULL));
+-          gst_caps_append (caps, gst_ff_vid_caps_new (context, codec_id,
+-                  "video/x-3ivx", NULL));
++        } else {
++          gst_caps_append (caps, gst_ff_vid_caps_new (context, use_border,
++                  codec_id, "video/x-divx", "divxversion", GST_TYPE_INT_RANGE,
++                  4, 5, NULL));
++          gst_caps_append (caps, gst_ff_vid_caps_new (context, use_border,
++                  codec_id, "video/x-xvid", NULL));
++          gst_caps_append (caps, gst_ff_vid_caps_new (context, use_border,
++                  codec_id, "video/x-3ivx", NULL));
+         }
+       }
+       break;
+ 
+     case CODEC_ID_RAWVIDEO:
+-      caps =
+-          gst_ffmpeg_codectype_to_caps (AVMEDIA_TYPE_VIDEO, context, codec_id,
+-          encode);
++      caps = gst_ffmpeg_codectype_to_caps (AVMEDIA_TYPE_VIDEO, context,
++          use_border, codec_id, encode);
+       break;
+ 
+     case CODEC_ID_MSMPEG4V1:
+@@ -773,11 +802,12 @@ gst_ffmpeg_codecid_to_caps (enum CodecID codec_id,
+       gint version = 41 + codec_id - CODEC_ID_MSMPEG4V1;
+ 
+       /* encode-FIXME: bitrate */
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-msmpeg",
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-msmpeg",
+           "msmpegversion", G_TYPE_INT, version, NULL);
+       if (!encode && codec_id == CODEC_ID_MSMPEG4V3) {
+-        gst_caps_append (caps, gst_ff_vid_caps_new (context, codec_id,
+-                "video/x-divx", "divxversion", G_TYPE_INT, 3, NULL));
++        gst_caps_append (caps, gst_ff_vid_caps_new (context, use_border,
++                codec_id, "video/x-divx", "divxversion", G_TYPE_INT, 3, NULL));
+       }
+     }
+       break;
+@@ -787,23 +817,24 @@ gst_ffmpeg_codecid_to_caps (enum CodecID codec_id,
+     {
+       gint version = (codec_id == CODEC_ID_WMV1) ? 1 : 2;
+ 
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-wmv",
++      caps = gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-wmv",
+           "wmvversion", G_TYPE_INT, version, NULL);
+     }
+       break;
+ 
+     case CODEC_ID_FLV1:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-flash-video",
+-          "flvversion", G_TYPE_INT, 1, NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id,
++          "video/x-flash-video", "flvversion", G_TYPE_INT, 1, NULL);
+       break;
+ 
+     case CODEC_ID_SVQ1:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-svq",
++      caps = gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-svq",
+           "svqversion", G_TYPE_INT, 1, NULL);
+       break;
+ 
+     case CODEC_ID_SVQ3:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-svq",
++      caps = gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-svq",
+           "svqversion", G_TYPE_INT, 3, NULL);
+       break;
+ 
+@@ -842,11 +873,11 @@ gst_ffmpeg_codecid_to_caps (enum CodecID codec_id,
+             fourcc = GST_MAKE_FOURCC ('I', '4', '2', '0');
+             break;
+         }
+-        caps = gst_ff_vid_caps_new (context, codec_id, "video/x-dv",
++        caps = gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-dv",
+             "systemstream", G_TYPE_BOOLEAN, FALSE,
+             "format", GST_TYPE_FOURCC, fourcc, NULL);
+       } else {
+-        caps = gst_ff_vid_caps_new (context, codec_id, "video/x-dv",
++        caps = gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-dv",
+             "systemstream", G_TYPE_BOOLEAN, FALSE, NULL);
+       }
+     }
+@@ -894,7 +925,9 @@ gst_ffmpeg_codecid_to_caps (enum CodecID codec_id,
+       break;
+ 
+     case CODEC_ID_HUFFYUV:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-huffyuv", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-huffyuv",
++          NULL);
+       if (context) {
+         gst_caps_set_simple (caps,
+             "bpp", G_TYPE_INT, context->bits_per_coded_sample, NULL);
+@@ -903,60 +936,80 @@ gst_ffmpeg_codecid_to_caps (enum CodecID codec_id,
+ 
+     case CODEC_ID_CYUV:
+       caps =
+-          gst_ff_vid_caps_new (context, codec_id, "video/x-compressed-yuv",
+-          NULL);
++          gst_ff_vid_caps_new (context, use_border, codec_id,
++          "video/x-compressed-yuv", NULL);
+       break;
+ 
+     case CODEC_ID_H264:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-h264", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-h264",
++          NULL);
+       break;
+ 
+     case CODEC_ID_INDEO5:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-indeo",
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-indeo",
+           "indeoversion", G_TYPE_INT, 5, NULL);
+       break;
+ 
+     case CODEC_ID_INDEO3:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-indeo",
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-indeo",
+           "indeoversion", G_TYPE_INT, 3, NULL);
+       break;
+ 
+     case CODEC_ID_INDEO2:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-indeo",
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-indeo",
+           "indeoversion", G_TYPE_INT, 2, NULL);
+       break;
+ 
+     case CODEC_ID_FLASHSV:
+       caps =
+-          gst_ff_vid_caps_new (context, codec_id, "video/x-flash-screen", NULL);
++          gst_ff_vid_caps_new (context, use_border, codec_id,
++          "video/x-flash-screen", NULL);
+       break;
+ 
+     case CODEC_ID_VP3:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-vp3", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-vp3",
++          NULL);
+       break;
+ 
+     case CODEC_ID_VP5:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-vp5", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-vp5",
++          NULL);
+       break;
+ 
+     case CODEC_ID_VP6:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-vp6", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-vp6",
++          NULL);
+       break;
+ 
+     case CODEC_ID_VP6F:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-vp6-flash", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id,
++          "video/x-vp6-flash", NULL);
+       break;
+ 
+     case CODEC_ID_VP6A:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-vp6-alpha", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id,
++          "video/x-vp6-alpha", NULL);
+       break;
+ 
+     case CODEC_ID_VP8:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-vp8", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-vp8",
++          NULL);
+       break;
+ 
+     case CODEC_ID_THEORA:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-theora", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-theora",
++          NULL);
+       break;
+ 
+     case CODEC_ID_AAC:
+@@ -1009,37 +1062,41 @@ gst_ffmpeg_codecid_to_caps (enum CodecID codec_id,
+       break;
+ 
+     case CODEC_ID_ASV1:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-asus",
++      caps = gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-asus",
+           "asusversion", G_TYPE_INT, 1, NULL);
+       break;
+     case CODEC_ID_ASV2:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-asus",
++      caps = gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-asus",
+           "asusversion", G_TYPE_INT, 2, NULL);
+       break;
+ 
+     case CODEC_ID_FFV1:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-ffv",
++      caps = gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-ffv",
+           "ffvversion", G_TYPE_INT, 1, NULL);
+       break;
+ 
+     case CODEC_ID_4XM:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-4xm", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-4xm",
++          NULL);
+       break;
+ 
+     case CODEC_ID_XAN_WC3:
+     case CODEC_ID_XAN_WC4:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-xan",
++      caps = gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-xan",
+           "wcversion", G_TYPE_INT, 3 - CODEC_ID_XAN_WC3 + codec_id, NULL);
+       break;
+ 
+     case CODEC_ID_CLJR:
+       caps =
+-          gst_ff_vid_caps_new (context, codec_id,
++          gst_ff_vid_caps_new (context, use_border, codec_id,
+           "video/x-cirrus-logic-accupak", NULL);
+       break;
+ 
+     case CODEC_ID_FRAPS:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-fraps", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-fraps",
++          NULL);
+       break;
+ 
+     case CODEC_ID_MDEC:
+@@ -1049,23 +1106,27 @@ gst_ffmpeg_codecid_to_caps (enum CodecID codec_id,
+       break;
+ 
+     case CODEC_ID_VCR1:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-ati-vcr",
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-ati-vcr",
+           "vcrversion", G_TYPE_INT, 1, NULL);
+       break;
+ 
+     case CODEC_ID_RPZA:
+       caps =
+-          gst_ff_vid_caps_new (context, codec_id, "video/x-apple-video", NULL);
++          gst_ff_vid_caps_new (context, use_border, codec_id,
++          "video/x-apple-video", NULL);
+       break;
+ 
+     case CODEC_ID_CINEPAK:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-cinepak", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-cinepak",
++          NULL);
+       break;
+ 
+       /* WS_VQA belogns here (order) */
+ 
+     case CODEC_ID_MSRLE:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-rle",
++      caps = gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-rle",
+           "layout", G_TYPE_STRING, "microsoft", NULL);
+       if (context) {
+         gst_caps_set_simple (caps,
+@@ -1076,7 +1137,7 @@ gst_ffmpeg_codecid_to_caps (enum CodecID codec_id,
+       break;
+ 
+     case CODEC_ID_QTRLE:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-rle",
++      caps = gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-rle",
+           "layout", G_TYPE_STRING, "quicktime", NULL);
+       if (context) {
+         gst_caps_set_simple (caps,
+@@ -1087,16 +1148,17 @@ gst_ffmpeg_codecid_to_caps (enum CodecID codec_id,
+       break;
+ 
+     case CODEC_ID_MSVIDEO1:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-msvideocodec",
+-          "msvideoversion", G_TYPE_INT, 1, NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id,
++          "video/x-msvideocodec", "msvideoversion", G_TYPE_INT, 1, NULL);
+       break;
+ 
+     case CODEC_ID_WMV3:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-wmv",
++      caps = gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-wmv",
+           "wmvversion", G_TYPE_INT, 3, NULL);
+       break;
+     case CODEC_ID_VC1:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-wmv",
++      caps = gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-wmv",
+           "wmvversion", G_TYPE_INT, 3, "format", GST_TYPE_FOURCC,
+           GST_MAKE_FOURCC ('W', 'V', 'C', '1'), NULL);
+       break;
+@@ -1105,29 +1167,38 @@ gst_ffmpeg_codecid_to_caps (enum CodecID codec_id,
+       break;
+ 
+     case CODEC_ID_MSZH:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-mszh", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-mszh",
++          NULL);
+       break;
+ 
+     case CODEC_ID_ZLIB:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-zlib", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-zlib",
++          NULL);
+       break;
+ 
+     case CODEC_ID_TRUEMOTION1:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-truemotion",
+-          "trueversion", G_TYPE_INT, 1, NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id,
++          "video/x-truemotion", "trueversion", G_TYPE_INT, 1, NULL);
+       break;
+     case CODEC_ID_TRUEMOTION2:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-truemotion",
+-          "trueversion", G_TYPE_INT, 2, NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id,
++          "video/x-truemotion", "trueversion", G_TYPE_INT, 2, NULL);
+       break;
+ 
+     case CODEC_ID_ULTI:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-ultimotion",
+-          NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id,
++          "video/x-ultimotion", NULL);
+       break;
+ 
+     case CODEC_ID_TSCC:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-camtasia", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id,
++          "video/x-camtasia", NULL);
+       if (context) {
+         gst_caps_set_simple (caps,
+             "depth", G_TYPE_INT, (gint) context->bits_per_coded_sample, NULL);
+@@ -1137,80 +1208,111 @@ gst_ffmpeg_codecid_to_caps (enum CodecID codec_id,
+       break;
+ 
+     case CODEC_ID_KMVC:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-kmvc", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-kmvc",
++          NULL);
+       break;
+ 
+     case CODEC_ID_NUV:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-nuv", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-nuv",
++          NULL);
+       break;
+ 
+     case CODEC_ID_GIF:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "image/gif", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "image/gif",
++          NULL);
+       break;
+ 
+     case CODEC_ID_PNG:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "image/png", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "image/png",
++          NULL);
+       break;
+ 
+     case CODEC_ID_PPM:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "image/ppm", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "image/ppm",
++          NULL);
+       break;
+ 
+     case CODEC_ID_PBM:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "image/pbm", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "image/pbm",
++          NULL);
+       break;
+ 
+     case CODEC_ID_PAM:
+       caps =
+-          gst_ff_vid_caps_new (context, codec_id, "image/x-portable-anymap",
+-          NULL);
++          gst_ff_vid_caps_new (context, use_border, codec_id,
++          "image/x-portable-anymap", NULL);
+       break;
+ 
+     case CODEC_ID_PGM:
+       caps =
+-          gst_ff_vid_caps_new (context, codec_id, "image/x-portable-graymap",
+-          NULL);
++          gst_ff_vid_caps_new (context, use_border, codec_id,
++          "image/x-portable-graymap", NULL);
+       break;
+ 
+     case CODEC_ID_PCX:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "image/x-pcx", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "image/x-pcx",
++          NULL);
+       break;
+ 
+     case CODEC_ID_SGI:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "image/x-sgi", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "image/x-sgi",
++          NULL);
+       break;
+ 
+     case CODEC_ID_TARGA:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "image/x-tga", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "image/x-tga",
++          NULL);
+       break;
+ 
+     case CODEC_ID_TIFF:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "image/tiff", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "image/tiff",
++          NULL);
+       break;
+ 
+     case CODEC_ID_SUNRAST:
+       caps =
+-          gst_ff_vid_caps_new (context, codec_id, "image/x-sun-raster", NULL);
++          gst_ff_vid_caps_new (context, use_border, codec_id,
++          "image/x-sun-raster", NULL);
+       break;
+ 
+     case CODEC_ID_SMC:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-smc", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-smc",
++          NULL);
+       break;
+ 
+     case CODEC_ID_QDRAW:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-qdrw", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-qdrw",
++          NULL);
+       break;
+ 
+     case CODEC_ID_DNXHD:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-dnxhd", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-dnxhd",
++          NULL);
+       break;
+ 
+     case CODEC_ID_MIMIC:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-mimic", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-mimic",
++          NULL);
+       break;
+ 
+     case CODEC_ID_VMNC:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-vmnc", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-vmnc",
++          NULL);
+       break;
+ 
+     case CODEC_ID_TRUESPEECH:
+@@ -1223,27 +1325,39 @@ gst_ffmpeg_codecid_to_caps (enum CodecID codec_id,
+       break;
+ 
+     case CODEC_ID_AMV:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-amv", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-amv",
++          NULL);
+       break;
+ 
+     case CODEC_ID_AASC:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-aasc", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-aasc",
++          NULL);
+       break;
+ 
+     case CODEC_ID_LOCO:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-loco", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-loco",
++          NULL);
+       break;
+ 
+     case CODEC_ID_ZMBV:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-zmbv", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-zmbv",
++          NULL);
+       break;
+ 
+     case CODEC_ID_LAGARITH:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-lagarith", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id,
++          "video/x-lagarith", NULL);
+       break;
+ 
+     case CODEC_ID_CSCD:
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-camstudio", NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id,
++          "video/x-camstudio", NULL);
+       if (context) {
+         gst_caps_set_simple (caps,
+             "depth", G_TYPE_INT, (gint) context->bits_per_coded_sample, NULL);
+@@ -1650,7 +1764,8 @@ gst_ffmpeg_codecid_to_caps (enum CodecID codec_id,
+       switch (codec->type) {
+         case AVMEDIA_TYPE_VIDEO:
+           mime = g_strdup_printf ("video/x-gst_ff-%s", codec->name);
+-          caps = gst_ff_vid_caps_new (context, codec_id, mime, NULL);
++          caps =
++              gst_ff_vid_caps_new (context, use_border, codec_id, mime, NULL);
+           g_free (mime);
+           break;
+         case AVMEDIA_TYPE_AUDIO:
+@@ -1703,7 +1818,7 @@ gst_ffmpeg_codecid_to_caps (enum CodecID codec_id,
+ 
+ GstCaps *
+ gst_ffmpeg_pixfmt_to_caps (enum PixelFormat pix_fmt, AVCodecContext * context,
+-    enum CodecID codec_id)
++    gboolean use_border, enum CodecID codec_id)
+ {
+   GstCaps *caps = NULL;
+ 
+@@ -1787,8 +1902,10 @@ gst_ffmpeg_pixfmt_to_caps (enum PixelFormat pix_fmt, AVCodecContext * context,
+       break;
+     case PIX_FMT_GRAY8:
+       bpp = depth = 8;
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-raw-gray",
+-          "bpp", G_TYPE_INT, bpp, "depth", G_TYPE_INT, depth, NULL);
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id,
++          "video/x-raw-gray", "bpp", G_TYPE_INT, bpp, "depth", G_TYPE_INT,
++          depth, NULL);
+       break;
+     default:
+       /* give up ... */
+@@ -1799,34 +1916,32 @@ gst_ffmpeg_pixfmt_to_caps (enum PixelFormat pix_fmt, AVCodecContext * context,
+     if (bpp != 0) {
+       if (r_mask != 0) {
+         if (a_mask) {
+-          caps = gst_ff_vid_caps_new (context, codec_id, "video/x-raw-rgb",
+-              "bpp", G_TYPE_INT, bpp,
+-              "depth", G_TYPE_INT, depth,
+-              "red_mask", G_TYPE_INT, r_mask,
+-              "green_mask", G_TYPE_INT, g_mask,
+-              "blue_mask", G_TYPE_INT, b_mask,
+-              "alpha_mask", G_TYPE_INT, a_mask,
+-              "endianness", G_TYPE_INT, endianness, NULL);
++          caps =
++              gst_ff_vid_caps_new (context, use_border, codec_id,
++              "video/x-raw-rgb", "bpp", G_TYPE_INT, bpp, "depth", G_TYPE_INT,
++              depth, "red_mask", G_TYPE_INT, r_mask, "green_mask", G_TYPE_INT,
++              g_mask, "blue_mask", G_TYPE_INT, b_mask, "alpha_mask", G_TYPE_INT,
++              a_mask, "endianness", G_TYPE_INT, endianness, NULL);
+         } else {
+-          caps = gst_ff_vid_caps_new (context, codec_id, "video/x-raw-rgb",
+-              "bpp", G_TYPE_INT, bpp,
+-              "depth", G_TYPE_INT, depth,
+-              "red_mask", G_TYPE_INT, r_mask,
+-              "green_mask", G_TYPE_INT, g_mask,
+-              "blue_mask", G_TYPE_INT, b_mask,
+-              "endianness", G_TYPE_INT, endianness, NULL);
++          caps =
++              gst_ff_vid_caps_new (context, use_border, codec_id,
++              "video/x-raw-rgb", "bpp", G_TYPE_INT, bpp, "depth", G_TYPE_INT,
++              depth, "red_mask", G_TYPE_INT, r_mask, "green_mask", G_TYPE_INT,
++              g_mask, "blue_mask", G_TYPE_INT, b_mask, "endianness", G_TYPE_INT,
++              endianness, NULL);
+         }
+       } else {
+-        caps = gst_ff_vid_caps_new (context, codec_id, "video/x-raw-rgb",
+-            "bpp", G_TYPE_INT, bpp,
+-            "depth", G_TYPE_INT, depth,
+-            "endianness", G_TYPE_INT, endianness, NULL);
++        caps =
++            gst_ff_vid_caps_new (context, use_border, codec_id,
++            "video/x-raw-rgb", "bpp", G_TYPE_INT, bpp, "depth", G_TYPE_INT,
++            depth, "endianness", G_TYPE_INT, endianness, NULL);
+         if (caps && context) {
+           gst_ffmpeg_set_palette (caps, context);
+         }
+       }
+     } else if (fmt) {
+-      caps = gst_ff_vid_caps_new (context, codec_id, "video/x-raw-yuv",
++      caps =
++          gst_ff_vid_caps_new (context, use_border, codec_id, "video/x-raw-yuv",
+           "format", GST_TYPE_FOURCC, fmt, NULL);
+     }
+   }
+@@ -1949,7 +2064,8 @@ gst_ffmpeg_codectype_to_audio_caps (AVCodecContext * context,
+ 
+ GstCaps *
+ gst_ffmpeg_codectype_to_video_caps (AVCodecContext * context,
+-    enum CodecID codec_id, gboolean encode, AVCodec * codec)
++    gboolean use_border, enum CodecID codec_id, gboolean encode,
++    AVCodec * codec)
+ {
+   GstCaps *caps;
+ 
+@@ -1957,7 +2073,9 @@ gst_ffmpeg_codectype_to_video_caps (AVCodecContext * context,
+       context, codec_id, encode, codec);
+ 
+   if (context) {
+-    caps = gst_ffmpeg_pixfmt_to_caps (context->pix_fmt, context, codec_id);
++    caps =
++        gst_ffmpeg_pixfmt_to_caps (context->pix_fmt, context, use_border,
++        codec_id);
+   } else {
+     GstCaps *temp;
+     enum PixelFormat i;
+@@ -1967,7 +2085,9 @@ gst_ffmpeg_codectype_to_video_caps (AVCodecContext * context,
+     for (i = 0; i < PIX_FMT_NB; i++) {
+       ctx.width = -1;
+       ctx.pix_fmt = i;
+-      temp = gst_ffmpeg_pixfmt_to_caps (i, encode ? &ctx : NULL, codec_id);
++      temp =
++          gst_ffmpeg_pixfmt_to_caps (i, encode ? &ctx : NULL, use_border,
++          codec_id);
+       if (temp != NULL) {
+         gst_caps_append (caps, temp);
+       }
+@@ -1985,14 +2105,16 @@ gst_ffmpeg_codectype_to_video_caps (AVCodecContext * context,
+ 
+ GstCaps *
+ gst_ffmpeg_codectype_to_caps (enum AVMediaType codec_type,
+-    AVCodecContext * context, enum CodecID codec_id, gboolean encode)
++    AVCodecContext * context, gboolean use_border, enum CodecID codec_id,
++    gboolean encode)
+ {
+   GstCaps *caps;
+ 
+   switch (codec_type) {
+     case AVMEDIA_TYPE_VIDEO:
+       caps =
+-          gst_ffmpeg_codectype_to_video_caps (context, codec_id, encode, NULL);
++          gst_ffmpeg_codectype_to_video_caps (context, use_border,
++          codec_id, encode, NULL);
+       break;
+     case AVMEDIA_TYPE_AUDIO:
+       caps =
+diff --git a/ext/ffmpeg/gstffmpegcodecmap.h b/ext/ffmpeg/gstffmpegcodecmap.h
+index d3d6170..311a9e9 100644
+--- a/ext/ffmpeg/gstffmpegcodecmap.h
++++ b/ext/ffmpeg/gstffmpegcodecmap.h
+@@ -37,6 +37,7 @@
+ GstCaps *
+ gst_ffmpeg_codecid_to_caps   (enum CodecID    codec_id,
+                               AVCodecContext *context,
++                              gboolean        use_border,
+                               gboolean        encode);
+ 
+ /*
+@@ -47,6 +48,7 @@ gst_ffmpeg_codecid_to_caps   (enum CodecID    codec_id,
+ GstCaps *
+ gst_ffmpeg_codectype_to_caps (enum AVMediaType  codec_type,
+                               AVCodecContext *context, 
++                              gboolean use_border,
+                               enum CodecID codec_id,
+                               gboolean encode);
+ GstCaps *
+@@ -56,6 +58,7 @@ gst_ffmpeg_codectype_to_audio_caps (AVCodecContext *context,
+ 				    AVCodec *codec);
+ GstCaps *
+ gst_ffmpeg_codectype_to_video_caps (AVCodecContext *context, 
++                              gboolean use_border,
+                               enum CodecID codec_id,
+ 				    gboolean encode,
+ 				    AVCodec *codec);
+@@ -109,7 +112,7 @@ gst_ffmpeg_formatid_to_caps (const gchar *format_name);
+  */
+ 
+ GstCaps *
+-gst_ffmpeg_pixfmt_to_caps (enum PixelFormat pix_fmt, AVCodecContext * context, enum CodecID codec_id);
++gst_ffmpeg_pixfmt_to_caps (enum PixelFormat pix_fmt, AVCodecContext * context, gboolean use_border, enum CodecID codec_id);
+ 
+ /*
+  * _formatid_get_codecids () can be used to get the codecIDs
+diff --git a/ext/ffmpeg/gstffmpegdec.c b/ext/ffmpeg/gstffmpegdec.c
+index 668ab08..4484a82 100644
+--- a/ext/ffmpeg/gstffmpegdec.c
++++ b/ext/ffmpeg/gstffmpegdec.c
+@@ -113,6 +113,7 @@ struct _GstFFMpegDec
+   GValue *par;                  /* pixel aspect ratio of incoming data */
+   gboolean current_dr;          /* if direct rendering is enabled */
+   gboolean extra_ref;           /* keep extra ref around in get/release */
++  gboolean use_border;          /* codec requires padded buffers */
+ 
+   /* some properties */
+   enum AVDiscard skip_frame;
+@@ -318,7 +319,7 @@ gst_ffmpegdec_base_init (GstFFMpegDecClass * klass)
+   g_free (description);
+ 
+   /* get the caps */
+-  sinkcaps = gst_ffmpeg_codecid_to_caps (in_plugin->id, NULL, FALSE);
++  sinkcaps = gst_ffmpeg_codecid_to_caps (in_plugin->id, NULL, FALSE, FALSE);
+   if (!sinkcaps) {
+     GST_DEBUG ("Couldn't get sink caps for decoder '%s'", in_plugin->name);
+     sinkcaps = gst_caps_from_string ("unknown/unknown");
+@@ -828,6 +829,10 @@ gst_ffmpegdec_setcaps (GstPad * pad, GstCaps * caps)
+         /* does not work, uses a incompatible stride. See #610613 */
+         ffmpegdec->current_dr = FALSE;
+         ffmpegdec->extra_ref = TRUE;
++      } else if (oclass->in_plugin->id == CODEC_ID_VP8) {
++        /* note: following is probably true of h264 and other vpN codecs: */
++        ffmpegdec->current_dr = TRUE;
++        ffmpegdec->use_border = TRUE;
+       } else {
+         GST_DEBUG_OBJECT (ffmpegdec, "enabled direct rendering");
+         ffmpegdec->current_dr = TRUE;
+@@ -836,9 +841,7 @@ gst_ffmpegdec_setcaps (GstPad * pad, GstCaps * caps)
+       GST_DEBUG_OBJECT (ffmpegdec, "direct rendering not supported");
+     }
+   }
+-  if (ffmpegdec->current_dr) {
+-    /* do *not* draw edges when in direct rendering, for some reason it draws
+-     * outside of the memory. */
++  if (ffmpegdec->current_dr && !ffmpegdec->use_border) {
+     ffmpegdec->context->flags |= CODEC_FLAG_EMU_EDGE;
+   }
+ 
+@@ -932,10 +935,10 @@ alloc_output_buffer (GstFFMpegDec * ffmpegdec, GstBuffer ** outbuf,
+   /* get the size of the gstreamer output buffer given a
+    * width/height/format */
+   fsize = gst_ffmpeg_avpicture_get_size (ffmpegdec->context->pix_fmt,
+-      width, height);
++      width, height, ffmpegdec->use_border);
+ 
+   if (!ffmpegdec->context->palctrl && ffmpegdec->can_allocate_aligned) {
+-    GST_LOG_OBJECT (ffmpegdec, "calling pad_alloc");
++    GST_LOG_OBJECT (ffmpegdec, "calling pad_alloc: fsize=%d", fsize);
+     /* no pallete, we can use the buffer size to alloc */
+     ret = gst_pad_alloc_buffer_and_set_caps (ffmpegdec->srcpad,
+         GST_BUFFER_OFFSET_NONE, fsize,
+@@ -1044,9 +1047,12 @@ gst_ffmpegdec_get_buffer (AVCodecContext * context, AVFrame * picture)
+           width, height, clip_width, clip_height);
+ 
+       if (width != clip_width || height != clip_height) {
+-        /* We can't alloc if we need to clip the output buffer later */
+-        GST_LOG_OBJECT (ffmpegdec, "we need clipping, fallback alloc");
+-        return avcodec_default_get_buffer (context, picture);
++        /* we can clip.. although we should somehow keep track of the
++         * clipped size so we can send the correct vstab event to the
++         * video sink..
++         */
++        width = clip_width;
++        height = clip_height;
+       }
+ 
+       /* alloc with aligned dimensions for ffmpeg */
+@@ -1058,8 +1064,8 @@ gst_ffmpegdec_get_buffer (AVCodecContext * context, AVFrame * picture)
+       }
+ 
+       /* copy the right pointers and strides in the picture object */
+-      gst_ffmpeg_avpicture_fill ((AVPicture *) picture,
+-          GST_BUFFER_DATA (buf), context->pix_fmt, width, height);
++      gst_ffmpeg_avpicture_fill ((AVPicture *) picture, GST_BUFFER_DATA (buf),
++          context->pix_fmt, width, height, ffmpegdec->use_border);
+       break;
+     }
+     case AVMEDIA_TYPE_AUDIO:
+@@ -1265,7 +1271,13 @@ gst_ffmpegdec_negotiate (GstFFMpegDec * ffmpegdec, gboolean force)
+   }
+ 
+   caps = gst_ffmpeg_codectype_to_caps (oclass->in_plugin->type,
+-      ffmpegdec->context, oclass->in_plugin->id, FALSE);
++      ffmpegdec->context, ffmpegdec->use_border, oclass->in_plugin->id, FALSE);
++
++  if (ffmpegdec->use_border) {
++    gst_pad_push_event (ffmpegdec->srcpad,
++        gst_event_new_crop (EDGE_WIDTH, EDGE_WIDTH,
++            ffmpegdec->context->width, ffmpegdec->context->height));
++  }
+ 
+   if (caps == NULL)
+     goto no_caps;
+@@ -1576,16 +1588,17 @@ get_output_buffer (GstFFMpegDec * ffmpegdec, GstBuffer ** outbuf)
+     /* original ffmpeg code does not handle odd sizes correctly.
+      * This patched up version does */
+     gst_ffmpeg_avpicture_fill (&pic, GST_BUFFER_DATA (*outbuf),
+-        ffmpegdec->context->pix_fmt, width, height);
++        ffmpegdec->context->pix_fmt, width, height, ffmpegdec->use_border);
+ 
+     outpic = (AVPicture *) ffmpegdec->picture;
+ 
+-    GST_LOG_OBJECT (ffmpegdec, "linsize %d %d %d", outpic->linesize[0],
++    GST_LOG_OBJECT (ffmpegdec, "linesize %d %d %d", outpic->linesize[0],
+         outpic->linesize[1], outpic->linesize[2]);
+     GST_LOG_OBJECT (ffmpegdec, "data %u %u %u", 0,
+         (guint) (outpic->data[1] - outpic->data[0]),
+         (guint) (outpic->data[2] - outpic->data[0]));
+ 
++    // XXX is this ok with original width/height? double check this
+     av_picture_copy (&pic, outpic, ffmpegdec->context->pix_fmt, width, height);
+   }
+   ffmpegdec->picture->reordered_opaque = -1;
+diff --git a/ext/ffmpeg/gstffmpegdeinterlace.c b/ext/ffmpeg/gstffmpegdeinterlace.c
+index cd04928..0bac18c 100644
+--- a/ext/ffmpeg/gstffmpegdeinterlace.c
++++ b/ext/ffmpeg/gstffmpegdeinterlace.c
+@@ -178,10 +178,10 @@ gst_ffmpegdeinterlace_chain (GstPad * pad, GstBuffer * inbuf)
+   if (result == GST_FLOW_OK) {
+     gst_ffmpeg_avpicture_fill (&deinterlace->from_frame,
+         GST_BUFFER_DATA (inbuf), deinterlace->pixfmt, deinterlace->width,
+-        deinterlace->height);
++        deinterlace->height, FALSE);
+ 
+     gst_ffmpeg_avpicture_fill (&deinterlace->to_frame, GST_BUFFER_DATA (outbuf),
+-        deinterlace->pixfmt, deinterlace->width, deinterlace->height);
++        deinterlace->pixfmt, deinterlace->width, deinterlace->height, FALSE);
+ 
+     avpicture_deinterlace (&deinterlace->to_frame, &deinterlace->from_frame,
+         deinterlace->pixfmt, deinterlace->width, deinterlace->height);
+diff --git a/ext/ffmpeg/gstffmpegdemux.c b/ext/ffmpeg/gstffmpegdemux.c
+index 3eb5328..18f7ec7 100644
+--- a/ext/ffmpeg/gstffmpegdemux.c
++++ b/ext/ffmpeg/gstffmpegdemux.c
+@@ -992,7 +992,7 @@ gst_ffmpegdemux_get_stream (GstFFMpegDemux * demux, AVStream * avstream)
+   }
+ 
+   /* get caps that belongs to this stream */
+-  caps = gst_ffmpeg_codecid_to_caps (ctx->codec_id, ctx, TRUE);
++  caps = gst_ffmpeg_codecid_to_caps (ctx->codec_id, ctx, FALSE, TRUE);
+   if (caps == NULL)
+     goto unknown_caps;
+ 
+@@ -1411,7 +1411,7 @@ gst_ffmpegdemux_loop (GstFFMpegDemux * demux)
+ 
+   if (rawvideo)
+     outsize = gst_ffmpeg_avpicture_get_size (avstream->codec->pix_fmt,
+-        avstream->codec->width, avstream->codec->height);
++        avstream->codec->width, avstream->codec->height, FALSE);
+   else
+     outsize = pkt.size;
+ 
+@@ -1441,12 +1441,12 @@ gst_ffmpegdemux_loop (GstFFMpegDemux * demux)
+       GST_WARNING ("Unknown demuxer %s, no idea what to do", plugin_name);
+       gst_ffmpeg_avpicture_fill (&src, pkt.data,
+           avstream->codec->pix_fmt, avstream->codec->width,
+-          avstream->codec->height);
++          avstream->codec->height, FALSE);
+     }
+ 
+     gst_ffmpeg_avpicture_fill (&dst, GST_BUFFER_DATA (outbuf),
+         avstream->codec->pix_fmt, avstream->codec->width,
+-        avstream->codec->height);
++        avstream->codec->height, FALSE);
+ 
+     av_picture_copy (&dst, &src, avstream->codec->pix_fmt,
+         avstream->codec->width, avstream->codec->height);
+diff --git a/ext/ffmpeg/gstffmpegenc.c b/ext/ffmpeg/gstffmpegenc.c
+index 2e49b5a..b41fea6 100644
+--- a/ext/ffmpeg/gstffmpegenc.c
++++ b/ext/ffmpeg/gstffmpegenc.c
+@@ -146,7 +146,8 @@ gst_ffmpegenc_base_init (GstFFMpegEncClass * klass)
+   g_free (classification);
+   g_free (description);
+ 
+-  if (!(srccaps = gst_ffmpeg_codecid_to_caps (in_plugin->id, NULL, TRUE))) {
++  if (!(srccaps = gst_ffmpeg_codecid_to_caps (in_plugin->id,
++              NULL, FALSE, TRUE))) {
+     GST_DEBUG ("Couldn't get source caps for encoder '%s'", in_plugin->name);
+     srccaps = gst_caps_new_simple ("unknown/unknown", NULL);
+   }
+@@ -428,7 +429,8 @@ gst_ffmpegenc_getcaps (GstPad * pad)
+       }
+       GST_DEBUG_OBJECT (ffmpegenc,
+           "Got an official pixfmt [%d], attempting to get caps", pixfmt);
+-      tmpcaps = gst_ffmpeg_pixfmt_to_caps (pixfmt, NULL, oclass->in_plugin->id);
++      tmpcaps = gst_ffmpeg_pixfmt_to_caps (pixfmt,
++          NULL, FALSE, oclass->in_plugin->id);
+       if (tmpcaps) {
+         GST_DEBUG_OBJECT (ffmpegenc, "Got caps, breaking out");
+         if (!caps)
+@@ -473,7 +475,7 @@ gst_ffmpegenc_getcaps (GstPad * pad)
+       if (!caps)
+         caps = gst_caps_new_empty ();
+       tmpcaps = gst_ffmpeg_codectype_to_caps (oclass->in_plugin->type, ctx,
+-          oclass->in_plugin->id, TRUE);
++          FALSE, oclass->in_plugin->id, TRUE);
+       if (tmpcaps)
+         gst_caps_append (caps, tmpcaps);
+       else
+@@ -694,7 +696,7 @@ gst_ffmpegenc_setcaps (GstPad * pad, GstCaps * caps)
+ 
+   /* try to set this caps on the other side */
+   other_caps = gst_ffmpeg_codecid_to_caps (oclass->in_plugin->id,
+-      ffmpegenc->context, TRUE);
++      ffmpegenc->context, FALSE, TRUE);
+ 
+   if (!other_caps) {
+     gst_ffmpeg_avcodec_close (ffmpegenc->context);
+@@ -775,7 +777,7 @@ gst_ffmpegenc_chain_video (GstPad * pad, GstBuffer * inbuf)
+   frame_size = gst_ffmpeg_avpicture_fill ((AVPicture *) ffmpegenc->picture,
+       GST_BUFFER_DATA (inbuf),
+       ffmpegenc->context->pix_fmt,
+-      ffmpegenc->context->width, ffmpegenc->context->height);
++      ffmpegenc->context->width, ffmpegenc->context->height, FALSE);
+   g_return_val_if_fail (frame_size == GST_BUFFER_SIZE (inbuf), GST_FLOW_ERROR);
+ 
+   ffmpegenc->picture->pts =
+diff --git a/ext/ffmpeg/gstffmpegmux.c b/ext/ffmpeg/gstffmpegmux.c
+index 538aeed..6830fe0 100644
+--- a/ext/ffmpeg/gstffmpegmux.c
++++ b/ext/ffmpeg/gstffmpegmux.c
+@@ -741,7 +741,7 @@ gst_ffmpegmux_collected (GstCollectPads * pads, gpointer user_data)
+       dst.linesize[0] = st->codec->width * 3;
+ 
+       gst_ffmpeg_avpicture_fill (&src, GST_BUFFER_DATA (buf),
+-          PIX_FMT_RGB24, st->codec->width, st->codec->height);
++          PIX_FMT_RGB24, st->codec->width, st->codec->height, FALSE);
+ 
+       av_picture_copy (&dst, &src, PIX_FMT_RGB24,
+           st->codec->width, st->codec->height);
+@@ -829,7 +829,7 @@ gst_ffmpegmux_get_id_caps (enum CodecID *id_list)
+ 
+   caps = gst_caps_new_empty ();
+   for (i = 0; id_list[i] != CODEC_ID_NONE; i++) {
+-    if ((t = gst_ffmpeg_codecid_to_caps (id_list[i], NULL, TRUE)))
++    if ((t = gst_ffmpeg_codecid_to_caps (id_list[i], NULL, FALSE, TRUE)))
+       gst_caps_append (caps, t);
+   }
+   if (gst_caps_is_empty (caps)) {
+diff --git a/ext/ffmpeg/gstffmpegscale.c b/ext/ffmpeg/gstffmpegscale.c
+index a8678ae..f41832a 100644
+--- a/ext/ffmpeg/gstffmpegscale.c
++++ b/ext/ffmpeg/gstffmpegscale.c
+@@ -276,7 +276,7 @@ gst_ffmpegscale_get_unit_size (GstBaseTransform * trans, GstCaps * caps,
+   ctx->width = width;
+   ctx->height = height;
+   ctx->pix_fmt = PIX_FMT_NB;
+-  gst_ffmpeg_caps_with_codectype (CODEC_TYPE_VIDEO, caps, ctx);
++  gst_ffmpeg_caps_with_codectype (AVMEDIA_TYPE_VIDEO, caps, ctx);
+   if (ctx->pix_fmt == PIX_FMT_NB) {
+     av_free (ctx);
+     return FALSE;
+@@ -321,7 +321,7 @@ gst_ffmpegscale_set_caps (GstBaseTransform * trans, GstCaps * incaps,
+   ctx->width = scale->in_width;
+   ctx->height = scale->in_height;
+   ctx->pix_fmt = PIX_FMT_NB;
+-  gst_ffmpeg_caps_with_codectype (CODEC_TYPE_VIDEO, incaps, ctx);
++  gst_ffmpeg_caps_with_codectype (AVMEDIA_TYPE_VIDEO, incaps, ctx);
+   if (ctx->pix_fmt == PIX_FMT_NB) {
+     av_free (ctx);
+     return FALSE;
+diff --git a/ext/ffmpeg/gstffmpegutils.c b/ext/ffmpeg/gstffmpegutils.c
+index d039914..2d27447 100644
+--- a/ext/ffmpeg/gstffmpegutils.c
++++ b/ext/ffmpeg/gstffmpegutils.c
+@@ -253,11 +253,13 @@ gst_ffmpeg_init_pix_fmt_info (void)
+ };
+ 
+ int
+-gst_ffmpeg_avpicture_get_size (int pix_fmt, int width, int height)
++gst_ffmpeg_avpicture_get_size (int pix_fmt, int width, int height,
++    gboolean use_border)
+ {
+   AVPicture dummy_pict;
+ 
+-  return gst_ffmpeg_avpicture_fill (&dummy_pict, NULL, pix_fmt, width, height);
++  return gst_ffmpeg_avpicture_fill (&dummy_pict, NULL, pix_fmt,
++      width, height, use_border);
+ }
+ 
+ #define GEN_MASK(x) ((1<<(x))-1)
+@@ -268,13 +270,29 @@ gst_ffmpeg_avpicture_get_size (int pix_fmt, int width, int height)
+ #define DIV_ROUND_UP_X(v,x) (((v) + GEN_MASK(x)) >> (x))
+ 
+ int
+-gst_ffmpeg_avpicture_fill (AVPicture * picture,
+-    uint8_t * ptr, enum PixelFormat pix_fmt, int width, int height)
++gst_ffmpeg_avpicture_fill (AVPicture * picture, uint8_t * ptr,
++    enum PixelFormat pix_fmt, int width, int height, gboolean use_border)
+ {
+   int size, w2, h2, size2;
+   int stride, stride2;
+   PixFmtInfo *pinfo;
+ 
++  GST_DEBUG ("%dx%d", width, height);
++
++  // why not use av_fill_image_pointers()??
++
++  if (use_border) {
++    width += 2 * EDGE_WIDTH;
++    height += 2 * EDGE_WIDTH;
++
++    /* this is a bit ugly.. need to find a cleaner way to know any additional
++     * padding that is required..  but common codecs need picture to be a
++     * multiple of 16x16 macroblocks...
++     */
++    width = (width + 15) & ~0x0f;
++    height = (height + 15) & ~0x0f;
++  }
++
+   pinfo = &pix_fmt_info[pix_fmt];
+ 
+   switch (pix_fmt) {
+@@ -303,6 +321,14 @@ gst_ffmpeg_avpicture_fill (AVPicture * picture,
+       picture->linesize[3] = 0;
+       GST_DEBUG ("planes %d %d %d", 0, size, size + size2);
+       GST_DEBUG ("strides %d %d %d", stride, stride2, stride2);
++      /* note: only I420 is used by decoders, so for now I suppose we are
++       * ok only handling use_border case here
++       */
++      if (use_border) {
++        picture->data[0] += (EDGE_WIDTH * width) + EDGE_WIDTH;
++        picture->data[1] += (EDGE_WIDTH / 2 * width / 2) + EDGE_WIDTH / 2;
++        picture->data[2] += (EDGE_WIDTH / 2 * width / 2) + EDGE_WIDTH / 2;
++      }
+       return size + 2 * size2;
+     case PIX_FMT_YUVA420P:
+       stride = ROUND_UP_4 (width);
+diff --git a/ext/ffmpeg/gstffmpegutils.h b/ext/ffmpeg/gstffmpegutils.h
+index 4b713de..783bdba 100644
+--- a/ext/ffmpeg/gstffmpegutils.h
++++ b/ext/ffmpeg/gstffmpegutils.h
+@@ -27,11 +27,16 @@
+ #endif
+ #include <gst/gst.h>
+ 
++
++#define EDGE_WIDTH avcodec_get_edge_width()
++
++
+ /*
+  *Get the size of an picture
+  */
+ int
+-gst_ffmpeg_avpicture_get_size (int pix_fmt, int width, int height);
++gst_ffmpeg_avpicture_get_size (int pix_fmt, int width, int height,
++        gboolean use_border);
+ 
+ /*
+  * Fill in pointers in an AVPicture, aligned by 4 (required by X).
+@@ -42,7 +47,8 @@ gst_ffmpeg_avpicture_fill (AVPicture * picture,
+                            uint8_t *   ptr,
+                            enum PixelFormat pix_fmt,
+                            int         width,
+-                           int         height);
++                           int         height,
++                           gboolean    use_border);
+ 
+ /*
+  * Convert from/to a GStreamer <-> FFMpeg timestamp.
+-- 
+1.7.5.4
+
