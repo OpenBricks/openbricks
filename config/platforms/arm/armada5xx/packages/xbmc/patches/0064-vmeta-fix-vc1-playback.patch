@@ -1,0 +1,74 @@
+diff -aur --unidirectional-new-file a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp
+--- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp	2013-04-18 20:26:49.560380390 +0200
++++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp	2013-04-18 20:25:24.628383944 +0200
+@@ -436,6 +436,8 @@
+ int CDVDVideoCodecVMETA::Decode(uint8_t *pData, int iSize, double dts, double pts)
+ {
+   int iSize2nd = 0;
++  uint32_t bufOfs = 0;
++  static const uint8_t VC1FrameStartCode[4]  = { 0x00, 0x00, 0x01, 0x0d };
+ #ifdef ENABLE_PTS
+   int numStreamBufs = 0;
+ #endif
+@@ -464,6 +466,11 @@
+       // special handling: determine MPEG2 aspect ratio
+       digest_mpeg2_inbuf(pData, iSize);
+     }
++    else if (m_VDecParSet.strm_fmt == IPP_VIDEO_STRM_FMT_VC1)
++    {
++      if (digest_vc1_inbuf(pData, iSize) )
++        bufOfs = sizeof(VC1FrameStartCode);
++    }
+   }
+ 
+ 
+@@ -483,8 +490,11 @@
+       }
+       else
+       {
+-        memcpy(pStream->pBuf, pData, std::min<uint32_t>(dataLen, iSize));
+-        dataLen = (uint32_t)iSize;
++        if (bufOfs)
++          memcpy(pStream->pBuf, VC1FrameStartCode, sizeof(VC1FrameStartCode));
++
++        memcpy(pStream->pBuf+bufOfs, pData, std::min<uint32_t>(dataLen-bufOfs, iSize));
++        dataLen = (uint32_t)iSize+bufOfs;
+       }
+ 
+       // did it fit in ?
+@@ -505,8 +515,11 @@
+         }
+         else
+         {
+-          memcpy(pStream->pBuf, pData, iSize);
+-          dataLen = (uint32_t)iSize;
++          if (bufOfs)
++            memcpy(pStream->pBuf, VC1FrameStartCode, sizeof(VC1FrameStartCode));
++
++          memcpy(pStream->pBuf+bufOfs, pData, iSize);
++          dataLen = (uint32_t)iSize+bufOfs;
+         }
+       }
+       
+@@ -1087,4 +1100,10 @@
+ }
+ 
+ 
++bool CDVDVideoCodecVMETA::digest_vc1_inbuf(uint8_t *pData, int iSize)
++{
++  return (iSize < 3 || pData[0] != 0x00 || pData[1] != 0x00 || pData[2] != 0x01);
++}
++
++
+ #endif
+diff -aur --unidirectional-new-file a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h
+--- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h	2013-04-18 20:26:48.752380425 +0200
++++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h	2013-04-18 20:14:43.340410761 +0200
+@@ -59,6 +59,7 @@
+ 
+   uint8_t *digest_mpeg4_inbuf(uint8_t *pData, int iSize);
+   uint8_t *digest_mpeg2_inbuf(uint8_t *pData, int iSize);
++  bool    digest_vc1_inbuf(uint8_t *pData, int iSize);
+   
+ protected:
+   // Video format
