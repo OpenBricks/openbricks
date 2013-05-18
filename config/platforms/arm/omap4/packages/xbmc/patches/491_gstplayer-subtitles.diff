@@ -1,0 +1,376 @@
+diff --git a/xbmc/video/windows/GUIWindowFullScreen.cpp b/xbmc/video/windows/GUIWindowFullScreen.cpp
+index 7b80926..8dd9a6c 100644
+--- a/xbmc/video/windows/GUIWindowFullScreen.cpp
++++ b/xbmc/video/windows/GUIWindowFullScreen.cpp
+@@ -1071,6 +1071,9 @@ void CGUIWindowFullScreen::RenderTTFSubtitles()
+ #if defined(HAS_OMXPLAYER)
+        g_application.GetCurrentPlayer() == EPC_OMXPLAYER ||
+ #endif
++#if defined(HAS_GSTPLAYER)
++       g_application.GetCurrentPlayer() == EPC_GSTPLAYER ||
++#endif
+        g_application.GetCurrentPlayer() == EPC_DVDPLAYER) &&
+       CUtil::IsUsingTTFSubtitles() && (g_application.m_pPlayer->GetSubtitleVisible()))
+   {
+diff --git a/xbmc/cores/gstplayer/GstPlayer.h b/xbmc/cores/gstplayer/GstPlayer.h
+index fe289a6..905231d 100644
+--- a/xbmc/cores/gstplayer/GstPlayer.h
++++ b/xbmc/cores/gstplayer/GstPlayer.h
+@@ -24,6 +24,9 @@
+ #include "threads/Thread.h"
+ #include <gst/gst.h>
+ 
++class CDVDPlayerSubtitle;
++class CDVDOverlayContainer;
++
+ typedef struct{
+    gchar * codec;
+    gchar * lang;
+@@ -33,8 +36,15 @@ typedef struct{
+ typedef struct {
+    gchar * codec;
+    guint bitrate;
++   int framerate_num;
++   int framerate_den;
+ } MediaVideoInfo;
+ 
++typedef struct {
++    std::string filename;
++    std::string name;
++} SubtitleInfo;
++
+ typedef struct{
+    bool loaded;
+    gint video_num;
+@@ -67,7 +77,6 @@ public:
+   virtual bool HasAudio() const;
+   virtual void ToggleOSD() { }; // empty
+   virtual void SwitchToNextLanguage();
+-  virtual void ToggleSubtitles();
+   virtual bool CanSeek();
+   virtual void Seek(bool bPlus, bool bLargeStep);
+   virtual void SeekPercentage(float iPercent);
+@@ -93,13 +102,23 @@ public:
+ 
+   virtual void SetSubTitleDelay(float fValue = 0.0f);
+   virtual float GetSubTitleDelay();
++  virtual int GetSubtitleCount();
++  virtual int GetSubtitle();
++  virtual void GetSubtitleName(int iStream, CStdString &strStreamName);
++  virtual void GetSubtitleLanguage(int iStream, CStdString &strStreamLang);
++  virtual void SetSubtitle(int iStream);
++  virtual bool GetSubtitleVisible();
++  virtual void SetSubtitleVisible(bool bVisible);
++  virtual bool GetSubtitleExtension(CStdString &strSubtitleExtension); 
++  virtual int AddSubtitle(const CStdString& strSubPath);
++  virtual bool GetCurrentSubtitle(CStdString& strSubtitle);
+ 
+   virtual void SeekTime(__int64 iTime);
+   virtual __int64 GetTime();
+   virtual int64_t GetTotalTime();
+   virtual void ToFFRW(int iSpeed);
+   virtual void DoAudioWork()                                    {}
+-  
++ 
+   virtual CStdString GetPlayerState();
+   virtual bool SetPlayerState(CStdString state);
+ 
+@@ -129,6 +148,9 @@ private:
+   int OutputPicture(GstBuffer * gstbuffer);
+   bool SetAndWaitPlaybinState(GstState newstate, int timeout);
+ 
++  void FindSubtitleFiles();
++  int AddSubtitleFile(const std::string &filename, const std::string &subfilename = "");
++
+   CFileItem   m_item;
+ 
+   CRect m_srcRect;
+@@ -156,6 +178,7 @@ private:
+ 
+   int m_audio_current;
+   int m_video_current;
++  int m_subtitle_current;
+ 
+   struct SOutputConfiguration
+   {
+@@ -177,5 +200,11 @@ private:
+   CStdString      m_password;
+   std::map<CStdString, CStdString> m_requestheaders;
+ 
++  CDVDPlayerSubtitle     *m_dvdPlayerSubtitle;
++  CDVDOverlayContainer   *m_dvdOverlayContainer;
++  std::vector<SubtitleInfo*> m_subtitleStreams;
++  float m_subtitleDelay;
++  bool m_subtitleShow;
++
+   static void InitEglImage();
+ };
+diff --git a/xbmc/cores/gstplayer/GstPlayer.cpp b/xbmc/cores/gstplayer/GstPlayer.cpp
+index 37a7338..beb924d 100644
+--- a/xbmc/cores/gstplayer/GstPlayer.cpp
++++ b/xbmc/cores/gstplayer/GstPlayer.cpp
+@@ -71,6 +71,12 @@
+ 
+ #include "GstPlayer.h"
+ 
++// for external subtitles
++#include "xbmc/cores/dvdplayer/DVDClock.h"
++#include "xbmc/cores/dvdplayer/DVDPlayerSubtitle.h"
++#include "xbmc/cores/dvdplayer/DVDDemuxers/DVDDemuxVobsub.h"
++#include "settings/VideoSettings.h"
++
+ 
+ /******************************************************************************
+  * stuff related to eglImage..
+@@ -910,11 +916,21 @@ CGstPlayer::CGstPlayer(IPlayerCallback& callback)
+   m_file_cnt = 0;
+   gst_init(NULL, NULL);
+   InitEglImage();
++
++  m_subtitleDelay = 0.0f;
++  m_subtitleShow = false;
++  m_subtitle_current = -1;
++
++  m_dvdOverlayContainer = new CDVDOverlayContainer;
++  m_dvdPlayerSubtitle = new CDVDPlayerSubtitle(m_dvdOverlayContainer);
+ }
+ 
+ CGstPlayer::~CGstPlayer()
+ {
+   CloseFile();
++
++  delete m_dvdPlayerSubtitle;
++  delete m_dvdOverlayContainer;
+ }
+ 
+ bool CGstPlayer::LoadMediaInfo()
+@@ -978,13 +994,13 @@ bool CGstPlayer::LoadMediaInfo()
+ 
+     for (i=0;i<m_mediainfo.video_num;i++)
+     {
++      MediaVideoInfo * vinfo = &m_mediainfo.video_info[i];
+       GstTagList *tags = NULL;
++      GstPad *pad = NULL;
+ 
+       g_signal_emit_by_name (G_OBJECT (m_playbin), "get-video-tags", i, &tags);
+ 
+       if (tags) {
+-        MediaVideoInfo * vinfo = &m_mediainfo.video_info[i];
+-
+         LOAD_TAG(vinfo->codec, tags, GST_TAG_CODEC);
+         if (vinfo->codec==NULL){
+           LOAD_TAG(vinfo->codec, tags, GST_TAG_VIDEO_CODEC);
+@@ -1000,8 +1016,29 @@ bool CGstPlayer::LoadMediaInfo()
+ 
+         gst_tag_list_free (tags);
+       }
++
++      // Assign arbitrary values in case we can't get the info
++      vinfo->framerate_num = 25;
++      vinfo->framerate_den = 1;
++
++      g_signal_emit_by_name (m_playbin, "get-video-pad", i, &pad, NULL);
++      if (pad) {
++          GstCaps *caps = gst_pad_get_negotiated_caps(pad);
++          if (caps) {
++            GstStructure *structure = gst_caps_get_structure (caps, 0);
++            const GValue *framerate = gst_structure_get_value (structure, "framerate");
++
++            vinfo->framerate_num = gst_value_get_fraction_numerator (framerate);
++            vinfo->framerate_den = gst_value_get_fraction_denominator (framerate);
++
++            gst_caps_unref(caps);
++          }
++      }
+     }
+ 
++    FindSubtitleFiles();
++    SetSubtitleVisible(g_settings.m_currentVideoSettings.m_SubtitleOn);
++
+     m_mediainfo.loaded = true;
+     return true;
+   } 
+@@ -1360,6 +1397,11 @@ bool CGstPlayer::CloseFile()
+   
+   CleanMediaInfo();
+ 
++  for (unsigned int i = 0; i < m_subtitleStreams.size(); i++) {
++    delete m_subtitleStreams[i];
++  }
++  m_subtitleStreams.clear();
++
+   g_renderManager.UnInit();
+ 
+   m_callback.OnPlayBackStopped();
+@@ -1633,11 +1675,6 @@ void CGstPlayer::SwitchToNextLanguage()
+   CLog::Log(LOGNOTICE, "---[%s]---", __FUNCTION__);
+ }
+ 
+-void CGstPlayer::ToggleSubtitles()
+-{
+-  CLog::Log(LOGNOTICE, "---[%s]---", __FUNCTION__);
+-}
+-
+ bool CGstPlayer::CanSeek()
+ {
+   return m_mediainfo.seekable;
+@@ -1851,13 +1888,156 @@ float CGstPlayer::GetAVDelay()
+ 
+ void CGstPlayer::SetSubTitleDelay(float fValue)
+ {
+-  CLog::Log(LOGNOTICE, "---[%s]---", __FUNCTION__);
++  m_subtitleDelay = fValue * 1000000;
+ }
+ 
+ float CGstPlayer::GetSubTitleDelay()
+ {
+-  CLog::Log(LOGNOTICE, "---[%s]---", __FUNCTION__);
+-  return 0.0;
++  return m_subtitleDelay;
++}
++
++int CGstPlayer::GetSubtitleCount()
++{
++    return m_subtitleStreams.size();
++}
++
++int CGstPlayer::GetSubtitle()
++{
++    return m_subtitle_current;
++}
++
++void CGstPlayer::GetSubtitleName(int iStream, CStdString &strStreamName)
++{
++  strStreamName = m_subtitleStreams[iStream]->name;
++}
++
++void CGstPlayer::GetSubtitleLanguage(int iStream, CStdString &strStreamLang)
++{
++  strStreamLang = g_localizeStrings.Get(13205); // "Unknown"
++}
++
++void CGstPlayer::SetSubtitle(int index)
++{
++  CDVDStreamInfo hint;
++  std::string filename;
++
++  if ((unsigned int)index > m_subtitleStreams.size() || index < 0) {
++    return;
++  }
++
++  filename = m_subtitleStreams[index]->filename;
++
++  hint.Clear();
++  hint.fpsscale = m_mediainfo.video_info[m_video_current].framerate_den;
++  hint.fpsrate  = m_mediainfo.video_info[m_video_current].framerate_num;
++
++  m_dvdPlayerSubtitle->CloseStream(true);
++  if (!m_dvdPlayerSubtitle->OpenStream(hint, filename)) {
++    CLog::Log(LOGWARNING, "%s - Unsupported subtitle stream %d. Stream disabled.", __FUNCTION__, index);
++  } else {
++    CLog::Log(LOGNOTICE, "Subtitle %s opened", filename.c_str());
++    m_subtitle_current = index;
++  }
++}
++
++bool CGstPlayer::GetSubtitleVisible()
++{
++    return m_subtitleShow;
++}
++
++void CGstPlayer::SetSubtitleVisible(bool show)
++{
++  m_subtitleShow = (show && m_subtitleStreams.size());
++  g_settings.m_currentVideoSettings.m_SubtitleOn = show;
++
++  if (m_subtitleShow) {
++    // No subtitle previously asked.
++    // Force the first subtitle stream
++    if (m_subtitle_current < 0)
++        m_subtitle_current = 0;
++
++    SetSubtitle(m_subtitle_current);
++  }
++}
++
++bool CGstPlayer::GetSubtitleExtension(CStdString &strSubtitleExtension) 
++{
++  if (m_subtitle_current < 0)
++      return false;
++
++  strSubtitleExtension = URIUtils::GetExtension(m_subtitleStreams[m_subtitle_current]->filename);
++
++  return true;
++}
++
++int CGstPlayer::AddSubtitle(const CStdString& strSubPath)
++{
++  return AddSubtitleFile(strSubPath);
++}
++
++bool CGstPlayer::GetCurrentSubtitle(CStdString& strSubtitle)
++{
++  if (m_subtitle_current == -1)
++    return false; 
++
++  m_dvdPlayerSubtitle->GetCurrentSubtitle(strSubtitle, (double)(GetTime() * 1000) - m_subtitleDelay);
++
++  return !strSubtitle.IsEmpty();
++}
++
++void CGstPlayer::FindSubtitleFiles()
++{
++  // find any available external subtitles
++  std::vector<CStdString> filenames;
++  CUtil::ScanForExternalSubtitles(m_item.GetPath(), filenames);
++
++  // find any upnp subtitles
++  CStdString key("upnp:subtitle:1");
++  for (unsigned s = 1; m_item.HasProperty(key); key.Format("upnp:subtitle:%u", ++s)) {
++    filenames.push_back(m_item.GetProperty(key).asString());
++  }
++
++  for (unsigned int i = 0; i < filenames.size(); i++) {
++    // if vobsub subtitle:
++    if (URIUtils::GetExtension(filenames[i]) == ".idx") {
++      CStdString strSubFile;
++      if (CUtil::FindVobSubPair( filenames, filenames[i], strSubFile))
++        AddSubtitleFile(filenames[i], strSubFile);
++    } else {
++      if (!CUtil::IsVobSub(filenames, filenames[i]))
++        AddSubtitleFile(filenames[i]);
++    }
++  }
++}
++
++int CGstPlayer::AddSubtitleFile(const std::string &filename, const std::string &subfilename)
++{
++  std::string ext = URIUtils::GetExtension(filename);
++  std::string vobsubfile = subfilename;
++  SubtitleInfo *info;
++
++  if (ext == ".idx") {
++    // TODO: No support for idx/sub yet.
++    CLog::Log(LOGNOTICE, ".idx subtitle not supported");
++    return -1;
++  }
++
++  if (ext == ".sub") {
++    // check for texual sub, if this is a idx/sub pair, ignore it.
++    CStdString strReplace(URIUtils::ReplaceExtension(filename,".idx"));
++    if (XFILE::CFile::Exists(strReplace)) {
++      CLog::Log(LOGNOTICE, ".idx subtitle not supported");
++      return -1;
++    }
++  }
++
++  info = new SubtitleInfo;
++  info->filename = filename;
++  info->name = URIUtils::GetFileName(filename);
++  
++  m_subtitleStreams.push_back(info);
++
++  return m_subtitleStreams.size() - 1;
+ }
+ 
+ void CGstPlayer::SeekTime(__int64 iTime)
