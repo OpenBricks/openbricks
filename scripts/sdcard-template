@@ -14,6 +14,7 @@ boot_part_size="64M"
 case $TARGET in
 #don't remove the following comment
 #begin_targets
+  cubieboard)  fs_types="fat32 ext4" ;;
   cubox)       fs_types="ext4"       ;;
   raspberrypi) fs_types="fat32 ext4" ;;
   igepv2)      fs_types="fat32 ext2" ;  boot_part_size="16M" ;; 
@@ -101,17 +102,17 @@ partition_0=${DEVICE}${OPT}1 ; label_0="BOOT"
 partition_1=${DEVICE}${OPT}2 ; label_1="GEEXBOX"
 
 if [ $part_count -lt 2 ] ; then
-  fdisk_input="o\nn\np\n1\n\n\nt\n${boot_part_type}\na\n1\nw\n"
+  fdisk_input="o\nn\np\n1\n2048\n\nt\n${boot_part_type}\na\n1\nw\n"
   partition_1=$partition_0
   label_0=$label_1
 else
-  fdisk_input="o\nn\np\n1\n\n+${boot_part_size}\nt\n${boot_part_type}\nn\np\n2\n\n\na\n1\nw\n"
+  fdisk_input="o\nn\np\n1\n2048\n+${boot_part_size}\nt\n${boot_part_type}\nn\np\n2\n\n\na\n1\nw\n"
 fi
 fdisk_cmd="echo -e \"$fdisk_input\" | fdisk $DEVICE"
 
 echo "\n#### Creating partion(s)..."
 grep -q $DEVICE /proc/mounts && grep $DEVICE /proc/mounts | cut -f2 -d\ | xargs umount
-dd if=/dev/zero of=$DEVICE bs=512 count=4 > /dev/null
+dd if=/dev/zero of=$DEVICE bs=512 count=2048 > /dev/null
 sh -c "$fdisk_cmd" > /dev/null
 fdisk -l $DEVICE
 
@@ -140,6 +141,12 @@ if [ -d "$ROOTFS" ]; then
   cp -PR $ROOTFS/* $mountdir
 else
   tar --no-same-owner -xjf $ROOTFS -C $mountdir
+fi
+
+if [ $TARGET = cubieboard ] ; then
+  echo "\n#### Writing boot record(s)..."
+  dd if=$mountdir/boot/sunxi-spl.bin of=$DEVICE bs=1024 seek=8
+  dd if=$mountdir/boot/u-boot.bin of=$DEVICE bs=1024 seek=32
 fi
 
 echo "\n#### Flushing buffers..."
