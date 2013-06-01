@@ -2,6 +2,8 @@
 
 . config/options
 
+get_meta $1
+
 require_cxx $1
 
 die () {
@@ -59,7 +61,7 @@ pkg_uses $1 gstreamer && \
   CROSS_GST="-phonon" || CROSS_GST="-no-phonon"
 
 pkg_uses $1 mysql && \
-  CROSS_MYSQL="-qt-sql-mysql" || CROSS_MYSQL="-no-sql-mysql"
+  CROSS_MYSQL="-qt-sql-mysql -plugin-sql-mysql" || CROSS_MYSQL="-no-sql-mysql"
 
 pkg_uses $1 qt3 && \
   CROSS_QT_LEGACY="-qt3support" || CROSS_QT_LEGACY="-no-qt3support"
@@ -120,13 +122,95 @@ else
   CFG_QT="$CFG_EMBEDDED"
 fi
 
-cd $BUILD/$1*
+cd $PKG_BUILD_DIR
+
+setup_toolchain host
+
+MKSPECS_DIR="$ROOT/$PKG_BUILD_DIR/mkspecs/linux-g++-openbricks"
+mkdir -p $MKSPECS_DIR
+
+QMAKE_CONF=$MKSPECS_DIR/qmake.conf
+pkg_uses $1 mysql && MYSQL_INCDIR="$LIB_PREFIX/include/mysql"
+
+strip_thumb="`echo $TARGET_CFLAGS | sed 's/-mthumb//'`"
+export TARGET_CFLAGS="$strip_thumb"
+
+if [ "$TARGET_ARCH" = i386 ]; then
+    ARCHFLAGS="-m32"
+elif [ "$TARGET_ARCH" = x86_64 ]; then
+    ARCHFLAGS="-m64"
+fi
+
+cat > $MKSPECS_DIR/qplatformdefs.h <<EOF
+#include "../linux-g++/qplatformdefs.h"
+EOF
+
+cat > $QMAKE_CONF <<EOF
+
+MAKEFILE_GENERATOR      = UNIX
+TARGET_PLATFORM         = unix
+TEMPLATE                = app
+CONFIG                  += qt warn_on release incremental link_prl
+QT                      += core gui network
+QMAKE_INCREMENTAL_STYLE = sublib
+
+CFG_ARCH		= $CROSS_ARCH
+QMAKE_CFLAGS		= $TARGET_CFLAGS
+QMAKE_LFLAGS		= $TARGET_CFLAGS
+QMAKE_CXXFLAGS		= $TARGET_CFLAGS
+
+include(../common/linux.conf)
+include(../common/gcc-base-unix.conf)
+include(../common/g++-unix.conf)
+load(qt_config)
+
+QMAKE_CC                = $TARGET_CC
+QMAKE_CXX               = $TARGET_CXX
+QMAKE_LINK              = $TARGET_CXX
+QMAKE_LINK_SHLIB        = $TARGET_CXX
+QMAKE_AR                = $TARGET_AR cqs
+QMAKE_OBJCOPY           = $TARGET_OBJCOPY
+QMAKE_RANLIB            = $TARGET_RANLIB
+QMAKE_STRIP             = $TARGET_STRIP
+
+# Headers Search Path
+QMAKE_INCDIR            = $LIB_PREFIX/include
+QMAKE_INCDIR           += $LIB_PREFIX/include/freetype2 $MYSQL_INCDIR
+QMAKE_INCDIR_X11        = $LIB_PREFIX/include/X11
+QMAKE_INCDIR_OPENGL     = $LIB_PREFIX/include
+QMAKE_INCDIR_QT         = $LIB_PREFIX/include/qt4
+
+# Libraries Search Path
+QMAKE_LIBDIR            = $LIB_PREFIX/lib
+QMAKE_LIBDIR_X11        = $LIB_PREFIX/lib
+QMAKE_LIBDIR_OPENGL     = $LIB_PREFIX/lib
+QMAKE_LIBDIR_QT         = $LIB_PREFIX/lib
+
+EOF
+
+if [ "$FPU_OPTIMIZATIONS" = neon ]; then
+  if [ "$TARGET_ABI" = eabihf ] ; then
+    ABI=hard
+  else
+    ABI=softfp
+  fi
+  cat >> $QMAKE_CONF <<EOF
+# Work round ARM NEON compilation flags
+QMAKE_CXXFLAGS_RELEASE += -mfpu=neon -mfloat-abi=$ABI
+
+EOF
+fi
+
+cat >> $QMAKE_CONF <<EOF
+load(qt_config)
+EOF
 
 # unset flags, QT does it by itself
-unset CC CXX AR OBJCOPY STRIP CFLAGS CXXFLAGS CPPFLAGS LDFLAGS
+unset CC CXX AR OBJCOPY STRIP CFLAGS CXXFLAGS CPPFLAGS LDFLAGS LD
 
 # force our pkg-config usage
 export QT_FORCE_PKGCONFIG=yes
+export PKG_CONFIG_PATH=$LIB_PREFIX/lib/pkgconfig
 
 # qmakespec is yet to be built, unset it
 unset QMAKESPEC
@@ -183,6 +267,8 @@ yes | ./configure \
             -make examples \
             -make demos \
             -nomake docs \
+            -make translations \
+            -no-pch \
             -v
 
 ./bin/qmake
