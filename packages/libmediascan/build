@@ -1,0 +1,40 @@
+#!/bin/sh
+
+. config/options
+
+get_meta ffmpeg
+cp $PKG_BUILD_DIR/libavformat/url.h $LIB_PREFIX/include/libavformat/
+
+get_meta $1
+
+cd $PKG_BUILD_DIR
+
+[ ! -d m4 ] && mkdir m4
+
+sed -i -e '5s/^AC_INIT(\[libmediascan\],\[0\.1\],\[andy@hybridized.org\])$/\nAC_INIT(\[libmediascan\],\[0\.1\],\[andy@hybridized.org\])\n\nAC_CANONICAL_SYSTEM\nAM_PROG_AR\nLT_INIT/' -e'7s/^AC_CANONICAL_SYSTEM$//'  configure.ac
+
+[ `grep -c "url.h" src/mediascan.c` -ne 1 ] && sed -i '30s/$/\n#include <libavformat\/url.h>/' src/mediascan.c
+
+sed -i 's/av_register_protocol2/ffurl_register_protocol/' src/mediascan.c
+
+
+do_autoconf
+
+#echo "CPPFLAGS : $CPPFLAGS"
+#echo "CXXFLAGS : $CXXFLAGS"
+#echo "CFLAGS : $CFLAGS"
+#echo "toolchain : $TOOLCHAIN"
+#echo "sysroot : $SYSROOT_PREFIX"
+
+#read
+CXXFLAGS="$CXXFLAGS -I$LIB_PREFIX/include"
+CFLAGS="$CFLAGS -I$LIB_PREFIX/include"
+
+#read
+
+do_configure --disable-shared --disable-dependency-tracking
+
+
+make
+make_install
+
