@@ -1,0 +1,138 @@
+From f714c61185bb1ddeccf2aa2132a7a72970777f20 Mon Sep 17 00:00:00 2001
+From: Julien Blanc <julien.blanc@laposte.net>
+Date: Thu, 24 Jan 2013 14:50:13 +0100
+Subject: [PATCH] Issue #13812 - allow to override styles
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+This patch tries to address issue #13812 (performance of styled subs
+with raspberry pi) via optional style overriding. Libass offers this
+feature (used for example in vlc), via the ass_set_style_overrides
+API.
+
+The patch does the following :
+- add a <libass> setting in advancedsettings.xml file with the
+following structure :
+   <libass>
+    <styleoverrides>
+        <style name="Shadow" value="0" />
+        <style name="Blur" value="0" />
+        <style name="BorderStyle" value="0" />
+    </styleoverrides>
+  </libass>
+- add the corresponding string container in AdvancedSettings class
+(values are converted to « name=value » format during parsing, which
+is better than storing a map because it is what libass expects)
+- calls ass_set_style_overrides at libass initialization with
+the given parameters
+
+Tests on raspberry pi 512 have shown that disabling effects such as
+shadow and blur actually do suppress lags.
+---
+ .../dvdplayer/DVDSubtitles/DVDSubtitlesLibass.cpp  | 32 +++++++++++++++++++++-
+ xbmc/settings/AdvancedSettings.cpp                 | 20 ++++++++++++++
+ xbmc/settings/AdvancedSettings.h                   |  2 ++
+ 3 files changed, 53 insertions(+), 1 deletion(-)
+
+diff --git a/xbmc/cores/dvdplayer/DVDSubtitles/DVDSubtitlesLibass.cpp b/xbmc/cores/dvdplayer/DVDSubtitles/DVDSubtitlesLibass.cpp
+index da7a06c..21ae4bf 100644
+--- a/xbmc/cores/dvdplayer/DVDSubtitles/DVDSubtitlesLibass.cpp
++++ b/xbmc/cores/dvdplayer/DVDSubtitles/DVDSubtitlesLibass.cpp
+@@ -22,6 +22,7 @@
+ #include "DVDClock.h"
+ #include "filesystem/SpecialProtocol.h"
+ #include "settings/GUISettings.h"
++#include "settings/AdvancedSettings.h"
+ #include "utils/log.h"
+ #include "threads/SingleLock.h"
+ #include "threads/Atomics.h"
+@@ -66,7 +67,36 @@ static void libass_log(int level, const char *fmt, va_list args, void *data)
+   //  so translate the path before calling into libass
+   m_dll.ass_set_fonts_dir(m_library,  CSpecialProtocol::TranslatePath(strPath).c_str());
+   m_dll.ass_set_extract_fonts(m_library, 1);
+-  m_dll.ass_set_style_overrides(m_library, NULL);
++  if(g_advancedSettings.m_libassStyleOverrides.size() > 0)
++  {
++    CLog::Log(LOGINFO, "CDVDSubtitlesLiabss: applying advanced settings");
++    // convert string array to array of null terminated C strings that libass expects
++    char** settings = new char*[g_advancedSettings.m_libassStyleOverrides.size() + 1];
++    char** currentSetting = settings;
++    for(CStdStringArray::const_iterator it = g_advancedSettings.m_libassStyleOverrides.begin();
++        it != g_advancedSettings.m_libassStyleOverrides.end();
++        ++it)
++    {
++//      std::cerr << it->c_str() << std::endl;
++      int len = it->GetLength();
++      *currentSetting = new char[len + 1];
++      char const* buf = it->c_str(); // copy internal buffer
++      std::copy(buf, buf + len, *currentSetting);
++      (*currentSetting)[len] = 0;
++//      std::cerr << *currentSetting << std::endl;
++      currentSetting += 1;
++    }
++    *currentSetting = 0;
++    m_dll.ass_set_style_overrides(m_library, settings);
++    currentSetting = settings; // clean up memory : libass stores these settings internally
++    while(*currentSetting) {
++      delete[] *currentSetting;
++      currentSetting += 1;
++    }
++    delete[] settings;
++  }
++  else
++    m_dll.ass_set_style_overrides(m_library, NULL);
+ 
+   CLog::Log(LOGINFO, "CDVDSubtitlesLibass: Initializing ASS Renderer");
+ 
+diff --git a/xbmc/settings/AdvancedSettings.cpp b/xbmc/settings/AdvancedSettings.cpp
+index 16800b7..f55abdf 100644
+--- a/xbmc/settings/AdvancedSettings.cpp
++++ b/xbmc/settings/AdvancedSettings.cpp
+@@ -1051,6 +1051,25 @@ void CAdvancedSettings::ParseSettingsFile(const CStdString &file)
+     XMLUtils::GetInt(pElement, "nofliptimeout",             m_guiDirtyRegionNoFlipTimeout);
+   }
+ 
++  pElement = pRootElement->FirstChildElement("libass");
++  if(pElement)
++  {
++    TiXmlElement* styleOverridesElement = pElement->FirstChildElement("styleoverrides");
++    if(styleOverridesElement)
++    {
++      TiXmlElement* style = styleOverridesElement->FirstChildElement("style");
++      while(style)
++      {
++        CStdString styleOverride("");
++        styleOverride += style->Attribute("name");
++        styleOverride += "=";
++        styleOverride += style->Attribute("value");
++        m_libassStyleOverrides.push_back(styleOverride);
++        style = style->NextSiblingElement("style");
++      }
++    }
++  }
++
+   // load in the GUISettings overrides:
+   g_guiSettings.LoadXML(pRootElement, true);  // true to hide the settings we read in
+ }
+@@ -1222,3 +1241,4 @@ void CAdvancedSettings::SetDebugMode(bool debug)
+     CLog::SetLogLevel(level);
+   }
+ }
++
+diff --git a/xbmc/settings/AdvancedSettings.h b/xbmc/settings/AdvancedSettings.h
+index 27887d4..0e9bc36 100644
+--- a/xbmc/settings/AdvancedSettings.h
++++ b/xbmc/settings/AdvancedSettings.h
+@@ -365,6 +365,8 @@ class CAdvancedSettings
+     bool m_initialized;
+ 
+     void SetDebugMode(bool debug);
++
++    CStdStringArray m_libassStyleOverrides;
+ };
+ 
+ XBMC_GLOBAL(CAdvancedSettings,g_advancedSettings);
+-- 
+1.8.1.6
+
