@@ -37,7 +37,7 @@ mkdir -p $mp/rtorrent/watch
 \rm /tmp/rtorrent
 
 ln -s $mp/rtorrent /tmp/rtorrent
-[ -f $mp/rtorrent/session/rtorrent.lock ] && rm $mp/rtorrent/rtorrent.lock
+[ -f $mp/rtorrent/session/rtorrent.lock ] && rm $mp/rtorrent/session/rtorrent.lock
 echo "directory = /tmp/rtorrent/" > /tmp/new-rtorrent-dir
 echo "session = /tmp/rtorrent/session" >> /tmp/new-rtorrent-dir
 echo "schedule = watch_directory,5,5,load_start=/tmp/rtorrent/watch/*.torrent" >> /tmp/new-rtorrent-dir
