@@ -1,5 +1,5 @@
---- a/configure.in	2013-06-12 19:17:02.000000000 +0200
-+++ b/configure.in	2013-06-12 19:35:04.499894778 +0200
+--- a/configure.in	2013-08-17 09:32:38.245036835 +0200
++++ b/configure.in	2013-08-17 10:03:35.908981947 +0200
 @@ -675,6 +675,32 @@
       CXXFLAGS="$CXXFLAGS"
       ffmpeg_target_os=linux
@@ -22,9 +22,9 @@
 +     ARCH="arm"
 +     AC_SUBST(ARCH_DEFINES, "-DTARGET_POSIX -DTARGET_LINUX -D_LINUX -D__ARM_NEON__ -DALLWINNERA10")
 +     AC_DEFINE(HAS_ALLWINNER_A10, [1], [Define if supporting Allwinner A10 (Mali)])
-+     CFLAGS="$CFLAGS -Wno-psabi -Wa,-march=armv7a -mtune=cortex-a8 -mfpu=neon -mthumb -marm -O3 -ftree-vectorize"
-+     CXXFLAGS="$CXXFLAGS -Wno-psabi -Wa,-march=armv7a -mtune=cortex-a8 -mfpu=neon -mthumb -marm -O3 -ftree-vectorize"
-+     FFMPEG_EXTRACFLAGS="$FFMPEG_EXTRACFLAGS -mtune=cortex-a8 -mfpu=neon -O3 -ftree-vectorize -mthumb -marm"
++     CFLAGS="$CFLAGS -Wno-psabi -Wa,-march=armv7a -mtune=cortex-a8 -mfpu=neon -marm -O3 -ftree-vectorize"
++     CXXFLAGS="$CXXFLAGS -Wno-psabi -Wa,-march=armv7a -mtune=cortex-a8 -mfpu=neon -marm -O3 -ftree-vectorize"
++     FFMPEG_EXTRACFLAGS="$FFMPEG_EXTRACFLAGS -mtune=cortex-a8 -mfpu=neon -marm -O3 -ftree-vectorize"
 +     USE_ALLWINNER_A10=1
 +     ;;
 +
@@ -33,18 +33,72 @@
  esac
  
  if test "$build_shared_lib" = "yes"; then
-@@ -756,6 +782,10 @@
+@@ -709,7 +758,8 @@
+ 
+ if test "$use_optimizations" = "yes"; then
+   final_message="$final_message\n  Optimization:\tYes"
+-  if test "$target_platform" = "target_raspberry_pi"; then
++  if test "$target_platform" = "target_raspberry_pi" || \
++     test "$target_platform" = "target_allwinner_a10"; then
+     CXXFLAGS="$CXXFLAGS"
+     CFLAGS="$CFLAGS"
+   else
+@@ -749,31 +800,32 @@
+     LIBS="$LIBS -framework SystemConfiguration"
+   fi
+   USE_EXTERNAL_FFMPEG=1
+-elif test "$target_platform" = "target_raspberry_pi"; then
+-  ARCH="arm"
+-  use_arch="arm"
+ elif test "$use_arch" = "arm"; then
    CFLAGS="$CFLAGS -mno-apcs-stack-check"
    CXXFLAGS="$CXXFLAGS -mno-apcs-stack-check"
-   FFMPEG_EXTRACFLAGS=""
-+elif test "$target_platform" = "target_allwinner_a10"; then
-+  ARCH="arm"
-+  use_arch="arm"
-+else
-   if test "$use_tegra" = "yes"; then
-     # Compile for ARMv7a architecture, need to test gcc for vfpv3-d16 support 
-     SAVE_CFLAGS="$CFLAGS"
-@@ -2415,6 +2445,7 @@
+-  FFMPEG_EXTRACFLAGS=""
+-  if test "$use_tegra" = "yes"; then
+-    # Compile for ARMv7a architecture, need to test gcc for vfpv3-d16 support 
+-    SAVE_CFLAGS="$CFLAGS"
+-    CFLAGS="-mfpu=vfpv3-d16"
+-    AC_COMPILE_IFELSE(
+-      [AC_LANG_SOURCE([int foo;])],
+-      [ CFLAGS="$SAVE_CFLAGS -Wno-psabi -Wa,-march=armv7a -mtune=cortex-a9 -mfpu=vfpv3-d16 -mthumb-interwork"
+-        CXXFLAGS="$CXXFLAGS -Wno-psabi -Wa,-march=armv7a -mtune=cortex-a9 -mfpu=vfpv3-d16 -mthumb-interwork"
+-        FFMPEG_EXTRACFLAGS="$FFMPEG_EXTRACFLAGS -mtune=cortex-a9 -mfpu=vfpv3-d16"
+-        use_cpu=cortex-a9],
+-      [ CFLAGS="$SAVE_CFLAGS -Wa,-march=armv6 -mtune=cortex-a8 -mthumb-interwork"
+-        CXXFLAGS="$CXXFLAGS -Wa,-march=armv6 -mtune=cortex-a8 -mthumb-interwork"    
+-        use_cpu=cortex-a8])
+-  else
+-    if test "$use_neon" = "yes"; then 
+-      CFLAGS="$CFLAGS -mfpu=neon -mvectorize-with-neon-quad"
+-      CXXFLAGS="$CXXFLAGS -mfpu=neon -mvectorize-with-neon-quad"
+-      FFMPEG_EXTRACFLAGS="$FFMPEG_EXTRACFLAGS -mfpu=neon"
++
++  if test "$target_platform" != "target_raspberry_pi" && \
++     test "$target_platform" != "target_allwinner_a10" ; then
++    FFMPEG_EXTRACFLAGS=""
++    if test "$use_tegra" = "yes"; then
++      # Compile for ARMv7a architecture, need to test gcc for vfpv3-d16 support 
++      SAVE_CFLAGS="$CFLAGS"
++      CFLAGS="-mfpu=vfpv3-d16"
++      AC_COMPILE_IFELSE(
++        [AC_LANG_SOURCE([int foo;])],
++        [ CFLAGS="$SAVE_CFLAGS -Wno-psabi -Wa,-march=armv7a -mtune=cortex-a9 -mfpu=vfpv3-d16 -mthumb-interwork"
++          CXXFLAGS="$CXXFLAGS -Wno-psabi -Wa,-march=armv7a -mtune=cortex-a9 -mfpu=vfpv3-d16 -mthumb-interwork"
++          FFMPEG_EXTRACFLAGS="$FFMPEG_EXTRACFLAGS -mtune=cortex-a9 -mfpu=vfpv3-d16"
++          use_cpu=cortex-a9],
++        [ CFLAGS="$SAVE_CFLAGS -Wa,-march=armv6 -mtune=cortex-a8 -mthumb-interwork"
++          CXXFLAGS="$CXXFLAGS -Wa,-march=armv6 -mtune=cortex-a8 -mthumb-interwork"    
++          use_cpu=cortex-a8])
++    else
++      if test "$use_neon" = "yes"; then 
++        CFLAGS="$CFLAGS -mfpu=neon -mvectorize-with-neon-quad"
++        CXXFLAGS="$CXXFLAGS -mfpu=neon -mvectorize-with-neon-quad"
++        FFMPEG_EXTRACFLAGS="$FFMPEG_EXTRACFLAGS -mfpu=neon"
++      fi
+     fi
+   fi
+ fi
+@@ -2415,6 +2468,7 @@
  AC_SUBST(USE_AIRPLAY)
  AC_SUBST(USE_VDA)
  AC_SUBST(USE_OPENMAX)
@@ -52,7 +106,7 @@
  AC_SUBST(USE_PULSE)
  AC_SUBST(USE_XRANDR)
  AC_SUBST(USE_ALSA)
-@@ -2569,6 +2600,10 @@
+@@ -2569,6 +2624,10 @@
        `if test "$use_arch" != "no"; then echo --arch=$use_arch; fi`\
        `if test "$use_cpu" != "no"; then echo --cpu=$use_cpu; fi`\
        `if test "$use_neon" = "yes"; then echo --enable-neon; else echo --disable-neon; fi`\
