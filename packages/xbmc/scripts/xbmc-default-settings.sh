@@ -23,6 +23,8 @@ set_default_advanced_settings () {
     cp /etc/xbmc/cubox-advancedsettings.xml $ADV_SETTINGS
   elif grep -q BCM2708 /proc/cpuinfo; then
     cp /etc/xbmc/rpi-advancedsettings.xml $ADV_SETTINGS
+  elif grep -q sun4i /proc/cpuinfo; then
+    cp /etc/xbmc/a10-advancedsettings.xml $ADV_SETTINGS
   else
     cp /etc/xbmc/generic-advancedsettings.xml $ADV_SETTINGS
   fi
