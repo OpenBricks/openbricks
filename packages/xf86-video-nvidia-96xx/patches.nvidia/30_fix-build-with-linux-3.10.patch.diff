@@ -1,0 +1,696 @@
+From c3248bb6c976c112e9efa9e8f202590b2f9b40a5 Mon Sep 17 00:00:00 2001
+From: Alberto Milone <alberto.milone@canonical.com>
+Date: Tue, 18 Jun 2013 15:16:18 +0200
+Subject: [PATCH 1/1] Add support for Linux 3.10
+
+---
+ nv-i2c.c   |   13 +--
+ nv-linux.h |    1 +
+ nv.c       |  375 ++++++++++++++++++++++++++++++++++++++----------------------
+ 3 files changed, 241 insertions(+), 148 deletions(-)
+
+diff -Nurp NVIDIA-Linux-x86_64-173.14.37-pkg2/usr/src/nv/nv.c NVIDIA-Linux-x86_64-173.14.37-pkg2.fix/usr/src/nv/nv.c
+--- NVIDIA-Linux-x86_64-173.14.37-pkg2/usr/src/nv/nv.c	2013-03-07 04:58:57.000000000 +0200
++++ NVIDIA-Linux-x86_64-173.14.37-pkg2.fix/usr/src/nv/nv.c	2013-07-15 23:28:43.734781501 +0300
+@@ -291,7 +291,6 @@ void NV_API_CALL nv_verify_pci_config(nv
+ static void     nvos_proc_create(void);
+ static void     nvos_proc_add_text_file(struct proc_dir_entry *,
+                     const char *, const char *);
+-static void     nvos_proc_remove_all(struct proc_dir_entry *);
+ static void     nvos_proc_remove(void);
+ static int      nvos_count_devices(void);
+ 
+@@ -333,12 +332,34 @@ void          nv_kern_rc_timer(unsigned
+ static int    nv_kern_apm_event(struct pm_dev *, pm_request_t, void *);
+ #endif
+ 
+-static int    nv_kern_read_cardinfo(char *, char **, off_t off, int, int *, void *);
+-static int    nv_kern_read_status(char *, char **, off_t off, int, int *, void *);
+-static int    nv_kern_read_registry(char *, char **, off_t off, int, int *, void *);       
+-static int    nv_kern_read_agpinfo(char *, char **, off_t off, int, int *, void *);
+-static int    nv_kern_read_version(char *, char **, off_t off, int, int *, void *);
+-static int    nv_kern_read_text_file(char *, char **, off_t off, int, int *, void *);
++static const struct file_operations nv_procfs_text_fops;
++static const struct file_operations nv_procfs_read_card_info_fops;
++static const struct file_operations nv_procfs_version_fops;
++static const struct file_operations nv_procfs_read_agp_info_fops;
++static const struct file_operations nv_procfs_read_agp_info_gpu_fops;
++static const struct file_operations nv_procfs_read_agp_status_fops;
++static const struct file_operations nv_procfs_registry_fops;
++
++static int nv_procfs_show_text_file(struct seq_file *, void *);
++static int nv_procfs_open_text_file(struct inode *, struct file *);
++static void nvos_proc_add_text_file(struct proc_dir_entry *, const char *, const char *);
++
++static int nv_procfs_show_card_info(struct seq_file *, void *);
++static int nv_procfs_read_card_info(struct inode *, struct file *);
++
++static int nv_procfs_show_version(struct seq_file *, void *);
++static int nv_procfs_open_version(struct inode *, struct file *);
++
++static int nv_procfs_show_agp_info(struct seq_file *, void *);
++static int nv_procfs_read_agp_info(struct inode *, struct file *);
++
++static int nv_procfs_read_agp_info_gpu(struct inode *, struct file *file);
++static int nv_procfs_show_agp_status(struct seq_file *, void *);
++static int nv_procfs_read_agp_status(struct inode *, struct file *);
++
++static int nv_procfs_show_registry(struct seq_file *, void *);
++static int nv_procfs_open_registry(struct inode *, struct file *);
++
+ 
+ int           nv_kern_ctl_open(struct inode *, struct file *);
+ int           nv_kern_ctl_close(struct inode *, struct file *);
+@@ -604,6 +625,12 @@ static struct pci_dev* nv_get_pci_device
+     return NULL;
+ }
+ 
++#if LINUX_VERSION_CODE <= KERNEL_VERSION(3,9,255)
++static inline void *PDE_DATA(const struct inode *inode) {
++	return PDE(inode)->data;
++}
++#endif
++
+ static void nvos_proc_create(void)
+ {
+ #ifdef CONFIG_PROC_FS
+@@ -623,19 +650,19 @@ static void nvos_proc_create(void)
+     nv_state_t *nv;
+     nv_linux_state_t *nvl;
+ 
+-    proc_nvidia = create_proc_entry("driver/nvidia", d_flags, NULL);
++    proc_nvidia = proc_mkdir_mode("driver/nvidia", d_flags, NULL);
+     if (!proc_nvidia)
+         goto failed;
+ 
+-    proc_nvidia_cards = create_proc_entry("cards", d_flags, proc_nvidia);
++    proc_nvidia_cards = proc_mkdir_mode("cards", d_flags, proc_nvidia);
+     if (!proc_nvidia_cards)
+         goto failed;
+ 
+-    proc_nvidia_warnings = create_proc_entry("warnings", d_flags, proc_nvidia);
++    proc_nvidia_warnings = proc_mkdir_mode("warnings", d_flags, proc_nvidia);
+     if (!proc_nvidia_warnings)
+         goto failed;
+ 
+-    proc_nvidia_patches = create_proc_entry("patches", d_flags, proc_nvidia);
++    proc_nvidia_patches = proc_mkdir_mode("patches", d_flags, proc_nvidia);
+     if (!proc_nvidia_patches)
+         goto failed;
+ 
+@@ -660,24 +687,19 @@ static void nvos_proc_create(void)
+             break;
+ 
+         sprintf(name, "%d", i++);
+-        entry = create_proc_entry(name, flags, proc_nvidia_cards);
++        entry = proc_create_data(name, flags, proc_nvidia_cards,
++                &nv_procfs_read_card_info_fops, nv);
+         if (!entry) {
+             NV_PCI_DEV_PUT(dev);
+             goto failed;
+         }
+ 
+-        entry->data = nv;
+-        entry->read_proc = nv_kern_read_cardinfo;
+-#if defined(NV_PROC_DIR_ENTRY_HAS_OWNER)
+-        entry->owner = THIS_MODULE;
+-#endif
+-
+         if (nvos_find_agp_capability(dev)) {
+             /*
+              * Create the /proc/driver/nvidia/agp/{status,host-bridge,card}
+              * entries now that we know there's AGP hardware.
+              */
+-            entry = create_proc_entry("agp", d_flags, proc_nvidia);
++            entry = proc_mkdir_mode("agp", d_flags, proc_nvidia);
+             if (!entry) {
+                 NV_PCI_DEV_PUT(dev);
+                 goto failed;
+@@ -688,72 +710,78 @@ static void nvos_proc_create(void)
+ #endif
+             proc_nvidia_agp = entry;
+ 
+-            entry = create_proc_entry("status", flags, proc_nvidia_agp);
++            entry = proc_create_data("status", flags, proc_nvidia_agp,
++                &nv_procfs_read_agp_status_fops, nv);
+             if (!entry) {
+                 NV_PCI_DEV_PUT(dev);
+                 goto failed;
+             }
+ 
+-            entry->data = nv;
+-            entry->read_proc = nv_kern_read_status;
+-#if defined(NV_PROC_DIR_ENTRY_HAS_OWNER)
+-            entry->owner = THIS_MODULE;
+-#endif
++            entry = proc_create("host-bridge", flags, proc_nvidia_agp,
++                &nv_procfs_read_agp_info_fops);
+ 
+-            entry = create_proc_entry("host-bridge", flags, proc_nvidia_agp);
+             if (!entry) {
+                 NV_PCI_DEV_PUT(dev);
+                 goto failed;
+             }
+ 
+-            entry->data = NULL;
+-            entry->read_proc = nv_kern_read_agpinfo;
+-#if defined(NV_PROC_DIR_ENTRY_HAS_OWNER)
+-            entry->owner = THIS_MODULE;
+-#endif
+-
+-            entry = create_proc_entry("card", flags, proc_nvidia_agp);
++            entry = proc_create_data("card", flags, proc_nvidia_agp,
++                &nv_procfs_read_agp_info_gpu_fops, nv);
+             if (!entry) {
+                 NV_PCI_DEV_PUT(dev);
+                 goto failed;
+             }
+ 
+-            entry->data = nv;
+-            entry->read_proc = nv_kern_read_agpinfo;
+-#if defined(NV_PROC_DIR_ENTRY_HAS_OWNER)
+-            entry->owner = THIS_MODULE;
+-#endif
+         }
+ 
+         NV_PCI_DEV_PUT(dev);
+     }
+ 
+-    entry = create_proc_entry("version", flags, proc_nvidia);
++    entry = proc_create("version", flags, proc_nvidia, &nv_procfs_version_fops);
+     if (!entry)
+         goto failed;
+ 
+-    entry->read_proc = nv_kern_read_version;
+-#if defined(NV_PROC_DIR_ENTRY_HAS_OWNER)
+-    entry->owner = THIS_MODULE;
+-#endif
+-
+-    entry = create_proc_entry("registry", flags, proc_nvidia);
++    entry = proc_create("registry", flags, proc_nvidia,
++        &nv_procfs_registry_fops);
+     if (!entry)
+         goto failed;
+ 
+-    entry->read_proc = nv_kern_read_registry;
+-#if defined(NV_PROC_DIR_ENTRY_HAS_OWNER)
+-    entry->owner = THIS_MODULE;
+-#endif
+-
+     return;
+ 
+ failed:
+     nv_printf(NV_DBG_ERRORS, "NVRM: failed to create /proc entries!\n");
+-    nvos_proc_remove_all(proc_nvidia);
++    remove_proc_subtree("nvidia", proc_nvidia);
+ #endif
+ }
+ 
++static int
++nv_procfs_show_text_file(
++    struct seq_file *m,
++    void *v
++)
++{
++    seq_printf(m, "%s", (char *)m->private);
++
++    return 0;
++}
++
++static int
++nv_procfs_open_text_file(
++    struct inode *inode,
++    struct file *file
++)
++{
++    return single_open(file, nv_procfs_show_text_file, PDE_DATA(inode));
++}
++
++static const struct file_operations nv_procfs_text_fops = {
++    .owner   = THIS_MODULE,
++    .open    = nv_procfs_open_text_file,
++    .read    = seq_read,
++    .llseek  = seq_lseek,
++    .release = single_release,
++};
++
+ static void
+ nvos_proc_add_text_file(
+     struct proc_dir_entry *parent,
+@@ -762,41 +790,18 @@ nvos_proc_add_text_file(
+ )
+ {
+ #ifdef CONFIG_PROC_FS
+-    struct proc_dir_entry *entry;
+-
+     /* world readable file */
+     int flags = S_IFREG | S_IRUGO;
+ 
+-    entry = create_proc_entry(filename, flags, parent);
+-    if (!entry) return;
+-
+-    entry->data = (void *)text;
+-    entry->read_proc = nv_kern_read_text_file;
+-#if defined(NV_PROC_DIR_ENTRY_HAS_OWNER)
+-    entry->owner = THIS_MODULE;
++    proc_create_data(filename, flags, parent, &nv_procfs_text_fops,
++        (void *)text);
+ #endif
+-#endif
+-}
+-
+-#ifdef CONFIG_PROC_FS
+-static void nvos_proc_remove_all(struct proc_dir_entry *entry)
+-{
+-    while (entry) {
+-        struct proc_dir_entry *next = entry->next;
+-        if (entry->subdir)
+-            nvos_proc_remove_all(entry->subdir);
+-        remove_proc_entry(entry->name, entry->parent);
+-        if (entry == proc_nvidia)
+-            break;
+-        entry = next;
+-    }
+ }
+-#endif
+ 
+ static void nvos_proc_remove(void)
+ {
+ #ifdef CONFIG_PROC_FS
+-    nvos_proc_remove_all(proc_nvidia);
++    remove_proc_subtree("nvidia", proc_nvidia);
+ #endif
+ }
+ 
+@@ -3065,17 +3070,18 @@ void   NV_API_CALL  nv_set_dma_address_s
+ }
+ 
+ static int
+-nv_kern_read_cardinfo(char *page, char **start, off_t off,
+-        int count, int *eof, void *data)
++nv_procfs_show_card_info(
++    struct seq_file *m,
++    void *v
++)
+ {
+     struct pci_dev *dev;
+     char *type, *fmt, tmpstr[NV_DEVICE_NAME_LENGTH];
+-    int len = 0, status;
++    int status;
+     U032 vbios_rev1, vbios_rev2, vbios_rev3, vbios_rev4, vbios_rev5;
+ 
+     nv_state_t *nv;
+-    nv = (nv_state_t *) data;
+-    *eof = 1;
++    nv = (nv_state_t *) m->private;
+ 
+     dev = nv_get_pci_device(nv);
+     if (!dev)
+@@ -3094,30 +3100,30 @@ nv_kern_read_cardinfo(char *page, char **start, off_t off,
+         strcpy (tmpstr, "Unknown");
+     }
+     
+-    len += sprintf(page+len, "Model: \t\t %s\n", tmpstr);
+-    len += sprintf(page+len, "IRQ:   \t\t %d\n", nv->interrupt_line);
++    seq_printf(m, "Model: \t\t %s\n", tmpstr);
++    seq_printf(m, "IRQ:   \t\t %d\n", nv->interrupt_line);
+ 
+     status = rm_get_vbios_version(nv, &vbios_rev1, &vbios_rev2,
+                                   &vbios_rev3, &vbios_rev4, &vbios_rev5);
+ 
+     if (status < 0) {
+         /* before rm_init_adapter */
+-        len += sprintf(page+len, "Video BIOS: \t ??.??.??.??.??\n");
++        seq_printf(m, "Video BIOS: \t ??.??.??.??.??\n");
+     } else {
+         fmt = "Video BIOS: \t %02x.%02x.%02x.%02x.%02x\n";
+-        len += sprintf(page+len, fmt, vbios_rev1, vbios_rev2, vbios_rev3,
++        seq_printf(m, fmt, vbios_rev1, vbios_rev2, vbios_rev3,
+                                                   vbios_rev4, vbios_rev5);
+     }
+ 
+     if (nvos_find_agp_capability(dev)) type = "AGP";
+     else if (nvos_find_pci_express_capability(dev)) type = "PCI-E";
+     else type = "PCI";
+-    len += sprintf(page+len, "Card Type: \t %s\n", type);
++    seq_printf(m, "Card Type: \t %s\n", type);
+ 
+     // Report the number of bits set in dev->dma_mask
+-    len += sprintf(page+len, "DMA Size: \t %d bits\n",
++    seq_printf(m, "DMA Size: \t %d bits\n",
+      nv_count_bits(dev->dma_mask));
+-    len += sprintf(page+len, "DMA Mask: \t 0x%llx\n", dev->dma_mask);
++    seq_printf(m, "DMA Mask: \t 0x%llx\n", dev->dma_mask);
+ 
+     NV_PCI_DEV_PUT(dev);
+     return len;
+@@ -3133,35 +3139,68 @@ nv_kern_read_cardinfo(char *page, char **start, off_t off,
+     len += sprintf(page+len, "DMA Mask: \t 0x%llx\n", dev->dma_mask);
+ 
+     NV_PCI_DEV_PUT(dev);
+-    return len;
++    return 0;
+ }
+ 
+ static int
+-nv_kern_read_version(char *page, char **start, off_t off,
+-        int count, int *eof, void *data)
++nv_procfs_read_card_info(
++    struct inode *inode,
++    struct file *file
++)
+ {
+-    int len = 0;
+-    *eof = 1;
+-    
+-    len += sprintf(page+len, "NVRM version: %s\n", pNVRM_ID);
+-    len += sprintf(page+len, "GCC version:  %s\n", NV_COMPILER);
+-    
+-    return len;
++    return single_open(file, nv_procfs_show_card_info, PDE_DATA(inode));
+ }
+ 
++static const struct file_operations nv_procfs_read_card_info_fops = {
++    .owner   = THIS_MODULE,
++    .open    = nv_procfs_read_card_info,
++    .read    = seq_read,
++    .llseek  = seq_lseek,
++    .release = single_release,
++};
++
+ static int
+-nv_kern_read_agpinfo(char *page, char **start, off_t off,
+-        int count, int *eof, void *data)
++nv_procfs_show_version(
++    struct seq_file *m,
++    void *v
++)
++{
++    seq_printf(m, "NVRM version: %s\n", pNVRM_ID);
++    seq_printf(m, "GCC version:  %s\n", NV_COMPILER);
++
++    return 0;
++}
++
++static int
++nv_procfs_open_version(
++    struct inode *inode,
++    struct file *file
++)
++{
++    return single_open(file, nv_procfs_show_version, NULL);
++}
++
++static const struct file_operations nv_procfs_version_fops = {
++    .owner   = THIS_MODULE,
++    .open    = nv_procfs_open_version,
++    .read    = seq_read,
++    .llseek  = seq_lseek,
++    .release = single_release,
++};
++
++static int
++nv_procfs_show_agp_info(
++    struct seq_file *m,
++    void *v
++)
+ {
+     struct pci_dev *dev;
+     char   *fw, *sba;
+     u8     cap_ptr;
+     u32    status, command, agp_rate;
+-    int    len = 0;
+     
+     nv_state_t *nv;
+-    nv = (nv_state_t *) data;
+-    *eof = 1;
++    nv = (nv_state_t *) m->private;
+ 
+     if (nv) {
+         dev = nv_get_pci_device(nv);
+@@ -3172,12 +3211,12 @@ nv_kern_read_agpinfo(char *page, char **
+         if (!dev)
+             return 0;
+ 
+-        len += sprintf(page+len, "Host Bridge: \t ");
++        seq_printf(m, "Host Bridge: \t ");
+ 
+ #if defined(CONFIG_PCI_NAMES)
+-        len += sprintf(page+len, "%s\n", NV_PCI_DEVICE_NAME(dev));
++        seq_printf(m, "%s\n", NV_PCI_DEVICE_NAME(dev));
+ #else
+-        len += sprintf(page+len, "PCI device %04x:%04x\n",
++        seq_printf(m, "PCI device %04x:%04x\n",
+                 dev->vendor, dev->device);
+ #endif
+     }
+@@ -3191,39 +3230,73 @@ nv_kern_read_agpinfo(char *page, char **
+     fw  = (status & 0x00000010) ? "Supported" : "Not Supported";
+     sba = (status & 0x00000200) ? "Supported" : "Not Supported";
+ 
+-    len += sprintf(page+len, "Fast Writes: \t %s\n", fw);
+-    len += sprintf(page+len, "SBA: \t\t %s\n", sba);
++    seq_printf(m, "Fast Writes: \t %s\n", fw);
++    seq_printf(m, "SBA: \t\t %s\n", sba);
+ 
+     agp_rate = status & 0x7;
+     if (status & 0x8) // agp 3.0
+         agp_rate <<= 2;
+ 
+-    len += sprintf(page+len, "AGP Rates: \t %s%s%s%s\n",
++    seq_printf(m, "AGP Rates: \t %s%s%s%s\n",
+             (agp_rate & 0x00000008) ? "8x " : "",
+             (agp_rate & 0x00000004) ? "4x " : "",
+             (agp_rate & 0x00000002) ? "2x " : "",
+             (agp_rate & 0x00000001) ? "1x " : "");
+ 
+-    len += sprintf(page+len, "Registers: \t 0x%08x:0x%08x\n", status, command);
++    seq_printf(m, "Registers: \t 0x%08x:0x%08x\n", status, command);
+ 
+     NV_PCI_DEV_PUT(dev);
+-    return len;
++    return 0;
+ }
+ 
+ static int
+-nv_kern_read_status(char *page, char **start, off_t off,
+-        int count, int *eof, void *data)
++nv_procfs_read_agp_info(
++    struct inode *inode,
++    struct file *file
++)
++{
++    return single_open(file, nv_procfs_show_agp_info, NULL);
++}
++
++static const struct file_operations nv_procfs_read_agp_info_fops = {
++    .owner   = THIS_MODULE,
++    .open    = nv_procfs_read_agp_info,
++    .read    = seq_read,
++    .llseek  = seq_lseek,
++    .release = single_release,
++};
++
++static int
++nv_procfs_read_agp_info_gpu(
++    struct inode *inode,
++    struct file *file
++)
++{
++    return single_open(file, nv_procfs_show_agp_info, PDE_DATA(inode));
++}
++
++static const struct file_operations nv_procfs_read_agp_info_gpu_fops = {
++    .owner   = THIS_MODULE,
++    .open    = nv_procfs_read_agp_info_gpu,
++    .read    = seq_read,
++    .llseek  = seq_lseek,
++    .release = single_release,
++};
++
++static int
++nv_procfs_show_agp_status(
++    struct seq_file *m,
++    void *v
++)
+ {
+     struct pci_dev *dev;
+     char   *fw, *sba, *drv;
+-    int    len = 0;
+     u8     cap_ptr;
+     u32    scratch;
+     u32    status, command, agp_rate;
+ 
+     nv_state_t *nv;
+-    nv = (nv_state_t *) data;
+-    *eof = 1;
++    nv = (nv_state_t *) m->private;
+ 
+     dev = nvos_get_agp_device_by_class(PCI_CLASS_BRIDGE_HOST);
+     if (!dev)
+@@ -3246,10 +3319,10 @@ nv_kern_read_status(char *page, char **s
+     command &= scratch;
+ 
+     if (NV_AGP_ENABLED(nv) && (command & 0x100)) {
+-        len += sprintf(page+len, "Status: \t Enabled\n");
++        seq_printf(m, "Status: \t Enabled\n");
+ 
+         drv = NV_OSAGP_ENABLED(nv) ? "AGPGART" : "NVIDIA";
+-        len += sprintf(page+len, "Driver: \t %s\n", drv);
++        seq_printf(m, "Driver: \t %s\n", drv);
+ 
+         // mask off agp rate. 
+         // If this is agp 3.0, we need to shift the value
+@@ -3257,13 +3330,13 @@ nv_kern_read_status(char *page, char **s
+         if (status & 0x8) // agp 3.0
+             agp_rate <<= 2;
+ 
+-        len += sprintf(page+len, "AGP Rate: \t %dx\n", agp_rate);
++        seq_printf(m, "AGP Rate: \t %dx\n", agp_rate);
+ 
+         fw = (command & 0x00000010) ? "Enabled" : "Disabled";
+-        len += sprintf(page+len, "Fast Writes: \t %s\n", fw);
++        seq_printf(m, "Fast Writes: \t %s\n", fw);
+ 
+         sba = (command & 0x00000200) ? "Enabled" : "Disabled";
+-        len += sprintf(page+len, "SBA: \t\t %s\n", sba);
++        seq_printf(m, "SBA: \t\t %s\n", sba);
+     } else {
+         int agp_config = 0;
+ 
+@@ -3274,7 +3347,7 @@ nv_kern_read_status(char *page, char **s
+             return 0;
+         }
+ 
+-        len += sprintf(page+len, "Status: \t Disabled\n\n");
++        seq_printf(m, "Status: \t Disabled\n\n");
+ 
+         /*
+          * If we find AGP is disabled, but the RM registry indicates it
+@@ -3288,7 +3361,7 @@ nv_kern_read_status(char *page, char **s
+         rm_read_registry_dword(sp, nv, "NVreg", "XNvAGP", &agp_config);
+ 
+         if (agp_config != NVOS_AGP_CONFIG_DISABLE_AGP && NV_AGP_FAILED(nv)) {
+-            len += sprintf(page+len,
++            seq_printf(m,
+                   "AGP initialization failed, please check the ouput  \n"
+                   "of the 'dmesg' command and/or your system log file \n"
+                   "for additional information on this problem.        \n");
+@@ -3298,37 +3371,63 @@ nv_kern_read_status(char *page, char **s
+     }
+ 
+     NV_PCI_DEV_PUT(dev);
+-    return len;
++    return 0;
++}
++
++static int
++nv_procfs_read_agp_status(
++    struct inode *inode,
++    struct file *file
++)
++{
++    return single_open(file, nv_procfs_show_agp_status, PDE_DATA(inode));
+ }
+ 
++static const struct file_operations nv_procfs_read_agp_status_fops = {
++    .owner   = THIS_MODULE,
++    .open    = nv_procfs_read_agp_status,
++    .read    = seq_read,
++    .llseek  = seq_lseek,
++    .release = single_release,
++};
++
+ extern nv_parm_t nv_parms[];
+ extern char *NVreg_RegistryDwords;
+ 
+ static int
+-nv_kern_read_registry(char *page, char **start, off_t off,
+-        int count, int *eof, void *data)
++nv_procfs_show_registry(
++    struct seq_file *m,
++    void *v
++)
+ {
+-    unsigned int i, len = 0;
++    unsigned int i;
+     nv_parm_t *entry;
+-    *eof = 1;
+ 
+     for (i = 0; (entry = &nv_parms[i])->name != NULL; i++)
+-        len += sprintf(page+len, "%s: %u\n", entry->name, *entry->data);
++        seq_printf(m, "%s: %u\n", entry->name, *entry->data);
+ 
+-    len += sprintf(page+len, "RegistryDwords: \"%s\"\n",
++    seq_printf(m, "RegistryDwords: \"%s\"\n",
+                 (NVreg_RegistryDwords != NULL) ? NVreg_RegistryDwords : "");
+ 
+-    return len;
++    return 0;
+ }
+ 
+ static int
+-nv_kern_read_text_file(char *page, char **start, off_t off,
+-        int count, int *eof, void *data)
++nv_procfs_open_registry(
++    struct inode *inode,
++    struct file  *file
++)
+ {
+-    *eof = 1;
+-    return sprintf(page, "%s", (char *)data);
++    return single_open(file, nv_procfs_show_registry, NULL);
+ }
+ 
++static const struct file_operations nv_procfs_registry_fops = {
++    .open    = nv_procfs_open_registry,
++    .read    = seq_read,
++    .llseek  = seq_lseek,
++    .release = single_release,
++};
++
+ /***
+  *** EXPORTS to rest of resman
+  ***/
+diff -Nurp NVIDIA-Linux-x86_64-173.14.37-pkg2/usr/src/nv/nv-i2c.c NVIDIA-Linux-x86_64-173.14.37-pkg2.fix/usr/src/nv/nv-i2c.c
+--- NVIDIA-Linux-x86_64-173.14.37-pkg2/usr/src/nv/nv-i2c.c	2013-03-07 04:58:57.000000000 +0200
++++ NVIDIA-Linux-x86_64-173.14.37-pkg2.fix/usr/src/nv/nv-i2c.c	2013-07-15 23:28:43.730781466 +0300
+@@ -307,8 +307,6 @@ void* NV_API_CALL nv_i2c_add_adapter(nv_
+ BOOL NV_API_CALL nv_i2c_del_adapter(nv_state_t *nv, void *data)
+ {
+     struct i2c_adapter *pI2cAdapter = (struct i2c_adapter *)data;
+-    int osstatus = 0;
+-    BOOL wasReleased = FALSE;
+ 
+ #if defined(KERNEL_2_4)
+     if (!NV_WEAK_SYMBOL_PRESENT(i2c_add_adapter))
+@@ -320,15 +318,10 @@ BOOL NV_API_CALL nv_i2c_del_adapter(nv_s
+     if (!pI2cAdapter) return FALSE;
+ 
+     // attempt release with the OS
+-    osstatus = i2c_del_adapter(pI2cAdapter);
++    i2c_del_adapter(pI2cAdapter);
++    os_free_mem(pI2cAdapter);
+ 
+-    if (!osstatus)
+-    {
+-        os_free_mem(pI2cAdapter);
+-        wasReleased = TRUE;
+-    }
+-
+-    return wasReleased;
++    return TRUE;
+ }
+ 
+ #else // (defined(CONFIG_I2C) || defined(CONFIG_I2C_MODULE))
+diff -Nurp NVIDIA-Linux-x86_64-173.14.37-pkg2/usr/src/nv/nv-linux.h NVIDIA-Linux-x86_64-173.14.37-pkg2.fix/usr/src/nv/nv-linux.h
+--- NVIDIA-Linux-x86_64-173.14.37-pkg2/usr/src/nv/nv-linux.h	2013-03-07 04:58:58.000000000 +0200
++++ NVIDIA-Linux-x86_64-173.14.37-pkg2.fix/usr/src/nv/nv-linux.h	2013-07-15 23:28:43.731781470 +0300
+@@ -163,6 +163,7 @@
+ 
+ #ifdef CONFIG_PROC_FS
+ #include <linux/proc_fs.h>
++#include <linux/seq_file.h>
+ #endif
+ 
+ #ifdef CONFIG_MTRR
