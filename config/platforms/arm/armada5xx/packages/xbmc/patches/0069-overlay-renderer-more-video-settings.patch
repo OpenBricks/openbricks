@@ -1,0 +1,362 @@
+--- a/xbmc/cores/VideoRenderers/DoveOverlayRenderer.h	2013-08-31 13:36:51.682581402 +0200
++++ b/xbmc/cores/VideoRenderers/DoveOverlayRenderer.h	2013-08-31 13:27:41.250597669 +0200
+@@ -141,12 +141,12 @@
+   virtual void Update(bool bPauseDrawing);
+   virtual void SetupScreenshot() {};
+ 
+-  bool RenderCapture(CRenderCapture* capture); 
++  bool RenderCapture(CRenderCapture* capture);
+ 
+   // Player functions
+-  virtual bool Configure(unsigned int width, unsigned int height, 
+-                         unsigned int d_width, unsigned int d_height,  
+-                         float fps, unsigned int flags, ERenderFormat format, 
++  virtual bool Configure(unsigned int width, unsigned int height,
++                         unsigned int d_width, unsigned int d_height,
++                         float fps, unsigned int flags, ERenderFormat format,
+                          unsigned extended_format, unsigned int orientation);
+   virtual bool IsConfigured() { return m_bConfigured; }
+   virtual int          GetImage(YV12Image *image, int source = AUTOSOURCE, bool readonly = false) { return -1; }
+@@ -161,10 +161,10 @@
+   // Re-implemented CBaseRenderer function(s)
+   virtual bool AddVideoPicture(DVDVideoPicture* picture)
+   {
+-    DrawSlice(picture); 
++    DrawSlice(picture);
+     return true;
+   }
+-  
++
+   // Feature support
+   virtual bool SupportsMultiPassRendering();
+   virtual bool Supports(ERENDERFEATURE feature);
+@@ -184,7 +184,7 @@
+   int                   m_overlayfd;
+   int                   m_enabled;
+   struct _sOvlySurface  m_overlaySurface;
+-  struct _sViewPortInfo m_overlayPlaneInfo;
++  int                   m_interpolation;
+ 
+   DllLibMiscGen         *m_DllMiscGen;
+   DllLibVMETA           *m_DllVMETA;
+--- a/xbmc/cores/VideoRenderers/DoveOverlayRenderer.cpp	2013-08-31 13:36:53.666581345 +0200
++++ b/xbmc/cores/VideoRenderers/DoveOverlayRenderer.cpp	2013-08-31 13:29:24.662594609 +0200
+@@ -45,6 +45,12 @@
+ #define CLASSNAME "CDoveOverlayRenderer"
+ 
+ 
++// missing in dovefb.h
++#define DOVEFB_INTERPOLATION_NONE       0
++#define DOVEFB_INTERPOLATION_BILINEAR   3
++
++
++
+ CDoveOverlayRenderer::CDoveOverlayRenderer()
+ {
+   memset(m_SoftPicture, 0, sizeof(OutputBuffer) * NUM_BUFFERS);
+@@ -73,10 +79,9 @@
+ void CDoveOverlayRenderer::ManageDisplay(bool first)
+ {
+   CRect view;
+-  int srcMode, interpolation;
+-  struct _sOvlySurface tmp_overlaySurface;
++  int interpolation = m_interpolation;
++  struct _sOvlySurface overlaySurface = m_overlaySurface;
+ 
+-  memcpy (&tmp_overlaySurface, &m_overlaySurface, sizeof(struct _sOvlySurface));
+   view.x1 = (float)g_settings.m_ResInfo[m_resolution].Overscan.left;
+   view.y1 = (float)g_settings.m_ResInfo[m_resolution].Overscan.top;
+   view.x2 = (float)g_settings.m_ResInfo[m_resolution].Overscan.right;
+@@ -87,9 +92,9 @@
+   m_sourceRect.x2 = (float)m_sourceWidth - g_settings.m_currentVideoSettings.m_CropRight;
+   m_sourceRect.y2 = (float)m_sourceHeight - g_settings.m_currentVideoSettings.m_CropBottom;
+ 
+-  CalcNormalDisplayRect(view.x1, view.y1, 
+-                        view.Width(), view.Height(), 
+-                        GetAspectRatio() * g_settings.m_fPixelRatio, 
++  CalcNormalDisplayRect(view.x1, view.y1,
++                        view.Width(), view.Height(),
++                        GetAspectRatio() * g_settings.m_fPixelRatio,
+                         g_settings.m_fZoomAmount, g_settings.m_fVerticalShift);
+ 
+   OutputBuffer &currPict = m_SoftPicture[m_currentBuffer];
+@@ -101,13 +106,13 @@
+     {
+       m_overlaySurface.viewPortInfo.ycPitch = currPict.lineSize[0];
+       m_overlaySurface.viewPortInfo.uvPitch = currPict.lineSize[1];
+-    } 
++    }
+     else
+     {
+       m_overlaySurface.viewPortInfo.ycPitch = m_sourceRect.x2 - m_sourceRect.x1;
+       m_overlaySurface.viewPortInfo.uvPitch = (m_sourceRect.x2 - m_sourceRect.x1) / 2;
+     }
+-  } 
++  }
+   else /*if (m_format == RENDER_FMT_VMETA || m_format == RENDER_FMT_UYVY422)*/
+   {
+     m_overlaySurface.videoMode = DOVEFB_VMODE_YUV422PACKED_SWAPYUorV;
+@@ -116,7 +121,7 @@
+     else
+       m_overlaySurface.viewPortInfo.ycPitch = (m_sourceRect.x2 - m_sourceRect.x1) * 2;
+     m_overlaySurface.viewPortInfo.uvPitch = 0;
+-  } 
++  }
+ 
+   m_overlaySurface.viewPortInfo.srcWidth  = m_sourceRect.x2 - m_sourceRect.x1;
+   m_overlaySurface.viewPortInfo.srcHeight = m_sourceRect.y2 - m_sourceRect.y1;
+@@ -126,15 +131,13 @@
+   m_overlaySurface.viewPortOffset.xOffset = m_destRect.x1;
+   m_overlaySurface.viewPortOffset.yOffset = m_destRect.y1;
+ 
+-  if (first || (tmp_overlaySurface.videoMode != m_overlaySurface.videoMode))
++  if (first || (overlaySurface.videoMode != m_overlaySurface.videoMode))
+   {
+     if (ioctl(m_overlayfd, DOVEFB_IOCTL_SET_VIDEO_MODE, &m_overlaySurface.videoMode) == -1)
+-    {
+       CLog::Log(LOGERROR, "%s::%s - Failed to setup video mode", CLASSNAME, __func__);
+-    }
+   }
+-  
+-  if (first || memcmp (&tmp_overlaySurface.viewPortInfo, &m_overlaySurface.viewPortInfo, sizeof (struct _sViewPortInfo)))
++
++  if (first || memcmp (&overlaySurface.viewPortInfo, &m_overlaySurface.viewPortInfo, sizeof (struct _sViewPortInfo)))
+   {
+     CLog::Log(LOGDEBUG, "m_sourceRect.x1 %f m_sourceRect.x2 %f m_sourceRect.y1 %f m_sourceRect.y2 %f m_sourceFrameRatio %f",
+         m_sourceRect.x1, m_sourceRect.x2, m_sourceRect.y1, m_sourceRect.y2, m_sourceFrameRatio);
+@@ -142,60 +145,50 @@
+         m_destRect.x1, m_destRect.x2, m_destRect.y1, m_destRect.y2);
+     CLog::Log(LOGDEBUG, "%s::%s - Setting ycPitch to %d, uvPitch to %d", CLASSNAME, __func__,
+         m_overlaySurface.viewPortInfo.ycPitch ,m_overlaySurface.viewPortInfo.uvPitch);
+-    
++
+     if (ioctl(m_overlayfd, DOVEFB_IOCTL_SET_VIEWPORT_INFO, &m_overlaySurface.viewPortInfo) != 0)
+-    {
+       CLog::Log(LOGERROR, "%s::%s - Failed to setup video port", CLASSNAME, __func__);
+-    }
+   }
+-  
+-  if (first || memcmp (&tmp_overlaySurface.viewPortOffset, &m_overlaySurface.viewPortOffset, sizeof (struct _sVideoBufferAddr)))
++
++  if (first || memcmp (&overlaySurface.viewPortOffset, &m_overlaySurface.viewPortOffset, sizeof (struct _sVideoBufferAddr)))
+   {
+     if (ioctl(m_overlayfd, DOVEFB_IOCTL_SET_VID_OFFSET, &m_overlaySurface.viewPortOffset) != 0)
+-    {
+       CLog::Log(LOGERROR, "%s::%s - Failed to setup video port offset", CLASSNAME, __func__);
+-    }
+   }
+-  
++
++  /* Rabeeh said: Scaler is set differently when using graphics scaler */
++  m_interpolation = (g_graphicsContext.getGraphicsScale() == GR_SCALE_100 &&
++                      g_settings.m_currentVideoSettings.m_ScalingMethod != VS_SCALINGMETHOD_NEAREST) ?
++                        DOVEFB_INTERPOLATION_BILINEAR : DOVEFB_INTERPOLATION_NONE;
++  if (first || interpolation != m_interpolation)
++  {
++    if (ioctl(m_overlayfd, DOVEFB_IOCTL_SET_INTERPOLATION_MODE, &m_interpolation) != 0)
++      CLog::Log(LOGERROR, "%s::%s - Failed to setup video interpolation mode", CLASSNAME, __func__);
++  }
++
+   if (first) 
+   {
+-    srcMode = SHM_VMETA;
++    int srcMode = SHM_VMETA;
+     if (ioctl(m_overlayfd, DOVEFB_IOCTL_SET_SRC_MODE, &srcMode) != 0)
+-    {
+       CLog::Log(LOGERROR, "%s::%s - Failed to set source mode", CLASSNAME, __func__);
+-    }
+-
+-    /* Scaler is set differently when using graphics scaler */
+-    if (g_graphicsContext.getGraphicsScale() == GR_SCALE_100)
+-    {
+-      interpolation = 3;  // bi-linear interpolation
+-      if (ioctl(m_overlayfd, DOVEFB_IOCTL_SET_INTERPOLATION_MODE, &interpolation) != 0)
+-      {
+-        CLog::Log(LOGERROR, "%s::%s - Failed to setup video interpolation mode", CLASSNAME, __func__);
+-      }
+-    }
+   }
+ }
+ 
+ 
+ bool CDoveOverlayRenderer::Configure(
+-  unsigned int width, unsigned int height, unsigned int d_width, unsigned int d_height, 
++  unsigned int width, unsigned int height, unsigned int d_width, unsigned int d_height,
+   float fps, unsigned int flags, ERenderFormat format, unsigned extended_format, unsigned int orientation)
+ {
+   m_bConfigured   = false;
+   m_enabled       = 0;
+   m_currentBuffer = 0;
+-  
++
+   memset (&m_overlaySurface, 0, sizeof(m_overlaySurface));
+-  m_overlaySurface.videoBufferAddr.startAddr = 0;
+-  m_overlaySurface.videoBufferAddr.length = 0;//frameSize;
+-  m_overlaySurface.videoBufferAddr.inputData = 0;
+-  m_overlaySurface.videoBufferAddr.frameID = 0;
+ 
+   if (format != RENDER_FMT_VMETA && format != RENDER_FMT_UYVY422 && format != RENDER_FMT_YUV420P)
+   {
+     CLog::Log(LOGERROR, "%s::%s - Unknown format 0x%x", CLASSNAME, __func__, format);
+-    
++
+     m_format = RENDER_FMT_NONE;
+     return false;
+   }
+@@ -217,7 +210,7 @@
+     CLog::Log(LOGERROR, "%s::%s - Failed to open framebuffer", CLASSNAME, __func__);
+     return false;
+   }
+-  
++
+   int srcMode = SHM_NORMAL;
+   if (ioctl(m_overlayfd, DOVEFB_IOCTL_SET_SRC_MODE, &srcMode) == -1)
+   {
+@@ -225,7 +218,7 @@
+     return false;
+   }
+ 
+-  int interpolation = 0; // interpolation off
++  int interpolation = DOVEFB_INTERPOLATION_NONE;
+   if (ioctl(m_overlayfd, DOVEFB_IOCTL_SET_INTERPOLATION_MODE, &interpolation) == -1)
+   {
+     CLog::Log(LOGERROR, "%s::%s - Failed to setup video interpolation mode", CLASSNAME, __func__);
+@@ -294,8 +287,8 @@
+   {
+     m_overlaySurface.videoBufferAddr.startAddr = (unsigned char *)currPict.phyBuf[0];
+     m_overlaySurface.videoBufferAddr.length    = currPict.nBufSize;
+-  } 
+-  else 
++  }
++  else
+   {
+     m_overlaySurface.videoBufferAddr.startAddr = NULL;
+     m_overlaySurface.videoBufferAddr.length    = 0;
+@@ -307,13 +300,13 @@
+     if(ioctl(m_overlayfd, DOVEFB_IOCTL_NEXT_FRAME_PRESENT, currPict.phyBuf) != 0)
+       CLog::Log(LOGERROR, "%s::%s - Error flipping", CLASSNAME, __func__);
+     next_frame_present = true;
+-  } 
++  }
+   else if (ioctl(m_overlayfd, DOVEFB_IOCTL_FLIP_VID_BUFFER, &m_overlaySurface) != 0)
+   {
+       CLog::Log(LOGERROR, "%s::%s - Error flipping", CLASSNAME, __func__);
+   }
+ 
+-  if (m_enabled == 0) 
++  if (m_enabled == 0)
+   {
+     m_enabled = 1;
+ 
+@@ -378,14 +371,14 @@
+ 
+   if (pDvdVideoPicture->format != m_format)
+       return false;
+-  
++
+   // from vMeta ?
+   if (m_format == RENDER_FMT_VMETA)
+   {
+     // switched from other format...
+     if(currPict.nFlag & PBF_ALLOCATED)
+       m_DllVMETA->vdec_os_api_dma_free(currPict.pBuf);
+-    
++
+     // Decoder allocated buffer
+     currPict.nFlag       = PBF_IMPORTED;
+     currPict.pBuf        = pDvdVideoPicture->vmeta->pBuf;
+@@ -395,11 +388,11 @@
+ 
+     currPict.phyBuf[1]   = currPict.phyBuf[2] = 0;
+     currPict.lineSize[1] = currPict.lineSize[2] = 0;
+-  } 
++  }
+   else
+   {
+     unsigned int nBufSize = pDvdVideoPicture->iLineSize[0] * pDvdVideoPicture->iHeight;
+-    
++
+     // Software decoding. Allocate buffer for ouput
+     if (m_format == RENDER_FMT_YUV420P)
+     {
+@@ -426,7 +419,7 @@
+       currPict.nBufSize = nBufSize;
+       currPict.nFlag    = PBF_ALLOCATED;
+     }
+-    
++
+     if(!currPict.pBuf)
+     {
+       currPict.nFlag    = PBF_UNUSED;
+@@ -437,7 +430,7 @@
+     unsigned char *dst = currPict.pBuf;
+     memcpy( dst, pDvdVideoPicture->data[0], pDvdVideoPicture->iLineSize[0] * pDvdVideoPicture->iHeight );
+     currPict.lineSize[0] = pDvdVideoPicture->iLineSize[0];
+-    
++
+     if (m_format == RENDER_FMT_YUV420P)
+     {
+       currPict.phyBuf[1] = currPict.phyBuf[0] + (pDvdVideoPicture->iLineSize[0] * pDvdVideoPicture->iHeight);
+@@ -446,7 +439,7 @@
+       dst += pDvdVideoPicture->iLineSize[0] * pDvdVideoPicture->iHeight;
+       memcpy( dst, pDvdVideoPicture->data[1], pDvdVideoPicture->iLineSize[1] * pDvdVideoPicture->iHeight / 2 );
+       currPict.lineSize[1] = pDvdVideoPicture->iLineSize[1];
+-      
++
+       dst += pDvdVideoPicture->iLineSize[1] * pDvdVideoPicture->iHeight / 2;
+       memcpy( dst, pDvdVideoPicture->data[2], pDvdVideoPicture->iLineSize[2] * pDvdVideoPicture->iHeight / 2 );
+       currPict.lineSize[2] = pDvdVideoPicture->iLineSize[2];
+@@ -457,7 +450,7 @@
+       currPict.lineSize[1] = currPict.lineSize[2] = 0;
+     }
+   }
+-  
++
+   return true;
+ }
+ 
+@@ -467,7 +460,7 @@
+   CLog::Log(LOGDEBUG, "%s::%s", CLASSNAME, __func__);
+ 
+   memset(m_FreeBufAddr, 0, MAX_QUEUE_NUM * sizeof(m_FreeBufAddr[0]));
+-  
++
+   if(m_overlayfd != -1)
+   {
+     ioctl(m_overlayfd, DOVEFB_IOCTL_GET_FREELIST, &m_FreeBufAddr);
+@@ -490,7 +483,7 @@
+   for(int i = 0; i < NUM_BUFFERS; i++)
+   {
+     OutputBuffer &currPict = m_SoftPicture[i];
+-    
++
+     if(currPict.nFlag & PBF_ALLOCATED)
+       m_DllVMETA->vdec_os_api_dma_free(currPict.pBuf);
+   }
+@@ -501,9 +494,9 @@
+   m_iFlags                  = 0;
+   m_sourceWidth             = 0;
+   m_sourceHeight            = 0;
++  m_interpolation           = DOVEFB_INTERPOLATION_NONE;
+ 
+   memset(&m_overlaySurface, 0, sizeof(struct _sOvlySurface));
+-  memset(&m_overlayPlaneInfo, 0, sizeof(struct _sViewPortInfo));
+ }
+ 
+ 
+@@ -515,6 +508,15 @@
+ 
+ bool CDoveOverlayRenderer::Supports(ERENDERFEATURE feature)
+ {
++  if( feature == RENDERFEATURE_STRETCH 
++      || feature == RENDERFEATURE_ZOOM
++      || feature == RENDERFEATURE_PIXEL_RATIO
++//      || feature == RENDERFEATURE_VERTICAL_SHIFT
++//      || feature == RENDERFEATURE_NONLINSTRETCH
++//      || feature == RENDERFEATURE_CROP
++    )
++    return true;
++
+   return false;
+ }
+ 
