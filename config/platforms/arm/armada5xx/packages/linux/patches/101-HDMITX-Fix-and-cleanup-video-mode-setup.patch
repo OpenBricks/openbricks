@@ -1,0 +1,49 @@
+diff --git a/drivers/video/dovefb/nxp_hdmi/tda998x.c b/drivers/video/dovefb/nxp_hdmi/tda998x.c
+index 8e648ec..8e12aa6 100755
+--- a/drivers/video/dovefb/nxp_hdmi/tda998x.c
++++ b/drivers/video/dovefb/nxp_hdmi/tda998x.c
+@@ -1987,7 +1987,6 @@ static struct {
+ {2880,	480,	0,	60,	TMDL_HDMITX_VFMT_36_2880x480p_60Hz},
+ {2880,	576,	0,	50,	TMDL_HDMITX_VFMT_37_2880x576p_50Hz},
+ {2880,	576,	0,	50,	TMDL_HDMITX_VFMT_38_2880x576p_50Hz},
+-{1280,	720,	0,	24,	TMDL_HDMITX_VFMT_INDEX_60_1280x720p_24Hz},
+ {1280,	720,	0,	24,	TMDL_HDMITX_VFMT_60_1280x720p_24Hz},
+ {1280,	720,	0,	25,	TMDL_HDMITX_VFMT_61_1280x720p_25Hz},
+ {1280,	720,	0,	30,	TMDL_HDMITX_VFMT_62_1280x720p_30Hz},
+@@ -2023,7 +2022,7 @@ static struct {
+ int tda19988_configure_tx_inout(int x, int y, int interlaced, int hz)
+ {
+    tda_instance* this = &our_instance;
+-   int i, d, mode = -1, rateDiff = INT_MAX;
++   int i, d, mode, modeIndex = -1, rateDiff = INT_MAX;
+ 
+    for (i = 0; rateDiff && i < ARRAY_SIZE(resolution_to_video_format); i++) {
+       
+@@ -2034,21 +2033,22 @@ int tda19988_configure_tx_inout(int x, int y, int interlaced, int hz)
+          d = abs(resolution_to_video_format[i].hz - hz);
+          if (d < rateDiff) {
+             rateDiff = d;
+-            mode = resolution_to_video_format[i].vmode;
++            modeIndex = i;
+          }
+       }
+    }
+ 
+-   if (mode < 0) {
++   if (modeIndex < 0) {
+       printk (KERN_ERR "HDMI TX - no matching resolution %dx%d%c %dHz\n",x,y,interlaced ? 'i':'p',hz);
+       return 0;
+    }
+ 
++   mode = resolution_to_video_format[modeIndex].vmode;
++
+    if (rateDiff == 0)
+-      printk (KERN_INFO "HDMI TX - FOUND exact resolution %d\n",mode);
++      printk (KERN_INFO "HDMI TX - using %s (exact match)\n",tda_spy_vfmt(mode));
+    else
+-      printk (KERN_INFO "HDMI TX - Found good candidate %d (requested %dhz, found %dhz)\n",
+-              mode,hz,resolution_to_video_format[mode].hz);
++      printk (KERN_INFO "HDMI TX - using %s (requested %dHz)\n",tda_spy_vfmt(mode),hz);
+ 
+    if (initialized) {
+       down(&this->driver.sem);
