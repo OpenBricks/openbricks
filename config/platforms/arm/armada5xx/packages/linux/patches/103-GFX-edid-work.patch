@@ -1,0 +1,98 @@
+diff --git a/drivers/video/dovefb/dovefb_gfx.c b/drivers/video/dovefb/dovefb_gfx.c
+index de62255..6a8d2e7 100644
+--- a/drivers/video/dovefb/dovefb_gfx.c
++++ b/drivers/video/dovefb/dovefb_gfx.c
+@@ -49,7 +49,7 @@
+ #include "dovefb_if.h"
+ #define MAX_HWC_SIZE		(64*64*2)
+ #define DEFAULT_REFRESH		60	/* Hz */
+-#define DEFAULT_EDID_INTERVAL   3	/* seconds */
++#define DEFAULT_EDID_INTERVAL   2	/* seconds */
+ 
+ static int dovefb_fill_edid(struct fb_info *fi,
+ 				struct dovefb_mach_info *dmi);
+@@ -59,6 +59,7 @@ static void dovefb_set_defaults(struct dovefb_layer_info *dfli);
+ #ifdef CONFIG_TDA19988
+ extern const char *tda19988_get_edid(int *num_of_blocks);
+ extern int tda19988_configure_tx_inout(int x, int y, int interlaced, int hz);
++extern void tda19988_register_edid_work(struct work_struct *work_queue);
+ #endif
+ 
+ 
+@@ -648,6 +649,7 @@ static int dovefb_pan_display(struct fb_var_screeninfo *var,
+ 	return 0;
+ }
+ 
++#ifdef CONFIG_PM
+ static int dovefb_pwr_off_sram(struct dovefb_layer_info *dfli)
+ {
+ 	unsigned int x;
+@@ -677,6 +679,7 @@ static int dovefb_pwr_on_sram(struct dovefb_layer_info *dfli)
+ 
+ 	return 0;
+ }
++#endif
+ 
+ static int dovefb_blank(int blank, struct fb_info *fi)
+ {
+@@ -1047,6 +1050,7 @@ static int dovefb_gfx_ioctl(struct fb_info *info, unsigned int cmd,
+ 	return 0;
+ }
+ 
++#ifdef CONFIG_FB_DOVE_CLCD_EDID
+ static bool dovefb_edid_block_valid(u8 *raw_edid)
+ {
+ 	int i;
+@@ -1150,7 +1154,6 @@ out:
+ 	return NULL;
+ }
+ 
+-#ifdef CONFIG_FB_DOVE_CLCD_EDID
+ static u8 *pull_edid_from_i2c(int busid, int addr)
+ {
+ 	struct i2c_adapter *dove_i2c;
+@@ -1684,6 +1687,9 @@ int dovefb_gfx_init(struct dovefb_info *info, struct dovefb_mach_info *dmi)
+ 		dfli->get_edid_timer.function = dynamic_get_edid;
+ 		add_timer(&dfli->get_edid_timer);
+ 		INIT_WORK(&dfli->work_queue, get_edid_work);
++#ifdef CONFIG_TDA19988
++		tda19988_register_edid_work(&dfli->work_queue);
++#endif
+ 	} else {
+ 		dfli->edid_info.connect = 1;
+ 		dfli->edid_info.change = 1;
+diff --git a/drivers/video/dovefb/nxp_hdmi/tda998x.c b/drivers/video/dovefb/nxp_hdmi/tda998x.c
+index 43314b2..2c44a19 100755
+--- a/drivers/video/dovefb/nxp_hdmi/tda998x.c
++++ b/drivers/video/dovefb/nxp_hdmi/tda998x.c
+@@ -73,6 +73,8 @@ static struct cdev our_cdev, *this_cdev=&our_cdev;
+ static int initialized = 0;
+ static int saved_mode = -1;
+ static cec_callback_t cec_callback = NULL;
++static struct work_struct *edid_work_queue = NULL;
++
+ 
+ #ifdef ANDROID_DSS
+ static struct omap_video_timings video_640x480at60Hz_panel_timings = {
+@@ -940,6 +942,9 @@ static void eventCallbackTx(tmdlHdmiTxEvent_t event)
+          By default, let go on with next case and activate
+          default video/audio settings with tmdlHdmiTxSetInputOutput()
+       */
++      
++      if (edid_work_queue)
++         schedule_work(edid_work_queue);
+ 
+       TRY(tmdlHdmiTxGetEdidSinkType(this->tda.instance,     \
+                                     &this->tda.setio.sink));
+@@ -2119,6 +2124,11 @@ TRY_DONE:
+    up(&this->driver.sem);
+ }
+ 
++void tda19988_register_edid_work(struct work_struct *work_queue)
++{
++  edid_work_queue = work_queue;
++}
++
+ 
+ /*
+  *  I2C client :: destroy
