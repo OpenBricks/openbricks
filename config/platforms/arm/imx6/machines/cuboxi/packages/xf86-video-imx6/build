@@ -1,0 +1,31 @@
+#!/bin/sh
+
+. config/options
+
+get_meta $1
+cd $PKG_BUILD_DIR
+
+
+export CROSS_COMPILE="${TARGET_PREFIX}"
+export LIB_P="$LIB_PREFIX"
+
+if [ "$ARM_HARDFLOAT_ABI" = yes ] ; then 
+  export BUILD_HARD_VFP=1
+else
+  export BUILD_HARD_VFP=0
+fi
+
+sed -i 's,$(sysroot)/usr/include,${LIB_P}/include,g' EXA/src/makefile.linux
+
+
+export CFLAGS="$CFLAGS -I../../DRI_1.10.4/src -DSWAP_SINGLE_PARAMETER -DFIX_NO_MI_BACKINGSTORE"
+
+make -C EXA/src/ -f makefile.linux sysroot="${LIB_PREFIX}" BUSID_HAS_NUMBER=1
+make -C EXA/src/ -f makefile.linux sysroot="${LIB_PREFIX}" BUSID_HAS_NUMBER=1 prefix=.install/usr install
+
+
+cp -R EXA/src/.install .install
+
+mkdir -p .install/etc/X11/xorg.conf.d
+cp $ROOT/config/platforms/arm/imx6/machines/cuboxi/packages/$1/config/* .install/etc/X11/xorg.conf.d
+
