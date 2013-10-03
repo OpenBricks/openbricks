@@ -46,7 +46,11 @@ set_default_gui_settings () {
 
   if grep -q CuBox /proc/cpuinfo; then
     cp /etc/xbmc/cubox-guisettings.xml $GUI_SETTINGS
-  fi 
+  fi
+  
+  if grep -q "SolidRun i.MX"  /proc/cpuinfo; then
+    cp /etc/xbmc/cuboxi-guisettings.xml $GUI_SETTINGS
+  fi
 
   sed -i -e "s,TZ_COUNTRY,$TZ_COUNTRY," \
          -e "s,TZ,$TZ," \
