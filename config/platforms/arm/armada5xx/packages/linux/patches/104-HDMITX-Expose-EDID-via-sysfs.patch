@@ -1,0 +1,64 @@
+diff --git a/drivers/video/dovefb/nxp_hdmi/tda998x.c b/drivers/video/dovefb/nxp_hdmi/tda998x.c
+index 41f6bd7..fccb561 100755
+--- a/drivers/video/dovefb/nxp_hdmi/tda998x.c
++++ b/drivers/video/dovefb/nxp_hdmi/tda998x.c
+@@ -2200,7 +2200,7 @@ static ssize_t reso_show(struct device *dev,struct device_attribute *attr, char
+ {
+    tda_instance *this = &our_instance;
+ 
+-   return sprintf(buf,"format video %d ( %s )\n", \
++   return sprintf(buf,"video format %d ( %s )\n", \
+                   this->tda.setio.video_in.format,                  \
+                   tda_spy_vfmt(this->tda.setio.video_in.format));
+ }
+@@ -2238,7 +2238,6 @@ static ssize_t reso_store(struct device *dev,
+ static ssize_t audio_show(struct device *dev,struct device_attribute *attr, char *buf)
+ {
+    tda_instance *this = &our_instance;
+-   printk("Audio Show\n");
+ 
+    tda_spy_audio(&this->tda.setio.audio_in);
+    return sprintf(buf,"audio format %d - %d - %d - %d - %d - %d\n", \
+@@ -2290,6 +2289,26 @@ static ssize_t audio_store(struct device *dev,
+    return size;//0;
+ }
+ 
++
++static ssize_t edid_show(struct device *dev,struct device_attribute *attr, char *buf)
++{
++   const char *edidData;
++   int i, j, len, edidNumBlocks = 0;
++
++   edidData = tda19988_get_edid(&edidNumBlocks);
++
++   len = sprintf(buf, "EDID blocks: %d\n", edidNumBlocks);
++
++   for (i = 0; i < edidNumBlocks; i++) {
++      for (j = 0; j < 128; j++)
++         len += sprintf(buf + len, "%c%02x", (j % 16) == 0 ? '\n' : ' ', *edidData++);
++      len += sprintf(buf + len, "\n");
++   }
++
++   return len;
++}
++
++
+ #ifdef I2C_DBG
+ static ssize_t i2cR_store(struct device *dev,
+                           struct device_attribute *attr, const char *buf, size_t size)
+@@ -2336,6 +2355,7 @@ static ssize_t i2cW_store(struct device *dev,
+ 
+ static DEVICE_ATTR(resolution, S_IRUGO|S_IWUSR, reso_show, reso_store);
+ static DEVICE_ATTR(audio, S_IRUGO|S_IWUSR, audio_show, audio_store);
++static DEVICE_ATTR(edid, S_IRUGO|S_IWUSR, edid_show, NULL);
+ #ifdef I2C_DBG
+ static DEVICE_ATTR(i2cW, S_IRUGO|S_IWUSR, NULL, i2cW_store);
+ static DEVICE_ATTR(i2cR, S_IRUGO|S_IWUSR, NULL, i2cR_store);
+@@ -2343,6 +2363,7 @@ static DEVICE_ATTR(i2cR, S_IRUGO|S_IWUSR, NULL, i2cR_store);
+ static struct device_attribute *display_sysfs_attrs[] = {
+    &dev_attr_resolution,
+    &dev_attr_audio,
++   &dev_attr_edid,
+ #ifdef I2C_DBG
+    &dev_attr_i2cW,
+    &dev_attr_i2cR,
