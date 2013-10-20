@@ -1,0 +1,90 @@
+From a3f8e44ada52d5a0c0a7955f8959a8b4c5d077c0 Mon Sep 17 00:00:00 2001
+From: Russell King <rmk+kernel@arm.linux.org.uk>
+Date: Sun, 20 Oct 2013 14:48:39 +0200
+Subject: [PATCH 2/6] GALCORE: fix race in _GetEvent()
+
+---
+ .../hal/kernel/gc_hal_kernel_event.c               |   26 +++++++++++---------
+ 1 file changed, 14 insertions(+), 12 deletions(-)
+
+diff --git a/arch/arm/mach-dove/gc600_driver_dove/galcore_ko_src/hal/kernel/gc_hal_kernel_event.c b/arch/arm/mach-dove/gc600_driver_dove/galcore_ko_src/hal/kernel/gc_hal_kernel_event.c
+index b92b043..e1cb03e 100644
+--- a/arch/arm/mach-dove/gc600_driver_dove/galcore_ko_src/hal/kernel/gc_hal_kernel_event.c
++++ b/arch/arm/mach-dove/gc600_driver_dove/galcore_ko_src/hal/kernel/gc_hal_kernel_event.c
+@@ -53,6 +53,7 @@ static gceSTATUS
+ _GetEvent(
+     IN gckEVENT Event,
+     OUT gctUINT8 * EventID,
++    IN gcsEVENT_PTR Head,
+     IN gceKERNEL_WHERE Source
+     )
+ {
+@@ -60,7 +61,7 @@ _GetEvent(
+ 	gceSTATUS status;
+ 	gctBOOL acquired = gcvFALSE;
+ 
+-	gcmkHEADER_ARG("Event=0x%x Source=%d", Event, Source);
++	gcmkHEADER_ARG("Event=0x%x Head=%p Source=%d", Event, Head, Source);
+ 
+ 	/* Grab the queue mutex. */
+ 	gcmkONERROR(gckOS_AcquireMutex(Event->os,
+@@ -80,6 +81,7 @@ _GetEvent(
+ 
+             /* Save time stamp of event. */
+             Event->queues[id].stamp  = ++(Event->stamp);
++            Event->queues[id].head   = Head;
+             Event->queues[id].source = Source;
+ 
+             /* Release the queue mutex. */
+@@ -1470,13 +1472,19 @@ gckEVENT_Submit(
+ 
+     gcmkHEADER_ARG("Event=0x%x Wait=%d", Event, Wait);
+ 
++	/* Acquire the list mutex. */
++	gcmkONERROR(gckOS_AcquireMutex(Event->os, Event->listMutex,
++				       gcvINFINITE));
++	acquired = gcvTRUE;
++
+ 	/* Only process if we have events queued. */
+ 	if (Event->list.head != gcvNULL)
+ 	{
+ 	    for (;;)
+ 	    {
+ 		    /* Allocate an event ID. */
+-    		status = _GetEvent(Event, &id, Event->list.source);
++    		status = _GetEvent(Event, &id, Event->list.head,
++    					   Event->list.source);
+ 
+     		if (gcmIS_ERROR(status))
+     		{
+@@ -1511,16 +1519,6 @@ gckEVENT_Submit(
+ 
+ 		gcmkTRACE_ZONE(gcvLEVEL_INFO, gcvZONE_EVENT, "Using id=%d", id);
+ 
+-		/* Acquire the list mutex. */
+-		gcmkONERROR(gckOS_AcquireMutex(Event->os,
+-									   Event->listMutex,
+-									   gcvINFINITE));
+-		acquired = gcvTRUE;
+-
+-		/* Copy event list to event ID queue. */
+-		Event->queues[id].source = Event->list.source;
+-		Event->queues[id].head   = Event->list.head;
+-
+         /* Get process ID. */
+         gcmkONERROR(gckOS_GetProcessID(&Event->queues[id].processID));
+ 
+@@ -1562,6 +1560,10 @@ gckEVENT_Submit(
+         gcmkONERROR(gckCOMMAND_Execute(Event->kernel->command, bytes));
+ 		reserved = gcvFALSE;
+ #endif
++	} else {
++		/* Release the list mutex. */
++		gcmkONERROR(gckOS_ReleaseMutex(Event->os, Event->listMutex));
++		acquired = gcvFALSE;
+ 	}
+ 
+ 	/* Success. */
+-- 
+1.7.9.5
+

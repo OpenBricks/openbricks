@@ -1,0 +1,52 @@
+From 78c2fe58e9107471da01c3bf86c2f139701a8b94 Mon Sep 17 00:00:00 2001
+From: Russell King <rmk+kernel@arm.linux.org.uk>
+Date: Sun, 20 Oct 2013 14:51:47 +0200
+Subject: [PATCH 5/6] GALCORE: fix race in _IsEmpty()
+
+---
+ .../hal/kernel/gc_hal_kernel_event.c               |   22 +++++++++-----------
+ 1 file changed, 10 insertions(+), 12 deletions(-)
+
+diff --git a/arch/arm/mach-dove/gc600_driver_dove/galcore_ko_src/hal/kernel/gc_hal_kernel_event.c b/arch/arm/mach-dove/gc600_driver_dove/galcore_ko_src/hal/kernel/gc_hal_kernel_event.c
+index 9889b65..fb17d71 100644
+--- a/arch/arm/mach-dove/gc600_driver_dove/galcore_ko_src/hal/kernel/gc_hal_kernel_event.c
++++ b/arch/arm/mach-dove/gc600_driver_dove/galcore_ko_src/hal/kernel/gc_hal_kernel_event.c
+@@ -132,18 +132,6 @@ _IsEmpty(
+     /* Assume the event queue is empty. */
+     *IsEmpty = gcvTRUE;
+ 
+-    /* Walk the event queue. */
+-    for (i = 0; i < gcmCOUNTOF(Event->queues); ++i)
+-    {
+-        /* Check whether this event is in use. */
+-        if (Event->queues[i].head != gcvNULL)
+-        {
+-            /* The event is in use, hence the queue is not empty. */
+-            *IsEmpty = gcvFALSE;
+-            break;
+-        }
+-    }
+-
+     /* Try acquiring the mutex. */
+     status = gckOS_AcquireMutex(Event->os, Event->mutexQueue, 0);
+     if (status == gcvSTATUS_TIMEOUT)
+@@ -156,6 +144,16 @@ _IsEmpty(
+         /* Bail out on error. */
+         gcmkONERROR(status);
+ 
++		/* Walk the event queue. */
++		for (i = 0; i < gcmCOUNTOF(Event->queues); ++i) {
++			/* Check whether this event is in use. */
++			if (Event->queues[i].head != gcvNULL) {
++				/* The event is in use, hence the queue is not empty. */
++				*IsEmpty = gcvFALSE;
++				break;
++			}
++		}
++
+         /* Release the mutex. */
+         gcmkVERIFY_OK(gckOS_ReleaseMutex(Event->os, Event->mutexQueue));
+     }
+-- 
+1.7.9.5
+

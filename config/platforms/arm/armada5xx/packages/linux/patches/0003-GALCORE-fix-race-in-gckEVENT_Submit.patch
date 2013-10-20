@@ -1,0 +1,58 @@
+From e61a5c2a667ed46c70e12468ff0a078d4a57f4b2 Mon Sep 17 00:00:00 2001
+From: Russell King <rmk+kernel@arm.linux.org.uk>
+Date: Sun, 20 Oct 2013 14:50:11 +0200
+Subject: [PATCH 3/6] GALCORE: fix race in gckEVENT_Submit()
+
+---
+ .../hal/kernel/gc_hal_kernel_event.c               |   14 +++++++++++++-
+ 1 file changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm/mach-dove/gc600_driver_dove/galcore_ko_src/hal/kernel/gc_hal_kernel_event.c b/arch/arm/mach-dove/gc600_driver_dove/galcore_ko_src/hal/kernel/gc_hal_kernel_event.c
+index e1cb03e..a85fd12 100644
+--- a/arch/arm/mach-dove/gc600_driver_dove/galcore_ko_src/hal/kernel/gc_hal_kernel_event.c
++++ b/arch/arm/mach-dove/gc600_driver_dove/galcore_ko_src/hal/kernel/gc_hal_kernel_event.c
+@@ -1464,6 +1464,7 @@ gckEVENT_Submit(
+ 	gctSIZE_T bytes;
+ 	gctPOINTER buffer;
+ 	gceSTATUS status;
++	gctBOOL recacquired = gcvFALSE;
+     gctBOOL acquired = gcvFALSE;
+ 	gctBOOL reserved = gcvFALSE;
+ #if gcdGPU_TIMEOUT
+@@ -1472,7 +1473,11 @@ gckEVENT_Submit(
+ 
+     gcmkHEADER_ARG("Event=0x%x Wait=%d", Event, Wait);
+ 
+-	/* Acquire the list mutex. */
++	gcmkONERROR(gckOS_AcquireRecMutex(Event->os,
++					  Event->kernel->hardware->recMutexPower,
++					  gcvINFINITE));
++	recacquired = gcvTRUE;
++
+ 	gcmkONERROR(gckOS_AcquireMutex(Event->os, Event->listMutex,
+ 				       gcvINFINITE));
+ 	acquired = gcvTRUE;
+@@ -1566,6 +1571,9 @@ gckEVENT_Submit(
+ 		acquired = gcvFALSE;
+ 	}
+ 
++	gcmkVERIFY_OK(gckOS_ReleaseRecMutex(Event->os, Event->kernel->hardware->recMutexPower));
++	recacquired = gcvFALSE;
++
+ 	/* Success. */
+ 	gcmkFOOTER_NO();
+ 	return gcvSTATUS_OK;
+@@ -1585,6 +1593,10 @@ OnError:
+ 		gcmkVERIFY_OK(gckCOMMAND_Release(Event->kernel->command));
+ 	}
+ 
++	if (recacquired) {
++		gcmkVERIFY_OK(gckOS_ReleaseRecMutex(Event->os, Event->kernel->hardware->recMutexPower));
++	}
++
+ 	if (id != 0xFF)
+ 	{
+ 		/* Need to unroll the event allocation. */
+-- 
+1.7.9.5
+

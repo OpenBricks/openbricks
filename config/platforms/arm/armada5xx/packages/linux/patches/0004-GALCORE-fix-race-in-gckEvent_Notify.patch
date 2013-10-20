@@ -1,0 +1,75 @@
+From 2f2746221fc7b5f1ce3aebe303a314091f098b26 Mon Sep 17 00:00:00 2001
+From: Russell King <rmk+kernel@arm.linux.org.uk>
+Date: Sun, 20 Oct 2013 14:51:05 +0200
+Subject: [PATCH 4/6] GALCORE: fix race in gckEvent_Notify()
+
+---
+ .../hal/kernel/gc_hal_kernel_event.c               |   26 +++++++++++++++++---
+ 1 file changed, 22 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm/mach-dove/gc600_driver_dove/galcore_ko_src/hal/kernel/gc_hal_kernel_event.c b/arch/arm/mach-dove/gc600_driver_dove/galcore_ko_src/hal/kernel/gc_hal_kernel_event.c
+index a85fd12..9889b65 100644
+--- a/arch/arm/mach-dove/gc600_driver_dove/galcore_ko_src/hal/kernel/gc_hal_kernel_event.c
++++ b/arch/arm/mach-dove/gc600_driver_dove/galcore_ko_src/hal/kernel/gc_hal_kernel_event.c
+@@ -1083,6 +1083,8 @@ gckEVENT_Notify(
+ 
+     for (;;)
+     {
++        gcsEVENT_PTR event, next_event;
++
+         /* Suspend interrupts. */
+         gcmkONERROR(gckOS_SuspendInterrupt(Event->os));
+         suspended = gcvTRUE;
+@@ -1105,6 +1107,11 @@ gckEVENT_Notify(
+ 
+ 		queue = gcvNULL;
+ 
++		/* Grab the queue mutex. */
++		gcmkONERROR(gckOS_AcquireMutex(Event->os, Event->mutexQueue,
++					       gcvINFINITE));
++		acquired = gcvTRUE;
++
+ #if gcdDEBUG
+ 		for (i = 0; i < gcmCOUNTOF(Event->queues); ++i)
+ 		{
+@@ -1138,6 +1145,10 @@ gckEVENT_Notify(
+ 
+ 		if (queue == gcvNULL)
+ 		{
++			/* Release the mutex. */
++			gcmkVERIFY_OK(gckOS_ReleaseMutex(Event->os, Event->mutexQueue));
++			acquired = gcvFALSE;
++
+             gcmkLOG_WARNING_ARGS("Queue is null,interrupts 0x%08x are not pending", pending);
+ 			gcmkTRACE_ZONE(gcvLEVEL_ERROR, gcvZONE_EVENT,
+ 						   "Interrupts 0x%08x are not pending.", pending);
+@@ -1165,15 +1176,22 @@ gckEVENT_Notify(
+ 			}
+ 		}
+ 
++		/* Remove events from queue and mark queue free */
++		next_event = queue->head;
++		queue->head = gcvNULL;
++
++		/* Release the mutex. */
++		gcmkVERIFY_OK(gckOS_ReleaseMutex(Event->os, Event->mutexQueue));
++		acquired = gcvFALSE;
++
+ 		/* Walk all events for this interrupt. */
+-		while (queue->head != gcvNULL)
+-		{
+-			gcsEVENT_PTR event;
++		while (next_event != gcvNULL) {
+ #ifndef __QNXNTO__
+ 			gctPOINTER logical;
+ #endif
+ 
+-			event       = queue->head;
++			event       = next_event;
++			next_event  = event->next;
+ 
+             gcmkTRACE_ZONE(gcvLEVEL_VERBOSE, gcvZONE_EVENT,
+                 "event->event.command: %d", event->event.command);
+-- 
+1.7.9.5
+
