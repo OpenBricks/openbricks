@@ -25,6 +25,8 @@ set_default_advanced_settings () {
     cp /etc/xbmc/rpi-advancedsettings.xml $ADV_SETTINGS
   elif grep -q sun4i /proc/cpuinfo; then
     cp /etc/xbmc/a10-advancedsettings.xml $ADV_SETTINGS
+  elif grep -q CM-FX6 /proc/cpuinfo; then
+    cp /etc/xbmc/utilite-advancedsettings.xml $ADV_SETTINGS
   else
     cp /etc/xbmc/generic-advancedsettings.xml $ADV_SETTINGS
   fi
@@ -52,6 +54,10 @@ set_default_gui_settings () {
     cp /etc/xbmc/cuboxi-guisettings.xml $GUI_SETTINGS
   fi
 
+   if grep -q  CM-FX6 /proc/cpuinfo; then
+     cp /etc/xbmc/utilite-guisettings.xml $GUI_SETTINGS
+   fi
+ 
   sed -i -e "s,TZ_COUNTRY,$TZ_COUNTRY," \
          -e "s,TZ,$TZ," \
          $GUI_SETTINGS
