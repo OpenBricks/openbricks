@@ -27,6 +27,8 @@ set_default_advanced_settings () {
     cp /etc/xbmc/a10-advancedsettings.xml $ADV_SETTINGS
   elif grep -q CM-FX6 /proc/cpuinfo; then
     cp /etc/xbmc/utilite-advancedsettings.xml $ADV_SETTINGS
+  elif grep -q "SolidRun i.MX 6" /proc/cpuinfo; then
+    cp /etc/xbmc/cuboxi-advancedsettings.xml $ADV_SETTINGS
   else
     cp /etc/xbmc/generic-advancedsettings.xml $ADV_SETTINGS
   fi
