@@ -1,0 +1,48 @@
+--- opkg-0.1.8/libbb/unarchive.c	2009-12-21 01:02:18.000000000 +0100
++++ opkg-0.1.8a/libbb/unarchive.c	2013-10-25 17:22:25.995039265 +0200
+@@ -466,7 +466,7 @@
+ 	}
+ 
+ 	if (fread(tar.raw, 1, 512, tar_stream) != 512) {
+-		/* Unfortunatly its common for tar files to have all sorts of
++		/* Unfortunately its common for tar files to have all sorts of
+ 		 * trailing garbage, fail silently */
+ //		error_msg("Couldnt read header");
+ 		return(NULL);
+@@ -505,10 +505,6 @@
+         if (longname) {
+                 tar_entry->name = longname;
+                 longname = NULL;
+-        }
+-        else if (linkname) {
+-                tar_entry->name = linkname;
+-                linkname = NULL;
+         } else
+ #endif
+         {
+@@ -534,7 +530,16 @@
+ 	tar_entry->gid   = strtol(tar.formated.gid, NULL, 8);
+ 	tar_entry->size  = strtol(tar.formated.size, NULL, 8);
+ 	tar_entry->mtime = strtol(tar.formated.mtime, NULL, 8);
+-	tar_entry->link_name  = *tar.formated.linkname != '\0' ? xstrndup(tar.formated.linkname, 100) : NULL;
++#ifdef CONFIG_FEATURE_TAR_GNU_EXTENSIONS
++	if (linkname) {
++		tar_entry->link_name = linkname;
++		linkname = NULL;
++	} else
++#endif
++	{
++	    tar_entry->link_name = *tar.formated.linkname != '\0' ?
++			xstrndup(tar.formated.linkname,100) : NULL;
++	}
+ 	tar_entry->device = (strtol(tar.formated.devmajor, NULL, 8) << 8) +
+ 		strtol(tar.formated.devminor, NULL, 8);
+ 
+@@ -586,7 +591,6 @@
+ 			linkname[tar_entry->size] = '\0';
+ 			archive_offset += tar_entry->size;
+ 
+-			tar_entry->name = linkname;
+ 			return(get_header_tar(tar_stream));
+ 		}
+ 	case 'D':
