@@ -2,20 +2,27 @@
 
 . /etc/audio
 
-NOW=$(date +%Y%M%d%H%M)
-echo "Sound setup : begin $NOW" >> /tmp/debug-sound
-amixer -i >> /tmp/debug-sound
+mixer_cmds=""
+
+if [ "$MIXER_DEBUG" = "1" ]; then
+  log="/tmp/debug-sound"
+else
+  log="/dev/null"
+fi
+
+echo "Sound setup : begin $(date +%Y%M%d%H%M%S)" >> $log
+amixer -i >> $log
 
 [ ! -e /etc/asound.conf ] && echo "" > /etc/asound.conf
 
 mixer() {
   parm=${3:-on}
-  amixer -c $ALSA_CARD sset "$1" "$2" $parm
-  amixer -c $ALSA_CARD sset "$1" $parm
+  mixer_cmds="${mixer_cmds}sset \"$1\" \"$2\" $parm\n"
+  mixer_cmds="${mixer_cmds}sset \"$1\" $parm\n"
 }
 
 card() {
-  amixer -c $ALSA_CARD cset "name=$1" "$2"
+  mixer_cmds="${mixer_cmds}cset \"name=$1\" \"$2\"\n"
 }
 
 # set alsa channel mode (6ch, 4ch, 2ch)
@@ -155,24 +162,27 @@ mixer Speaker 90% unmute
 
 # Required for Toshiba Satellite A60
 if dmesg | grep -q "TOSHIB Satellite A60/Portable PC" ; then
-  mixer ‘External Amplifier’ 90% unmute
+  mixer 'External Amplifier' 90% unmute
 fi
 
 # Required for Sony VGN-S2HRP
 if dmesg | grep -q "VGN-S2HRP" ; then
-  mixer ‘External Amplifier’ 90% unmute
+  mixer 'External Amplifier' 90% unmute
 fi
 
-echo "Config :" >> /tmp/debug-sound
-echo "ALSA_CARD= $ALSA_CARD" >> /tmp/debug-sound
-echo "SOUNDCARD_MODE= $SOUNDCARD_MODE" >> /tmp/debug-sound
-echo "SOUNDCARD_PT_MODE= $SOUNDCARD_PT_MODE" >> /tmp/debug-sound
-echo "AC97_SPSA= $AC97_SPSA" >> /tmp/debug-sound
-echo "CHANNELS= $CHANNELS" >> /tmp/debug-sound
-echo "SBL_AUDIGY= $SBL_AUDIGY" >> /tmp/debug-sound
-echo "new configuration"
-amixer -i >> /tmp/debug-sound
-[ -f /usr/bin/aplay ] && aplay -l >>/tmp/debug-sound
-echo "Sound setup : stop" >> /tmp/debug-sound
+echo "Config :" >> $log
+echo "ALSA_CARD= $ALSA_CARD" >> $log
+echo "SOUNDCARD_MODE= $SOUNDCARD_MODE" >> $log
+echo "SOUNDCARD_PT_MODE= $SOUNDCARD_PT_MODE" >> $log
+echo "AC97_SPSA= $AC97_SPSA" >> $log
+echo "CHANNELS= $CHANNELS" >> $log
+echo "SBL_AUDIGY= $SBL_AUDIGY" >> $log
+echo "MIXER_DEBUG= $MIXER_DEBUG" >> $log
+
+# send all commands in a single call
+echo -e "$mixer_cmds" | amixer -c $ALSA_CARD -s >> $log
+
+[ -f /usr/bin/aplay ] && aplay -l >> $log
+echo "Sound setup : stop $(date +%Y%M%d%H%M%S)" >> $log
 
 exit 0
