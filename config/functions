@@ -433,6 +433,7 @@ fix_libs () {
 make_install () {
   install_dir="$PWD/.install"
   install_dir_debug="$PWD/.install-debuginfo"
+  install_dir_unstripped="$PWD/.install-unstripped"
   local prefix="$1"
   local is_strip="$2"
 
@@ -441,6 +442,12 @@ make_install () {
   make DESTDIR="$install_dir" INSTALL_ROOT="$install_dir" install_root="$install_dir" INSTALLROOT="$install_dir" DIST_ROOT="$install_dir"  DSTROOT="$install_dir" install
   chmod -R u+w .install
   fix_libs "$install_dir" $prefix
+  
+  if [ "$prefix" != toolchain -a "$DEVROOTFS" = yes ]; then
+    echo " Creating unstripped directory"
+    mkdir -p "$install_dir_unstripped"
+    cp -R $install_dir/* $install_dir_unstripped
+  fi
 
   [ "$is_strip" = unstripped ] && return 0
 
@@ -555,6 +562,14 @@ do_installdev () {
 
   dir=`echo $(dirname $file) | sed 's/^usr//'`
   mkdir -p $target_dir/$dir
+  if [ "$target" != toolchain -a "$DEVROOTFS" = yes ]; then
+    mkdir -p "$DEVROOT/$dir"
+    echo "Installing unstripped files too ..."
+    echo "cp -PR .install-unstripped/$file $DEVROOT/$dir"
+    if ! `echo $file | grep mesa -q`; then
+      cp -PR .install-unstripped/$file $DEVROOT/$dir
+    fi
+  fi
   cp -PR .install/$file $target_dir/$dir
 }
 
@@ -615,6 +630,7 @@ do_perl_make () {
 }
 
 do_perl_strip () {
+  ln -sf .install .install-unstripped
   find .install/$PERL_SITELIB -name \*.pod -exec rm -f '{}' \;
   find .install/$PERL_SITELIB -name .packlist -exec rm -f '{}' \;
   find .install/$PERL_SITELIB -name \*.pm -or -name \*.pl | \
@@ -642,6 +658,7 @@ systemctl_enable () {
 }
 
 do_python_strip () {
+  ln -sf .install .install-unstripped
   find .install -name \*.py -exec rm -rf '{}' \;
   find .install -name \*.pyo -exec rm -rf '{}' \;
 }
