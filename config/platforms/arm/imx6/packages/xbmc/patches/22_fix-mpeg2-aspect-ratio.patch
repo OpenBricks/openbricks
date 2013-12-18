@@ -1,0 +1,109 @@
+diff -u a/DVDVideoCodecIMX.cpp b/DVDVideoCodecIMX.cpp
+--- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp	2013-12-17 22:35:22.000000000 +0100
++++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp	2013-12-18 20:02:19.607978768 +0100
+@@ -761,6 +761,8 @@
+   m_dropState = false;
+   m_tsm = NULL;
+   m_convert_bitstream = false;
++  m_aspect_ratio_mul = 1;
++  m_aspect_ratio_div = 1;
+ }
+ 
+ CDVDVideoCodecIMX::~CDVDVideoCodecIMX()
+@@ -1103,6 +1105,9 @@
+ 
+     do // Decode as long as the VPU consumes data
+     {
++      if (m_decOpenParam.CodecFormat == VPU_V_MPEG2)
++        parse_mpeg2_aspect_ratio(inData.pVirAddr, inData.nSize);
++
+       retry = false;
+       ret = VPU_DecDecodeBuf(m_vpuHandle, &inData, &decRet);
+       if (ret != VPU_DEC_RET_SUCCESS)
+@@ -1335,8 +1340,8 @@
+   pDvdVideoPicture->dts = DVD_NOPTS_VALUE;
+   pDvdVideoPicture->iWidth = m_initInfo.PicCropRect.nRight - m_initInfo.PicCropRect.nLeft;
+   pDvdVideoPicture->iHeight = m_initInfo.PicCropRect.nBottom - m_initInfo.PicCropRect.nTop;
+-  pDvdVideoPicture->iDisplayWidth =  m_initInfo.PicCropRect.nRight - m_initInfo.PicCropRect.nLeft;
+-  pDvdVideoPicture->iDisplayHeight =  m_initInfo.PicCropRect.nBottom - m_initInfo.PicCropRect.nTop;
++  pDvdVideoPicture->iDisplayWidth = (pDvdVideoPicture->iHeight * m_aspect_ratio_mul) / m_aspect_ratio_div;
++  pDvdVideoPicture->iDisplayHeight =  pDvdVideoPicture->iHeight;
+   pDvdVideoPicture->format = RENDER_FMT_IMX;
+   pDvdVideoPicture->imx = this;
+   return true;
+@@ -1518,3 +1523,63 @@
+     (*poutbuf + offset + sps_pps_size)[2] = 1;
+   }
+ }
++
++
++static inline unsigned char *Seek4bytesCode(unsigned char *pData, int len, unsigned int n4byteCode)
++{
++  if(len >= 4)
++  {
++    unsigned int code = (pData[0]<<16) | (pData[1]<<8) | (pData[2]);
++    len -= 3;
++    pData += 3;
++    while(len > 0)
++    {
++      code = (code<<8) | *pData++ ;
++      len--;
++      if(code == n4byteCode)
++      {
++        return pData-4;
++      }
++    }
++  }
++  return NULL;
++}
++
++uint8_t *CDVDVideoCodecIMX::parse_mpeg2_aspect_ratio(uint8_t *pData, int iSize)
++{
++  uint8_t *pSeqHead = Seek4bytesCode(pData, iSize, 0x000001b3);
++
++  if (pSeqHead)
++  {
++    iSize -= pSeqHead - pData;
++
++    if (iSize >= 12)
++    {
++      int aspect_ratio_code = pSeqHead[7] >> 4;
++
++      switch (aspect_ratio_code)
++      {
++      case 2:                   // IAR 4:3
++          m_aspect_ratio_mul = 4;
++          m_aspect_ratio_div = 3;
++          break;
++      case 3:                   // IAR 16:9
++          m_aspect_ratio_mul = 16;
++          m_aspect_ratio_div = 9;
++          break;
++      case 4:                   // IAR 2.21:1
++          m_aspect_ratio_mul = 221;
++          m_aspect_ratio_div = 100;
++          break;
++      default:                  // PAR 1:1
++          m_aspect_ratio_mul = 1;
++          m_aspect_ratio_div = 1;
++      }
++
++      return pSeqHead;
++    }
++  }
++
++  return 0;
++}
++
+diff -u a/DVDVideoCodecIMX.h b/DVDVideoCodecIMX.h
+--- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecIMX.h	2013-11-16 04:39:22.000000000 +0100
++++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecIMX.h	2013-12-18 19:37:23.000000000 +0100
+@@ -141,4 +141,8 @@
+   uint32_t          m_sps_pps_size;
+   omx_bitstream_ctx m_sps_pps_context; 
+   bool m_convert_bitstream;
++  
++  uint8_t *parse_mpeg2_aspect_ratio(uint8_t *pData, int iSize);
++  int m_aspect_ratio_mul;
++  int m_aspect_ratio_div;
+ };
