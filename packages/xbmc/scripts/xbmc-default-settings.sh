@@ -53,15 +53,15 @@ if [ ! -f "$GUI_SETTINGS" ] ; then
   copy_if_present /etc/xbmc/$SYS_PREFIX-guisettings.xml $GUI_SETTINGS
   copy_if_missing /etc/xbmc/generic-guisettings.xml $GUI_SETTINGS
 
-  ZONEINFO="/usr/share/zoneinfo"
+  ZONEINFO="/usr/share/zoneinfo/"
   if [ -z "$TZ" ] && [ -h /etc/localtime ] ; then
     TZ=`readlink /etc/localtime`
     TZ=${TZ#${ZONEINFO}}
   fi
   [ -n "$TZ" ] && \
-    TZ_COUNTRY_CODE=`grep $TZ $ZONEINFO/zone.tab | cut -f1 | head -1`
+    TZ_COUNTRY_CODE=`grep $TZ ${ZONEINFO}zone.tab | cut -f1 | head -1`
   [ -n "$TZ_COUNTRY_CODE" ] && \
-    TZ_COUNTRY=`grep $TZ_COUNTRY_CODE $ZONEINFO/iso3166.tab | cut -f2 | head -1`
+    TZ_COUNTRY=`grep $TZ_COUNTRY_CODE ${ZONEINFO}iso3166.tab | cut -f2 | head -1`
 
   sed -i -e "s,TZ_COUNTRY,$TZ_COUNTRY," -e "s,TZ,$TZ," $GUI_SETTINGS
 fi
