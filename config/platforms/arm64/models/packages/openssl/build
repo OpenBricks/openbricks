@@ -1,0 +1,66 @@
+#!/bin/sh
+
+. config/options
+
+export MAKEFLAGS=-j1
+
+case $TARGET_ARCH in
+  i386)
+    TARGET=linux-elf
+    ;;
+  x86_64)
+    TARGET=linux-x86_64
+    ;;
+  powerpc)
+    TARGET=linux-ppc
+    ;;
+  powerpc64)
+    TARGET=linux-ppc64
+    ;;
+  arm)
+    TARGET=linux-armv4
+    ;;
+  arm64)
+    TARGET=linux-generic64
+    ;;
+  mips)
+    TARGET=linux-generic32
+    ;;
+esac
+
+FEATURES="zlib-dynamic threads shared no-idea no-mdc2 no-rc5 no-krb5 -DHAVE_CRYPTODEV"
+
+cd $BUILD/$1*
+
+./Configure $FEATURES --prefix=/usr --openssldir=/etc/ssl $TARGET
+sed -i Makefile \
+  -e "s:CFLAG= \(.*\):CFLAG=\1 ${CFLAGS}:" \
+  -e "s:SHARED_LDFLAGS= \(.*\):SHARED_LDFLAGS=\1 ${LDFLAGS}:" \
+
+make CC=$CC LD=$LD RANLIB=$RANLIB depend
+make CC=$CC LD=$LD RANLIB=$RANLIB all build-shared
+make CC=$CC LD=$LD RANLIB=$RANLIB do_linux-shared
+
+install_dir="`pwd`/.install"
+install_dir_debug="`pwd`/.install-debuginfo"
+mkdir -p $install_dir
+make CC=$CC LD=$LD RANLIB=$RANLIB INSTALL_PREFIX="$install_dir" install_sw
+
+if [ -d .install/usr/lib64 ]; then
+  mkdir .install/usr/lib
+  mv .install/usr/lib64/* .install/usr/lib/
+  rmdir .install/usr/lib64
+fi
+
+# remove static libs, we don't want them
+rm -f $install_dir/usr/lib/*.a
+
+# fix libraries permissions
+find $install_dir -type f -name "*.so*" | xargs chmod u+w
+
+fix_libs $install_dir
+
+mkdir -p .install-unstripped
+cp -R .install/* .install-unstripped
+
+strip_libs $install_dir $install_dir_debug
