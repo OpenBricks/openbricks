@@ -38,8 +38,8 @@ case $TARGET in
 esac
 
 
-if [ ! -b "$DEVICE" ] || [ ! -f "$ROOTFS" -a ! -d "$ROOTFS" ] || [ -z "$fs_types" ] ; then
-  echo "Usage: $0 <device> <rootfs|rootfs-archive> [target-machine]\n"
+if [ ! -f "$ROOTFS" -a ! -d "$ROOTFS" ] || [ -z "$fs_types" ] ; then
+  echo "Usage: $0 <device|img-file> <rootfs|rootfs-archive> [target-machine]\n"
 
   echo "Default target-machine type is:"
   echo "  $DEFAULT_TARGET\n"
@@ -62,7 +62,21 @@ if [ "`id -u`" -ne 0 ] ; then
   exit 1
 fi
 
-echo "I'm about to overwrite \033[1m${DEVICE}\033[0m . All existing data will be lost !"
+if [ ! -b "$DEVICE" ] ; then
+  if echo $DEVICE | grep -q "/dev/" ; then 
+    echo "unknown block device : $DEVICE"
+    exit 1
+  else
+    echo "Using : $DEVICE for img file"
+    IMG="`pwd`/$DEVICE"
+  fi
+fi
+
+if [ -z "$IMG" ] ; then 
+  echo "I'm about to overwrite \033[1m${DEVICE}\033[0m . All existing data will be lost !"
+else
+  echo "I'm about to create \033[1m${IMG}\033[0m . All existing data will be lost !"
+fi
 until [ "$REPLY" = y -o "$REPLY" = yes ] || [ "$REPLY" = n -o "$REPLY" = no ] ; do
   read -p "Do you want to continue (y/n) ? " REPLY
 done
@@ -83,6 +97,14 @@ create_mkfs_command () {
   eval mkfs_cmd=\$mkfs_$1
   echo "$mkfs_cmd"
 }
+
+# Create initial file for img file if needed
+if [ -n "$IMG" ] ; then
+  dd if=/dev/zero of=$IMG bs=1M count=1024
+  losetup -d /dev/loop0 || true
+  losetup /dev/loop0 $IMG
+  DEVICE="/dev/loop0"
+fi
 
 # count partitions and check their types
 part_count=0
@@ -107,6 +129,7 @@ done
 
 # define partitions and prepare "fdisk" command
 echo $DEVICE | grep -q mmc && OPT=p
+echo $DEVICE | grep -q loop && OPT=p
 partition_0=${DEVICE}${OPT}1 ; label_0="BOOT"
 partition_1=${DEVICE}${OPT}2 ; label_1="GEEXBOX"
 
@@ -120,10 +143,16 @@ fi
 fdisk_cmd="echo -e \"$fdisk_input\" | fdisk $DEVICE"
 
 echo "\n#### Creating partion(s)..."
-grep -q $DEVICE /proc/mounts && grep $DEVICE /proc/mounts | cut -f2 -d\ | xargs umount
-dd if=/dev/zero of=$DEVICE bs=512 count=2048 > /dev/null
-sh -c "$fdisk_cmd" > /dev/null
+if [ -z "$IMG" ] ; then
+  grep -q $DEVICE /proc/mounts && grep $DEVICE /proc/mounts | cut -f2 -d\ | xargs umount
+  dd if=/dev/zero of=$DEVICE bs=512 count=2048 > /dev/null
+  sh -c "$fdisk_cmd" > /dev/null
+else
+  sh -c "$fdisk_cmd" > /dev/null || true
+  partprobe /dev/loop0
+fi
 fdisk -l $DEVICE
+
 
 echo "\n#### Creating file system(s)..."
 part_count=0
@@ -175,5 +204,9 @@ fi
 umount $mountdir
 rmdir $mountdir
 sync
+
+if [ -n "$IMG" ] ; then
+  losetup -d /dev/loop0 || true
+fi
 
 echo "\n#### Done.\n"
