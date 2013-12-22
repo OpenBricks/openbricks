@@ -1,0 +1,170 @@
+diff -u a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp
+--- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp	2013-12-21 22:14:51.000000000 +0100
++++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp	2013-12-22 23:22:47.575337540 +0100
+@@ -139,13 +139,13 @@
+   IppCodecStatus ret;
+   bool bSendCodecConfig = true;
+ 
+-  m_picture_width  = m_decoded_width  = hints.width;
+-  m_picture_height = m_decoded_height = hints.height;
++  m_picture_width  = m_display_width  = hints.width;
++  m_picture_height = m_display_height = hints.height;
+ 
+   memset(&m_VDecInfo, 0, sizeof(IppVmetaDecInfo));
+   memset(&m_VDecParSet, 0, sizeof(IppVmetaDecParSet));
+ 
+-  if(!m_decoded_width || !m_decoded_height)
++  if(!m_display_width || !m_display_height)
+     return false;
+ 
+   if (!m_DllVMETA->Load() || !m_DllMiscGen->Load())
+@@ -306,7 +306,7 @@
+     SendCodecConfig();
+ 
+   CLog::Log(LOGDEBUG, "%s::%s - VMETA Decoder opened with codec : %s [%dx%d]", 
+-            CLASSNAME, __func__, m_video_codec_name.c_str(), m_decoded_width, m_decoded_height);
++            CLASSNAME, __func__, m_video_codec_name.c_str(), m_display_width, m_display_height);
+ 
+   return true;
+ }
+@@ -491,7 +491,7 @@
+     else if (m_VDecParSet.strm_fmt == IPP_VIDEO_STRM_FMT_MPG2)
+     {
+       // special handling: determine MPEG2 aspect ratio
+-      digest_mpeg2_inbuf(pData, iSize);
++      digest_mpeg12_inbuf(CODEC_ID_MPEG2VIDEO, pData, iSize);
+     }
+     else if (m_VDecParSet.strm_fmt == IPP_VIDEO_STRM_FMT_VC1)
+     {
+@@ -507,6 +507,11 @@
+       // avoid internal memory copy
+       bufOfs = VMETA_COM_PKT_HDR_SIZE;
+     }
++    else if (m_VDecParSet.strm_fmt == IPP_VIDEO_STRM_FMT_MPG1)
++    {
++      // special handling: determine MPEG1 aspect ratio
++      digest_mpeg12_inbuf(CODEC_ID_MPEG1VIDEO, pData, iSize);
++    }
+   }
+ 
+ 
+@@ -813,25 +818,18 @@
+   
+   pDvdVideoPicture->dts             = DVD_NOPTS_VALUE;
+   pDvdVideoPicture->pts             = DVD_NOPTS_VALUE;
+-  pDvdVideoPicture->iDisplayWidth   = m_decoded_width;
+-  pDvdVideoPicture->iDisplayHeight  = m_decoded_height;
++  pDvdVideoPicture->iDisplayWidth   = m_display_width;
++  pDvdVideoPicture->iDisplayHeight  = m_display_height;
+   pDvdVideoPicture->iWidth          = m_picture_width;
+   pDvdVideoPicture->iHeight         = m_picture_height;
+ 
+-#ifdef ENABLE_MPEG1
+-  // Workaround for bug in vMeta that causes a flickering 
+-  // line on the bottom of the screen
+-  if (m_VDecParSet.strm_fmt == IPP_VIDEO_STRM_FMT_MPG1)
+-    pDvdVideoPicture->iHeight--;
+-#endif
+-
+   if (m_output_ready.getHead(pPicture))
+   {
+     // clone the video picture buffer settings.
+     pDvdVideoPicture->vmeta         = pPicture;
+     pDvdVideoPicture->format        = RENDER_FMT_VMETA;
+     pDvdVideoPicture->iFlags        = DVP_FLAG_ALLOCATED;
+-    
++
+     if (m_drop_state || (unsigned)pPicture->pUsrData1 < 2)
+       pDvdVideoPicture->iFlags |= DVP_FLAG_DROPPED;
+     
+@@ -1102,7 +1100,7 @@
+ }
+ 
+ 
+-uint8_t *CDVDVideoCodecVMETA::digest_mpeg2_inbuf(uint8_t *pData, int iSize)
++uint8_t *CDVDVideoCodecVMETA::digest_mpeg12_inbuf(uint32_t codecId, uint8_t *pData, int iSize)
+ {
+   uint8_t *pSeqHead = Seek4bytesCode(pData, iSize, 0x00000100|MPEG2_SCID_SEQ);
+ 
+@@ -1118,22 +1116,49 @@
+       height = ((pSeqHead[5] & 0x0f) << 8) | pSeqHead[6];
+       aspect_ratio_code = pSeqHead[7] >> 4;
+ 
+-      switch (aspect_ratio_code)
++      if (codecId == CODEC_ID_MPEG1VIDEO)
++      {
++        static int ratioTable[16] =
++        {
++/*  0*/   10000,
++/*  1*/   10000,
++/*  2*/    6735,
++/*  3*/    7031,
++/*  4*/    7615,
++/*  5*/    8055,
++/*  6*/    8437,
++/*  7*/    8935,
++/*  8*/    9157,
++/*  9*/    9815,
++/* 10*/   10255,
++/* 11*/   10695,
++/* 12*/   10950,
++/* 13*/   11575,
++/* 14*/   12015,
++/* 15*/   10000,
++        };
++
++        m_display_width  = (width * ratioTable[aspect_ratio_code]) / 10000;
++      }
++      else
+       {
+-      case 2:                   // IAR 4:3
+-          m_decoded_width = (height * 4) / 3;
++        switch (aspect_ratio_code)
++        {
++        case 2:                   // IAR 4:3
++          m_display_width = (height * 4) / 3;
+           break;
+-      case 3:                   // IAR 16:9
+-          m_decoded_width = (height * 16) / 9;
++        case 3:                   // IAR 16:9
++          m_display_width = (height * 16) / 9;
+           break;
+-      case 4:                   // IAR 2.21:1
+-          m_decoded_width = (height * 221) / 100;
++        case 4:                   // IAR 2.21:1
++          m_display_width = (height * 221) / 100;
+           break;
+-      default:                  // PAR 1:1
+-          m_decoded_width = width;
++        default:                  // PAR 1:1
++          m_display_width = width;
++        }
+       }
+-
+-      m_decoded_height = height;
++      
++      m_display_height = height;
+ 
+       return pSeqHead;
+     }
+diff -u a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h
+--- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h	2013-12-21 22:14:51.000000000 +0100
++++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h	2013-12-22 22:33:54.000000000 +0100
+@@ -58,14 +58,14 @@
+   IppCodecStatus DecodeInternal();
+ 
+   uint8_t *digest_mpeg4_inbuf(uint8_t *pData, int iSize);
+-  uint8_t *digest_mpeg2_inbuf(uint8_t *pData, int iSize);
++  uint8_t *digest_mpeg12_inbuf(uint32_t codecId, uint8_t *pData, int iSize);
+   inline bool digest_vc1_inbuf(uint8_t *pData, int iSize);
+   
+ protected:
+   // Video format
+   bool                            m_drop_state;
+-  unsigned int                    m_decoded_width;
+-  unsigned int                    m_decoded_height;
++  unsigned int                    m_display_width;
++  unsigned int                    m_display_height;
+   unsigned int                    m_picture_width;
+   unsigned int                    m_picture_height;
+   bool                            m_is_open;
