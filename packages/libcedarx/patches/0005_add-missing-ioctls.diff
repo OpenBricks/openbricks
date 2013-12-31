@@ -1,0 +1,55 @@
+--- a/libcedarv/linux-armhf/libcedarv/vdecoder.c	2013-09-10 02:12:31.000000000 +0200
++++ b/libcedarv/linux-armhf/libcedarv/vdecoder.c	2013-10-13 17:13:37.419482480 +0200
+@@ -418,13 +418,48 @@
+         }
+ 
+ 
+-		case CEDARV_COMMAND_PREVIEW_MODE:
++	case CEDARV_COMMAND_PREVIEW_MODE:
++	{
++		decoder->status = CEDARV_STATUS_PREVIEW;
++		return CEDARV_RESULT_OK;
++	}
++
++	case CEDARV_COMMAND_RESET:
++	{
++		libve_reset(0, decoder->ve);
++		vbv_reset(decoder->vbv);
++		if(decoder->vbv_num == 2)
+ 		{
+-			decoder->status = CEDARV_STATUS_PREVIEW;
+-			return CEDARV_RESULT_OK;
++			vbv_reset(decoder->minor_vbv);
+ 		}
+ 
+-        default:
++		if(p->free_vbs_buffer_sem != NULL)
++			p->free_vbs_buffer_sem(p->cedarx_cookie);
++
++		if(decoder->fbm != NULL)
++		{
++			fbm_flush(decoder->fbm);
++			if(decoder->fbm_num == 2)
++			{
++				fbm_flush(decoder->minor_fbm);
++			}
++
++			if(p->release_frame_buffer_sem != NULL)
++				p->release_frame_buffer_sem(p->cedarx_cookie);
++		}
++
++		decoder->mode_switched = 0;
++		return CEDARV_RESULT_OK;
++        }
++
++	case CEDARV_COMMAND_FLUSH:
++	{
++		if(decoder->ve)
++			libve_flush(1, decoder->ve);
++               return CEDARV_RESULT_OK;
++	}
++
++	default:
+             return CEDARV_RESULT_ERR_FAIL;
+     }
+ }
