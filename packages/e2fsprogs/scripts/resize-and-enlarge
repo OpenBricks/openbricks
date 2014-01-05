@@ -1,0 +1,29 @@
+#!/bin/sh
+
+count_part=`ls /dev/mmcblk0p* | wc -l`
+
+resize_part () {
+  count_part=`ls /dev/mmcblk0p* | wc -l`
+  a=`fdisk -l /dev/mmcblk0 | grep p${count_part}`
+  part_start=`echo $a| cut -d' ' -f2`
+  
+  fdisk_input="d\n${count_part}\nn\np\n${count_part}\n${part_start}\n\nw\n"
+  echo -e $fdisk_input | fdisk /dev/mmcblk0
+  touch /etc/need-to-enlarge
+  rm /etc/need-to-resize
+  reboot
+}
+
+enlarge_part () {
+  resize2fs /dev/mmcblk0p${count_part}
+  rm /etc/need-to-enlarge
+
+}
+
+if [ -f /etc/need-to-resize ] ; then
+  resize_part
+fi
+
+if [ -f /etc/need-to-enlarge ] ; then
+  enlarge_part
+fi
