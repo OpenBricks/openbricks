@@ -1,0 +1,113 @@
+--- a/xbmc/guilib/JpegIO.cpp	2014-01-05 21:12:59.485400645 +0100
++++ b/xbmc/guilib/JpegIO.cpp	2014-01-05 22:00:08.037326501 +0100
+@@ -416,6 +416,14 @@
+     }
+     else if (format == XB_FMT_A8R8G8B8)
+     {
++#ifdef JCS_ALPHA_EXTENSIONS
++      m_cinfo.out_color_space = JCS_EXT_BGRA;
++      while (m_cinfo.output_scanline < m_height)
++      {
++        jpeg_read_scanlines(&m_cinfo, &dst, 1);
++        dst += pitch;
++      }
++#else
+       unsigned char* row = new unsigned char[m_width * 3];
+       while (m_cinfo.output_scanline < m_height)
+       {
+@@ -432,6 +440,7 @@
+         dst += pitch;
+       }
+       delete[] row;
++#endif
+     }
+     else
+     {
+@@ -487,8 +496,13 @@
+   JSAMPROW row_pointer[1];
+   long unsigned int outBufSize = width * height;
+   unsigned char* result;
++#ifdef JCS_ALPHA_EXTENSIONS
++  J_COLOR_SPACE color_space = JCS_RGB;
++  int components = 3;
++#else
+   unsigned char* src = buffer;
+   unsigned char* rgbbuf;
++#endif
+ 
+   if(buffer == NULL)
+   {
+@@ -503,6 +516,19 @@
+     return false;
+   }
+ 
++#ifdef JCS_ALPHA_EXTENSIONS
++  if(format == XB_FMT_A8R8G8B8)
++  {
++    color_space = JCS_EXT_BGRA;
++    components = 4;
++  }
++  else if(format != XB_FMT_RGB8)
++  {
++    CLog::Log(LOGWARNING, "JpegIO::CreateThumbnailFromSurface Unsupported format");
++    free(result);
++    return false;
++  }
++#else
+   if(format == XB_FMT_RGB8)
+   {
+     rgbbuf = buffer;
+@@ -532,6 +557,7 @@
+     free(result);
+     return false;
+   }
++#endif    
+ 
+   cinfo.err = jpeg_std_error(&jerr.pub);
+   jerr.pub.error_exit = jpeg_error_exit;
+@@ -541,8 +567,10 @@
+   {
+     jpeg_destroy_compress(&cinfo);
+     free(result);
++#ifndef JCS_ALPHA_EXTENSIONS
+     if(format != XB_FMT_RGB8)
+       delete [] rgbbuf;
++#endif    
+     return false;
+   }
+   else
+@@ -554,23 +584,34 @@
+ #endif
+     cinfo.image_width = width;
+     cinfo.image_height = height;
++#ifdef JCS_ALPHA_EXTENSIONS
++    cinfo.input_components = components;
++    cinfo.in_color_space = color_space;
++#else
+     cinfo.input_components = 3;
+     cinfo.in_color_space = JCS_RGB;
++#endif    
+     jpeg_set_defaults(&cinfo);
+     jpeg_set_quality(&cinfo, 90, TRUE);
+     jpeg_start_compress(&cinfo, TRUE);
+ 
+     while (cinfo.next_scanline < cinfo.image_height)
+     {
++#ifdef JCS_ALPHA_EXTENSIONS
++      row_pointer[0] = &buffer[cinfo.next_scanline * pitch];
++#else      
+       row_pointer[0] = &rgbbuf[cinfo.next_scanline * width * 3];
++#endif      
+       jpeg_write_scanlines(&cinfo, row_pointer, 1);
+     }
+ 
+     jpeg_finish_compress(&cinfo);
+     jpeg_destroy_compress(&cinfo);
+   }
++#ifndef JCS_ALPHA_EXTENSIONS
+   if(format != XB_FMT_RGB8)
+     delete [] rgbbuf;
++#endif
+ 
+   XFILE::CFile file;
+   if (file.OpenForWrite(destFile, true))
