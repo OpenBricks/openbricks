@@ -1,0 +1,151 @@
+diff -Naur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp
+--- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp	2014-01-17 19:21:10.000000000 +0100
++++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp	2014-01-17 19:43:05.322304730 +0100
+@@ -95,7 +95,8 @@
+   m_video_convert     = false;
+   m_video_codec_name  = "";
+   m_frame_no          = 0;
+-  m_numBufSubmitted   = 0;
++  m_numPicBufSubmitted  = 0;
++  m_numStrmBufSubmitted = 0;
+ 
+   m_DllMiscGen        = new DllLibMiscGen();
+   m_DllVMETA          = new DllLibVMETA();
+@@ -298,7 +299,8 @@
+   }
+ 
+   m_video_convert = m_converter->NeedConvert();
+-  m_numBufSubmitted = 0;
++  m_numPicBufSubmitted = 0;
++  m_numStrmBufSubmitted = 0;
+   m_frame_no = 0;
+   m_is_open = true;
+ 
+@@ -318,7 +320,8 @@
+ 
+   m_frame_no = 0;
+   m_extrasize = 0;
+-  m_numBufSubmitted = 0;
++  m_numPicBufSubmitted = 0;
++  m_numStrmBufSubmitted = 0;
+   m_video_convert = false;
+   m_video_codec_name = "";
+   
+@@ -670,13 +673,13 @@
+           return IPP_STATUS_ERR;
+         }
+         
+-        m_numBufSubmitted++;
++        m_numStrmBufSubmitted++;
+       }
+       break;
+       
+     case IPP_STATUS_RETURN_INPUT_BUF:
+       //CLog::Log(LOGNOTICE, "IPP_STATUS_RETURN_INPUT_BUF");
+-      while (m_numBufSubmitted)
++      while (m_numStrmBufSubmitted)
+       {
+         m_DllVMETA->DecoderPopBuffer_Vmeta(IPP_VMETA_BUF_TYPE_STRM, (void **)&pStream, m_pDecState);
+ 
+@@ -685,7 +688,7 @@
+         
+         CLEAR_STREAMBUF(pStream);
+         m_input_available.putTail(pStream);
+-        m_numBufSubmitted--;
++        m_numStrmBufSubmitted--;
+       }
+       break;
+ 
+@@ -695,8 +698,8 @@
+       
+       if (pPicture)
+       {
+-        pPicture->pUsrData1 = (void *)m_frame_no;
+-        m_frame_no++;
++        pPicture->pUsrData1 = (void *)(m_frame_no++);
++        m_numPicBufSubmitted--;
+ 
+         if (!m_output_ready.putTail(pPicture))
+         {
+@@ -705,7 +709,7 @@
+         }
+       }
+ 
+-      while (m_numBufSubmitted)
++      while (m_numStrmBufSubmitted)
+       {
+         m_DllVMETA->DecoderPopBuffer_Vmeta(IPP_VMETA_BUF_TYPE_STRM, (void **)&pStream, m_pDecState);
+ 
+@@ -714,7 +718,7 @@
+         
+         CLEAR_STREAMBUF(pStream);
+         m_input_available.putTail(pStream);
+-        m_numBufSubmitted--;
++        m_numStrmBufSubmitted--;
+       }
+ 
+       // The gstreamer plugins says this is needed for DOVE
+@@ -766,12 +770,14 @@
+       }
+ 
+       retCodec = m_DllVMETA->DecoderPushBuffer_Vmeta(IPP_VMETA_BUF_TYPE_PIC, pPicture, m_pDecState);
+-      if(retCodec != IPP_STATUS_NOERR)
++      if (retCodec != IPP_STATUS_NOERR)
+       {
+         CLog::Log(LOGERROR, "IPP_STATUS_NEED_OUTPUT_BUF: push picturebuffer failed");
+         m_output_available.putTail(pPicture);
+         return IPP_STATUS_ERR;
+       }
++
++      m_numPicBufSubmitted++;
+       break;
+ 
+     case IPP_STATUS_NEW_VIDEO_SEQ:
+@@ -784,7 +790,7 @@
+                   m_picture_width, m_picture_height);
+       }
+ 
+-      for(;;)
++      while (m_numPicBufSubmitted)
+       {
+         m_DllVMETA->DecoderPopBuffer_Vmeta(IPP_VMETA_BUF_TYPE_PIC, (void **)&pPicture, m_pDecState);
+ 
+@@ -792,6 +798,7 @@
+           break;
+         
+         m_output_available.putTail(pPicture);
++        m_numPicBufSubmitted--;
+       }
+       break;
+ 
+@@ -888,7 +895,7 @@
+     m_input_available.putTail(pStream);
+   }
+ 
+-  m_numBufSubmitted = 0;
++  m_numStrmBufSubmitted = 0;
+   
+   IppVmetaPicture *pPicture = 0;
+   while (m_output_ready.getHead(pPicture))
+@@ -903,6 +910,8 @@
+     
+     m_output_available.putTail(pPicture);
+   }
++  
++  m_numPicBufSubmitted = 0;
+ }
+ 
+ 
+diff -Naur a/DVDVideoCodecVMETA.h b/DVDVideoCodecVMETA.h
+--- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h	2014-01-17 19:21:10.000000000 +0100
++++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h	2014-01-17 19:34:10.158320543 +0100
+@@ -92,7 +92,8 @@
+   FastFiFo<double, PICTURE_FIFO_SIZE>            m_pts_queue;
+   
+   unsigned int                    m_frame_no;
+-  unsigned int                    m_numBufSubmitted;
++  unsigned int                    m_numPicBufSubmitted;
++  unsigned int                    m_numStrmBufSubmitted;
+ 
+   int                             m_itime_inc_bits;
+   int                             m_low_delay;
