@@ -1,6 +1,18 @@
-diff -Naur linux-imx_3.0.35_4.1.0+da311d2e41/drivers/mxc/ipu3/ipu_device.c linux-imx_3.0.35_4.1.0+da311d2e41-new/drivers/mxc/ipu3/ipu_device.c
---- linux-imx_3.0.35_4.1.0+da311d2e41/drivers/mxc/ipu3/ipu_device.c	2013-12-06 16:18:39.000000000 +0100
-+++ linux-imx_3.0.35_4.1.0+da311d2e41-new/drivers/mxc/ipu3/ipu_device.c	2014-01-19 10:17:35.318150153 +0100
+From d11a440592c09ce5a637bad41d133f3e0626aa37 Mon Sep 17 00:00:00 2001
+From: wolfgar <stephan.rafin@laposte.net>
+Date: Thu, 9 Jan 2014 01:56:48 +0100
+Subject: [PATCH] Merge latest fixes from fsl 3.10.17 kernel for IPU
+ (Especially but not only ENGR00292585) It mostly fixes artifacts when using
+ deinterlacing engine
+
+---
+ drivers/mxc/ipu3/ipu_device.c | 188 ++++++++++++++++++++++++------------------
+ 1 file changed, 106 insertions(+), 82 deletions(-)
+
+diff --git a/drivers/mxc/ipu3/ipu_device.c b/drivers/mxc/ipu3/ipu_device.c
+index 6dea91b..8052896 100644
+--- a/drivers/mxc/ipu3/ipu_device.c
++++ b/drivers/mxc/ipu3/ipu_device.c
 @@ -18,6 +18,7 @@
   *
   * @ingroup IPU
@@ -17,7 +29,7 @@ diff -Naur linux-imx_3.0.35_4.1.0+da311d2e41/drivers/mxc/ipu3/ipu_device.c linux
  #define CHECK_RETCODE(cont, str, err, label, ret)			\
  do {									\
  	if (cont) {							\
-@@ -711,9 +713,11 @@
+@@ -711,9 +713,11 @@ static int set_crop(struct ipu_crop *crop, int width, int height, int fmt)
  		}
  	} else {
  		if (crop->w || crop->h) {
@@ -31,7 +43,7 @@ diff -Naur linux-imx_3.0.35_4.1.0+da311d2e41/drivers/mxc/ipu3/ipu_device.c linux
  		} else {
  			crop->pos.x = 0;
  			crop->pos.y = 0;
-@@ -870,7 +874,7 @@
+@@ -870,7 +874,7 @@ static int update_split_setting(struct ipu_task_entry *t, bool vdi_split)
  		t->set.sp_setting.i_right_pos = 0;
  		t->set.sp_setting.o_right_pos = 0;
  	}
@@ -40,7 +52,7 @@ diff -Naur linux-imx_3.0.35_4.1.0+da311d2e41/drivers/mxc/ipu3/ipu_device.c linux
  		return IPU_CHECK_ERR_SPLIT_INPUTW_OVER;
  	if (((t->set.sp_setting.ow + t->set.sp_setting.o_right_pos) > ow)
  		|| (t->set.sp_setting.ow > soc_max_out_width()))
-@@ -889,7 +893,7 @@
+@@ -889,7 +893,7 @@ static int update_split_setting(struct ipu_task_entry *t, bool vdi_split)
  				oh,
  				soc_max_out_height(),
  				(((unsigned long long)1) << 32), /* 32bit for fractional*/
@@ -49,7 +61,7 @@ diff -Naur linux-imx_3.0.35_4.1.0+da311d2e41/drivers/mxc/ipu3/ipu_device.c linux
  				t->input.format,
  				t->output.format,
  				&up_stripe,
-@@ -913,7 +917,15 @@
+@@ -913,7 +917,15 @@ static int update_split_setting(struct ipu_task_entry *t, bool vdi_split)
  		t->set.sp_setting.i_bottom_pos = 0;
  		t->set.sp_setting.o_bottom_pos = 0;
  	}
@@ -66,7 +78,7 @@ diff -Naur linux-imx_3.0.35_4.1.0+da311d2e41/drivers/mxc/ipu3/ipu_device.c linux
  		return IPU_CHECK_ERR_SPLIT_INPUTH_OVER;
  	if (((t->set.sp_setting.oh + t->set.sp_setting.o_bottom_pos) > oh)
  		|| (t->set.sp_setting.oh > soc_max_out_height()))
-@@ -928,6 +940,7 @@
+@@ -928,6 +940,7 @@ static int check_task(struct ipu_task_entry *t)
  	int ret = IPU_CHECK_OK;
  	int timeout;
  	bool vdi_split = false;
@@ -74,7 +86,7 @@ diff -Naur linux-imx_3.0.35_4.1.0+da311d2e41/drivers/mxc/ipu3/ipu_device.c linux
  
  	if ((IPU_PIX_FMT_TILED_NV12 == t->overlay.format) ||
  		(IPU_PIX_FMT_TILED_NV12F == t->overlay.format) ||
-@@ -964,6 +977,7 @@
+@@ -964,6 +977,7 @@ static int check_task(struct ipu_task_entry *t)
  				&t->set.o_off, &t->set.o_uoff,
  				&t->set.o_voff, &t->set.ostride);
  
@@ -82,7 +94,7 @@ diff -Naur linux-imx_3.0.35_4.1.0+da311d2e41/drivers/mxc/ipu3/ipu_device.c linux
  	if ((IPU_PIX_FMT_TILED_NV12 == t->input.format) ||
  		(IPU_PIX_FMT_TILED_NV12F == t->input.format)) {
  		if ((t->input.crop.w > soc_max_in_width(1)) ||
-@@ -994,14 +1008,15 @@
+@@ -994,14 +1008,15 @@ static int check_task(struct ipu_task_entry *t)
  			ret = IPU_CHECK_ERR_OVERLAY_CROP;
  			goto done;
  		} else {
@@ -103,7 +115,7 @@ diff -Naur linux-imx_3.0.35_4.1.0+da311d2e41/drivers/mxc/ipu3/ipu_device.c linux
  				ret = IPU_CHECK_ERR_OV_OUT_NO_FIT;
  				goto done;
  			}
-@@ -1144,8 +1159,7 @@
+@@ -1144,8 +1159,7 @@ static int prepare_task(struct ipu_task_entry *t)
  		return -EINVAL;
  
  	if (t->set.mode & VDI_MODE) {
@@ -113,7 +125,7 @@ diff -Naur linux-imx_3.0.35_4.1.0+da311d2e41/drivers/mxc/ipu3/ipu_device.c linux
  		t->set.task = VDI_VF;
  		if (t->set.mode & ROT_MODE)
  			t->set.task |= ROT_VF;
-@@ -1385,7 +1399,7 @@
+@@ -1385,7 +1399,7 @@ static struct ipu_task_entry *create_task_entry(struct ipu_task *task)
  	tsk->overlay_en = task->overlay_en;
  	if (tsk->overlay_en)
  		tsk->overlay = task->overlay;
@@ -122,7 +134,7 @@ diff -Naur linux-imx_3.0.35_4.1.0+da311d2e41/drivers/mxc/ipu3/ipu_device.c linux
  		tsk->timeout = task->timeout;
  	else
  		tsk->timeout = DEF_TIMEOUT_MS;
-@@ -1397,8 +1411,6 @@
+@@ -1397,8 +1411,6 @@ static void task_mem_free(struct kref *ref)
  {
  	struct ipu_task_entry *tsk =
  			container_of(ref, struct ipu_task_entry, refcount);
@@ -131,7 +143,7 @@ diff -Naur linux-imx_3.0.35_4.1.0+da311d2e41/drivers/mxc/ipu3/ipu_device.c linux
  	kfree(tsk);
  }
  
-@@ -1714,7 +1726,6 @@
+@@ -1714,7 +1726,6 @@ static int queue_split_task(struct ipu_task_entry *t,
  		if (!tsk)
  			continue;
  		kfree(tsk);
@@ -139,7 +151,7 @@ diff -Naur linux-imx_3.0.35_4.1.0+da311d2e41/drivers/mxc/ipu3/ipu_device.c linux
  	}
  	t->state = STATE_ERR;
  	return ret;
-@@ -2337,9 +2348,6 @@
+@@ -2337,9 +2348,6 @@ static void vdi_split_process(struct ipu_soc *ipu, struct ipu_task_entry *t)
  	u32 task_no;
  	u32 i, offset_addr;
  	unsigned char  *base_off;
@@ -149,7 +161,7 @@ diff -Naur linux-imx_3.0.35_4.1.0+da311d2e41/drivers/mxc/ipu3/ipu_device.c linux
  	struct ipu_task_entry *parent = t->parent;
  
  	if (!parent) {
-@@ -2349,30 +2357,21 @@
+@@ -2349,30 +2357,21 @@ static void vdi_split_process(struct ipu_soc *ipu, struct ipu_task_entry *t)
  	stripe_mode = t->task_no & 0xf;
  	task_no = t->task_no >> 4;
  
@@ -183,7 +195,7 @@ diff -Naur linux-imx_3.0.35_4.1.0+da311d2e41/drivers/mxc/ipu3/ipu_device.c linux
  	if ((vdi_save_lines != parent->old_save_lines) ||
  		(vdi_size != parent->old_size)) {
  		if (parent->vditmpbuf[0] != NULL)
-@@ -2404,93 +2403,120 @@
+@@ -2404,93 +2403,120 @@ static void vdi_split_process(struct ipu_soc *ipu, struct ipu_task_entry *t)
  	if ((stripe_mode == UP_STRIPE) ||
  			(stripe_mode == (UP_STRIPE | LEFT_STRIPE))) {
  		if (!parent->buf0filled) {
@@ -350,7 +362,7 @@ diff -Naur linux-imx_3.0.35_4.1.0+da311d2e41/drivers/mxc/ipu3/ipu_device.c linux
  }
  
  static void do_task_release(struct ipu_task_entry *t, int fail)
-@@ -3138,7 +3164,7 @@
+@@ -3138,7 +3164,7 @@ static int ipu_task_thread(void *argv)
  		int split_parent;
  		int split_child;
  
@@ -359,7 +371,7 @@ diff -Naur linux-imx_3.0.35_4.1.0+da311d2e41/drivers/mxc/ipu3/ipu_device.c linux
  
  		if (!tsk) {
  			pr_err("thread:%d can not find task.\n",
-@@ -3190,7 +3216,7 @@
+@@ -3192,7 +3216,7 @@ static int ipu_task_thread(void *argv)
  					dev_err(tsk->dev,
  					"ERR: no-0x%x,can not get split_tsk0\n",
  					tsk->task_no);
@@ -368,7 +380,7 @@ diff -Naur linux-imx_3.0.35_4.1.0+da311d2e41/drivers/mxc/ipu3/ipu_device.c linux
  				get_res_do_task(sp_tsk0);
  				dev_dbg(sp_tsk0->dev,
  					"thread:%d complete tsk no:0x%x.\n",
-@@ -3294,7 +3320,7 @@
+@@ -3296,7 +3320,7 @@ int ipu_queue_task(struct ipu_task *task)
  	tsk->task_in_list = 1;
  	dev_dbg(tsk->dev, "[0x%p,no-0x%x] list_add_tail\n", tsk, tsk->task_no);
  	spin_unlock_irqrestore(&ipu_task_list_lock, flags);
@@ -377,3 +389,6 @@ diff -Naur linux-imx_3.0.35_4.1.0+da311d2e41/drivers/mxc/ipu3/ipu_device.c linux
  
  	ret = wait_event_timeout(tsk->task_waitq, atomic_read(&tsk->done),
  						msecs_to_jiffies(tsk->timeout));
+-- 
+1.8.5.1
+

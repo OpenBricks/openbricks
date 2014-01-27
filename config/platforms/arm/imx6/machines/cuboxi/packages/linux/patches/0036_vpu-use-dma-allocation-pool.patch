@@ -1,0 +1,130 @@
+From 6b4e6e3063a8a7b9fd51817ed6649a0343efb040 Mon Sep 17 00:00:00 2001
+From: Tapani Utriainen <tapani@technexion.com>
+Date: Wed, 11 Dec 2013 18:40:42 +0800
+Subject: [PATCH] iMX6 VPU: Use a DMA allocation pool, instead of kernel
+ default allocator
+
+This resolves problems with allocating physical memory for DMA transfers.
+By default, the kernel dma_alloc_coherent() method returns the first
+available block that is big enough. This inevitably leads to fragmentation,
+since the VPU requests blocks of very varying sizes (80k -- 5M), and
+eventual failure to find a large enough block.
+
+With this patch the VPU driver keeps a number of blocks cached.
+
+The drawback of this patch is that DMA memory gets tied up inside the VPU
+driver, and never freed. The size can be limited by the ARM_DMA_ZONE size
+define in memory.h. There are also limits on the number and sizes of
+blocks cached (and unused blocks beyond that are not cached but freed).
+
+(cherry picked from commit 7cbd06b2904c1855109084ca6b0c84990bc69233)
+---
+ drivers/mxc/vpu/mxc_vpu.c | 72 +++++++++++++++++++++++++++++++++++++++++------
+ 1 file changed, 63 insertions(+), 9 deletions(-)
+
+diff --git a/drivers/mxc/vpu/mxc_vpu.c b/drivers/mxc/vpu/mxc_vpu.c
+index 8a219db..e478272 100644
+--- a/drivers/mxc/vpu/mxc_vpu.c
++++ b/drivers/mxc/vpu/mxc_vpu.c
+@@ -117,17 +117,57 @@ struct iram_setting {
+ #define	READ_REG(x)		__raw_readl(vpu_base + x)
+ #define	WRITE_REG(val, x)	__raw_writel(val, vpu_base + x)
+ 
++/* Store a pool of continuous memory areas for DMA */
++/* Use MAX_CHUNKSIZES different bins, with MAX_CHUNKS each */
++#define DMA_MEM_MAX_CHUNKSIZES 128
++#define DMA_MEM_MAX_CHUNKS 8
++/* Pool graqnularity: must be power of 2, 128k or 256k are recommended */
++#define DMA_MEM_CHUNKSIZE (1 << 18)
++static u32 vpu_dma_mem_free_list[DMA_MEM_MAX_CHUNKSIZES][DMA_MEM_MAX_CHUNKS] = {{ 0 }};
++static u32 vpu_dma_mem_phys_free_list[DMA_MEM_MAX_CHUNKSIZES][DMA_MEM_MAX_CHUNKS] = {{ 0 }};
++static u32 vpu_dma_mem_nof_free[DMA_MEM_MAX_CHUNKSIZES] = { 0 };
++static u32 vpu_dma_mem_total_allocs = 0;
++static u32 vpu_dma_mem_in_use = 0;
++static u32 vpu_dma_mem_pooled = 0;
++static u32 vpu_dma_mem_peak_usage = 0;
++static spinlock_t vpu_dma_mem_lock;
++
++/* Helper function for the pooled dma allocator */
++static u32 chunkify(u32 size) {
++        return (size | (DMA_MEM_CHUNKSIZE - 1)) + 1;
++}
++
+ /*!
+  * Private function to alloc dma buffer
+  * @return status  0 success.
+  */
+ static int vpu_alloc_dma_buffer(struct vpu_mem_desc *mem)
+ {
+-	mem->cpu_addr = (unsigned long)
+-	    dma_alloc_coherent(NULL, PAGE_ALIGN(mem->size),
+-			       (dma_addr_t *) (&mem->phy_addr),
+-			       GFP_DMA | GFP_KERNEL);
+-	pr_debug("[ALLOC] mem alloc cpu_addr = 0x%x\n", mem->cpu_addr);
++	u32 chunked_size = chunkify(mem->size);
++	u32 size_in_chunks = chunked_size / DMA_MEM_CHUNKSIZE;
++
++	vpu_dma_mem_total_allocs++;
++
++	spin_lock(&vpu_dma_mem_lock);
++	if (size_in_chunks < DMA_MEM_MAX_CHUNKSIZES && vpu_dma_mem_nof_free[size_in_chunks] > 0) {
++		vpu_dma_mem_nof_free[size_in_chunks]--;
++		mem->cpu_addr = vpu_dma_mem_free_list[size_in_chunks][vpu_dma_mem_nof_free[size_in_chunks]];
++		mem->phy_addr = vpu_dma_mem_phys_free_list[size_in_chunks][vpu_dma_mem_nof_free[size_in_chunks]];
++		vpu_dma_mem_pooled -= size_in_chunks * DMA_MEM_CHUNKSIZE;
++		vpu_dma_mem_in_use += size_in_chunks * DMA_MEM_CHUNKSIZE;
++		spin_unlock(&vpu_dma_mem_lock);
++	} else {
++		spin_unlock(&vpu_dma_mem_lock);
++		mem->cpu_addr = (unsigned long)
++			dma_alloc_coherent(NULL, PAGE_ALIGN(size_in_chunks * DMA_MEM_CHUNKSIZE),
++				(dma_addr_t *) (&mem->phy_addr),
++				GFP_DMA | GFP_KERNEL);
++		if ((void *)mem->cpu_addr != NULL)
++			vpu_dma_mem_in_use += size_in_chunks * DMA_MEM_CHUNKSIZE;
++	}
++        
++	if (vpu_dma_mem_in_use > vpu_dma_mem_peak_usage) vpu_dma_mem_peak_usage = vpu_dma_mem_in_use;
++
+ 	if ((void *)(mem->cpu_addr) == NULL) {
+ 		printk(KERN_ERR "Physical memory allocation error!\n");
+ 		return -1;
+@@ -140,8 +180,22 @@ static int vpu_alloc_dma_buffer(struct vpu_mem_desc *mem)
+  */
+ static void vpu_free_dma_buffer(struct vpu_mem_desc *mem)
+ {
+-	if (mem->cpu_addr != 0) {
+-		dma_free_coherent(0, PAGE_ALIGN(mem->size),
++	u32 chunked_size = chunkify(mem->size);
++	u32 size_in_chunks = chunked_size / DMA_MEM_CHUNKSIZE;
++
++	spin_lock(&vpu_dma_mem_lock);
++
++	if (size_in_chunks < DMA_MEM_MAX_CHUNKSIZES && vpu_dma_mem_nof_free[size_in_chunks] < DMA_MEM_MAX_CHUNKS) {
++		vpu_dma_mem_in_use -= PAGE_ALIGN(chunked_size);
++		vpu_dma_mem_free_list[size_in_chunks][vpu_dma_mem_nof_free[size_in_chunks]] = mem->cpu_addr;
++		vpu_dma_mem_phys_free_list[size_in_chunks][vpu_dma_mem_nof_free[size_in_chunks]] = mem->phy_addr;
++		vpu_dma_mem_nof_free[size_in_chunks]++;
++		vpu_dma_mem_pooled += size_in_chunks * DMA_MEM_CHUNKSIZE;
++		spin_unlock(&vpu_dma_mem_lock);
++	} else {                
++		spin_unlock(&vpu_dma_mem_lock);
++		vpu_dma_mem_in_use -= PAGE_ALIGN(chunked_size);
++		dma_free_coherent(0, PAGE_ALIGN(chunked_size),
+ 				  (void *)mem->cpu_addr, mem->phy_addr);
+ 	}
+ }
+@@ -301,8 +355,8 @@ static long vpu_ioctl(struct file *filp, u_int cmd,
+ 			ret = vpu_alloc_dma_buffer(&(rec->mem));
+ 			if (ret == -1) {
+ 				kfree(rec);
+-				printk(KERN_ERR
+-				       "Physical memory allocation error!\n");
++//				printk(KERN_ERR
++//				       "Physical memory allocation error!\n");
+ 				break;
+ 			}
+ 			ret = copy_to_user((void __user *)arg, &(rec->mem),
+-- 
+1.8.5.1
+
