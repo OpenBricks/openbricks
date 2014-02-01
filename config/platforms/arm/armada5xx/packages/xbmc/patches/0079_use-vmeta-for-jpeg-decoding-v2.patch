@@ -1,6 +1,6 @@
 diff -Naur a/language/English/strings.po b/language/English/strings.po
 --- a/language/English/strings.po	2014-01-25 23:11:19.000000000 +0100
-+++ b/language/English/strings.po	2014-01-26 15:44:54.282958481 +0100
++++ b/language/English/strings.po	2014-01-26 16:12:11.902910096 +0100
 @@ -11421,6 +11421,8 @@
  msgid "* Item folder"
  msgstr ""
@@ -340,8 +340,8 @@ diff -Naur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h b/xbmc/co
  #endif
 diff -Naur a/xbmc/guilib/JpegHwDec.cpp b/xbmc/guilib/JpegHwDec.cpp
 --- a/xbmc/guilib/JpegHwDec.cpp	1970-01-01 01:00:00.000000000 +0100
-+++ b/xbmc/guilib/JpegHwDec.cpp	2014-01-26 15:39:47.000000000 +0100
-@@ -0,0 +1,68 @@
++++ b/xbmc/guilib/JpegHwDec.cpp	2014-02-01 10:18:43.000000000 +0100
+@@ -0,0 +1,77 @@
 +/*
 +*      Copyright (C) 2005-2014 Team XBMC
 +*      http://www.xbmc.org
@@ -398,22 +398,31 @@ diff -Naur a/xbmc/guilib/JpegHwDec.cpp b/xbmc/guilib/JpegHwDec.cpp
 +#if defined(HAS_MARVELL_DOVE)
 +  if (g_guiSettings.GetBool("videoscreen.use_hardware_jpeg"))
 +  {
-+    CJpegHwDec *ctx = new CJpegHwDecVMeta();
++    CJpegHwDec *d = new CJpegHwDecVMeta();
 +
-+    if (ctx && ctx->Init())
-+      return ctx;
++    if (d && d->Init())
++      return d;
 +
-+    delete ctx;
++    delete d;
 +  }
 +#endif
 +
 +  return new CJpegHwDec();
 +}
 +
++void CJpegHwDec::destroy(CJpegHwDec *d)
++{
++  if (d)
++  {
++    d->Dispose();
++    delete d;
++  }
++}
++
 diff -Naur a/xbmc/guilib/JpegHwDec.h b/xbmc/guilib/JpegHwDec.h
 --- a/xbmc/guilib/JpegHwDec.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/xbmc/guilib/JpegHwDec.h	2014-01-25 16:30:34.000000000 +0100
-@@ -0,0 +1,108 @@
++++ b/xbmc/guilib/JpegHwDec.h	2014-02-01 10:18:43.000000000 +0100
+@@ -0,0 +1,113 @@
 +/*
 +*      Copyright (C) 2005-2014 Team XBMC
 +*      http://www.xbmc.org
@@ -441,6 +450,7 @@ diff -Naur a/xbmc/guilib/JpegHwDec.h b/xbmc/guilib/JpegHwDec.h
 +{
 +protected:
 +  CJpegHwDec() {};
++  virtual ~CJpegHwDec() {}
 +  
 +protected:
 +   /*!
@@ -451,11 +461,9 @@ diff -Naur a/xbmc/guilib/JpegHwDec.h b/xbmc/guilib/JpegHwDec.h
 +  /*!
 +   \brief Deinitialize this instance
 +   */
-+  virtual void Dispose() {}
++  virtual void Dispose() {};
 +
 +public:
-+  virtual ~CJpegHwDec() { Dispose(); }
-+
 +  /*!
 +   \brief Return the minimum supported nominator for downscaling while decoding
 +   \return The minimal nominator
@@ -519,13 +527,19 @@ diff -Naur a/xbmc/guilib/JpegHwDec.h b/xbmc/guilib/JpegHwDec.h
 +   \return Pointer to new CJpegHwDec instance
 +   */
 +  static CJpegHwDec  *create();
++
++  /*!
++   \brief Destruction of an instance
++   \param d Pointer to CJpegHwDec instance, can be 0
++   */
++  static void        destroy(CJpegHwDec *d);
 +};
 +
 +#endif
 diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 --- a/xbmc/guilib/JpegHwDecVMETA.cpp	1970-01-01 01:00:00.000000000 +0100
-+++ b/xbmc/guilib/JpegHwDecVMETA.cpp	2014-01-25 21:59:25.000000000 +0100
-@@ -0,0 +1,651 @@
++++ b/xbmc/guilib/JpegHwDecVMETA.cpp	2014-02-01 12:50:38.000000000 +0100
+@@ -0,0 +1,662 @@
 +/*
 +*      Copyright (C) 2005-2014 Team XBMC
 +*      http://www.xbmc.org
@@ -557,6 +571,7 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 +#include "utils/log.h"
 +#include "filesystem/File.h"
 +#include "threads/SystemClock.h"
++#include "settings/GUISettings.h"
 +
 +#include "XBTF.h"
 +#include "JpegHwDecVMETA.h"
@@ -682,15 +697,6 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 +}
 +
 +
-+CJpegHwDecVMeta::CJpegHwDecVMeta() 
-+  : CJpegHwDec(), 
-+    m_HwLock(g_CritSecVMETA),
-+    m_DllVMETA(g_DllLibVMETA),
-+    m_DllMiscGen(g_DllLibMiscGen)
-+{
-+}
-+
-+ 
 +bool CJpegHwDecVMeta::Init()
 +{
 +  m_pCbTable = 0;
@@ -709,15 +715,14 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 +
 +  if (m_HwLock.IsOwner() && m_DllVMETA.Load() && m_DllMiscGen.Load())
 +  {
++    SetHardwareClock(g_guiSettings.GetInt("videoscreen.vmeta_clk"));
++
 +    if (m_DllMiscGen.miscInitGeneralCallbackTable(&m_pCbTable) == 0)
 +    {
 +      IppCodecStatus retCodec;
 +
-+      m_VDecParSet.opt_fmt     = IPP_YCbCr422I;
-+      m_VDecParSet.strm_fmt    = IPP_VIDEO_STRM_FMT_JPEG;
-+      //m_VDecParSet.pp_hscale = 1;
-+      //m_VDecParSet.pp_vscale = 1;
-+      //m_VDecParSet.bMultiIns = 1;
++      m_VDecParSet.opt_fmt  = IPP_YCbCr422I;
++      m_VDecParSet.strm_fmt = IPP_VIDEO_STRM_FMT_JPEG;
 +
 +      retCodec = m_DllVMETA.DecoderInitAlloc_Vmeta(&m_VDecParSet, m_pCbTable, &m_pDecState);
 +      if (retCodec == IPP_STATUS_NOERR)
@@ -752,6 +757,8 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 +  {
 +    m_DllMiscGen.Unload();
 +    m_DllVMETA.Unload();
++
++    SetHardwareClock(VMETA_CLK_500);
 +  }
 +}
 +
@@ -783,8 +790,6 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 +  {
 +    m_input.nPhyAddr = 0;
 +    m_input.pBuf = (Ipp8u *)m_DllVMETA.vdec_os_api_dma_alloc_cached(
-+    //m_input.pBuf = (Ipp8u *)m_DllVMETA.vdec_os_api_dma_alloc_writecombine(
-+    //m_input.pBuf = (Ipp8u *)m_DllVMETA.vdec_os_api_dma_alloc(
 +                                       size, VMETA_STRM_BUF_ALIGN, &m_input.nPhyAddr);
 +    m_input.nBufSize = size;
 +
@@ -796,8 +801,12 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 +      m_DllVMETA.vdec_os_api_dma_free(pOldBuf);
 +    }
 +  }
++  
++#if 0
++  CLog::Log(LOGNOTICE, "%s: @%08x %d phys %08x", 
++            __FUNCTION__, m_input.pBuf, m_input.nBufSize, m_input.nPhyAddr);
++#endif
 +
-+  //CLog::Log(LOGNOTICE, "%s: @%08x %d phys %08x", __FUNCTION__, m_input.pBuf, m_input.nBufSize, m_input.nPhyAddr);
 +  return m_input.pBuf;
 +}
 +
@@ -1176,11 +1185,27 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 +}
 +
 +
++void CJpegHwDecVMeta::SetHardwareClock(int clkRate)
++{
++  int clkFreqHz = (clkRate == VMETA_CLK_667) ? 667000000 : 500000000;
++
++  FILE *Fh = fopen("/sys/devices/platform/dove_clocks_sysfs.0/vmeta","w");
++
++  if (Fh != 0)
++  {
++    fprintf (Fh, "%d", clkFreqHz);
++    fclose(Fh);
++  }
++  else
++    CLog::Log(LOGERROR, "Unable to open vmeta clock settings file on sysfs");
++}
++
++
 +#endif
 diff -Naur a/xbmc/guilib/JpegHwDecVMETA.h b/xbmc/guilib/JpegHwDecVMETA.h
 --- a/xbmc/guilib/JpegHwDecVMETA.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/xbmc/guilib/JpegHwDecVMETA.h	2014-01-25 22:06:16.000000000 +0100
-@@ -0,0 +1,75 @@
++++ b/xbmc/guilib/JpegHwDecVMETA.h	2014-02-01 12:50:37.000000000 +0100
+@@ -0,0 +1,82 @@
 +/*
 +*      Copyright (C) 2005-2014 Team XBMC
 +*      http://www.xbmc.org
@@ -1223,12 +1248,16 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.h b/xbmc/guilib/JpegHwDecVMETA.h
 +  void                          *m_pDecState;
 +  IppVmetaDecParSet             m_VDecParSet;
 +
++public:
++  CJpegHwDecVMeta()
++  : CJpegHwDec(), 
++    m_HwLock(g_CritSecVMETA),
++    m_DllVMETA(g_DllLibVMETA),
++    m_DllMiscGen(g_DllLibMiscGen)  {}
++
 +protected:
 +  virtual bool Init();
 +  virtual void Dispose();
-+
-+public:
-+  CJpegHwDecVMeta();
 +
 +  virtual unsigned int  FirstScale();
 +  virtual unsigned int  NextScale(unsigned int currScale, int direction);
@@ -1253,12 +1282,15 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.h b/xbmc/guilib/JpegHwDecVMETA.h
 +
 +  void ToBGRA(unsigned char *dst, unsigned int pitch, unsigned int width, unsigned int height);
 +  void ToRGB(unsigned char *dst, unsigned int pitch, unsigned int width, unsigned int height);
++
++  void SetHardwareClock(int clkRate);
 +};
++
 +
 +#endif
 diff -Naur a/xbmc/guilib/JpegIO.cpp b/xbmc/guilib/JpegIO.cpp
 --- a/xbmc/guilib/JpegIO.cpp	2014-01-24 23:14:52.000000000 +0100
-+++ b/xbmc/guilib/JpegIO.cpp	2014-01-25 16:30:34.000000000 +0100
++++ b/xbmc/guilib/JpegIO.cpp	2014-02-01 10:18:43.000000000 +0100
 @@ -27,6 +27,7 @@
  #include "utils/log.h"
  #include "XBTF.h"
@@ -1280,7 +1312,7 @@ diff -Naur a/xbmc/guilib/JpegIO.cpp b/xbmc/guilib/JpegIO.cpp
  CJpegIO::~CJpegIO()
  {
    Close();
-+  delete m_hwDec;
++  CJpegHwDec::destroy(m_hwDec);
  }
  
  void CJpegIO::Close()
@@ -1345,7 +1377,7 @@ diff -Naur a/xbmc/guilib/JpegIO.cpp b/xbmc/guilib/JpegIO.cpp
    m_cinfo.err = jpeg_std_error(&jerr.pub);
 diff -Naur a/xbmc/guilib/JpegIO.h b/xbmc/guilib/JpegIO.h
 --- a/xbmc/guilib/JpegIO.h	2013-12-12 22:47:49.000000000 +0100
-+++ b/xbmc/guilib/JpegIO.h	2014-01-25 16:30:34.000000000 +0100
++++ b/xbmc/guilib/JpegIO.h	2014-02-01 10:18:43.000000000 +0100
 @@ -31,13 +31,12 @@
  
  class CJpegIO
@@ -1384,7 +1416,7 @@ diff -Naur a/xbmc/guilib/Makefile.in b/xbmc/guilib/Makefile.in
  SRCS += LocalizeStrings.cpp
 diff -Naur a/xbmc/settings/GUISettings.cpp b/xbmc/settings/GUISettings.cpp
 --- a/xbmc/settings/GUISettings.cpp	2014-01-26 15:23:10.258997007 +0100
-+++ b/xbmc/settings/GUISettings.cpp	2014-01-26 15:23:10.000000000 +0100
++++ b/xbmc/settings/GUISettings.cpp	2014-01-26 15:47:31.000000000 +0100
 @@ -447,6 +447,8 @@
    graphics_scaling.insert(make_pair(37013,GR_SCALE_200));
    graphics_scaling.insert(make_pair(37014,GR_SCALE_250));
