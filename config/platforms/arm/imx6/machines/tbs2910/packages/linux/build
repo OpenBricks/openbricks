@@ -1,0 +1,51 @@
+#!/bin/sh
+
+. config/options
+
+unset LDFLAGS
+
+MAKEFLAGS=-j3
+
+cd $(kernel_path)
+
+case $TARGET_ARCH in
+  i386|x86_64)  IMAGE=bzImage  ;;
+  mips|powerpc) IMAGE=vmlinux  ;;
+  powerpc64)    IMAGE=zImage   ;;
+  arm)
+    . $CONFIG_MACHINE/meta
+    [ -n "$MACHINE_UBOOT_CONFIG" ] && IMAGE=uImage || IMAGE=zImage
+    ;;
+esac
+#cp $ROOT/$PACKAGES/$1/config/linux.conf .config
+make $IMAGE
+make modules
+
+install_dir="`pwd`/.install"
+debug_dir="`pwd`/.install-debuginfo/usr/lib/debug"
+rm -rf $install_dir $debug_dir
+mkdir -p $install_dir/lib/firmware $debug_dir
+
+make modules_install \
+  INSTALL_MOD_PATH=.install \
+  DEPMOD=$ROOT/$TOOLCHAIN/bin/depmod \
+
+kmod_dir="$install_dir/lib/modules/$(kernel_version)"
+
+if [ -d .install/lib/firmware ]; then
+  mv .install/lib/firmware .install/firmware
+else
+  mkdir -p .install/firmware
+fi
+rm -f $kmod_dir/build $kmod_dir/source $kmod_dir/modules.*
+strip_kmods "$kmod_dir" "$debug_dir"
+
+mkdir -p .install/boot
+if pkg_uses $1 tbskernel; then
+  wget http://sourceforge.net/projects/openpctv/files/packages/imx/uImage_$(kernel_version)/download \
+      -O .install/boot/$IMAGE || cp arch/$TARGET_ARCH/boot/$IMAGE .install/boot
+else
+  cp arch/$TARGET_ARCH/boot/$IMAGE .install/boot
+fi
+  
+exit 0
