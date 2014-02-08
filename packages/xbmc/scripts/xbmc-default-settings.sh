@@ -18,7 +18,7 @@ set_system_prefix () {
 
   if   grep -q "OMAP4 Panda board" /proc/cpuinfo; then SYS_PREFIX="panda"
   elif grep -q "Snowball" /proc/cpuinfo;          then SYS_PREFIX="snowball"
-  elif grep -q "CuBox" /proc/cpuinfo;             then SYS_PREFIX="cubox"
+  elif grep -q "SolidRun CuBox" /proc/cpuinfo;    then SYS_PREFIX="cubox"
   elif grep -q "BCM2708" /proc/cpuinfo;           then SYS_PREFIX="rpi"
   elif grep -q "sun4i" /proc/cpuinfo;             then SYS_PREFIX="a10"
   elif grep -q "CM-FX6" /proc/cpuinfo;            then SYS_PREFIX="utilite"
