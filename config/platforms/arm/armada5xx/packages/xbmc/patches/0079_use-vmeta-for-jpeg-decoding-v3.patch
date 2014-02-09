@@ -538,8 +538,8 @@ diff -Naur a/xbmc/guilib/JpegHwDec.h b/xbmc/guilib/JpegHwDec.h
 +#endif
 diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 --- a/xbmc/guilib/JpegHwDecVMETA.cpp	1970-01-01 01:00:00.000000000 +0100
-+++ b/xbmc/guilib/JpegHwDecVMETA.cpp	2014-02-01 12:50:38.000000000 +0100
-@@ -0,0 +1,662 @@
++++ b/xbmc/guilib/JpegHwDecVMETA.cpp	2014-02-09 20:32:13.372581663 +0100
+@@ -0,0 +1,663 @@
 +/*
 +*      Copyright (C) 2005-2014 Team XBMC
 +*      http://www.xbmc.org
@@ -851,11 +851,11 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 +}
 +
 +
-+int CJpegHwDecVMeta::DecodePopBuffers(IppVmetaBufferType type, ReturnMode mode)
++int CJpegHwDecVMeta::DecodePopBuffers(IppVmetaBufferType type, ReturnMode mode, int maxCount)
 +{
-+  int count = 0;
++  int count;
 +
-+  for (;;)
++  for (count = 0; count < maxCount; count++)
 +  {
 +    union { void *p; IppVmetaBitstream *strm; IppVmetaPicture *pic; };
 +
@@ -886,8 +886,6 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 +
 +    if (mode & ReleaseBuffer)
 +      ::free(p);
-+
-+    count++;
 +  }
 +
 +  return count;
@@ -965,7 +963,7 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 +    case IPP_STATUS_RETURN_INPUT_BUF:
 +      //CLog::Log(LOGNOTICE, "IPP_STATUS_RETURN_INPUT_BUF");
 +
-+      numSubmitted -= DecodePopBuffers(IPP_VMETA_BUF_TYPE_STRM, ReleaseBuffer);
++      numSubmitted -= DecodePopBuffers(IPP_VMETA_BUF_TYPE_STRM, ReleaseBuffer, numSubmitted);
 +      break;
 +
 +    case IPP_STATUS_NEED_OUTPUT_BUF:
@@ -995,8 +993,7 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 +    case IPP_STATUS_FRAME_COMPLETE:
 +      //CLog::Log(LOGNOTICE, "IPP_STATUS_FRAME_COMPLETE");
 +
-+      DecodePopBuffers(IPP_VMETA_BUF_TYPE_PIC, ReleaseNothing);
-+      numSubmitted -= DecodePopBuffers(IPP_VMETA_BUF_TYPE_STRM, ReleaseBuffer);
++      DecodePopBuffers(IPP_VMETA_BUF_TYPE_PIC, ReleaseNothing, 1);
 +
 +#if 0
 +      if (m_picture.pBuf)
@@ -1006,11 +1003,15 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 +      }
 +#endif
 +
++      numSubmitted -= DecodePopBuffers(IPP_VMETA_BUF_TYPE_STRM, ReleaseBuffer, numSubmitted);
 +      bExit = true;
 +      break;
 +
 +    case IPP_STATUS_END_OF_STREAM:
 +      //CLog::Log(LOGNOTICE, "IPP_STATUS_END_OF_STREAM");
++
++      numSubmitted -= DecodePopBuffers(IPP_VMETA_BUF_TYPE_STRM, ReleaseBuffer, numSubmitted);
++      bExit = true;
 +      break;
 +
 +    case IPP_STATUS_WAIT_FOR_EVENT:
@@ -1022,7 +1023,7 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 +
 +      if (m_picture.pBuf)
 +      {
-+        DecodePopBuffers(IPP_VMETA_BUF_TYPE_PIC, ReleaseStorage);
++        DecodePopBuffers(IPP_VMETA_BUF_TYPE_PIC, ReleaseStorage, 1);
 +        m_picture.pBuf = 0;
 +      }
 +      
@@ -1204,7 +1205,7 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 +#endif
 diff -Naur a/xbmc/guilib/JpegHwDecVMETA.h b/xbmc/guilib/JpegHwDecVMETA.h
 --- a/xbmc/guilib/JpegHwDecVMETA.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/xbmc/guilib/JpegHwDecVMETA.h	2014-02-01 12:50:37.000000000 +0100
++++ b/xbmc/guilib/JpegHwDecVMETA.h	2014-02-09 20:13:42.332614488 +0100
 @@ -0,0 +1,82 @@
 +/*
 +*      Copyright (C) 2005-2014 Team XBMC
@@ -1277,7 +1278,7 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.h b/xbmc/guilib/JpegHwDecVMETA.h
 +  enum { StreamBufAlloc = 128 * 1024, StreamBufLimit = 2047 * 1024 };
 +  enum ReturnMode { ReleaseNothing = 0x00, ReleaseStorage = 0x01, ReleaseBuffer = 0x02, ReleaseAll = 0x03 };
 +
-+  int  DecodePopBuffers(IppVmetaBufferType type, ReturnMode mode);
++  int  DecodePopBuffers(IppVmetaBufferType type, ReturnMode mode, int maxCount = INT_MAX);
 +  bool DecodePicture(unsigned int maxWidth, unsigned int maxHeight, unsigned int scaleDivider);
 +
 +  void ToBGRA(unsigned char *dst, unsigned int pitch, unsigned int width, unsigned int height);
