@@ -1,0 +1,45 @@
+--- xvba-driver-0.8.0/src/xvba_gate.c.orig	2013-11-27 14:26:49.308159438 -0500
++++ xvba-driver-0.8.0/src/xvba_gate.c	2013-11-27 23:38:52.906925586 -0500
+@@ -22,6 +22,7 @@
+ #include "xvba_gate.h"
+ #include "xvba_dump.h"
+ #include "utils.h"
++#include "utils_x11.h"
+ #include "fglrxinfo.h"
+ 
+ #define DEBUG 1
+@@ -688,6 +689,7 @@ xvba_create_decode_session(
+     XVBA_Create_Decode_Session_Output output;
+     XVBASession *session = NULL;
+     Status status;
++    int x11_error;
+ 
+     session = malloc(sizeof(*session));
+     if (!session)
+@@ -703,7 +705,14 @@ xvba_create_decode_session(
+ 
+     TRACE(XVBACreateDecode, (&input));
+ 
++    /*
++     * Workaround a regression bug in catalyst 13.11 with Xserver 1.14.
++     * Ref: http://ati.cchtml.com/show_bug.cgi?id=950
++     */
++    x11_trap_errors();
+     status = XVBA_CreateDecode(&input, &output);
++    x11_error = x11_untrap_errors();
++    D(bug("XVBA_CreateDecode() x11 error code: %d\n", x11_error));
+     if (!xvba_check_status(status, "XVBA_CreateDecode()"))
+         return NULL;
+     if (!output.session)
+@@ -725,8 +734,10 @@ error:
+ static int xvba_destroy_decode_session_real(XVBASession *session)
+ {
+     TRACE(XVBADestroyDecode, (session->session));
+-
++    x11_trap_errors();
+     Status status = XVBA_DestroyDecode(session->session);
++    int x11_error = x11_untrap_errors();
++    D(bug("XVBA_DestroyDecode() x11 error code: %d\n", x11_error));
+     xvba_context_unref(session->context);
+     free(session);
+     if (!xvba_check_status(status, "XVBA_DestroyDecode()"))
