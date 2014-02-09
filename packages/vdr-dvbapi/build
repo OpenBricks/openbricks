@@ -2,16 +2,49 @@
 
 . config/options
 
-get_meta $1
+get_meta vdr
+VDR_DIR=$ROOT/$PKG_BUILD_DIR
+echo $VDR_DIR
 
-VDR_DIR=`basename $BUILD/vdr-1*`
+get_meta $1
+cd $PKG_BUILD_DIR
+echo $PKG_BUILD_DIR
+
+
+
+if [ "$TARGET_ARCH" = powerpc ]; then
+  CFLAGS="-mpowerpc"
+elif [ "$TARGET_ARCH" = powerpc64 ]; then
+  CFLAGS="-mpowerpc64"
+elif [ "$TARGET_ARCH" = i386 ]; then
+  CFLAGS="-march=$(echo $TARGET_NAME | cut -d- -f 1) -mtune=generic"
+elif [ "$TARGET_ARCH" = arm ]; then
+  sed -i "s/^CSAFLAGS/#CSAFLAGS/g" Makefile
+  CFLAGS="-mcpu=$TARGET_CPU -mtune=$TARGET_CPU"
+  [ "$FPU_OPTIMIZATIONS" = "neon" ] && CFLAGS="$CFLAGS -mfpu=neon $ARM_FLOAT_ABI"
+  [ "$FPU_OPTIMIZATIONS" = "vfp2" ] && CFLAGS="$CFLAGS -mfpu=vfp $ARM_FLOAT_ABI"
+  [ "$FPU_OPTIMIZATIONS" = "vfp3" ] && CFLAGS="$CFLAGS -mfpu=vfpv3 $ARM_FLOAT_ABI"
+  [ "$FPU_OPTIMIZATIONS" = "vfp3-d16" ] && CFLAGS="$CFLAGS -mfpu=vfpv3-d16 $ARM_FLOAT_ABI"
+  [ "$FPU_OPTIMIZATIONS" = "vfp4" ] && CFLAGS="$CFLAGS -mfpu=vfpv4 $ARM_FLOAT_ABI"
+  [ "$FPU_OPTIMIZATIONS" = "neon-vfp4" ] && CFLAGS="$CFLAGS -mfpu=neon-vfpv4 $ARM_FLOAT_ABI"
+  CSAFLAGS="$CFLAGS"
+  FLAGS="$CFLAGS"
+elif [ "$TARGET_ARCH" = mips ]; then
+  CFLAGS="-mtune=$TARGET_CPU"
+else
+  CFLAGS="-mtune=generic"
+fi
 
 CFLAGS="$CFLAGS -fPIC"
 CXXFLAGS="$CXXFLAGS -fPIC"
 LDFLAGS="$LDFLAGS -fPIC"
 
-cd $PKG_BUILD_DIR
+if pkg_uses $1 dvbcsa; then
+  CFG_DVBCSA="LIBDVBCSA=1"
+fi
+
 make \
-  VDRDIR="../$VDR_DIR" \
+  VDRDIR="$VDR_DIR" \
   LIBDIR="." \
-  LOCALEDIR="./locale"
+  LOCALEDIR="./locale" \
+  $CFG_DVBCSA
