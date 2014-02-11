@@ -421,8 +421,8 @@ diff -Naur a/xbmc/guilib/JpegHwDec.cpp b/xbmc/guilib/JpegHwDec.cpp
 +
 diff -Naur a/xbmc/guilib/JpegHwDec.h b/xbmc/guilib/JpegHwDec.h
 --- a/xbmc/guilib/JpegHwDec.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/xbmc/guilib/JpegHwDec.h	2014-02-01 10:18:43.000000000 +0100
-@@ -0,0 +1,113 @@
++++ b/xbmc/guilib/JpegHwDec.h	2014-02-11 19:15:26.113354308 +0100
+@@ -0,0 +1,115 @@
 +/*
 +*      Copyright (C) 2005-2014 Team XBMC
 +*      http://www.xbmc.org
@@ -503,10 +503,12 @@ diff -Naur a/xbmc/guilib/JpegHwDec.h b/xbmc/guilib/JpegHwDec.h
 +   \brief Check, if hardware decoding should be used
 +   \param width The width of the image to be decoded
 +   \param height The height of the image to be decoded
++   \param featureFlags A combination of ffXXXX enums
 +   \return true if the hardware can/should handle this image
 +   */
-+  virtual bool CanDecode(unsigned int width, 
-+                         unsigned int height) const { return false; };
++  virtual bool CanDecode(unsigned int featureFlags, 
++                         unsigned int width, unsigned int height) const { return false; }
++  enum { ffForceFallback = 0x01, ffProgressive = 0x02, ffArithmeticCoding = 0x04 };
 +                                   
 +  /*!
 +   \brief Decode the image
@@ -538,8 +540,8 @@ diff -Naur a/xbmc/guilib/JpegHwDec.h b/xbmc/guilib/JpegHwDec.h
 +#endif
 diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 --- a/xbmc/guilib/JpegHwDecVMETA.cpp	1970-01-01 01:00:00.000000000 +0100
-+++ b/xbmc/guilib/JpegHwDecVMETA.cpp	2014-02-09 20:32:13.372581663 +0100
-@@ -0,0 +1,663 @@
++++ b/xbmc/guilib/JpegHwDecVMETA.cpp	2014-02-11 19:15:26.113354308 +0100
+@@ -0,0 +1,667 @@
 +/*
 +*      Copyright (C) 2005-2014 Team XBMC
 +*      http://www.xbmc.org
@@ -1139,10 +1141,14 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 +}
 +
 +
-+bool CJpegHwDecVMeta::CanDecode(unsigned int width, unsigned int height) const
++bool CJpegHwDecVMeta::CanDecode(unsigned int featureFlags,
++                                unsigned int width, unsigned int height) const
 +{
-+  // don't use hardware for small pictures ...
-+  return m_pDecState != 0 && width * height >= 100 * 100;
++  // Don't use hardware for small pictures ...
++  // Also don't try pictures using unsupported JPEG features
++  return m_pDecState != 0 && 
++         width * height >= 100 * 100 &&
++         !(featureFlags & (ffForceFallback | ffProgressive | ffArithmeticCoding));
 +}
 +
 +
@@ -1205,7 +1211,7 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 +#endif
 diff -Naur a/xbmc/guilib/JpegHwDecVMETA.h b/xbmc/guilib/JpegHwDecVMETA.h
 --- a/xbmc/guilib/JpegHwDecVMETA.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/xbmc/guilib/JpegHwDecVMETA.h	2014-02-09 20:13:42.332614488 +0100
++++ b/xbmc/guilib/JpegHwDecVMETA.h	2014-02-11 19:15:26.113354308 +0100
 @@ -0,0 +1,82 @@
 +/*
 +*      Copyright (C) 2005-2014 Team XBMC
@@ -1267,8 +1273,8 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.h b/xbmc/guilib/JpegHwDecVMETA.h
 +  virtual void          FreeBuffer(unsigned char *buffer);
 +  virtual void          PrepareBuffer(unsigned int numBytes);
 +
-+  virtual bool          CanDecode(unsigned int width, 
-+                                  unsigned int height) const;
++  virtual bool          CanDecode(unsigned int featureFlags,
++                                  unsigned int width, unsigned int height) const;
 +  virtual bool          Decode(unsigned char *dst, 
 +                               unsigned int pitch, unsigned int format,
 +                               unsigned int maxWidth, unsigned int maxHeight,
@@ -1291,7 +1297,7 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.h b/xbmc/guilib/JpegHwDecVMETA.h
 +#endif
 diff -Naur a/xbmc/guilib/JpegIO.cpp b/xbmc/guilib/JpegIO.cpp
 --- a/xbmc/guilib/JpegIO.cpp	2014-01-24 23:14:52.000000000 +0100
-+++ b/xbmc/guilib/JpegIO.cpp	2014-02-01 10:18:43.000000000 +0100
++++ b/xbmc/guilib/JpegIO.cpp	2014-02-11 19:15:26.113354308 +0100
 @@ -27,6 +27,7 @@
  #include "utils/log.h"
  #include "XBTF.h"
@@ -1356,7 +1362,7 @@ diff -Naur a/xbmc/guilib/JpegIO.cpp b/xbmc/guilib/JpegIO.cpp
          break;
        }
        if (m_cinfo.output_width >= minx && m_cinfo.output_height >= miny)
-@@ -389,9 +394,17 @@
+@@ -389,9 +394,28 @@
    }
  }
  
@@ -1364,11 +1370,22 @@ diff -Naur a/xbmc/guilib/JpegIO.cpp b/xbmc/guilib/JpegIO.cpp
 +bool CJpegIO::Decode(unsigned char *dst, unsigned int pitch, unsigned int format)
  {
 -  unsigned char *dst = (unsigned char*)pixels;
-+  if (//strstr(m_texturePath.c_str(), "DSC0000") &&
-+      m_hwDec->CanDecode(m_cinfo.image_width, 
-+                          m_cinfo.image_height) &&
++  unsigned int featureFlags = 0;
++
++  if (m_cinfo.progressive_mode)
++    featureFlags |= CJpegHwDec::ffProgressive;
++  if (m_cinfo.arith_code)
++    featureFlags |= CJpegHwDec::ffArithmeticCoding;
++
++#if 0
++  if (strstr(m_texturePath.c_str(), "DSC0000") != 0)
++    featureFlags |= CJpegHwDec::ffForceFallback;
++#endif    
++
++  if (m_hwDec->CanDecode(featureFlags,
++                         m_cinfo.image_width, m_cinfo.image_height) &&
 +      m_hwDec->Decode(dst, pitch, format, m_cinfo.output_width, 
-+                       m_cinfo.output_height, m_cinfo.scale_num, m_cinfo.scale_denom))
++                      m_cinfo.output_height, m_cinfo.scale_num, m_cinfo.scale_denom))
 +  {
 +    jpeg_destroy_decompress(&m_cinfo);
 +    return true;
