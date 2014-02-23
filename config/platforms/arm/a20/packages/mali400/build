@@ -1,0 +1,46 @@
+#!/bin/sh
+
+. config/options
+
+cd $BUILD/$1*
+
+mkdir -p .install/usr/bin/
+mkdir -p .install/usr/lib/
+
+# ATTENTION: must match kernel module mali.ko
+#mali_rev=r2p4
+#mali_rev=r3p1
+mali_rev=r3p0
+
+# Output
+if [ $USE_xorg ] ; then
+  egl_type=x11
+else
+  egl_type=framebuffer
+fi
+
+# select library
+if [ "$ARM_HARDFLOAT_ABI" = yes ] ; then
+  make config VERSION=$mali_rev ABI=armhf EGL_TYPE=$egl_type
+else
+  make config VERSION=$mali_rev ABI=armel EGL_TYPE=$egl_type
+fi
+
+# create libUMP, libEGL, libGLES and includes
+make
+
+
+# install
+INSTALL=`pwd`/.install
+make install DESTDIR=$INSTALL
+
+
+# create version check utility
+make -C version
+cp version/version $INSTALL/usr/bin/mali_version
+
+# create test utility
+CFLAGS="${CFLAGS} -I$INSTALL/usr/include -L$INSTALL/usr/lib -lX11 -Wl,-rpath=$INSTALL/usr/lib"
+make -C test
+cp test/test $INSTALL/usr/bin/mali_test
+

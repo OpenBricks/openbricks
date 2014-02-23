@@ -1,0 +1,78 @@
+--- a/xbmc/utils/MathUtils.h	2013-11-16 04:39:22.000000000 +0100
++++ b/xbmc/utils/MathUtils.h	2013-12-01 11:39:18.691286850 +0100
+@@ -87,43 +87,38 @@
+ 
+     /* The assembly below implements the following logic:
+      if (x < 0)
+-       inc = -0.5f
++       inc = -0.4999999999999998
+      else
+-       inc = 0.5f
+-     int_val = trunc(x+inc);
+-     err = x - int_val;
+-     if (err == 0.5f)
+-       int_val++;
+-     return int_val;
++       inc =  0.5
++     return trunc(x+inc);
+     */
+ 
++#if !defined(__ARM_PCS_VFP)
++    static double round_positive = +0.5;
++#endif
++    static double round_negative = -0.4999999999999998;
++    double temp_val;
++
+     __asm__ __volatile__ (
++      "fcmpezd %P[value]                    \n\t"   // Check value against zero (value == 0?)
++      "fmstat                               \n\t"   // Copy the floating-point status flags into the general-purpose status flags
++      "ite pl                               \n\t"
+ #if defined(__ARM_PCS_VFP)
+-      "fconstd d1,#%G[rnd_val]     \n\t" // Copy round_to_nearest into a working register (d1 = 0.5)
++      "fconstdpl %P[rnd_ofs],#%G[rnd_pos]   \n\t"   // Copy round_to_nearest into a working register (+0.5)
+ #else
+-      "vmov.F64 d1,%[rnd_val]      \n\t"
++      "flddpl %P[rnd_ofs],%[rnd_pos]        \n\t"   // Copy round_positive into a working register (+0.5)
+ #endif
+-      "fcmpezd %P[value]           \n\t" // Check value against zero (value == 0?)
+-      "fmstat                      \n\t" // Copy the floating-point status flags into the general-purpose status flags
+-      "it mi                       \n\t"
+-      "vnegmi.F64 d1, d1           \n\t" // if N-flag is set, negate round_to_nearest (if (value < 0) d1 = -1 * d1)
+-      "vadd.F64 d1,%P[value],d1    \n\t" // Add round_to_nearest to value, store result in working register (d1 += value)
+-      "vcvt.S32.F64 s3,d1          \n\t" // Truncate(round towards zero) (s3 = (int)d1)
+-      "vmov %[result],s3           \n\t" // Store the integer result in a general-purpose register (result = s3)
+-      "vcvt.F64.S32 d1,s3          \n\t" // Convert back to floating-point (d1 = (double)s3)
+-      "vsub.F64 d1,%P[value],d1    \n\t" // Calculate the error (d1 = value - d1)
++      "flddmi %P[rnd_ofs],%[rnd_neg]        \n\t"   // Copy round_negative into a working register (-0.4999999999999998)
++      "vadd.F64 %P[rnd_ofs],%P[value]       \n\t"   // Add round_to_nearest to value, store result in working register
++      "vcvt.S32.F64 %[result],%P[rnd_ofs]   \n\t"   // Truncate(round towards zero)
++      : [rnd_ofs] "=&w"(temp_val), [result] "=t"(i) // Outputs
++      : [rnd_neg] "m"(round_negative), 
+ #if defined(__ARM_PCS_VFP)
+-      "fconstd d2,#%G[rnd_val]     \n\t" // d2 = 0.5;
++      [rnd_pos] "Dy"(round_to_nearest),
+ #else
+-      "vmov.F64 d2,%[rnd_val]      \n\t"
+-#endif
+-      "fcmped d1, d2               \n\t" // (d1 == 0.5?)
+-      "fmstat                      \n\t" // Copy the floating-point status flags into the general-purpose status flags
+-      "it eq                       \n\t"
+-      "addeq %[result],#1          \n\t" // (if (d1 == d2) result++;)
+-      : [result] "=r"(i)                                  // Outputs
+-      : [rnd_val] "Dv" (round_to_nearest), [value] "w"(x) // Inputs
+-      : "d1", "d2", "s3"                                  // Clobbers
++      [rnd_pos] "m"(round_positive), 
++#endif      
++      [value] "w"(x) : "cc"                         // Inputs, Clobbers
+     );
+ 
+ #elif defined(__SSE2__)
+@@ -173,7 +168,7 @@
+ #elif defined(__arm__)
+     __asm__ __volatile__ (
+       "vcvt.S32.F64 %[result],%P[value]   \n\t" // Truncate(round towards zero) and store the result
+-      : [result] "=w"(i)                        // Outputs
++      : [result] "=t"(i)                        // Outputs
+       : [value] "w"(x)                          // Inputs
+     );
+     return i;

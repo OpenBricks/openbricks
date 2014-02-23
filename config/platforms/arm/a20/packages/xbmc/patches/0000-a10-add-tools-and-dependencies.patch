@@ -1,0 +1,939 @@
+diff --git a/tools/a10/depends/Makefile b/tools/a10/depends/Makefile
+new file mode 100644
+index 0000000..12ce06a
+--- /dev/null
++++ b/tools/a10/depends/Makefile
+@@ -0,0 +1,9 @@
++include depends.mk
++
++all clean:
++	if [ ! -e $(TARBALLS) ]; then mkdir $(TARBALLS); fi
++	(cd opengles; $(MAKE) $@)
++	(cd cedarv; $(MAKE) $@)
++	(cd taglib; $(MAKE) $@)
++	@echo "\nmake $@ for dependencies done.\n"
++
+diff --git a/tools/a10/depends/README b/tools/a10/depends/README
+new file mode 100644
+index 0000000..cce3f62
+--- /dev/null
++++ b/tools/a10/depends/README
+@@ -0,0 +1,25 @@
++Please look at depends.mk.
++After adjusting run make && make -C xbmc.
++If configure is done you can compile from the source root directory.
++
++KNOWN PROBLEMS WITH HARDWARE RENDERING:
++=======================================
++
++- To enable hardware layer rendering you have to set environment A10HWR=1.
++
++- Sometimes the display engine does not initialize correctly and not all
++  colors get rendered or you get pixel noise. After some video startups this
++  disappears.
++
++- Using 1080p and alpha video blending there is a horrible screen tearing,
++  for this reason alpha blending is disabled at 1080p for video at the moment.
++  You can enable it (e.g. for tracking down the problem at kernel level) 
++  by setting the environment variable A10AB=1.
++
++KNOWN PROBLEMS WITH PVR:
++========================
++
++- only SD-TV tested (since i do not have DVB-S2 hardware)
++
++PLEASE REMEMBER: This is poc.
++
+diff --git a/tools/a10/depends/cedarv/.gitignore b/tools/a10/depends/cedarv/.gitignore
+new file mode 100644
+index 0000000..2377af0
+--- /dev/null
++++ b/tools/a10/depends/cedarv/.gitignore
+@@ -0,0 +1,10 @@
++/adapter
++/libcedarv
++/libvecore
++/vbv
++/fbm
++.installed
++.extracted
++cedardev_api.h
++drv_display_sun4i.h
++
+diff --git a/tools/a10/depends/cedarv/Makefile b/tools/a10/depends/cedarv/Makefile
+new file mode 100644
+index 0000000..6b4617c
+--- /dev/null
++++ b/tools/a10/depends/cedarv/Makefile
+@@ -0,0 +1,63 @@
++include ../depends.mk
++
++TARBALL=cedarx-libs.tar.gz
++URL=https://github.com/linux-sunxi/cedarx-libs/tarball/master
++
++ifeq ($(USEARMHF), 1)
++LIBVERSION=linux-armhf
++else
++LIBVERSION=linux-armel
++endif
++
++SRCS = \
++	libcedarv/vdecoder.c \
++	libcedarv/awprintf.c \
++	fbm/fbm.c \
++	vbv/vbv.c \
++	adapter/libve_adapter.c \
++	adapter/os_adapter.c
++
++ifeq ($(USEARMHF), 1)
++SRCS += adapter/avheap/avheap.c
++endif
++
++OBJS = $(SRCS:%.c=%.o)
++
++TARGET=libcedarv.a
++
++all: .installed
++
++.installed: $(TARGET)
++	install -d $(XBMCPREFIX)/lib
++ifneq ($(USEARMHF), 1)
++	cp adapter/cdxalloc/libcedarxalloc.so $(XBMCPREFIX)/lib
++endif
++	cp libvecore/libvecore.so $(XBMCPREFIX)/lib
++	touch $@
++
++$(TARGET) : .extracted $(OBJS)
++	rm -f $(TARGET)
++	$(AR) cq $(TARGET) $(OBJS)
++	
++.extracted: $(TARBALLS)/$(TARBALL)
++	rm -rf tmp	
++	mkdir tmp
++	( cd tmp &&\
++	  tar xvfz $(TARBALLS)/$(TARBALL) &&\
++	  cd linux-sunxi-*/libcedarv/$(LIBVERSION) &&\
++	  rm Makefile .gitignore cedardefs.mk &&\
++	  rm -rf sample &&\
++	  mv * ../../../../ \
++	)
++	rm -rf tmp $(OBJS)
++	touch $@
++	
++$(TARBALLS)/$(TARBALL):
++	install -d $(TARBALLS)
++	wget $(URL) -O $(TARBALLS)/$(TARBALL)
++
++clean:
++	rm -f $(TARGET) $(OBJS)
++	rm -rf adapter fbm libcedarv libvecore vbv
++	rm -f .installed .extracted cedardev_api.h drv_display_sun4i.h
++
+diff --git a/tools/a10/depends/depends.mk b/tools/a10/depends/depends.mk
+new file mode 100644
+index 0000000..08fda7e
+--- /dev/null
++++ b/tools/a10/depends/depends.mk
+@@ -0,0 +1,137 @@
++# I used miniand lubuntu (kernel 3.0.36) on mk802.
++#
++# On a10 lubuntu run apt-get build-dep xbmc in it to get all dependencies.
++# SDKSTAGE: rootfs from lubuntu/armel if cross-compiling. 
++# On x86 Ubuntu 12.04: I had to make symlinks for 
++# /lib/arm-linux-gnueabi, /usr/lib/arm-linux-gnueabi 
++# and /usr/include/arm-linux-gnueabi to their path in ${SDKSTAGE} 
++#
++
++#your home dir
++#HOME=$(shell echo ~)
++HOME=/opt/a10hacking
++#where your tarballs go
++TARBALLS=$(HOME)/xbmctmp/tarballs
++#whether to compile for armhf
++USEARMHF=1
++
++#wget-command to download files
++WGET=wget --no-check-certificate
++
++#
++# armhf notes:
++#
++# I used linaro alip together with wip/linux-sunxi-3.0/next_mali kernel.
++#
++
++ifeq ($(USEARMHF), 1)
++HF=hf
++else
++HF=
++endif
++
++ifeq ($(shell uname -m),armv7l)
++#
++#native compile
++#
++
++#where is your arm rootfs
++SDKSTAGE=/
++#where is your xbmc install root 
++XBMCPREFIX=/allwinner/xbmc-pvr-bin$(HF)
++#where is your toolchain
++TOOLCHAIN=/usr
++
++JOBS=1
++export HOST=arm-linux-gnueabi$(HF)
++export BUILD=arm-linux-gnueabi$(HF)
++export CROSS_COMPILE=
++
++else
++#
++#cross compile
++#
++
++#where is your arm rootfs
++SDKSTAGE=$(HOME)/rootfs/debrootfs
++#where is your xbmc install root 
++XBMCPREFIX=/allwinner/xbmc-pvr-bin$(HF)
++#where is your toolchain
++TOOLCHAIN=/usr/arm-linux-gnueabi$(HF)
++
++JOBS=4
++export HOST=arm-linux-gnueabi$(HF)
++export BUILD=i686-linux
++export CROSS_COMPILE=${HOST}-
++
++endif
++
++
++export PREFIX=${XBMCPREFIX}
++
++GLESDIR=$(shell cd ..;pwd)/opengles
++
++export GLESINCLUDES=-I$(GLESDIR)/include
++
++CEDARDIR=$(shell cd ..;pwd)/cedarv
++
++export CEDARINCLUDES=\
++	-I$(CEDARDIR) \
++	-I$(CEDARDIR)/adapter \
++	-I$(CEDARDIR)/adapter/cdxalloc \
++	-I$(CEDARDIR)/adapter/avheap \
++	-I$(CEDARDIR)/fbm \
++	-I$(CEDARDIR)/libcedarv \
++	-I$(CEDARDIR)/libvecore \
++	-I$(CEDARDIR)/vbv
++
++#vecore,cedarxalloc taken from $(XBMCPREFIX)/lib
++ifeq ($(USEARMHF), 1)
++export CEDARLIBS=-L$(CEDARDIR) -lcedarv -lvecore
++else
++export CEDARLIBS=-L$(CEDARDIR) -lcedarv -lvecore -lcedarxalloc
++endif
++
++export RLINK_PATH=-Wl,-rpath,$(XBMCPREFIX)/lib -Wl,-rpath-link,${XBMCPREFIX}/lib:$(SDKSTAGE)/usr/local/lib:${SDKSTAGE}/lib:${SDKSTAGE}/lib/arm-linux-gnueabi$(HF):${SDKSTAGE}/usr/lib:${SDKSTAGE}/usr/lib/arm-linux-gnueabi$(HF)
++export LDFLAGS=\
++${RLINK_PATH} \
++-L${XBMCPREFIX}/lib \
++-L$(SDKSTAGE)/usr/local/lib \
++-L${SDKSTAGE}/lib \
++-L${SDKSTAGE}/lib/arm-linux-gnueabi$(HF) \
++-L${SDKSTAGE}/usr/lib \
++-L${SDKSTAGE}/usr/lib/arm-linux-gnueabi$(HF)
++
++ifeq ($(USEARMHF), 1)
++export CFLAGS=-pipe -O3 -mfloat-abi=hard -mtune=cortex-a8 -mcpu=cortex-a8 -D__ARM_NEON__ -DALLWINNERA10
++else
++export CFLAGS=-pipe -O3 -mfloat-abi=softfp -mtune=cortex-a8 -mcpu=cortex-a8 -D__ARM_NEON__ -DALLWINNERA10
++endif
++export CFLAGS+=$(CEDARINCLUDES) $(GLESINCLUDES)
++export CFLAGS+=\
++-isystem${XBMCPREFIX}/include \
++-isystem$(SDKSTAGE)/usr/local/include \
++-isystem${SDKSTAGE}/usr/include \
++-isystem${SDKSTAGE}/usr/include/arm-linux-gnueabi$(HF)
++export CFLAGS+=${LDFLAGS}
++
++export CXXFLAGS=${CFLAGS}
++export CPPFLAGS=${CFLAGS}
++export LD=${CROSS_COMPILE}ld
++export AR=${CROSS_COMPILE}ar
++export CC=${CROSS_COMPILE}gcc
++export CXX=${CROSS_COMPILE}g++
++export CXXCPP=${CXX} -E
++export RANLIB=${CROSS_COMPILE}ranlib
++export STRIP=${CROSS_COMPILE}strip
++export OBJDUMP=${CROSS_COMPILE}objdump
++export PKG_CONFIG_SYSROOT_DIR=${SDKSTAGE}
++export PKG_CONFIG_LIBDIR=${PREFIX}/lib/pkgconfig:${SDKSTAGE}/lib/pkgconfig:${SDKSTAGE}/usr/lib/pkgconfig:${SDKSTAGE}/usr/lib/arm-linux-gnueabi$(HF)/pkgconfig:${SDKSTAGE}/usr/share/pkgconfig:${SDKSTAGE}/usr/local/lib/pkgconfig
++export PKG_CONFIG_PATH=${PREFIX}/bin/pkg-config
++export PYTHON_VERSION=2.7
++export PATH:=${PREFIX}/bin:${TOOLCHAIN}/bin:$(PATH)
++export TEXTUREPACKER_NATIVE_ROOT=/usr
++export PYTHON_LDFLAGS=-L${SDKSTAGE}/usr/lib -lpython$(PYTHON_VERSION)
++export PYTHON_CPPFLAGS=-I${SDKSTAGE}/usr/include/python$(PYTHON_VERSION)
++export PYTHON_SITE_PKG=${SDKSTAGE}/usr/lib/python$(PYTHON_VERSION)/site-packages
++export PYTHON_NOVERSIONCHECK=no-check
+diff --git a/tools/a10/depends/libmad/.gitignore b/tools/a10/depends/libmad/.gitignore
+new file mode 100644
+index 0000000..98bc0a8
+--- /dev/null
++++ b/tools/a10/depends/libmad/.gitignore
+@@ -0,0 +1,5 @@
++.installed
++.builded
++.configured
++.extracted
++/libmad*
+diff --git a/tools/a10/depends/libmad/Makefile b/tools/a10/depends/libmad/Makefile
+new file mode 100644
+index 0000000..56973d6
+--- /dev/null
++++ b/tools/a10/depends/libmad/Makefile
+@@ -0,0 +1,36 @@
++include ../depends.mk
++
++export CFLAGS+=-marm
++
++LOCATION=ftp://ftp.mars.org/pub/mpeg
++TARBALL=libmad-0.15.1b.tar.gz
++
++all: .installed
++
++.installed: .builded
++	(cd libmad*; sudo make install)
++	touch $@
++
++.builded: .configured
++	(cd libmad*; make)
++	touch $@
++
++.configured: .extracted
++	(  cd libmad* &&\
++	   ./configure \
++		--host=$(HOST) \
++		--build=$(BUILD) \
++		--prefix=$(SDKSTAGE)/usr \
++		--libdir=$(SDKSTAGE)/usr/lib/arm-linux-gnueabi$(HF) \
++	)
++	touch $@
++
++.extracted: $(TARBALLS)/$(TARBALL)
++	tar xvfz $(TARBALLS)/$(TARBALL)
++	touch .extracted
++
++$(TARBALLS)/$(TARBALL):
++	$(WGET) $(LOCATION)/$(TARBALL) -O $(TARBALLS)/$(TARBALL)
++	
++clean:
++	rm -rf .installed .builded .configured .extracted libmad*
+diff --git a/tools/a10/depends/libmad/README b/tools/a10/depends/libmad/README
+new file mode 100644
+index 0000000..fce49cd
+--- /dev/null
++++ b/tools/a10/depends/libmad/README
+@@ -0,0 +1 @@
++If you encounter crashes playing mp3 please replace libmad with this build.
+diff --git a/tools/a10/depends/opengles/.gitignore b/tools/a10/depends/opengles/.gitignore
+new file mode 100644
+index 0000000..97524b0
+--- /dev/null
++++ b/tools/a10/depends/opengles/.gitignore
+@@ -0,0 +1,4 @@
++/sunxi-mali
++.git
++.installed
++
+diff --git a/tools/a10/depends/opengles/Makefile b/tools/a10/depends/opengles/Makefile
+new file mode 100644
+index 0000000..b85f27c
+--- /dev/null
++++ b/tools/a10/depends/opengles/Makefile
+@@ -0,0 +1,31 @@
++include ../depends.mk
++
++MALIGIT=https://github.com/linux-sunxi/sunxi-mali.git
++SUNXI-MALI=sunxi-mali
++VERSION=r3p0
++ABI=armhf
++EGL_TYPE=framebuffer
++
++all: .installed
++
++.installed: .git
++	(	cd $(SUNXI-MALI) &&\
++		make config VERSION=$(VERSION) ABI=$(ABI) EGL_TYPE=$(EGL_TYPE) &&\
++		echo "prefix = $(XBMCPREFIX)/" >> Makefile.setup &&\
++		rm -rf $(XBMCPREFIX) &&\
++		mkdir -p $(XBMCPREFIX)/lib &&\
++		mkdir -p $(XBMCPREFIX)/include &&\
++		make && make install \
++	)
++	touch $@
++
++.git:
++		git clone $(MALIGIT)
++	(	cd $(SUNXI-MALI) &&\
++		git submodule init &&\
++		git submodule update \
++	)
++	touch $@
++
++clean:
++	rm -rf .installed .git $(SUNXI-MALI)
+\ No newline at end of file
+diff --git a/tools/a10/depends/opengles/README b/tools/a10/depends/opengles/README
+new file mode 100644
+index 0000000..b7540fc
+--- /dev/null
++++ b/tools/a10/depends/opengles/README
+@@ -0,0 +1,3 @@
++I used armel libraries from https://github.com/cnxsoft/a10-bin 
++and includes from http://malideveloper.com/files/Mali_OpenGL_ES_2.0_SDK_for_Linux_On_ARM_v1.2.0.9310_Linux.tar.gz
++
+diff --git a/tools/a10/depends/package/.gitignore b/tools/a10/depends/package/.gitignore
+new file mode 100644
+index 0000000..27162a5
+--- /dev/null
++++ b/tools/a10/depends/package/.gitignore
+@@ -0,0 +1,3 @@
++*.deb
++*.tar.gz
++/tmp
+diff --git a/tools/a10/depends/package/Makefile b/tools/a10/depends/package/Makefile
+new file mode 100644
+index 0000000..6ca8899
+--- /dev/null
++++ b/tools/a10/depends/package/Makefile
+@@ -0,0 +1,42 @@
++include ../depends.mk
++
++LCLPREFIX=$(shell echo $(XBMCPREFIX) | sed 's/^\///g')
++
++DEB=xbmca10.deb
++TARBALL1=xbmca10deb.tar.gz
++TARBALL2=xbmca10.tar.gz
++
++all: $(TARBALL1)
++
++$(TARBALL1): root/DEBIAN/control $(XBMCPREFIX)/lib/xbmc/xbmc.bin README
++	(	rm -rf tmp &&\
++		cp -r root tmp &&\
++		cd tmp &&\
++		tar cf - $(XBMCPREFIX) | tar xf - &&\
++		rm -rf $(LCLPREFIX)/include &&\
++		rm -rf $(LCLPREFIX)/lib/pkgconfig &&\
++		rm -f  $(LCLPREFIX)/lib/*.a &&\
++		$(STRIP) --strip-unneeded `find . -name xbmc.bin -print` &&\
++		$(STRIP) --strip-unneeded `find . -name *.so -print` \
++	)
++	dpkg -b tmp $(DEB)
++	tar cvzf $(TARBALL1) README $(DEB)
++	rm -r tmp $(DEB)
++
++tarball: $(XBMCPREFIX)/lib/xbmc/xbmc.bin
++	(	rm -rf tmp &&\
++		mkdir tmp &&\
++		cd tmp &&\
++		tar cf - $(XBMCPREFIX) | tar xf - &&\
++		rm -rf $(LCLPREFIX)/include &&\
++		rm -rf $(LCLPREFIX)/lib/pkgconfig &&\
++		rm -f  $(LCLPREFIX)/lib/*.a &&\
++		$(STRIP) --strip-unneeded `find . -name xbmc.bin -print` &&\
++		$(STRIP) --strip-unneeded `find . -name *.so -print` \
++	)
++	tar -czvf $(TARBALL2) -C tmp .
++
++clean:
++	rm -rf tmp
++	rm -f $(TARBALL1) $(DEB)
++	rm -f $(TARBALL2)
+diff --git a/tools/a10/depends/package/README b/tools/a10/depends/package/README
+new file mode 100644
+index 0000000..2b07e47
+--- /dev/null
++++ b/tools/a10/depends/package/README
+@@ -0,0 +1,22 @@
++**WARNING: alpha version - use at your own risk.**
++
++I tested on 1GB mk802 with miniand lubuntu.
++Resolution is fixed to 1280x720.
++
++Installation:
++
++Get miniand lubuntu with 720p resolution for your device from here:
++
++https://www.miniand.com/forums/forums/development/topics/mk802-guides-and-images
++
++After that install xbmca10.deb with the following command:
++
++sudo gdebi xbmca10.deb
++
++Starting:
++
++sudo start xbmc
++
++(Attention: this stops lightdm/x11-session, so it is a good idea to have ssh server running)
++
++First start takes some time since xbmc creates the database and starts downloading plugins.
+diff --git a/tools/a10/depends/package/root/.gitignore b/tools/a10/depends/package/root/.gitignore
+new file mode 100644
+index 0000000..9ea22e4
+--- /dev/null
++++ b/tools/a10/depends/package/root/.gitignore
+@@ -0,0 +1 @@
++/allwinner
+diff --git a/tools/a10/depends/package/root/DEBIAN/control b/tools/a10/depends/package/root/DEBIAN/control
+new file mode 100644
+index 0000000..a4a8e12
+--- /dev/null
++++ b/tools/a10/depends/package/root/DEBIAN/control
+@@ -0,0 +1,79 @@
++Section: video
++Priority: optional
++Maintainer: empat zero 
++Package: xbmca10
++Architecture: armel
++Version: 0.0.1-alpha
++Depends: mesa-utils,
++ x11-utils,
++ ttf-liberation,
++ ttf-dejavu-core,
++ python-imaging,
++ python,
++ python-support (>= 0.90.0),
++ libasound2 (>= 1.0.23), 
++ libavahi-client3 (>= 0.6.16),
++ libavahi-common3 (>= 0.6.16),
++ libbluetooth3 (>= 4.91),
++ libbz2-1.0,
++ libc6 (>= 2.15),
++ libcdio13,
++ libdbus-1-3 (>= 1.0.2),
++ libexpat1 (>= 1.95.8),
++ libfreetype6 (>= 2.2.1),
++ libfribidi0 (>= 0.19.2),
++ libgcc1 (>= 1:4.1.1),
++ libgcrypt11 (>= 1.4.5),
++ libgl1-mesa-glx | libgl1,
++ libglew1.6 (>= 1.6.0),
++ libglu1-mesa | libglu1,
++ libhal-storage1 (>= 0.5.8.1),
++ libhal1 (>= 0.5.8.1),
++ libjpeg8 (>= 8c),
++ liblzo2-2,
++ libmicrohttpd5,
++ libmysqlclient18 (>= 5.5.13-1),
++ libpcre3 (>= 8.10),
++ libpcrecpp0 (>= 7.7),
++ libpng12-0 (>= 1.2.13-4),
++ libpulse0 (>= 1:1.0),
++ libpython2.7 (>= 2.7),
++ libsamplerate0 (>= 0.1.7),
++ libsdl-mixer1.2,
++ libsdl1.2debian (>= 1.2.10-1),
++ libsmbclient (>= 2:3.2.0),
++ libsqlite3-0 (>= 3.6.11),
++ libssl1.0.0 (>= 1.0.0),
++ libstdc++6 (>= 4.6),
++ libtiff4,
++ libudev0 (>= 147),
++ libva-glx1,
++ libva1 (>> 1.0.15~),
++ libvorbis0a (>= 1.1.2),
++ libvorbisenc2 (>= 1.1.2),
++ libx11-6,
++ libxext6,
++ libxmu6,
++ libxrandr2 (>= 2:1.2.0),
++ libyajl1 (>= 1.0.5),
++ zlib1g (>= 1:1.1.4),
++ libcurl3-gnutls (>= 7.16.2-1),
++ libtinyxml2.6.2,
++ libssh-4
++Recommends: libass4 (>= 0.9.7),
++ libbluray1,
++ libcec1,
++ libflac8 (>= 1.2.1),
++ libmad0 (>= 0.15.1b-3),
++ libmodplug1,
++ libmp3lame0,
++ libmpeg2-4,
++ libnfs1,
++ libogg0 (>= 1.0rc3),
++ libplist1 (>= 0.13),
++ librtmp0 (>= 2.3),
++ libshairport1,
++ libvdpau1 (>= 0.2),
++ libvorbisfile3 (>= 1.1.2)
++Description: Allwinner A10 test version of XBMC. Strictly alpha, use at your own risk.
++
+diff --git a/tools/a10/depends/package/root/etc/init/xbmc.conf b/tools/a10/depends/package/root/etc/init/xbmc.conf
+new file mode 100644
+index 0000000..4ea5c6a
+--- /dev/null
++++ b/tools/a10/depends/package/root/etc/init/xbmc.conf
+@@ -0,0 +1,23 @@
++# XBMC Daemon
++#
++
++#thanks, Sam Nazarko
++
++description	"xbmc daemon"
++author		"None"
++
++#you can enable autostart by uncommenting next line
++#start on (started dbus and started mountall and stopped lightdm)
++stop on (xbmc-do-stop or runlevel [!2345])
++
++respawn
++
++pre-start script
++test -x /etc/xbmc-watchdog.sh || { stop; logger -t xbmc "cannot execute /allwinner/xbmc-watchdog.sh, exiting" ; exit 1; }
++end script
++
++pre-stop script
++test "x" == x`pidof xbmc.bin` || kill `pidof xbmc.bin`
++end script
++
++exec /etc/xbmc-watchdog.sh
+diff --git a/tools/a10/depends/package/root/etc/xbmc-watchdog.sh b/tools/a10/depends/package/root/etc/xbmc-watchdog.sh
+new file mode 100755
+index 0000000..a741dd8
+--- /dev/null
++++ b/tools/a10/depends/package/root/etc/xbmc-watchdog.sh
+@@ -0,0 +1,49 @@
++#!/bin/sh
++
++#USEHWR="A10HWR=1"
++
++if [ -d /lib/arm-linux-gnueabihf ]
++then
++	#assume linaro rootfs
++	USER=linaro
++	XBMC=/allwinner/xbmc-pvr-binhf/lib/xbmc/xbmc.bin
++else
++	#assume miniand rootfs
++	USER=miniand
++	XBMC=/allwinner/xbmc-pvr-bin/lib/xbmc/xbmc.bin
++fi
++
++#
++#some q&d to avoid editing system config files.
++#
++depmod -a `uname -r`
++modprobe lcd
++modprobe hdmi
++modprobe ump
++modprobe disp
++modprobe mali
++modprobe mali_drm
++chmod 666 /dev/mali /dev/ump /dev/cedar_dev /dev/disp
++chmod -R 666 /dev/input/*
++chmod -R 666 /dev/snd/*
++
++stop lightdm
++
++#thanks, Sam Nazarko 
++
++while true
++do
++    su - $USER -c "$USEHWR $XBMC --standalone -fs --lircdev /var/run/lirc/lircd 2>&1 | logger -t xbmc"
++    case "$?" in
++         0) # user quit. 
++	    	sleep 2 ;;
++        64) # shutdown system.
++            poweroff;;
++        65) # warm Restart xbmc
++            sleep 2 ;;
++        66) # Reboot System
++            reboot;;
++         *) # this should not happen
++            sleep 30 ;;
++    esac
++done
+diff --git a/tools/a10/depends/taglib/.gitignore b/tools/a10/depends/taglib/.gitignore
+new file mode 100644
+index 0000000..e1db2d3
+--- /dev/null
++++ b/tools/a10/depends/taglib/.gitignore
+@@ -0,0 +1,4 @@
++.installed
++.builded
++.extracted
++/taglib*
+diff --git a/tools/a10/depends/taglib/Makefile b/tools/a10/depends/taglib/Makefile
+new file mode 100644
+index 0000000..b1237f4
+--- /dev/null
++++ b/tools/a10/depends/taglib/Makefile
+@@ -0,0 +1,34 @@
++include ../depends.mk
++
++LOCATION=https://github.com/downloads/taglib/taglib
++TARBALL=taglib-1.8.tar.gz
++
++all: .installed
++
++.installed: .builded
++	$(MAKE) -C taglib*/build install
++	touch $@
++
++.builded: .extracted
++	(	cd taglib* && rm -rf build && mkdir build && cd build &&\
++		CC=$(CC) CXX=$(CXX) cmake        \
++        	-DENABLE_STATIC=1 \
++          	-DCMAKE_C_FLAGS:STRING="$(CPPFLAGS) $(CFLAGS)" \
++          	-DCMAKE_CXX_FLAGS:STRING="$(CPPFLAGS) $(CXXFLAGS)" \
++          	-DCMAKE_INCLUDE_PATH=$(PREFIX)/include \
++          	-DCMAKE_LIBRARY_PATH=$(PREFIX)/lib \
++          	-DCMAKE_INSTALL_NAME_DIR=$(PREFIX)/lib \
++          	-DCMAKE_INSTALL_PREFIX=$(PREFIX) \
++          	-DCMAKE_FIND_ROOT_PATH="$(SDKSTAGE):/" .. \
++    )
++	touch $@
++
++.extracted: $(TARBALLS)/$(TARBALL)
++	tar xvfz $(TARBALLS)/$(TARBALL)
++	touch .extracted
++
++$(TARBALLS)/$(TARBALL):
++	$(WGET) $(LOCATION)/$(TARBALL) -O $(TARBALLS)/$(TARBALL)
++	
++clean:
++	rm -rf .installed .builded .configured .extracted taglib*
+diff --git a/tools/a10/depends/taglib/README b/tools/a10/depends/taglib/README
+new file mode 100644
+index 0000000..cc79d22
+--- /dev/null
++++ b/tools/a10/depends/taglib/README
+@@ -0,0 +1,3 @@
++TODO:
++
++(Build at your own in lib/taglib. Use native compile and copy to rootfs.)
+diff --git a/tools/a10/depends/xbmc/Makefile b/tools/a10/depends/xbmc/Makefile
+new file mode 100644
+index 0000000..84b9b9f
+--- /dev/null
++++ b/tools/a10/depends/xbmc/Makefile
+@@ -0,0 +1,46 @@
++include ../depends.mk
++
++CONFIGURE=./configure \
++	--prefix=$(PREFIX) \
++	--build=$(BUILD) \
++	--host=$(HOST) \
++	--disable-x11 \
++	--disable-sdl \
++	--disable-xrandr \
++	--disable-joystick \
++	--disable-gl \
++	--disable-vdpau \
++	--disable-vaapi \
++	--disable-openmax \
++	--enable-neon \
++	--enable-gles \
++	--disable-mysql \
++	--disable-optical-drive \
++	--disable-crystalhd \
++	--disable-vtbdecoder \
++	--disable-pulse \
++	--disable-projectm \
++	--disable-libcec \
++	--disable-optimizations \
++
++SRC=../../../../
++
++all: dep
++	(cd $(SRC); make -j$(JOBS))
++
++install:
++	(cd $(SRC); make install)
++
++install-only:
++	(cd $(SRC); make install)
++
++bin-only:
++	(cd $(SRC); make -j$(JOBS))
++
++dep: bootstrap configure
++
++bootstrap:
++	(cd $(SRC); ./bootstrap)
++
++configure:
++	(cd $(SRC); $(CONFIGURE))
+\ No newline at end of file
+diff --git a/tools/android/depends/Makefile.in b/tools/android/depends/Makefile.in
+index a3e65db..2c46d34 100644
+--- a/tools/android/depends/Makefile.in
++++ b/tools/android/depends/Makefile.in
+@@ -15,6 +15,8 @@ SUBDIRS = \
+ 	liblzo2-native libjpeg-turbo-native libpng-native tiff-native libsdl_image rpl \
+ 	libamplayer libssh taglib swig-native pcre-native xbmc-pvr-addons libusb libnfs
+ 
++SUBDIRS += cedarv
++
+ .PHONY: buildtools $(BUILDTOOLS) subdirs $(SUBDIRS) arm
+ 
+ all: subdirs
+diff --git a/tools/android/depends/Makefile.include.in b/tools/android/depends/Makefile.include.in
+index a209546..6e14cad 100644
+--- a/tools/android/depends/Makefile.include.in
++++ b/tools/android/depends/Makefile.include.in
+@@ -26,9 +26,9 @@ endif
+ PREFIX=$(XBMCPREFIX)/$(PLATFORM)
+ NATIVEPREFIX=$(XBMCPREFIX)/$(NATIVEPLATFORM)
+ 
+-PLATFORM_FLAGS=-DANDROID -Os
++PLATFORM_FLAGS=-DANDROID -DALLWINNERA10 -Os
+ ifeq ($(PLATFORM),armeabi-v7a)
+-  PLATFORM_FLAGS+=-march=armv7-a -mtune=cortex-a9 -mfloat-abi=softfp -mfpu=neon -D__ARM_ARCH_7__ -D__ARM_ARCH_7A__
++  PLATFORM_FLAGS+=-march=armv7-a -mtune=cortex-a8 -mfloat-abi=softfp -mfpu=neon -D__ARM_ARCH_7__ -D__ARM_ARCH_7A__
+ endif
+ 
+ ifeq ($(PLATFORM),x86)
+@@ -43,6 +43,22 @@ CONFIG_GUESS=$(NATIVEPREFIX)/share/automake-1.11/config.guess
+ RPL=$(NATIVEPREFIX)/bin/python $(NATIVEPREFIX)/bin/rpl
+ YASM=$(NATIVEPREFIX)/bin/yasm
+ 
++CEDARDIR=$(shell pwd)/../cedarv
++
++export CEDARINCLUDES=\
++        -I$(CEDARDIR) \
++        -I$(CEDARDIR)/adapter \
++        -I$(CEDARDIR)/adapter/cdxalloc \
++        -I$(CEDARDIR)/fbm \
++        -I$(CEDARDIR)/libcedarv \
++        -I$(CEDARDIR)/libvecore \
++        -I$(CEDARDIR)/vbv
++
++export CEDARLIBS=\
++        -L$(CEDARDIR) -lcedarv \
++        -L$(CEDARDIR)/adapter/cdxalloc -lcedarxalloc \
++        -L$(CEDARDIR)/libvecore -lvecore
++
+ ifneq ($(NATIVE_BUILD),1)
+   export SYSROOT=$(TOOLCHAIN)/sysroot
+   export CROSSTOOLS=$(TOOLCHAIN)/bin/$(HOST)-
+@@ -56,10 +72,10 @@ ifneq ($(NATIVE_BUILD),1)
+   export RANLIB=$(CROSSTOOLS)ranlib
+   export OBJDUMP=$(CROSSTOOLS)objdump
+   export READELF=$(CROSSTOOLS)readelf
+-  export CFLAGS=$(PLATFORM_FLAGS) -I$(PREFIX)/include -I$(PREFIX)/include/$(SDK_PLATFORM) -fexceptions
++  export CFLAGS=$(CEDARINCLUDES) $(PLATFORM_FLAGS) -I$(PREFIX)/include -I$(PREFIX)/include/$(SDK_PLATFORM) -fexceptions
+   export LDFLAGS=$(PLATFORM_FLAGS) -L$(PREFIX)/lib -L$(PREFIX)/lib/$(SDK_PLATFORM)
+   export CPPFLAGS=$(PLATFORM_FLAGS) -I$(PREFIX)/include -I$(PREFIX)/include/$(SDK_PLATFORM) -fexceptions
+-  export CXXFLAGS=$(PLATFORM_FLAGS) -I$(PREFIX)/include -I$(PREFIX)/include/$(SDK_PLATFORM) -fexceptions -frtti
++  export CXXFLAGS=$(CEDARINCLUDES) $(PLATFORM_FLAGS) -I$(PREFIX)/include -I$(PREFIX)/include/$(SDK_PLATFORM) -fexceptions -frtti
+ 
+   export PKG_CONFIG_PATH=$(PREFIX)/lib/pkgconfig
+   export PKG_CONFIG=$(NATIVEPREFIX)/bin/pkg-config
+diff --git a/tools/android/depends/cedarv/Makefile b/tools/android/depends/cedarv/Makefile
+new file mode 100644
+index 0000000..f901ad6
+--- /dev/null
++++ b/tools/android/depends/cedarv/Makefile
+@@ -0,0 +1,44 @@
++include ../Makefile.include
++
++TARBALL=cedarx-libs.tar.gz
++URL=https://github.com/linux-sunxi/cedarx-libs/tarball/master
++
++SRCS = \
++	libcedarv/vdecoder.c \
++	libcedarv/awprintf.c \
++	fbm/fbm.c \
++	vbv/vbv.c \
++	adapter/libve_adapter.c \
++	adapter/os_adapter.c
++
++OBJS = $(SRCS:%.c=%.o)
++
++TARGET=libcedarv.a
++
++all: $(TARGET)
++
++$(TARGET) : .extracted $(OBJS)
++	rm -f $(TARGET)
++	$(AR) cq $(TARGET) $(OBJS)
++
++.extracted: $(TARBALLS_LOCATION)/$(TARBALL)
++	rm -rf tmp	
++	mkdir tmp
++	( cd tmp &&\
++	  tar xvfz $(TARBALLS_LOCATION)/$(TARBALL) &&\
++	  cd linux-sunxi-*/libcedarv/android &&\
++	  rm Makefile .gitignore cedardefs.mk &&\
++	  mv * ../../../../ \
++	)
++	rm -rf tmp $(OBJS)
++	touch $@
++	
++$(TARBALLS_LOCATION)/$(TARBALL):
++	install -d $(TARBALLS_LOCATION)
++	wget $(URL) -O $(TARBALLS)/$(TARBALL)
++
++clean:
++	rm -f $(TARGET) $(OBJS)
++	rm -rf tmp adapter fbm libcedarv libvecore vbv
++	rm -f .installed .extracted cedardev_api.h drv_display_sun4i.h
++
+diff --git a/tools/Linux/xbmc.sh.in b/tools/Linux/xbmc.sh.in
+index 64cae55..f9d5c81 100644
+--- a/tools/Linux/xbmc.sh.in
++++ b/tools/Linux/xbmc.sh.in
+@@ -107,11 +107,12 @@ print_crash_report()
+   echo "Crash report available at $FILE"
+ }
+ 
+-python @datadir@/xbmc/FEH.py $SAVED_ARGS
+-RET=$?
+-if [ $RET -ne 0 ]; then
+-  exit $RET
+-fi
++# disable glxinfo check
++# python @datadir@/xbmc/FEH.py $SAVED_ARGS
++# RET=$?
++# if [ $RET -ne 0 ]; then
++#   exit $RET
++# fi
+ 
+ if which gdb >/dev/null 2>&1; then
+   # Output warning in case ulimit is unsupported by shell
+diff --git a/Makefile.in b/Makefile.in
+index 39dc6f9..daa1d57 100644
+--- a/Makefile.in
++++ b/Makefile.in
+@@ -1,4 +1,5 @@
+ include bootstrap.mk
++include tools/a10/depends/depends.mk
+ 
+ AUTOGENERATED_MAKEFILES=@OUTPUT_FILES@
+ 
+diff --git a/configure.in b/configure.in
+index e98cc95..749b44b 100644
+--- a/configure.in
++++ b/configure.in
+@@ -2752,6 +2752,8 @@ XB_CONFIG_MODULE([pvr-addons], [
+     CXXFLAGS="$CXXFLAGS"
+ ], [$DISABLE_PVR_ADDON_CONFIG])
+ 
++LIBS="$LIBS $CEDARLIBS"
++
+ AC_OUTPUT
+ 
+ final_message="$final_message\n  prefix:\t$prefix\n$dashes"
+diff --git a/fix.sh b/fix.sh
+new file mode 100644
+index 0000000..5326e69
+--- /dev/null
++++ b/fix.sh
+@@ -0,0 +1,9 @@
++cd /allwinner/xbmc-pvr-bin/lib/xbmc/addons
++cd library.xbmc.addon
++mv libXBMC_addon-arm.so libXBMC_addon-arm-linux.so
++cd ..
++cd library.xbmc.gui
++mv libXBMC_gui-arm.so libXBMC_gui-arm-linux.so
++cd ..
++cd library.xbmc.pvr
++mv libXBMC_pvr-arm.so libXBMC_pvr-arm-linux.so
