@@ -1,0 +1,76 @@
+--- a/libcedarv/linux-armhf2/Makefile	2014-02-23 16:52:52.460583264 +0100
++++ b/libcedarv/linux-armhf2/Makefile	2014-02-23 16:54:06.516584419 +0100
+@@ -1,15 +1,14 @@
+ 
+-CC  = arm-linux-gnueabihf-gcc
+-CPP = arm-linux-gnueabihf-g++
+-AR  = arm-linux-gnueabihf-ar
++CC  = $(CROSS_COMPILE)gcc
++CXX = $(CROSS_COMPILE)g++
++AR  = $(CROSS_COMPILE)ar
+ 
+ DATA_SRC=file
+ 
+ #A10 A13 A20 A23 A31
+-CEDARX_CHIP_VERSION=A20
++CEDARX_CHIP_VERSION ?= A20
+ 
+-SRCDIRS     := . \
+-			  ./cedarv_osal \
++SRCDIRS     := 		  ./cedarv_osal \
+ 			  ./sunxi_allocator \
+ 			  ./vdecoder \
+ 			  ./vdecoder/fbm \
+@@ -18,12 +17,6 @@
+ 			  ./vdecoder/adapter \
+ 			  ./vdecoder/adapter/adapter_cedarx_linux_$(CEDARX_CHIP_VERSION)  
+ 			
+-ifeq ($(DATA_SRC), file)
+-SRCDIRS+=./file_parser
+-else
+-SRCDIRS+=./stream_parser 
+-endif
+-			  
+ INCLUDES := $(foreach dir,$(SRCDIRS),-I$(dir))
+ INCLUDES := $(INCLUDES) -I./include -I./include/include_system -I./include/include_platform/CHIP_$(CEDARX_CHIP_VERSION)
+ SRCCS    = $(foreach dir,$(SRCDIRS),$(wildcard $(dir)/*.c))
+@@ -31,22 +24,31 @@
+ 
+ CFLAGS = -Wall -O0 -g
+ ifeq ($(DATA_SRC), file)
++OBJ1	= main.o file_parser/pmp_ctrl.o file_parser/pmp.o
+ CFLAGS += -DFILE_PARSER -D__CHIP_VERSION_$(CEDARX_CHIP_VERSION)
+ else
++OBJ1	= main.o stream_parser/stream_ctrl.o
+ CFLAGS += -DSTREAM_PARSER -D__CHIP_VERSION_$(CEDARX_CHIP_VERSION) 
+ endif
+ 
+-CFLAGS := $(CFLAGS) $(INCLUDES) -march=armv7-a -ldl
+-LIBS += -lpthread ./vdecoder/libve/libvecore.so
++CFLAGS := $(CFLAGS) $(INCLUDES) -march=armv7-a -fPIC
++LIBS += -L./vdecoder/libve -lvecore -lpthread -ldl
+ 
+-TARGET = ve
++LIB	= libcedarv.a
++DLL	= libcedarx.so
++TARGET	= ve
+ 
+-all: $(TARGET)
++all: $(LIB) $(DLL) $(TARGET)
+ 
+-$(TARGET): $(OBJ)
+-	$(CPP) $(CFLAGS) -o $@ $^ $(LIBS)
++$(LIB): $(OBJ)
++	$(AR) cr $(LIB) $(OBJ)
++
++$(DLL): $(OBJ)
++	$(CC) -o $(DLL) -shared -fPIC $(OBJ) $(LIBS)
+ 
++$(TARGET): $(OBJ1) $(DLL)
++	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
+ 
+ clean:
+-	@rm -f $(TARGET)
+-	@rm -f $(OBJ)
++	@rm -f $(LIB) $(DLL) $(TARGET)
++	@rm -f $(OBJ) $(OBJ1)
