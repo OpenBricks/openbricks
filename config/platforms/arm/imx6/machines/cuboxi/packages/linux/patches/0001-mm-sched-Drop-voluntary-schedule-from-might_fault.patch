@@ -1,0 +1,76 @@
+From 147c86bda5597e3e746aa60470c52acfe981f426 Mon Sep 17 00:00:00 2001
+From: "Michael S. Tsirkin" <mst@redhat.com>
+Date: Sun, 26 May 2013 17:32:13 +0300
+Subject: [PATCH 1/2] mm, sched: Drop voluntary schedule from might_fault()
+
+might_fault() is called from functions like copy_to_user()
+which most callers expect to be very fast, like a couple of
+instructions.
+
+So functions like memcpy_toiovec() call them many times in a loop.
+
+But might_fault() calls might_sleep() and with CONFIG_PREEMPT_VOLUNTARY
+this results in a function call.
+
+Let's not do this - just call __might_sleep() that produces
+a diagnostic for sleep within atomic, but drop
+might_preempt().
+
+Here's a test sending traffic between the VM and the host,
+host is built with CONFIG_PREEMPT_VOLUNTARY:
+
+ before:
+	incoming: 7122.77   Mb/s
+	outgoing: 8480.37   Mb/s
+
+ after:
+	incoming: 8619.24   Mb/s
+	outgoing: 9455.42   Mb/s
+
+As a side effect, this fixes an issue pointed
+out by Ingo: might_fault might schedule differently
+depending on PROVE_LOCKING. Now there's no
+preemption point in both cases, so it's consistent.
+
+Signed-off-by: Michael S. Tsirkin <mst@redhat.com>
+Signed-off-by: Peter Zijlstra <peterz@infradead.org>
+Cc: Linus Torvalds <torvalds@linux-foundation.org>
+Cc: Andrew Morton <akpm@linux-foundation.org>
+Cc: Peter Zijlstra <a.p.zijlstra@chello.nl>
+Link: http://lkml.kernel.org/r/1369577426-26721-10-git-send-email-mst@redhat.com
+Signed-off-by: Ingo Molnar <mingo@kernel.org>
+---
+ include/linux/kernel.h |    2 +-
+ mm/memory.c            |    3 ++-
+ 2 files changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/include/linux/kernel.h b/include/linux/kernel.h
+index e9ef6d6..24719ea 100644
+--- a/include/linux/kernel.h
++++ b/include/linux/kernel.h
+@@ -198,7 +198,7 @@ void might_fault(void);
+ #else
+ static inline void might_fault(void)
+ {
+-	might_sleep();
++	__might_sleep(__FILE__, __LINE__, 0);
+ }
+ #endif
+ 
+diff --git a/mm/memory.c b/mm/memory.c
+index 4b60011..3c13985 100644
+--- a/mm/memory.c
++++ b/mm/memory.c
+@@ -4212,7 +4212,8 @@ void might_fault(void)
+ 	if (segment_eq(get_fs(), KERNEL_DS))
+ 		return;
+ 
+-	might_sleep();
++	__might_sleep(__FILE__, __LINE__, 0);
++
+ 	/*
+ 	 * it would be nicer only to annotate paths which are not under
+ 	 * pagefault_disable, however that requires a larger audit and
+-- 
+1.7.9.5
+
