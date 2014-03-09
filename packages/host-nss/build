@@ -1,0 +1,60 @@
+#!/bin/sh
+
+. config/options
+
+get_meta $1
+cd $PKG_BUILD_DIR
+
+setup_toolchain host
+export MAKEFLAGS=-j1
+export CROSS_COMPILE=1
+export NATIVE_CC="$HOST_CC"
+export BUILD_OPT=1
+
+export FREEBL_NO_DEPEND=1
+export FREEBL_LOWHASH=1
+
+export LIBDIR=$ROOT/$TOOLCHAIN
+export MOZILLA_CLIENT=1
+export NS_USE_GCC=1
+export NSS_USE_SYSTEM_SQLITE=1
+export NSS_ENABLE_ECC=1
+
+export OS_RELEASE=3.4
+export OS_TARGET=Linux
+export OS_ARCH=Linux
+
+export NSPR_INCLUDE_DIR="$ROOT/$TOOLCHAIN/include/nspr -I$ROOT/$TOOLCHAIN/include"
+export NSPR_LIB_DIR=$ROOT/$TOOLCHAIN/lib
+
+OS_TEST="${HOST_ARCH}"
+
+export ASFLAGS=""
+
+if [ "`uname -m`" = "x86_64" ]; then
+  use_64="USE_64=1"
+fi
+
+make -C ./nss CCC="${HOST_CXX}" OS_TEST=${OS_TEST} ${use_64}
+
+FI="`pwd`/fake-install"
+make -C ./nss ${use_64} \
+        CCC="${HOST_CXX}" \
+        OS_TEST=${OS_TEST} \
+        SOURCE_LIB_DIR="${FI}/usr/lib" \
+        SOURCE_BIN_DIR="${FI}/usr/bin" \
+        install
+
+echo "Preparing libs, hearders and bins ..."
+
+mkdir -p .install/usr/lib
+for file in dist/*.OBJ/lib/*.so; do
+        cp $file  .install/usr/lib
+done
+
+mkdir -p .install/usr/include/nss3
+cp dist/public/nss/* .install/usr/include/nss3
+
+mkdir -p .install/usr/bin
+cp ${FI}/usr/bin/* .install/usr/bin
+
