@@ -1,0 +1,81 @@
+#!/bin/sh
+
+. /etc/network
+
+[ "$NETWORK_BACKEND" = networkmanager ] || exit 1 
+
+settings=/etc/NetworkManager/system-connections
+settings_lan=/etc/NetworkManager/system-connections/ethernet
+settings_wlan=/etc/NetworkManager/system-connections/wifi
+
+mkdir -p $settings 
+
+hostname="`cat /etc/hostname`"
+echo "127.0.0.1 localhost $hostname" > /etc/hosts
+
+
+[ -z "$IFACE" ] && IFACE=eth0 || IFACE=`echo $IFACE | tr '[A-Z]' '[a-z]'`
+
+if [ "$WAIT_FOR_SLOW_DEVICE" = true ] ; then
+COUNT="1 2 3 4 5 6 7 8 9"
+  for i in $COUNT; do
+    if [ -f /sys/class/net/$IFACE/address ] ; then 
+      echo "found /sys/class/net/$IFACE/address"
+      mac_address=`cat /sys/class/net/$IFACE/address | tr '[a-z]' '[A-Z]'`
+      break
+    else
+      echo "Waiting for $IFACE : try $i"
+      sleep $i
+    fi
+  done
+else
+  [ -f /sys/class/net/$IFACE/address ] && mac_address=`cat /sys/class/net/$IFACE/address| tr '[a-z]' '[A-Z]'`
+fi
+
+UUID="`cat /proc/sys/kernel/random/uuid`"
+
+if [ "$NETWORK" = "WLAN" ]; then
+#  nmcli dev wifi connect "$SSID" password "$PASSPHRASE"
+  if [ "$SECURITY" = "PSK" -o "$SECURITY" = "RSN" -o "$SECURITY" = "WPA" ]; then
+    cp /etc/nm/wpa-psk.conf $settings_wlan
+  else
+    cp /etc/nm/wep.conf $settings_wlan
+  fi
+  sed -i -e "s%PASSWORD%$PASSPHRASE%" \
+         -e "s%SSID%$SSID%"           \
+         -e "s%MCAD%$mac_address%" $settings_wlan
+  if [ -z "$ADDRESS" ]; then
+    sed -i -e "s%AUTO%auto%" \
+           -e "s%dns=DNS;%%" \
+           -e "s%addresses1=ADDRESS;NETMASK;GW;%%" $settings_wlan
+  else
+    ad="`echo $ADDRESS | cut -d/ -f1`"
+    netm="`echo $ADDRESS | cut -d/ -f2`"
+    sed -i -e "s%AUTO%manual%"     \
+           -e "s%DNS%$DNS_SERVER%" \
+           -e "s%ADDRESS%$ad%"     \
+           -e "s%NETMASK%$netm%"   \
+           -e "s%GW%$GATEWAY%" $settings_wlan
+  fi
+  sed -i -e "s%UUID%$UUID%" $settings_wlan
+else
+  cp /etc/nm/eth.conf $settings_lan
+  sed -i -e "s%UUID%$UUID%" $settings_lan
+  if [ -z "$ADDRESS" ]; then
+    sed -i -e "s%AUTO%auto%" \
+           -e "s%dns=DNS;%%" \
+           -e "s%addresses1=ADDRESS;NETMASK;GW;%%" $settings_lan
+  else
+    ad="`echo $ADDRESS | cut -d/ -f1`"
+    netm="`echo $ADDRESS | cut -d/ -f2`"
+    sed -i -e "s%AUTO%manual%"     \
+           -e "s%DNS%$DNS_SERVER%" \
+           -e "s%ADDRESS%$ad%"     \
+           -e "s%NETMASK%$netm%"   \
+           -e "s%GW%$GATEWAY%" $settings_lan
+  fi
+fi
+
+chmod 600 $settings/*
+
+exit 0
