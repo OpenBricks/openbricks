@@ -12,25 +12,52 @@ add_control() {
   return 0
 }
 
+get_overlay() {
+  local pkg_name="$1"
+  local file_name="$2"
+  local overlay_name="$PACKAGES/$pkg_name/$file_name"
+  local name_ends_with=`expr substr $file_name ${#file_name} 1`
+  local temp_name=""
+
+  # check for platform-specific package overlay
+  temp_name="$PLATFORM_PACKAGES/$pkg_name/$file_name"
+  if [ $name_ends_with = "/" ] ; then
+    [ -d "$temp_name" ] && overlay_name="$temp_name"
+  else
+    [ -r "$temp_name" ] && overlay_name="$temp_name"
+  fi
+
+  # check for machine-specific package overlay
+  temp_name="$MACHINE_PACKAGES/$pkg_name/$file_name"
+  if [ $name_ends_with = "/" ] ; then
+    [ -d "$temp_name" ] && overlay_name="$temp_name"
+  else
+    [ -r "$temp_name" ] && overlay_name="$temp_name"
+  fi
+
+  # check for flavour-specific package overlay
+  temp_name="$FLAVOUR_PACKAGES/$pkg_name/$file_name"
+  if [ $name_ends_with = "/" ] ; then
+    [ -d "$temp_name" ] && overlay_name="$temp_name"
+  else
+    [ -r "$temp_name" ] && overlay_name="$temp_name"
+  fi
+
+  echo $overlay_name
+}
+
 [ -n "$REPO" ] && $SCRIPTS/get-opk $1
 
 get_meta $1
 
-# check for platform-specific package overlay
-INSTALL_RULE=$PACKAGES/$1/install
-PLATFORM_INSTALL="$PLATFORM_PACKAGES/$1/install"
-[ -r "$PLATFORM_INSTALL" ] && INSTALL_RULE="$PLATFORM_INSTALL"
-MACHINE_INSTALL="$MACHINE_PACKAGES/$1/install"
-[ -r "$MACHINE_INSTALL" ] && INSTALL_RULE="$MACHINE_INSTALL"
-
-# check for flavour-specific package overlay
-FLAVOUR_INSTALL="$FLAVOUR_PACKAGES/$1/install"
-[ -r "$FLAVOUR_INSTALL" ] && INSTALL_RULE="$FLAVOUR_INSTALL"
 
 if [ "$PKG_OPK_ARCH" = unsupported ]; then
   echo "$1 is not supported on $TARGET_ARCH, aborting"
   exit 1
 fi
+
+# locate install script
+INSTALL_RULE=`get_overlay "$1" "install"`
 
 # build
 $SCRIPTS/build $1
@@ -69,37 +96,45 @@ for p in $PKG_RUN_DEPENDS; do
 done
 
 # install to staging
-if [ "$SYSTEMD" = yes -a -d $PACKAGES/$1/unit ]; then
-  mkdir -p $INSTALL/lib/systemd/system
-  for unit in $PACKAGES/$1/unit/*; do
-    cp $unit $INSTALL/lib/systemd/system
-    systemctl_enable `basename $unit` $INSTALL
-  done
+if [ "$SYSTEMD" = yes ]; then
+  SOURCE_PATH=`get_overlay "$1" "unit/"`
+  if [ -d $SOURCE_PATH ]; then
+    mkdir -p $INSTALL/lib/systemd/system
+    for unit in ${SOURCE_PATH}* ; do
+      cp $unit $INSTALL/lib/systemd/system
+      systemctl_enable `basename $unit` $INSTALL
+    done
+  fi
+
+  SOURCE_PATH=`get_overlay "$1" "tmpfiles.d/"`
+  if [ -d $SOURCE_PATH ]; then
+    mkdir -p $INSTALL/usr/lib/tmpfiles.d
+    cp ${SOURCE_PATH}*.conf $INSTALL/usr/lib/tmpfiles.d
+  fi
+
+  SOURCE_PATH=`get_overlay "$1" "modules-load.d/"`
+  if [ -d $SOURCE_PATH ]; then
+    mkdir -p $INSTALL/usr/lib/modules-load.d
+    cp ${SOURCE_PATH}*.conf $INSTALL/usr/lib/modules-load.d
+  fi
+
+  SOURCE_PATH=`get_overlay "$1" "sysctl.d/"`
+  if [ -d $SOURCE_PATH ]; then
+    mkdir -p $INSTALL/usr/lib/sysctl.d
+    cp ${SOURCE_PATH}*.conf $INSTALL/usr/lib/sysctl.d
+  fi
 fi
 
-if [ "$SYSTEMD" = yes -a -d $PACKAGES/$1/tmpfiles.d ]; then
-  mkdir -p $INSTALL/usr/lib/tmpfiles.d
-  cp $PACKAGES/$1/tmpfiles.d/*.conf $INSTALL/usr/lib/tmpfiles.d
-fi
-
-if [ "$SYSTEMD" = yes -a -d $PACKAGES/$1/modules-load.d ]; then
-  mkdir -p $INSTALL/usr/lib/modules-load.d
-  cp $PACKAGES/$1/modules-load.d/*.conf $INSTALL/usr/lib/modules-load.d
-fi
-
-if [ "$SYSTEMD" = yes -a -d $PACKAGES/$1/sysctl.d ]; then
-  mkdir -p $INSTALL/usr/lib/sysctl.d
-  cp $PACKAGES/$1/sysctl.d/*.conf $INSTALL/usr/lib/sysctl.d
-fi
-
-if [ -d $PACKAGES/$1/modprobe.d ]; then
+SOURCE_PATH=`get_overlay "$1" "modprobe.d/"`
+if [ -d $SOURCE_PATH ]; then
   mkdir -p $INSTALL/etc/modprobe.d
-  cp $PACKAGES/$1/modprobe.d/*.conf $INSTALL/etc/modprobe.d
+  cp ${SOURCE_PATH}*.conf $INSTALL/etc/modprobe.d
 fi
 
-if [ -d $PACKAGES/$1/profile.d ]; then
+SOURCE_PATH=`get_overlay "$1" "profile.d/"`
+if [ -d $SOURCE_PATH ]; then
   mkdir -p $INSTALL/etc/profile.d
-  cp $PACKAGES/$1/profile.d/*.sh $INSTALL/etc/profile.d
+  cp ${SOURCE_PATH}*.sh $INSTALL/etc/profile.d
 fi
 
 $INSTALL_RULE $1 >&$VERBOSE_OUT
