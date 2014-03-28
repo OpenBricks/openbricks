@@ -21,7 +21,7 @@ diff -Naur a/language/English/strings.po b/language/English/strings.po
 +
 diff -Naur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DllVMETA.h b/xbmc/cores/dvdplayer/DVDCodecs/Video/DllVMETA.h
 --- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DllVMETA.h	2014-01-25 20:32:01.000000000 +0100
-+++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DllVMETA.h	2014-01-25 21:41:32.000000000 +0100
++++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DllVMETA.h	2014-03-22 12:17:40.000000000 +0100
 @@ -29,6 +29,8 @@
  
  #if defined(HAS_MARVELL_DOVE)
@@ -31,9 +31,25 @@ diff -Naur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DllVMETA.h b/xbmc/cores/dvdpla
  
  extern "C" 
  {
-@@ -112,4 +114,14 @@
+@@ -111,5 +113,30 @@
+     RESOLVE_METHOD(vdec_os_api_suspend_ready)
      RESOLVE_METHOD(vdec_os_api_flush_cache)
    END_METHOD_RESOLVE()
++
++public:
++  static bool SetHardwareClock(bool rateSel)
++  {
++    char buf[32];
++    int  clkFreqHz = (rateSel) ? 667000000 : 500000000;
++    int  fd = open("/sys/devices/platform/dove_clocks_sysfs.0/vmeta", O_WRONLY);
++    
++    if (fd < 0)
++      return false;
++    
++    write(fd, buf, sprintf(buf, "%d", clkFreqHz));
++    close(fd);
++    return true;
++  }
  };
 +
 +XBMC_GLOBAL_REF(DllLibVMETA, g_DllLibVMETA);
@@ -47,8 +63,8 @@ diff -Naur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DllVMETA.h b/xbmc/cores/dvdpla
 +
  #endif
 diff -Naur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp
---- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp	2014-01-25 20:32:04.000000000 +0100
-+++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp	2014-01-25 22:20:15.463684620 +0100
+--- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp	2014-03-22 12:48:42.000000000 +0100
++++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp	2014-03-22 12:27:44.000000000 +0100
 @@ -30,6 +30,7 @@
  #include "DVDVideoCodecVMETA.h"
  #include "DynamicDll.h"
@@ -67,7 +83,7 @@ diff -Naur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/
  {
    m_is_open           = false;
    m_extradata         = NULL;
-@@ -98,9 +102,6 @@
+@@ -98,16 +102,13 @@
    m_numPicBufSubmitted  = 0;
    m_numStrmBufSubmitted = 0;
  
@@ -77,7 +93,43 @@ diff -Naur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/
    m_pDecState         = NULL;
    m_pCbTable          = NULL;
    m_itime_inc_bits    = -1;
-@@ -149,7 +150,7 @@
+   m_low_delay         = -1;
+   m_codec_species     = -1;
+   
+-  SetHardwareClock(g_guiSettings.GetInt("videoscreen.vmeta_clk"));
++  DllLibVMETA::SetHardwareClock(g_guiSettings.GetInt("videoscreen.vmeta_clk") == VMETA_CLK_667);
+ }
+ 
+ 
+@@ -115,26 +116,10 @@
+ {
+   Dispose();
+   
+-  SetHardwareClock(VMETA_CLK_500);
++  DllLibVMETA::SetHardwareClock(false);
+ }
+ 
+ 
+-void CDVDVideoCodecVMETA::SetHardwareClock(int clkRate)
+-{
+-  int clkFreqHz = (clkRate == VMETA_CLK_667) ? 667000000 : 500000000;
+-
+-  FILE *Fh = fopen("/sys/devices/platform/dove_clocks_sysfs.0/vmeta","w");
+-
+-  if (Fh != 0)
+-  {
+-    fprintf (Fh, "%d", clkFreqHz);
+-    fclose(Fh);
+-  }
+-  else
+-    CLog::Log(LOGERROR, "Unable to open vmeta clock settings file on sysfs");
+-}
+-
+- 
+ bool CDVDVideoCodecVMETA::Open(CDVDStreamInfo &hints, CDVDCodecOptions &options)
+ {
+   IppCodecStatus ret;
+@@ -149,7 +134,7 @@
    if(!m_display_width || !m_display_height)
      return false;
  
@@ -86,7 +138,7 @@ diff -Naur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/
    {
      CLog::Log(LOGERROR, "%s::%s Error : failed to load vMeta libs !", CLASSNAME, __func__);
      return false;
-@@ -257,7 +258,7 @@
+@@ -257,7 +242,7 @@
    }
  
  
@@ -95,7 +147,7 @@ diff -Naur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/
    {
      CLog::Log(LOGERROR, "%s::%s Error : miscInitGeneralCallbackTable", CLASSNAME, __func__);
      Dispose();
-@@ -265,7 +266,7 @@
+@@ -265,7 +250,7 @@
    }
  
    m_VDecParSet.opt_fmt = IPP_YCbCr422I;
@@ -104,7 +156,7 @@ diff -Naur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/
    if(ret != IPP_STATUS_NOERR)
    {
      CLog::Log(LOGERROR, "%s::%s Error : DecoderInitAlloc_Vmeta", CLASSNAME, __func__);
-@@ -278,7 +279,7 @@
+@@ -278,7 +263,7 @@
      IppVmetaBitstream *pStream = (IppVmetaBitstream *)malloc(sizeof(IppVmetaBitstream));
      memset(pStream, 0, sizeof(IppVmetaBitstream));
  
@@ -113,7 +165,7 @@ diff -Naur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/
                                  STREAM_VDECBUF_SIZE, VMETA_STRM_BUF_ALIGN, &pStream->nPhyAddr);
      pStream->nBufSize = STREAM_VDECBUF_SIZE;
      CLEAR_STREAMBUF(pStream);
-@@ -339,17 +340,17 @@
+@@ -339,17 +324,17 @@
  
    if (m_pDecState)
    {
@@ -134,7 +186,7 @@ diff -Naur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/
      m_pCbTable = 0;
    }
  
-@@ -362,7 +363,7 @@
+@@ -362,7 +347,7 @@
      m_input_buffers.pop_front();
  
      if(pStream->pBuf)
@@ -143,7 +195,7 @@ diff -Naur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/
      free(pStream);
    }
  
-@@ -375,24 +376,13 @@
+@@ -375,24 +360,13 @@
      m_output_buffers.pop_front();
  
      if(pPicture->pBuf)
@@ -171,7 +223,7 @@ diff -Naur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/
  }
  
  
-@@ -427,7 +417,7 @@
+@@ -427,7 +401,7 @@
      seqInfo.exthdrsize = std::min<uint32_t>(m_extrasize, sizeof(seqInfo.exthdr));
      memcpy(seqInfo.exthdr, m_extradata, seqInfo.exthdrsize);
      
@@ -180,7 +232,7 @@ diff -Naur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/
                    IPPVC_SET_VC1M_SEQ_INFO, &seqInfo, NULL, m_pDecState);
      
      if (retCodec != IPP_STATUS_NOERR)
-@@ -449,7 +439,7 @@
+@@ -449,7 +423,7 @@
    if (paddingLen)
      memset(pStream->pBuf + m_extrasize, PADDING_BYTE, paddingLen);
  
@@ -189,7 +241,7 @@ diff -Naur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/
                  IPP_VMETA_BUF_TYPE_STRM, pStream, m_pDecState);
  
    if (retCodec != IPP_STATUS_NOERR)
-@@ -541,10 +531,10 @@
+@@ -541,10 +515,10 @@
        // did it fit in ?
        if (PADDED_SIZE(dataLen) > pStream->nBufSize)
        {
@@ -202,7 +254,7 @@ diff -Naur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/
                                dataLen, VMETA_STRM_BUF_ALIGN, &pStream->nPhyAddr);
          pStream->nBufSize = dataLen;
          pStream->nOffset  = 0;
-@@ -655,7 +645,7 @@
+@@ -655,7 +629,7 @@
    IppVmetaPicture *pPicture;
    IppVmetaBitstream *pStream;
  
@@ -211,7 +263,7 @@ diff -Naur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/
  
    switch(retCodec)
    {
-@@ -663,7 +653,7 @@
+@@ -663,7 +637,7 @@
        //CLog::Log(LOGNOTICE, "IPP_STATUS_NEED_INPUT");
        while (m_input_ready.getHead(pStream))
        {
@@ -220,7 +272,7 @@ diff -Naur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/
          if (retCodec != IPP_STATUS_NOERR)
          {
            CLog::Log(LOGERROR, "IPP_STATUS_NEED_INPUT: push streambuffer failed");
-@@ -681,7 +671,7 @@
+@@ -681,7 +655,7 @@
        //CLog::Log(LOGNOTICE, "IPP_STATUS_RETURN_INPUT_BUF");
        while (m_numStrmBufSubmitted)
        {
@@ -229,7 +281,7 @@ diff -Naur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/
  
          if (!pStream)
            break;
-@@ -694,7 +684,7 @@
+@@ -694,7 +668,7 @@
  
      case IPP_STATUS_FRAME_COMPLETE:
        //CLog::Log(LOGNOTICE, "IPP_STATUS_FRAME_COMPLETE");
@@ -238,7 +290,7 @@ diff -Naur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/
        
        if (pPicture)
        {
-@@ -710,7 +700,7 @@
+@@ -710,7 +684,7 @@
  
        while (m_numStrmBufSubmitted)
        {
@@ -247,7 +299,7 @@ diff -Naur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/
  
          if (!pStream)
            break;
-@@ -721,14 +711,14 @@
+@@ -721,14 +695,14 @@
        }
  
        // The gstreamer plugins says this is needed for DOVE
@@ -266,7 +318,7 @@ diff -Naur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/
            if (suspendRet != IPP_STATUS_NOERR)
            {
              CLog::Log(LOGERROR, "%s::%s resume failed", CLASSNAME, __func__);
-@@ -752,9 +742,9 @@
+@@ -752,9 +726,9 @@
        if (m_VDecInfo.seq_info.dis_buf_size > pPicture->nBufSize)
        {
          if (pPicture->pBuf)
@@ -278,7 +330,7 @@ diff -Naur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/
                              m_VDecInfo.seq_info.dis_buf_size, VMETA_DIS_BUF_ALIGN, &(pPicture->nPhyAddr));
          pPicture->nBufSize = m_VDecInfo.seq_info.dis_buf_size;
        }
-@@ -768,7 +758,7 @@
+@@ -768,7 +742,7 @@
          return IPP_STATUS_ERR;
        }
  
@@ -287,7 +339,7 @@ diff -Naur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/
        if (retCodec != IPP_STATUS_NOERR)
        {
          CLog::Log(LOGERROR, "IPP_STATUS_NEED_OUTPUT_BUF: push picturebuffer failed");
-@@ -791,7 +781,7 @@
+@@ -791,7 +765,7 @@
  
        while (m_numPicBufSubmitted)
        {
@@ -296,7 +348,7 @@ diff -Naur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/
  
          if (!pPicture)
            break;
-@@ -885,7 +875,7 @@
+@@ -885,7 +859,7 @@
  
    for(;;)
    {
@@ -305,7 +357,7 @@ diff -Naur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/
      
      if(!pStream)
        break;
-@@ -902,7 +892,7 @@
+@@ -902,7 +876,7 @@
  
    for(;;)
    {
@@ -316,7 +368,7 @@ diff -Naur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/
        break;
 diff -Naur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h
 --- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h	2014-01-25 20:32:04.000000000 +0100
-+++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h	2014-01-25 21:55:09.000000000 +0100
++++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h	2014-03-22 12:26:08.000000000 +0100
 @@ -27,6 +27,8 @@
  #include "DllVMETA.h"
  
@@ -326,7 +378,15 @@ diff -Naur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.h b/xbmc/co
  #define STREAM_FIFO_SIZE        16      // most efficient, when a power of 2
  #define PICTURE_FIFO_SIZE       32      // most efficient, when a power of 2
  
-@@ -99,8 +101,9 @@
+@@ -53,7 +55,6 @@
+   const char *GetName() { return m_video_codec_name.c_str(); };
+ 
+ private:
+-  void SetHardwareClock(int clkRate);
+   IppCodecStatus SendCodecConfig();
+   IppCodecStatus DecodeInternal();
+ 
+@@ -99,8 +100,9 @@
    int                             m_low_delay;
    int                             m_codec_species;
  
@@ -540,8 +600,8 @@ diff -Naur a/xbmc/guilib/JpegHwDec.h b/xbmc/guilib/JpegHwDec.h
 +#endif
 diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 --- a/xbmc/guilib/JpegHwDecVMETA.cpp	1970-01-01 01:00:00.000000000 +0100
-+++ b/xbmc/guilib/JpegHwDecVMETA.cpp	2014-02-11 19:15:26.113354308 +0100
-@@ -0,0 +1,667 @@
++++ b/xbmc/guilib/JpegHwDecVMETA.cpp	2014-03-22 12:54:53.000000000 +0100
+@@ -0,0 +1,650 @@
 +/*
 +*      Copyright (C) 2005-2014 Team XBMC
 +*      http://www.xbmc.org
@@ -634,8 +694,6 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 +#endif
 +
 +
-+
-+
 +#define CLIP_RANGE  384 // worst case: BT.709, 320 should be sufficient
 +
 +static uint32_t     clipByte1[CLIP_RANGE + 256 + CLIP_RANGE];
@@ -717,7 +775,7 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 +
 +  if (m_HwLock.IsOwner() && m_DllVMETA.Load() && m_DllMiscGen.Load())
 +  {
-+    SetHardwareClock(g_guiSettings.GetInt("videoscreen.vmeta_clk"));
++    DllLibVMETA::SetHardwareClock(g_guiSettings.GetInt("videoscreen.vmeta_clk") == VMETA_CLK_667);
 +
 +    if (m_DllMiscGen.miscInitGeneralCallbackTable(&m_pCbTable) == 0)
 +    {
@@ -750,7 +808,8 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 +    m_DllVMETA.DecoderFree_Vmeta(&m_pDecState);
 +  }
 +
-+  FreeBuffer(0);
++  if (m_input.pBuf)
++    FreeBuffer(m_input.pBuf);
 +
 +  if (m_pCbTable)
 +    m_DllMiscGen.miscFreeGeneralCallbackTable(&m_pCbTable);
@@ -760,7 +819,7 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 +    m_DllMiscGen.Unload();
 +    m_DllVMETA.Unload();
 +
-+    SetHardwareClock(VMETA_CLK_500);
++    DllLibVMETA::SetHardwareClock(false);
 +  }
 +}
 +
@@ -919,7 +978,7 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 +    case IPP_STATUS_NEED_INPUT:
 +      //CLog::Log(LOGNOTICE, "IPP_STATUS_NEED_INPUT");
 +
-+      if (m_input.nOffset < m_input.nBufSize)
++      if (m_input.nOffset < m_input.nDataLen)
 +      {
 +        IppVmetaBitstream *pStream = (IppVmetaBitstream *)malloc(sizeof(IppVmetaBitstream));
 +        memset(pStream, 0, sizeof(IppVmetaBitstream));
@@ -936,7 +995,7 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 +        if (pStream->nDataLen != pStream->nBufSize)
 +          pStream->nFlag = IPP_VMETA_STRM_BUF_END_OF_UNIT;
 +
-+        m_input.nOffset += pStream->nBufSize;
++        m_input.nOffset += pStream->nDataLen;
 +
 +#if 0
 +        CLog::Log(LOGNOTICE, "%s: @%08x %d (%d, %08x) phys %08x", __FUNCTION__, pStream->pBuf,
@@ -1192,27 +1251,11 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 +}
 +
 +
-+void CJpegHwDecVMeta::SetHardwareClock(int clkRate)
-+{
-+  int clkFreqHz = (clkRate == VMETA_CLK_667) ? 667000000 : 500000000;
-+
-+  FILE *Fh = fopen("/sys/devices/platform/dove_clocks_sysfs.0/vmeta","w");
-+
-+  if (Fh != 0)
-+  {
-+    fprintf (Fh, "%d", clkFreqHz);
-+    fclose(Fh);
-+  }
-+  else
-+    CLog::Log(LOGERROR, "Unable to open vmeta clock settings file on sysfs");
-+}
-+
-+
 +#endif
 diff -Naur a/xbmc/guilib/JpegHwDecVMETA.h b/xbmc/guilib/JpegHwDecVMETA.h
 --- a/xbmc/guilib/JpegHwDecVMETA.h	1970-01-01 01:00:00.000000000 +0100
-+++ b/xbmc/guilib/JpegHwDecVMETA.h	2014-02-11 19:15:26.113354308 +0100
-@@ -0,0 +1,82 @@
++++ b/xbmc/guilib/JpegHwDecVMETA.h	2014-03-22 12:25:27.000000000 +0100
+@@ -0,0 +1,80 @@
 +/*
 +*      Copyright (C) 2005-2014 Team XBMC
 +*      http://www.xbmc.org
@@ -1289,8 +1332,6 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.h b/xbmc/guilib/JpegHwDecVMETA.h
 +
 +  void ToBGRA(unsigned char *dst, unsigned int pitch, unsigned int width, unsigned int height);
 +  void ToRGB(unsigned char *dst, unsigned int pitch, unsigned int width, unsigned int height);
-+
-+  void SetHardwareClock(int clkRate);
 +};
 +
 +
