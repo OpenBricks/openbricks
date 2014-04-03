@@ -6,9 +6,9 @@ if [ "x$1" == "x" ]; then
 fi
 mp=""
 for i in 1 2 3 4 5 6 7 8 9 ; do
-            sleep $i
-             a=`udisks --show-info /dev/$1 | grep "mount paths" | cut -d: -f2`
-             ! [ -z $a ] && mp=$a && break
+	sleep $i
+	a=`udisks --show-info /dev/$1 | grep "mount paths" | sed -e "s/^.*: *//"`
+	! [ -z "$a" ] && mp="$a" && break
 done
 
 cat /proc/mounts > /tmp/$1.txt
@@ -31,13 +31,13 @@ fi
 echo $1 > /tmp/rtorrent-dir
 
 # Set rtorrent to use that new directory
-mkdir -p $mp/rtorrent
-mkdir -p $mp/rtorrent/session
-mkdir -p $mp/rtorrent/watch
+mkdir -p "$mp/rtorrent"
+mkdir -p "$mp/rtorrent/session"
+mkdir -p "$mp/rtorrent/watch"
 \rm /tmp/rtorrent
 
-ln -s $mp/rtorrent /tmp/rtorrent
-[ -f $mp/rtorrent/session/rtorrent.lock ] && rm $mp/rtorrent/session/rtorrent.lock
+ln -s "$mp/rtorrent" /tmp/rtorrent
+[ -f "$mp/rtorrent/session/rtorrent.lock" ] && rm "$mp/rtorrent/session/rtorrent.lock"
 echo "directory = /tmp/rtorrent/" > /tmp/new-rtorrent-dir
 echo "session = /tmp/rtorrent/session" >> /tmp/new-rtorrent-dir
 echo "schedule = watch_directory,5,5,load_start=/tmp/rtorrent/watch/*.torrent" >> /tmp/new-rtorrent-dir
