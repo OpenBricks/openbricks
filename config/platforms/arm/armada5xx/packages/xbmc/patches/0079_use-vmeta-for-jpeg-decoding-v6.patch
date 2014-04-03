@@ -600,8 +600,8 @@ diff -Naur a/xbmc/guilib/JpegHwDec.h b/xbmc/guilib/JpegHwDec.h
 +#endif
 diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 --- a/xbmc/guilib/JpegHwDecVMETA.cpp	1970-01-01 01:00:00.000000000 +0100
-+++ b/xbmc/guilib/JpegHwDecVMETA.cpp	2014-03-22 12:54:53.000000000 +0100
-@@ -0,0 +1,650 @@
++++ b/xbmc/guilib/JpegHwDecVMETA.cpp	2014-04-03 21:20:57.000000000 +0200
+@@ -0,0 +1,662 @@
 +/*
 +*      Copyright (C) 2005-2014 Team XBMC
 +*      http://www.xbmc.org
@@ -694,6 +694,7 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 +#endif
 +
 +
++
 +#define CLIP_RANGE  384 // worst case: BT.709, 320 should be sufficient
 +
 +static uint32_t     clipByte1[CLIP_RANGE + 256 + CLIP_RANGE];
@@ -775,8 +776,6 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 +
 +  if (m_HwLock.IsOwner() && m_DllVMETA.Load() && m_DllMiscGen.Load())
 +  {
-+    DllLibVMETA::SetHardwareClock(g_guiSettings.GetInt("videoscreen.vmeta_clk") == VMETA_CLK_667);
-+
 +    if (m_DllMiscGen.miscInitGeneralCallbackTable(&m_pCbTable) == 0)
 +    {
 +      IppCodecStatus retCodec;
@@ -818,20 +817,20 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 +  {
 +    m_DllMiscGen.Unload();
 +    m_DllVMETA.Unload();
-+
-+    DllLibVMETA::SetHardwareClock(false);
 +  }
 +}
 +
 +
 +unsigned int CJpegHwDecVMeta::FirstScale()
 +{
++  // start with scale 8/2 = 4
 +  return 2;
 +}
 +
 +
 +unsigned int CJpegHwDecVMeta::NextScale(unsigned int currScale, int direction)
 +{
++  // scales:  8/1 = 8  ->  8/2 = 4  ->  8/4 = 2  ->  8/8 = 1
 +  return (direction < 0) ?  (currScale >> (-direction)) : (currScale << direction);
 +}
 +
@@ -874,9 +873,9 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 +
 +void CJpegHwDecVMeta::FreeBuffer(unsigned char *buffer)
 +{
-+  (void)buffer;
-+
 +  //CLog::Log(LOGNOTICE, "%s: @%08x", __FUNCTION__, m_input.pBuf);
++
++  (void)buffer;
 +
 +  if (m_input.pBuf)
 +  {
@@ -895,7 +894,7 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 +{
 +  if (numBytes > m_input.nBufSize)
 +  {
-+    CLog::Log(LOGWARNING, "%s: PrepareBuffer numBytes > nBufSize", __FUNCTION__);
++    CLog::Log(LOGWARNING, "%s: numBytes > nBufSize", __FUNCTION__);
 +    numBytes = m_input.nBufSize;
 +  }
 +
@@ -906,6 +905,7 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 +  numBytes = (numBytes + 255) & ~127;
 +  if (numBytes > m_input.nBufSize)
 +    numBytes = m_input.nBufSize;
++
 +  memset(m_input.pBuf + m_input.nDataLen, 0x88, numBytes - m_input.nDataLen);
 +
 +  //m_DllVMETA.vdec_os_api_flush_cache(m_input.pBuf, numBytes, DMA_TODEVICE);
@@ -968,6 +968,8 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 +            __FUNCTION__, maxWidth, maxHeight, scaleDivider);
 +#endif
 +
++  DllLibVMETA::SetHardwareClock(g_guiSettings.GetInt("videoscreen.vmeta_clk") == VMETA_CLK_667);
++
 +  do
 +  {
 +    bExit = false;
@@ -996,11 +998,6 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 +          pStream->nFlag = IPP_VMETA_STRM_BUF_END_OF_UNIT;
 +
 +        m_input.nOffset += pStream->nDataLen;
-+
-+#if 0
-+        CLog::Log(LOGNOTICE, "%s: @%08x %d (%d, %08x) phys %08x", __FUNCTION__, pStream->pBuf,
-+                  pStream->nDataLen, pStream->nBufSize, pStream->nBufSize, pStream->nPhyAddr);
-+#endif
 +
 +        retCodec = m_DllVMETA.DecoderPushBuffer_Vmeta(IPP_VMETA_BUF_TYPE_STRM, pStream, m_pDecState);
 +        if (retCodec != IPP_STATUS_NOERR)
@@ -1056,14 +1053,6 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 +
 +      DecodePopBuffers(IPP_VMETA_BUF_TYPE_PIC, ReleaseNothing, 1);
 +
-+#if 0
-+      if (m_picture.pBuf)
-+      {
-+        CLog::Log(LOGNOTICE, "IPP_STATUS_FRAME_COMPLETE: output available %d x %d (%d)",
-+                  m_picture.pic.picWidth, m_picture.pic.picHeight, m_picture.nDataLen);
-+      }
-+#endif
-+
 +      numSubmitted -= DecodePopBuffers(IPP_VMETA_BUF_TYPE_STRM, ReleaseBuffer, numSubmitted);
 +      bExit = true;
 +      break;
@@ -1107,6 +1096,8 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 +
 +  } while (!bExit);
 +
++  DllLibVMETA::SetHardwareClock(false);
++
 +  return m_picture.pBuf != 0;
 +}
 +
@@ -1114,23 +1105,23 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 +void CJpegHwDecVMeta::ToRGB(unsigned char *dst, unsigned int pitch, 
 +                            unsigned int width, unsigned int height)
 +{
++  uint32_t *p = (uint32_t *)m_picture.pBuf;
++  unsigned skip = (m_picture.pic.picWidth >> 1) - ((width + 1) >> 1);
++
 +#if 0
 +  CLog::Log(LOGNOTICE, "%s: %dx%d, %d bytes, pitch %d width %d height %d", __FUNCTION__,
 +            m_picture.pic.picWidth, m_picture.pic.picHeight, m_picture.nDataLen, pitch, width, height);
 +#endif
 +
-+  uint32_t *p = (uint32_t *)m_picture.pBuf;
-+  unsigned skip = (m_picture.pic.picWidth - width) / 2;
-+
 +  for (unsigned j = 0; j < height; ++j)
 +  {
++    int32_t     cr, cb, cg, y;
++    uint32_t    u1, u2, v;
 +    uint8_t     *q = (uint8_t *)dst;
 +
 +    for (unsigned i = 0; i < width / 2; ++i, q += 6)
 +    {
-+      int32_t   cr, cb, cg, y;
-+      uint32_t  u1, u2, v = *p++;
-+
++      v = *p++;
 +      cr = yuvTab[1][(v >> 16) & 0xff];
 +      cb = yuvTab[2][(v >> 0) & 0xff];
 +      cg = (int16_t)cr + (int16_t)cb;
@@ -1147,36 +1138,46 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 +      *(uint16_t *)&q[4] = (uint16_t)(u2 >> 8);
 +    }
 +
++    if (width & 1)
++    {
++      v = *p++;
++      cr = yuvTab[1][(v >> 16) & 0xff];
++      cb = yuvTab[2][(v >> 0) & 0xff];
++      cg = (int16_t)cr + (int16_t)cb;
++      cr >>= 16;
++      cb >>= 16;
++
++      y = yuvTab[0][(v >> 8) & 0xff];
++      u1 = clipByte0[y + cr] | clipByte1[y + cg] | clipByte2[y + cb];
++      *(uint16_t *)&q[0] = (uint16_t)(u1);
++      *(uint8_t *)&q[2] = (uint8_t)(u1 >> 16);
++    }
++
 +    dst += pitch;
 +    p += skip;
 +  }
-+
-+#if 0
-+  writeBitmap("/root/output3.bmp", 24, dst, m_picture.pic.picWidth, m_picture.pic.picHeight, pitch);
-+#endif
 +}
 +
 +
 +void CJpegHwDecVMeta::ToBGRA(unsigned char *dst, unsigned int pitch, 
 +                             unsigned int width, unsigned int height)
 +{
++  uint32_t *p = (uint32_t *)m_picture.pBuf;
++  unsigned skip = (m_picture.pic.picWidth >> 1) - ((width + 1) >> 1);
++  
 +#if 0
 +  CLog::Log(LOGNOTICE, "%s: %dx%d, %d bytes, pitch %d width %d height %d", __FUNCTION__,
 +            m_picture.pic.picWidth, m_picture.pic.picHeight, m_picture.nDataLen, pitch, width, height);
 +#endif
 +
-+  uint32_t *p = (uint32_t *)m_picture.pBuf;
-+  unsigned skip = (m_picture.pic.picWidth - width) / 2;
-+  
 +  for (unsigned j = 0; j < height; ++j)
 +  {
-+    uint32_t    *q = (uint32_t *)dst;
++    int32_t    cr, cb, cg, y;
++    uint32_t   v, *q = (uint32_t *)dst;
 +
 +    for (unsigned i = 0; i < width / 2; ++i, q += 2)
 +    {
-+      int32_t   cr, cb, cg, y;
-+      uint32_t  v = *p++;
-+      
++      v = *p++;
 +      cr = yuvTab[1][(v >> 16) & 0xff];
 +      cb = yuvTab[2][(v >> 0) & 0xff];
 +      cg = (int16_t)cr + (int16_t)cb;
@@ -1190,13 +1191,22 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 +      q[1] = clipByte0[y + cb] | clipByte1a[y + cg] | clipByte2[y + cr];
 +    }
 +
++    if (width & 1)
++    {
++      v = *p++;
++      cr = yuvTab[1][(v >> 16) & 0xff];
++      cb = yuvTab[2][(v >> 0) & 0xff];
++      cg = (int16_t)cr + (int16_t)cb;
++      cr >>= 16;
++      cb >>= 16;
++
++      y = yuvTab[0][(v >> 8) & 0xff];
++      q[0] = clipByte0[y + cb] | clipByte1a[y + cg] | clipByte2[y + cr];
++    }
++
 +    dst += pitch;
 +    p += skip;
 +  }
-+
-+#if 0
-+  writeBitmap("/root/output4.bmp", 32, dst, m_picture.pic.picWidth, m_picture.pic.picHeight, pitch);
-+#endif
 +}
 +
 +
@@ -1216,29 +1226,31 @@ diff -Naur a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
 +                             unsigned int maxWidth, unsigned int maxHeight,
 +                             unsigned int scaleNum, unsigned int scaleDenom)
 +{
-+  bool bOk = false;
++  bool bOk = DecodePicture(maxWidth, maxHeight, scaleDenom / scaleNum);
 +
-+  if( DecodePicture(maxWidth, maxHeight, scaleDenom / scaleNum) )
++  if( bOk )
 +  {
 +    if ((int)maxHeight > m_picture.pic.picHeight)
 +      maxHeight = m_picture.pic.picHeight;
 +    
 +    if ((int)maxWidth > m_picture.pic.picWidth)
 +      maxWidth = m_picture.pic.picWidth;
-+   
-+    if (format == XB_FMT_RGB8)
++
++    switch (format)
 +    {
++    case XB_FMT_RGB8:
 +      ToRGB(dst, pitch, maxWidth, maxHeight);
-+      bOk = true;
-+    }
-+    else if (format == XB_FMT_A8R8G8B8)
-+    {
++      //writeBitmap("/root/output3.bmp", 24, dst, maxWidth, maxHeight, pitch);
++      break;
++
++    case XB_FMT_A8R8G8B8:
 +      ToBGRA(dst, pitch, maxWidth, maxHeight);
-+      bOk = true;
-+    }
-+    else
-+    {
++      //writeBitmap("/root/output4.bmp", 32, dst, maxWidth, maxHeight, pitch);
++      break;
++
++    default:
 +      CLog::Log(LOGWARNING, "%s: Incorrect output format specified", __FUNCTION__);
++      bOk = false;
 +    }
 +
 +    m_DllVMETA.vdec_os_api_dma_free(m_picture.pBuf);
