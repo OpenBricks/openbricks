@@ -1,0 +1,45 @@
+From dfb384fd31a103078b1e35dc83e53267367d4cf2 Mon Sep 17 00:00:00 2001
+From: Rabeeh Khoury <rabeeh@solid-run.com>
+Date: Sat, 5 Apr 2014 20:39:13 +0300
+Subject: [PATCH] Revert "mx6: fix build due to divide u64/u32"
+
+The calculation in the mxc_get_pll_pfd() uses freq as u64, which is essential
+since in the bottom it's multiplied by 18 and given that the PLL_BUS can be
+528000000 then it might overflow
+
+This reverts commit b7495f0347541eb068d11ff592d2d1f83d174ad9.
+---
+ arch/arm/cpu/armv7/mx6/clock.c | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/arch/arm/cpu/armv7/mx6/clock.c b/arch/arm/cpu/armv7/mx6/clock.c
+index aafa5f5..734c054 100644
+--- a/arch/arm/cpu/armv7/mx6/clock.c
++++ b/arch/arm/cpu/armv7/mx6/clock.c
+@@ -102,7 +102,8 @@ static u32 decode_pll(enum pll_clocks pll, u32 infreq)
+ }
+ static u32 mxc_get_pll_pfd(enum pll_clocks pll, int pfd_num)
+ {
+-	u32 div, freq;
++	u32 div;
++	u64 freq;
+ 
+ 	switch (pll) {
+ 	case PLL_BUS:
+@@ -111,11 +112,11 @@ static u32 mxc_get_pll_pfd(enum pll_clocks pll, int pfd_num)
+ 			return 0;
+ 		}
+ 		div = __raw_readl(&imx_ccm->analog_pfd_528);
+-		freq = decode_pll(PLL_BUS, MXC_HCLK);
++		freq = (u64)decode_pll(PLL_BUS, MXC_HCLK);
+ 		break;
+ 	case PLL_USBOTG:
+ 		div = __raw_readl(&imx_ccm->analog_pfd_480);
+-		freq = decode_pll(PLL_USBOTG, MXC_HCLK);
++		freq = (u64)decode_pll(PLL_USBOTG, MXC_HCLK);
+ 		break;
+ 	default:
+ 		/* No PFD on other PLL					     */
+-- 
+1.9.1
+
