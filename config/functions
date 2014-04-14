@@ -782,6 +782,67 @@ do_waf_install () {
   return 0
 }
 
+# Usage: make_install [toolchain|sysroot|libprefix] [unstripped]
+do_npm_install () {
+  local buildfor=target
+  local buildhost=$TARGET_NAME
+
+  if [ "$1" = target ]; then
+    buildfor=target
+    buildhost=$TARGET_NAME
+    shift
+  elif [ "$1" = host ]; then
+    buildfor=host
+    buildhost=$HOST_NAME
+    shift
+  fi
+
+  setup_toolchain $buildfor
+
+  [ "$GCC_NO_LTO" = 1 ]       && do_gcc_strip_lto
+  [ "$GCC_NO_GOLD" = 1 ]      && do_gcc_strip_gold
+  [ "$GCC_NO_LOOP_TREE" = 1 ] && do_gcc_strip_loop_tree
+  [ "$GCC_NO_GRAPHITE" = 1 ]  && do_gcc_strip_graphite
+  [ "$GCC_NO_OFFSET_64" = 1 ] && do_gcc_strip_file_offset
+  [ "$GCC_NO_ATOM" = 1 ]      && do_gcc_strip_atom
+
+  export CFLAGS="$CFLAGS $local_cflags -I$ROOT/$TOOLCHAIN/include/node"
+  export CXXFLAGS="$CXXFLAGS $local_cxxflags -I$ROOT/$TOOLCHAIN/include/node"
+  export CPPFLAGS="$CPPFLAGS $local_cppflags -I$ROOT/$TOOLCHAIN/include/node"
+  export LDFLAGS="$LDFLAGS $local_ldflags"
+  install_dir="$PWD/.install"
+  install_dir_debug="$PWD/.install-debuginfo"
+  local prefix="$1"
+  local is_strip="$2"
+
+  rm -rf "$install_dir"
+  mkdir -p "$install_dir"
+
+  export npm_config_arch=arm
+  #export npm_config_nodedir=$ROOT/$TOOLCHAIN/lib/node_modules/npm
+  export npm_config_nodedir=$ROOT/$TOOLCHAIN/include/node
+  export host_npm=`which npm`
+  node "$host_npm" install -g --production --prefix=./.install/usr/
+  chmod -R u+w .install
+  fix_libs "$install_dir" $prefix
+
+  [ "$is_strip" = unstripped ] && return 0
+
+  if [ "$prefix" != toolchain ]; then
+    strip_libs "$install_dir" "$install_dir_debug/usr/lib/debug"
+    kmod_dir="$install_dir/lib/modules/$(kernel_version)"
+    if [ -d "$kmod_dir" ]; then
+      rm -f $kmod_dir/build $kmod_dir/source $kmod_dir/modules.*
+      strip_kmods "$kmod_dir" "$install_dir_debug/usr/lib/debug"
+    fi
+    for b in bin sbin usr/bin usr/sbin usr/lib/xbmc lib/udev lib/systemd usr/libexec; do
+      [ -d "$install_dir/$b" ] && strip_bins "$install_dir/$b" "$install_dir_debug/usr/lib/debug"
+    done
+  fi
+
+  return 0
+}
+
 # Usage: set_title TITLE
 set_title () {
   printf "%${TITLE_INDENT}c $1 \033]2;$@\007 \n" >&$SILENT_OUT

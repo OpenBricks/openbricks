@@ -1,0 +1,25 @@
+#!/bin/sh
+
+. config/options
+
+get_meta $1
+setup_toolchain host
+cd $PKG_BUILD_DIR
+
+#zz reate a [dirty] gcc wrapper to allow us to build with our own flags
+# (dirty because it is spoofing 'gcc' since CC value is stored in the go tool)
+# TODO: remove this and just set CFLAGS/LDFLAGS once upstream supports it
+# https://code.google.com/p/go/issues/detail?id=6882
+mkdir -p .install/lib/golang
+export GOROOT_FINAL=/lib/golang
+
+mkdir -p zz
+echo "#!/bin/sh\n$HOST_CC $HOST_CFLAGS $HOST_LDFLAGS \"\$@\"" > ./zz/gcc
+chmod +x ./zz/gcc
+
+cd src/
+PATH="$(pwd -P)/../zz:$PATH" CC="gcc" ./make.bash
+cd ../
+
+cp -av api doc favicon.ico include pkg robots.txt src .install/lib/golang
+cp -av bin .install

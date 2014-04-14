@@ -34,15 +34,19 @@ case $TARGET_ARCH in
 esac
 
 # try to guess the appropriate kernel configuration file
-KERNEL_CFG_FILE="$CONFIG_MACHINE/$1.conf"
-
-[ ! -f $KERNEL_CFG_FILE ] && \
+if [ -f $CONFIG_PLATFORM/$1.conf ]; then
   KERNEL_CFG_FILE="$CONFIG_PLATFORM/$1.conf"
-
-[ ! -f $KERNEL_CFG_FILE ] && \
+elif [ -f $CONFIG_PLATFORM_GENERIC/$1.conf ]; then
   KERNEL_CFG_FILE="$CONFIG_PLATFORM_GENERIC/$1.conf"
+fi
 
-if [ ! -f "$KERNEL_CFG_FILE" ]; then
+[ -f $CONFIG_MACHINE/$1.conf ] && \
+  KERNEL_CFG_FILE="$KERNEL_CFG_FILE $CONFIG_MACHINE/$1.conf"
+
+[ -f $CONFIG_FLAVOUR/$1.conf ] && \
+  KERNEL_CFG_FILE="$KERNEL_CFG_FILE $CONFIG_FLAVOUR/$1.conf"
+
+if [ -z "$KERNEL_CFG_FILE" ]; then
   echo "Unable to find a matching kernel configuration file !!"
   exit 1
 fi
@@ -55,7 +59,7 @@ sed -i -e "s|^HOSTCC[[:space:]]*=.*$|HOSTCC = $HOST_CC|" \
        -e "s|^CROSS_COMPILE[[:space:]]*?=.*$|CROSS_COMPILE = $TARGET_PREFIX|" \
        $LINUX/Makefile
 
-cp $KERNEL_CFG_FILE $LINUX/.config
+$LINUX/scripts/kconfig/merge_config.sh -m -O $LINUX $KERNEL_CFG_FILE
 
 # conditionally unselect some components
 do_unselect $1 alsa       SND
