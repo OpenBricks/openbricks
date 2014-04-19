@@ -1,5 +1,11 @@
 #!/bin/sh
 
+. /etc/rtorrent.cfg
+
+if [ "$CHECK_USB_DISK" = "no" ] ; then
+  exit 0
+fi
+
 if [ "x$1" == "x" ]; then
 	echo "Got empty unmount point : $1"
 	exit -1
