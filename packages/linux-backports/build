@@ -1,0 +1,53 @@
+#!/bin/sh
+
+. config/options
+
+get_meta $1
+cd $PKG_BUILD_DIR
+
+# HACK : without this, path is too long and build ends with :
+#  execvp: /bin/sh argument list too long
+cd /tmp
+[ -f fake-build ] && rm fake-build
+ln -sf $ROOT/$PKG_BUILD_DIR fake-build
+cd fake-build
+
+case $TARGET_ARCH in
+  i386|x86_64)
+    TARGET_LINUX_ARCH=$TARGET_ARCH
+    ;;
+  powerpc|powerpc64)
+    TARGET_LINUX_ARCH=powerpc
+    ;;
+  arm)
+    TARGET_LINUX_ARCH=arm
+    ;;
+  *)
+    TARGET_LINUX_ARCH=$TARGET_ARCH
+    ;;
+esac
+
+# copy missing file 
+cp $ROOT/$PACKAGES/$1/missing/of_graph.h include/linux
+
+setup_toolchain host
+export ARCH=$TARGET_LINUX_ARCH
+export CROSS_COMPILE=$TARGET_PREFIX
+export KLIB_BUILD=$(kernel_path)
+export KLIB=`pwd`/.install
+unset LDFLAGS
+unset ASFLAGS
+unset CFLAGS
+
+if [ -f $ROOT/$PACKAGES/$1/config/$TARGET_MACHINE.conf ] ; then
+  echo "found a config for $TARGET_MACHINE, using it" 
+  cp $ROOT/$PACKAGES/$1/config/$TARGET_MACHINE.conf .config
+else
+  make allmodconfig
+fi
+
+make V=1 modules
+make modules_install \
+     INSTALL_MOD_PATH=.install \
+     DEPMOD=$ROOT/$TOOLCHAIN/bin/depmod \
+
