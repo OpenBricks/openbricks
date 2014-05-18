@@ -1,0 +1,151 @@
+diff --git a/m4/xbmc_arch.m4 b/m4/xbmc_arch.m4
+index 5bcdd81..b73fa4f 100644
+--- a/m4/xbmc_arch.m4
++++ b/m4/xbmc_arch.m4
+@@ -47,5 +47,9 @@ case $use_platform in
+   raspberry-pi)
+      AC_SUBST(ARCH_DEFINES, "-DTARGET_POSIX -DTARGET_LINUX -D_LINUX -D_ARMEL -DTARGET_RASPBERRY_PI")
+      ;;
++     
++  marvell-dove)
++     AC_SUBST(ARCH_DEFINES, "-DTARGET_POSIX -DTARGET_LINUX -D_LINUX -D_ARMEL -DTARGET_MARVELL_DOVE")
++     ;;
+ esac
+ ])
+diff --git a/configure.in b/configure.in
+index 806680f..258e82c 100644
+--- a/configure.in
++++ b/configure.in
+@@ -691,11 +691,11 @@ case $host in
+      use_arch="arm"
+      ffmpeg_target_os=linux
+      use_joystick=no
+-     use_neon=yes
+-     use_gles=yes
+-     use_sdl=no
+-     use_x11=no
+-     use_wayland=no
++     #use_neon=yes
++     #use_gles=yes
++     #use_sdl=no
++     #use_x11=no
++     #use_wayland=no
+      use_static_ffmpeg=yes
+      ;;
+   arm*-*linux-android*)
+@@ -750,6 +750,31 @@ case $use_platform in
+      CXXFLAGS="$CXXFLAGS"
+      ffmpeg_target_os=linux
+      ;;
++
++  marvell-dove)
++     target_platform=target_marvell_dove
++     use_neon=no
++     use_texturepacker=yes
++     use_texturepacker_native=yes
++     use_arch="arm"
++     use_cpu=cortex-a9
++     use_armv5te="yes"
++     use_armv6t2="no"
++     use_armv6="yes"
++     use_armvfp="yes"
++     use_hardcoded_tables="yes"
++     use_alsa="yes"
++     USE_TEXTUREPACKER_NATIVE_ROOT="$TEXTUREPACKER_NATIVE_ROOT"
++     ARCH="arm"
++     AC_DEFINE(HAS_MARVELL_DOVE, [1], [Define if supporting Marvell Armada 510 (Dove)])
++     CFLAGS="$CFLAGS -Wno-psabi -Wa,-march=armv7a -mtune=cortex-a9 -mfpu=vfpv3-d16 -marm -O3 -ftree-vectorize"
++     CXXFLAGS="$CXXFLAGS -Wno-psabi -Wa,-march=armv7a -mtune=cortex-a9 -mfpu=vfpv3-d16 -marm -O3 -ftree-vectorize"
++     FFMPEG_EXTRACFLAGS="$FFMPEG_EXTRACFLAGS -mtune=cortex-a9 -mfpu=vfpv3-d16 -marm -O3 -ftree-vectorize"
++     USE_MARVELL_DOVE=1
++     ;;
++
++  *)
++     use_alsa="yes"
+ esac
+ 
+ XBMC_SETUP_ARCH_DEFINES()
+@@ -805,7 +830,8 @@ CXXFLAGS="$CXXFLAGS $DEBUG_FLAGS"
+ 
+ if test "$use_optimizations" = "yes"; then
+   final_message="$final_message\n  Optimization:\tYes"
+-  if test "$target_platform" = "target_raspberry_pi"; then
++  if test "$target_platform" = "target_raspberry_pi" || \
++     test "$target_platform" = "target_marvell_dove"; then
+     CXXFLAGS="$CXXFLAGS"
+     CFLAGS="$CFLAGS"
+   else
+@@ -846,31 +872,32 @@ if test "$host_vendor" = "apple" ; then
+     LIBS="$LIBS -framework VideoDecodeAcceleration"
+   fi
+   USE_EXTERNAL_FFMPEG=1
+-elif test "$target_platform" = "target_raspberry_pi"; then
+-  ARCH="arm"
+-  use_arch="arm"
+ elif test "$use_arch" = "arm"; then
+   CFLAGS="$CFLAGS -mno-apcs-stack-check"
+   CXXFLAGS="$CXXFLAGS -mno-apcs-stack-check"
+-  FFMPEG_EXTRACFLAGS=""
+-  if test "$use_tegra" = "yes"; then
+-    # Compile for ARMv7a architecture, need to test gcc for vfpv3-d16 support 
+-    SAVE_CFLAGS="$CFLAGS"
+-    CFLAGS="-mfpu=vfpv3-d16"
+-    AC_COMPILE_IFELSE(
+-      [AC_LANG_SOURCE([int foo;])],
+-      [ CFLAGS="$SAVE_CFLAGS -Wno-psabi -Wa,-march=armv7a -mtune=cortex-a9 -mfpu=vfpv3-d16 -mthumb-interwork"
+-        CXXFLAGS="$CXXFLAGS -Wno-psabi -Wa,-march=armv7a -mtune=cortex-a9 -mfpu=vfpv3-d16 -mthumb-interwork"
+-        FFMPEG_EXTRACFLAGS="$FFMPEG_EXTRACFLAGS -mtune=cortex-a9 -mfpu=vfpv3-d16"
+-        use_cpu=cortex-a9],
+-      [ CFLAGS="$SAVE_CFLAGS -Wa,-march=armv6 -mtune=cortex-a8 -mthumb-interwork"
+-        CXXFLAGS="$CXXFLAGS -Wa,-march=armv6 -mtune=cortex-a8 -mthumb-interwork"    
+-        use_cpu=cortex-a8])
+-  else
+-    if test "$use_neon" = "yes"; then 
+-      CFLAGS="$CFLAGS -mfpu=neon -mvectorize-with-neon-quad"
+-      CXXFLAGS="$CXXFLAGS -mfpu=neon -mvectorize-with-neon-quad"
+-      FFMPEG_EXTRACFLAGS="$FFMPEG_EXTRACFLAGS -mfpu=neon"
++
++  if test "$target_platform" != "target_raspberry_pi" && \
++     test "$target_platform" != "target_marvell_dove" ; then
++    FFMPEG_EXTRACFLAGS=""
++    if test "$use_tegra" = "yes"; then
++      # Compile for ARMv7a architecture, need to test gcc for vfpv3-d16 support 
++      SAVE_CFLAGS="$CFLAGS"
++      CFLAGS="-mfpu=vfpv3-d16"
++      AC_COMPILE_IFELSE(
++        [AC_LANG_SOURCE([int foo;])],
++        [ CFLAGS="$SAVE_CFLAGS -Wno-psabi -Wa,-march=armv7a -mtune=cortex-a9 -mfpu=vfpv3-d16 -mthumb-interwork"
++          CXXFLAGS="$CXXFLAGS -Wno-psabi -Wa,-march=armv7a -mtune=cortex-a9 -mfpu=vfpv3-d16 -mthumb-interwork"
++          FFMPEG_EXTRACFLAGS="$FFMPEG_EXTRACFLAGS -mtune=cortex-a9 -mfpu=vfpv3-d16"
++          use_cpu=cortex-a9],
++        [ CFLAGS="$SAVE_CFLAGS -Wa,-march=armv6 -mtune=cortex-a8 -mthumb-interwork"
++          CXXFLAGS="$CXXFLAGS -Wa,-march=armv6 -mtune=cortex-a8 -mthumb-interwork"    
++          use_cpu=cortex-a8])
++    else
++      if test "$use_neon" = "yes"; then 
++        CFLAGS="$CFLAGS -mfpu=neon -mvectorize-with-neon-quad"
++        CXXFLAGS="$CXXFLAGS -mfpu=neon -mvectorize-with-neon-quad"
++        FFMPEG_EXTRACFLAGS="$FFMPEG_EXTRACFLAGS -mfpu=neon"
++      fi
+     fi
+   fi
+ fi
+@@ -2655,6 +2682,7 @@ AC_SUBST(USE_LIBNFS)
+ AC_SUBST(USE_LIBAFPCLIENT)
+ AC_SUBST(USE_AIRPLAY)
+ AC_SUBST(USE_OPENMAX)
++AC_SUBST(USE_MARVELL_DOVE)
+ AC_SUBST(USE_PULSE)
+ AC_SUBST(HAVE_LIBPULSE)
+ AC_SUBST(USE_XRANDR)
+@@ -2815,6 +2843,10 @@ XB_CONFIG_MODULE([lib/ffmpeg], [
+       `if test "$use_arch" != "no"; then echo --arch=$use_arch; fi`\
+       `if test "$use_cpu" != "no"; then echo --cpu=$use_cpu; fi`\
+       `if test "$use_neon" = "yes"; then echo --enable-neon; else echo --disable-neon; fi`\
++      `if test "$use_armv5te" = "yes"; then echo --enable-armv5te; else echo --disable-armv5te; fi`\
++      `if test "$use_armv6t2" = "yes"; then echo --enable-armv6t2; else echo --disable-armv6t2; fi`\
++      `if test "$use_armv6" = "yes"; then echo --enable-armv6; else echo --disable-armv6; fi`\
++      `if test "$use_vfp" = "yes"; then echo --enable-vfp; else echo --disable-vfp; fi`\
+       --target-os=$ffmpeg_target_os \
+       --disable-muxers \
+       --enable-muxer=spdif \

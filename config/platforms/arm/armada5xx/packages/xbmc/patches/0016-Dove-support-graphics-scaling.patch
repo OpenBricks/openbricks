@@ -1,0 +1,167 @@
+From 04fc31e22d7b52d854775562a4d28de6385495be Mon Sep 17 00:00:00 2001
+From: Rudi <r.ihle@s-t.de>
+Date: Sat, 17 May 2014 14:46:01 +0200
+Subject: [PATCH 16/22] Dove: support graphics scaling
+
+---
+ xbmc/guilib/GraphicContext.cpp |   23 +++++++++++++++++-
+ xbmc/guilib/GraphicContext.h   |    4 ++++
+ xbmc/windowing/X11/XRandR.cpp  |   50 ++++++++++++++++++++++++++++++++++++++++
+ xbmc/windowing/X11/XRandR.h    |    3 +++
+ 4 files changed, 79 insertions(+), 1 deletion(-)
+
+diff --git a/xbmc/guilib/GraphicContext.cpp b/xbmc/guilib/GraphicContext.cpp
+index 38f17a7..dd197e3 100644
+--- a/xbmc/guilib/GraphicContext.cpp
++++ b/xbmc/guilib/GraphicContext.cpp
+@@ -736,19 +736,40 @@ void CGraphicContext::SetResInfo(RESOLUTION res, const RESOLUTION_INFO& info)
+   }
+ }
+ 
++#ifdef HAS_MARVELL_DOVE
++GRAPHICS_SCALING CGraphicContext::getGraphicsScale()
++{
++  int value = -1; // g_guiSettings.GetInt("videoscreen.graphics_scaling");
++
++  return (value == -1) ? GR_SCALE_100 : (GRAPHICS_SCALING)value;
++}
++#endif
++
+ void CGraphicContext::GetGUIScaling(const RESOLUTION_INFO &res, float &scaleX, float &scaleY, TransformMatrix *matrix /* = NULL */)
+ {
+   if (m_Resolution != RES_INVALID)
+   {
+     // calculate necessary scalings
+     RESOLUTION_INFO info = GetResInfo();
++
++#ifdef HAS_MARVELL_DOVE
++    GRAPHICS_SCALING scale = getGraphicsScale();
++
++    float fFromWidth  = (float)(res.iWidth * 100) / scale;
++    float fFromHeight = (float)(res.iHeight * 100) / scale;
++    float fToPosX     = (float)(info.Overscan.left * 100) / scale;
++    float fToPosY     = (float)(info.Overscan.top * 100) / scale;
++    float fToWidth    = (float)(info.Overscan.right * 100) / scale  - fToPosX;
++    float fToHeight   = (float)(info.Overscan.bottom * 100) / scale - fToPosY;
++#else
+     float fFromWidth  = (float)res.iWidth;
+     float fFromHeight = (float)res.iHeight;
+     float fToPosX     = (float)info.Overscan.left;
+     float fToPosY     = (float)info.Overscan.top;
+     float fToWidth    = (float)info.Overscan.right  - fToPosX;
+     float fToHeight   = (float)info.Overscan.bottom - fToPosY;
+-
++#endif
++    
+     if(!g_guiSkinzoom) // lookup gui setting if we didn't have it already
+       g_guiSkinzoom = (CSettingInt*)CSettings::Get().GetSetting("lookandfeel.skinzoom");
+ 
+diff --git a/xbmc/guilib/GraphicContext.h b/xbmc/guilib/GraphicContext.h
+index 6c2dcd4..56d4529 100644
+--- a/xbmc/guilib/GraphicContext.h
++++ b/xbmc/guilib/GraphicContext.h
+@@ -126,6 +126,10 @@ public:
+   const RESOLUTION_INFO GetResInfo(RESOLUTION res) const;
+   void SetResInfo(RESOLUTION res, const RESOLUTION_INFO& info);
+ 
++#ifdef HAS_MARVELL_DOVE
++  static GRAPHICS_SCALING getGraphicsScale();
++#endif
++
+   /* \brief Get UI scaling information from a given resolution to the screen resolution.
+    Takes account of overscan and UI zooming.
+    \param res the resolution to scale from.
+diff --git a/xbmc/windowing/X11/XRandR.cpp b/xbmc/windowing/X11/XRandR.cpp
+index 0ac17ab..c017f18 100644
+--- a/xbmc/windowing/X11/XRandR.cpp
++++ b/xbmc/windowing/X11/XRandR.cpp
+@@ -26,6 +26,10 @@
+ #include <sys/wait.h>
+ #include "system.h"
+ #include "PlatformInclude.h"
++#ifdef TARGET_MARVELL_DOVE
++#include <sys/mman.h>
++#include "guilib/GraphicContext.h"
++#endif
+ #include "utils/XBMCTinyXML.h"
+ #include "utils/StringUtils.h"
+ #include "../xbmc/utils/log.h"
+@@ -158,8 +162,51 @@ void CXRandR::RestoreState()
+   }
+ }
+ 
++#ifdef TARGET_MARVELL_DOVE
++#define MAP_SIZE 4096UL
++#define MAP_MASK (MAP_SIZE - 1)
++void CXRandR::ChangeGraphicsScaler(void)
++{
++  /* OK. Now this is a seriously ugly hack. Code needs to be re-written to support ioctl to driver !!! */
++  /* Code below originally from devmem2.c */
++  int fd;
++  off_t target_page = 0xf1820000; /* LCD Controller base address */
++  void *map_base;
++  unsigned int zoomed;
++  unsigned int gr_size;
++  int zx,zy;
++  GRAPHICS_SCALING scale = g_graphicsContext.getGraphicsScale();
++
++  if((fd = open("/dev/mem", O_RDWR | O_SYNC)) == -1) {
++        CLog::Log(LOGERROR, "XRANDR: Unable to open /dev/mem");
++	return;
++  }
++
++  map_base = mmap(0, MAP_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, target_page);
++  zoomed = * (unsigned int *) (map_base + 0x108);
++  zx = zoomed & 0xffff;
++  zy = (zoomed & 0xffff0000) >> 16;
++  CLog::Log(LOGINFO, "XRANDR: Zoomed area is %dx%d, new area should be %dx%d\n",zx,zy,zx*100/scale,zy*100/scale);
++  gr_size = (zy*100/scale) & 0xffff;
++  gr_size = (gr_size << 16) | ((zx*100/scale) & 0xffff);
++  * (unsigned int *) (map_base + 0x104) = gr_size;
++
++  /* toggle bi-linear interpolation depending on scaling mode */
++  if (scale == GR_SCALE_100)
++    * (unsigned int *) (map_base + 0x1bc) |= 0x000c0000;
++  else
++    * (unsigned int *) (map_base + 0x1bc) &= ~0x000c0000;
++
++  close(fd);
++}
++#endif
++
+ bool CXRandR::SetMode(XOutput output, XMode mode)
+ {
++#ifdef TARGET_MARVELL_DOVE
++  /* Required both on entrance and exit from SetMode. First entrance is required to get the scaler modified */
++  ChangeGraphicsScaler ();
++#endif
+   if ((output.name == m_currentOutput && mode.id == m_currentMode) || (output.name == "" && mode.id == ""))
+     return true;
+ 
+@@ -250,6 +297,9 @@ bool CXRandR::SetMode(XOutput output, XMode mode)
+     return false;
+   CLog::Log(LOGINFO, "XRANDR: %s", cmd);
+   int status = system(cmd);
++#ifdef TARGET_MARVELL_DOVE
++  ChangeGraphicsScaler ();
++#endif
+   if (status == -1)
+     return false;
+ 
+diff --git a/xbmc/windowing/X11/XRandR.h b/xbmc/windowing/X11/XRandR.h
+index 0aec487..de0cdc8 100644
+--- a/xbmc/windowing/X11/XRandR.h
++++ b/xbmc/windowing/X11/XRandR.h
+@@ -100,6 +100,9 @@ public:
+   void LoadCustomModeLinesToAllOutputs(void);
+   void SaveState();
+   void RestoreState();
++#ifdef TARGET_MARVELL_DOVE
++  void ChangeGraphicsScaler(void);
++#endif
+   //bool Has1080i();
+   //bool Has1080p();
+   //bool Has720p();
+-- 
+1.7.9.5
+

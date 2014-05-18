@@ -1,0 +1,262 @@
+From 8edfae4df24ff6ba27ca8c004e0e72a52ea1e395 Mon Sep 17 00:00:00 2001
+From: warped-rudi <r.ihle@s-t.de>
+Date: Tue, 15 Apr 2014 17:56:51 +0200
+Subject: [PATCH 04/22] Introduce new formats AE_FMT_S24xE4L which use the
+ lower 3 bytes of a 4 byte word
+
+---
+ xbmc/cores/AudioEngine/Utils/AEAudioFormat.h |    5 ++
+ xbmc/cores/AudioEngine/Utils/AEConvert.cpp   |   87 ++++++++++++++++++++++++++
+ xbmc/cores/AudioEngine/Utils/AEConvert.h     |    3 +
+ xbmc/cores/AudioEngine/Utils/AEUtil.cpp      |   25 +++++---
+ 4 files changed, 113 insertions(+), 7 deletions(-)
+
+diff --git a/xbmc/cores/AudioEngine/Utils/AEAudioFormat.h b/xbmc/cores/AudioEngine/Utils/AEAudioFormat.h
+index 10576bf..0916abb 100644
+--- a/xbmc/cores/AudioEngine/Utils/AEAudioFormat.h
++++ b/xbmc/cores/AudioEngine/Utils/AEAudioFormat.h
+@@ -45,6 +45,10 @@ enum AEDataFormat
+   AE_FMT_S24LE4H,
+   AE_FMT_S24NE4H, /* S24 in upper 4 bytes */
+ 
++  AE_FMT_S24BE4L,
++  AE_FMT_S24LE4L,
++  AE_FMT_S24NE4L, /* S24 in lower 4 bytes */
++
+   AE_FMT_S24BE3,
+   AE_FMT_S24LE3,
+   AE_FMT_S24NE3, /* S24 in 3 bytes */
+@@ -66,6 +70,7 @@ enum AEDataFormat
+   AE_FMT_S16NEP,
+   AE_FMT_S32NEP,
+   AE_FMT_S24NE4HP,
++  AE_FMT_S24NE4LP,
+   AE_FMT_S24NE3P,
+   AE_FMT_DOUBLEP,
+   AE_FMT_FLOATP,
+diff --git a/xbmc/cores/AudioEngine/Utils/AEConvert.cpp b/xbmc/cores/AudioEngine/Utils/AEConvert.cpp
+index 9fd719b..f82cde9 100644
+--- a/xbmc/cores/AudioEngine/Utils/AEConvert.cpp
++++ b/xbmc/cores/AudioEngine/Utils/AEConvert.cpp
+@@ -70,17 +70,21 @@ CAEConvert::AEConvertToFn CAEConvert::ToFloat(enum AEDataFormat dataFormat)
+     case AE_FMT_S16NE : return &S16BE_Float;
+     case AE_FMT_S32NE : return &S32BE_Float;
+     case AE_FMT_S24NE4H: return &S24BE4H_Float;
++    case AE_FMT_S24NE4L: return &S24BE4L_Float;
+     case AE_FMT_S24NE3: return &S24BE3_Float;
+ #else
+     case AE_FMT_S16NE : return &S16LE_Float;
+     case AE_FMT_S32NE : return &S32LE_Float;
+     case AE_FMT_S24NE4H: return &S24LE4H_Float;
++    case AE_FMT_S24NE4L: return &S24LE4L_Float;
+     case AE_FMT_S24NE3: return &S24LE3_Float;
+ #endif
+     case AE_FMT_S16LE : return &S16LE_Float;
+     case AE_FMT_S16BE : return &S16BE_Float;
+     case AE_FMT_S24LE4H: return &S24LE4H_Float;
++    case AE_FMT_S24LE4L: return &S24LE4L_Float;
+     case AE_FMT_S24BE4H: return &S24BE4H_Float;
++    case AE_FMT_S24BE4L: return &S24BE4L_Float;
+     case AE_FMT_S24LE3: return &S24LE3_Float;
+     case AE_FMT_S24BE3: return &S24BE3_Float;
+ #if defined(__ARM_NEON__)
+@@ -113,6 +117,7 @@ CAEConvert::AEConvertFrFn CAEConvert::FrFloat(enum AEDataFormat dataFormat)
+     case AE_FMT_S16LE : return &Float_S16LE;
+     case AE_FMT_S16BE : return &Float_S16BE;
+     case AE_FMT_S24NE4H: return &Float_S24NE4H;
++    case AE_FMT_S24NE4L: return &Float_S24NE4L;
+     case AE_FMT_S24NE3: return &Float_S24NE3;
+ #if defined(__ARM_NEON__)
+     case AE_FMT_S32LE : return &Float_S32LE_Neon;
+@@ -220,6 +225,16 @@ unsigned int CAEConvert::S24LE4H_Float(uint8_t *data, const unsigned int samples
+   return samples;
+ }
+ 
++unsigned int CAEConvert::S24LE4L_Float(uint8_t *data, const unsigned int samples, float *dest)
++{
++  for (unsigned int i = 0; i < samples; ++i, data += 4)
++  {
++    int s = (data[2] << 24) | (data[1] << 16) | (data[0] << 8);
++    *dest++ = (float)s * INT32_SCALE;
++  }
++  return samples;
++}
++
+ unsigned int CAEConvert::S24BE4H_Float(uint8_t *data, const unsigned int samples, float *dest)
+ {
+   for (unsigned int i = 0; i < samples; ++i, data += 4)
+@@ -230,6 +245,16 @@ unsigned int CAEConvert::S24BE4H_Float(uint8_t *data, const unsigned int samples
+   return samples;
+ }
+ 
++unsigned int CAEConvert::S24BE4L_Float(uint8_t *data, const unsigned int samples, float *dest)
++{
++  for (unsigned int i = 0; i < samples; ++i, data += 4)
++  {
++    int s = (data[1] << 24) | (data[2] << 16) | (data[3] << 8);
++    *dest++ = (float)s * INT32_SCALE;
++  }
++  return samples;
++}
++
+ unsigned int CAEConvert::S24LE3_Float(uint8_t *data, const unsigned int samples, float *dest)
+ {
+   for (unsigned int i = 0; i < samples; ++i, data += 3)
+@@ -847,6 +872,68 @@ unsigned int CAEConvert::Float_S24NE4H(float *data, const unsigned int samples,
+   return samples << 2;
+ }
+ 
++unsigned int CAEConvert::Float_S24NE4L(float *data, const unsigned int samples, uint8_t *dest)
++{
++  int32_t *dst = (int32_t*)dest;
++  #ifdef __SSE2__
++
++  const __m128i msk = _mm_set1_epi32(0xFFFFFF);
++  const __m128 mul = _mm_set_ps1((float)INT24_MAX+.5f);
++  unsigned int count = samples;
++
++  /* work around invalid alignment */
++  while ((((uintptr_t)data & 0xF) || ((uintptr_t)dest & 0xF)) && count > 0)
++  {
++    dst[0] = safeRound(data[0] * ((float)INT24_MAX+.5f)) & 0xFFFFFF;
++    ++data;
++    ++dst;
++    --count;
++  }
++
++  const uint32_t even = count & ~0x3;
++  for (uint32_t i = 0; i < even; i += 4, data += 4, dst += 4)
++  {
++    __m128  in  = _mm_mul_ps(_mm_load_ps(data), mul);
++    __m128i con = _mm_cvtps_epi32(in);
++    con         = _mm_and_si128(con, msk);
++    memcpy(dst, &con, sizeof(int32_t) * 4);
++  }
++
++  if (count != even)
++  {
++    const uint32_t odd = count - even;
++    if (odd == 1)
++      dst[0] = safeRound(data[0] * ((float)INT24_MAX+.5f)) & 0xFFFFFF;
++    else
++    {
++      __m128 in;
++      if (odd == 2)
++      {
++        in = _mm_setr_ps(data[0], data[1], 0, 0);
++        in = _mm_mul_ps(in, mul);
++        __m128i con = _mm_cvtps_epi32(in);
++        con         = _mm_and_si128(con, msk);
++        memcpy(dst, &con, sizeof(int32_t) * 2);
++      }
++      else
++      {
++        in = _mm_setr_ps(data[0], data[1], data[2], 0);
++        in = _mm_mul_ps(in, mul);
++        __m128i con = _mm_cvtps_epi32(in);
++        con         = _mm_and_si128(con, msk);
++        memcpy(dst, &con, sizeof(int32_t) * 3);
++      }
++    }
++  }
++  _mm_empty();
++  #else /* no SSE2 */
++  for (uint32_t i = 0; i < samples; ++i)
++    *dst++ = safeRound(*data++ * ((float)INT24_MAX+.5f)) & 0xFFFFFF;
++  #endif
++
++  return samples << 2;
++}
++
+ unsigned int CAEConvert::Float_S24NE3(float *data, const unsigned int samples, uint8_t *dest)
+ {
+   /* We do not want to shift for S24LE3, since left-shifting would actually
+diff --git a/xbmc/cores/AudioEngine/Utils/AEConvert.h b/xbmc/cores/AudioEngine/Utils/AEConvert.h
+index cf547c8..82afd4b 100644
+--- a/xbmc/cores/AudioEngine/Utils/AEConvert.h
++++ b/xbmc/cores/AudioEngine/Utils/AEConvert.h
+@@ -29,7 +29,9 @@ private:
+   static unsigned int S16LE_Float (uint8_t *data, const unsigned int samples, float   *dest);
+   static unsigned int S16BE_Float (uint8_t *data, const unsigned int samples, float   *dest);
+   static unsigned int S24LE4H_Float(uint8_t *data, const unsigned int samples, float   *dest);
++  static unsigned int S24LE4L_Float(uint8_t *data, const unsigned int samples, float   *dest);
+   static unsigned int S24BE4H_Float(uint8_t *data, const unsigned int samples, float   *dest);
++  static unsigned int S24BE4L_Float(uint8_t *data, const unsigned int samples, float   *dest);
+   static unsigned int S24LE3_Float(uint8_t *data, const unsigned int samples, float   *dest);
+   static unsigned int S24BE3_Float(uint8_t *data, const unsigned int samples, float   *dest);
+   static unsigned int S32LE_Float (uint8_t *data, const unsigned int samples, float   *dest);
+@@ -42,6 +44,7 @@ private:
+   static unsigned int Float_S16LE (float   *data, const unsigned int samples, uint8_t *dest);
+   static unsigned int Float_S16BE (float   *data, const unsigned int samples, uint8_t *dest);
+   static unsigned int Float_S24NE4H(float   *data, const unsigned int samples, uint8_t *dest);
++  static unsigned int Float_S24NE4L(float   *data, const unsigned int samples, uint8_t *dest);
+   static unsigned int Float_S24NE3(float   *data, const unsigned int samples, uint8_t *dest);
+   static unsigned int Float_S32LE (float   *data, const unsigned int samples, uint8_t *dest);
+   static unsigned int Float_S32BE (float   *data, const unsigned int samples, uint8_t *dest);
+diff --git a/xbmc/cores/AudioEngine/Utils/AEUtil.cpp b/xbmc/cores/AudioEngine/Utils/AEUtil.cpp
+index a70f20c..fc5d045 100644
+--- a/xbmc/cores/AudioEngine/Utils/AEUtil.cpp
++++ b/xbmc/cores/AudioEngine/Utils/AEUtil.cpp
+@@ -92,9 +92,13 @@ const unsigned int CAEUtil::DataFormatToBits(const enum AEDataFormat dataFormat)
+     32,                  /* S32LE  */
+     32,                  /* S32NE  */
+     
+-    32,                  /* S24BE  */
+-    32,                  /* S24LE  */
+-    32,                  /* S24NE  */
++    32,                  /* S24BE4H */
++    32,                  /* S24LE4H */
++    32,                  /* S24NE4H */
++
++    32,                  /* S24BE4L */
++    32,                  /* S24LE4L */
++    32,                  /* S24NE4L */
+     
+     24,                  /* S24BE3 */
+     24,                  /* S24LE3 */
+@@ -114,8 +118,9 @@ const unsigned int CAEUtil::DataFormatToBits(const enum AEDataFormat dataFormat)
+      8,                  /* U8P    */
+     16,                  /* S16NEP */
+     32,                  /* S32NEP */
+-    32,                  /* S24NEP */
+-    24,                  /* S24NE3P*/
++    32,                  /* S24NE4HP */
++    32,                  /* S24NE4LP */
++    24,                  /* S24NE3P */
+     sizeof(double) << 3, /* DOUBLEP */
+     sizeof(float ) << 3  /* FLOATP  */
+  };
+@@ -125,7 +130,8 @@ const unsigned int CAEUtil::DataFormatToBits(const enum AEDataFormat dataFormat)
+ 
+ const unsigned int CAEUtil::DataFormatToUsedBits(const enum AEDataFormat dataFormat)
+ {
+-  if (dataFormat == AE_FMT_S24BE4H || dataFormat == AE_FMT_S24LE4H || dataFormat == AE_FMT_S24NE4H)
++  if (dataFormat == AE_FMT_S24BE4H || dataFormat == AE_FMT_S24LE4H || dataFormat == AE_FMT_S24NE4H ||
++      dataFormat == AE_FMT_S24BE4L || dataFormat == AE_FMT_S24LE4L || dataFormat == AE_FMT_S24NE4L)
+     return 24;
+   else
+     return DataFormatToBits(dataFormat);
+@@ -151,7 +157,11 @@ const char* CAEUtil::DataFormatToStr(const enum AEDataFormat dataFormat)
+     
+     "AE_FMT_S24BE4H",
+     "AE_FMT_S24LE4H",
+-    "AE_FMT_S24NE4H",  /* S24 in 4 bytes */
++    "AE_FMT_S24NE4H",  /* S24 in upper 4 bytes */
++
++    "AE_FMT_S24BE4L",
++    "AE_FMT_S24LE4L",
++    "AE_FMT_S24NE4L",  /* S24 in lower 4 bytes */
+     
+     "AE_FMT_S24BE3",
+     "AE_FMT_S24LE3",
+@@ -174,6 +184,7 @@ const char* CAEUtil::DataFormatToStr(const enum AEDataFormat dataFormat)
+     "AE_FMT_S16NEP",
+     "AE_FMT_S32NEP",
+     "AE_FMT_S24NE4HP",
++    "AE_FMT_S24NE4LP",
+     "AE_FMT_S24NE3P",
+     "AE_FMT_DOUBLEP",
+     "AE_FMT_FLOATP"
+-- 
+1.7.9.5
+

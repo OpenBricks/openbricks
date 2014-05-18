@@ -1,0 +1,77 @@
+From 1a879abe96b2cbd6a08174b46bb405b5ec29646f Mon Sep 17 00:00:00 2001
+From: Rudi <r.ihle@s-t.de>
+Date: Sat, 17 May 2014 12:53:08 +0200
+Subject: [PATCH 14/22] Dove: modify windowing
+
+---
+ xbmc/windowing/X11/WinSystemX11.cpp     |    2 +-
+ xbmc/windowing/X11/WinSystemX11GLES.cpp |   12 ++++++++++--
+ 2 files changed, 11 insertions(+), 3 deletions(-)
+
+diff --git a/xbmc/windowing/X11/WinSystemX11.cpp b/xbmc/windowing/X11/WinSystemX11.cpp
+index 54379ea..db73998 100644
+--- a/xbmc/windowing/X11/WinSystemX11.cpp
++++ b/xbmc/windowing/X11/WinSystemX11.cpp
+@@ -139,7 +139,7 @@ bool CWinSystemX11::CreateNewWindow(const CStdString& name, bool fullScreen, RES
+   CBaseTexture* iconTexture = CTexture::LoadFromFile("special://xbmc/media/icon256x256.png");
+ 
+   if (iconTexture)
+-    SDL_WM_SetIcon(SDL_CreateRGBSurfaceFrom(iconTexture->GetPixels(), iconTexture->GetWidth(), iconTexture->GetHeight(), 32, iconTexture->GetPitch(), 0xff0000, 0x00ff00, 0x0000ff, 0xff000000L), NULL);
++    SDL_WM_SetIcon(SDL_CreateRGBSurfaceFrom(iconTexture->GetPixels(), iconTexture->GetWidth(), iconTexture->GetHeight(), 32, iconTexture->GetPitch(), 0xff0000, 0x00ff00, 0x0000ff, 0xff000000), NULL);
+   SDL_WM_SetCaption("XBMC Media Center", NULL);
+   delete iconTexture;
+ 
+diff --git a/xbmc/windowing/X11/WinSystemX11GLES.cpp b/xbmc/windowing/X11/WinSystemX11GLES.cpp
+index b2e282e..06ae8ef 100644
+--- a/xbmc/windowing/X11/WinSystemX11GLES.cpp
++++ b/xbmc/windowing/X11/WinSystemX11GLES.cpp
+@@ -37,8 +37,12 @@
+ using namespace std;
+ 
+ // Comment out one of the following defines to select the colourspace to use
+-//#define RGBA8888
++#ifdef HAS_MARVELL_DOVE
++/* For dove we use 32 bit per pixel on graphics overlay */
++#define RGBA8888
++#else
+ #define RGB565
++#endif
+ 
+ #if defined(RGBA8888)
+ #define RSIZE	8
+@@ -161,7 +165,7 @@ bool CWinSystemX11GLES::CreateNewWindow(const CStdString& name, bool fullScreen,
+   CTexture iconTexture;
+   iconTexture.LoadFromFile("special://xbmc/media/icon256x256.png");
+ 
+-  SDL_WM_SetIcon(SDL_CreateRGBSurfaceFrom(iconTexture.GetPixels(), iconTexture.GetWidth(), iconTexture.GetHeight(), BPP, iconTexture.GetPitch(), 0xff0000, 0x00ff00, 0x0000ff, 0xff000000L), NULL);
++  SDL_WM_SetIcon(SDL_CreateRGBSurfaceFrom(iconTexture.GetPixels(), 256, 256, BPP, 256, 0xff0000, 0x00ff00, 0x0000ff, 0xff000000), NULL);
+   SDL_WM_SetCaption("XBMC Media Center", NULL);
+ 
+   m_bWindowCreated = true;
+@@ -356,7 +360,9 @@ bool CWinSystemX11GLES::RefreshEGLContext()
+   if ((m_eglWindow == info.info.x11.window) && m_eglSurface && m_eglContext)
+   {
+     CLog::Log(LOGWARNING, "EGL: Same window as before, refreshing context");
++#ifndef HAS_MARVELL_DOVE /* Dove GL engine doesn't like the following. Probably EGL_NO_CONTEXT flag */
+     eglMakeCurrent(m_eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
++#endif
+     eglMakeCurrent(m_eglDisplay, m_eglSurface,   m_eglSurface,   m_eglContext);
+     return true;
+   }
+@@ -376,11 +382,13 @@ bool CWinSystemX11GLES::RefreshEGLContext()
+   if (m_eglContext)
+     eglDestroyContext(m_eglDisplay, m_eglContext);
+ 
++#ifndef HAS_MARVELL_DOVE /* Dove GL engine doesn't like the following. Probably EGL_NO_CONTEXT flag */
+   if ((m_eglContext = eglCreateContext(m_eglDisplay, eglConfig, EGL_NO_CONTEXT, contextAttributes)) == EGL_NO_CONTEXT)
+   {
+     CLog::Log(LOGERROR, "EGL Error: Could not create context");
+     return false;
+   }
++#endif
+ 
+   if ((m_eglContext = eglCreateContext(m_eglDisplay, eglConfig, m_eglContext, contextAttributes)) == EGL_NO_CONTEXT)
+   {
+-- 
+1.7.9.5
+
