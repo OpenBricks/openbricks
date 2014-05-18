@@ -3,7 +3,7 @@ new file mode 100644
 index 0000000..0d7a686
 --- /dev/null
 +++ b/xbmc/windowing/egl/EGLNativeTypeA10.cpp
-@@ -0,0 +1,158 @@
+@@ -0,0 +1,159 @@
 +/*
 + *      Copyright (C) 2011-2012 Team XBMC
 + *      http://www.xbmc.org
@@ -27,6 +27,7 @@ index 0000000..0d7a686
 +#include <EGL/egl.h>
 +#include "EGLNativeTypeA10.h"
 +#include "utils/log.h"
++#include "utils/StringUtils.h"
 +#include "guilib/gui3d.h"
 +
 +#if defined(ALLWINNERA10) && !defined(TARGET_ANDROID)
@@ -126,7 +127,7 @@ index 0000000..0d7a686
 +  res->fPixelRatio   = 1.0f;
 +  res->iScreenWidth  = res->iWidth;
 +  res->iScreenHeight = res->iHeight;
-+  res->strMode.Format("%dx%d @ %.2f%s - Full Screen", res->iScreenWidth, res->iScreenHeight, res->fRefreshRate,
++  res->strMode = StringUtils::Format("%dx%d @ %.2f%s - Full Screen", res->iScreenWidth, res->iScreenHeight, res->fRefreshRate,
 +  res->dwFlags & D3DPRESENTFLAG_INTERLACED ? "i" : "");
 +  CLog::Log(LOGNOTICE,"Current resolution: %s\n",res->strMode.c_str());
 +  return true;
@@ -221,14 +222,16 @@ diff --git a/xbmc/windowing/egl/EGLNativeTypeAndroid.cpp b/xbmc/windowing/egl/EG
 index 0c0d355..12cf7bc 100644
 --- a/xbmc/windowing/egl/EGLNativeTypeAndroid.cpp
 +++ b/xbmc/windowing/egl/EGLNativeTypeAndroid.cpp
-@@ -24,13 +24,24 @@
- #include "guilib/gui3d.h"
- #if defined(TARGET_ANDROID)
- #include "android/activity/XBMCApp.h"
-+#ifdef ALLWINNERA10
-+#include "cores/VideoRenderers/LinuxRendererA10.h"
-+#endif
+@@ -28,15 +28,26 @@
+   #if defined(HAS_AMLPLAYER) || defined(HAS_LIBAMCODEC)
+     #include "utils/AMLUtils.h"
+   #endif
++  #ifdef ALLWINNERA10
++    #include "cores/VideoRenderers/LinuxRendererA10.h"
++  #endif
  #endif
+ #include "utils/StringUtils.h"
+ 
  CEGLNativeTypeAndroid::CEGLNativeTypeAndroid()
  {
 +#if defined(ALLWINNERA10) && defined(TARGET_ANDROID)
@@ -246,62 +249,37 @@ index 0c0d355..12cf7bc 100644
  } 
  
  bool CEGLNativeTypeAndroid::CheckCompatibility()
-@@ -144,4 +155,4 @@ bool CEGLNativeTypeAndroid::GetPreferredResolution(RESOLUTION_INFO *res) const
- bool CEGLNativeTypeAndroid::ShowWindow(bool show)
- {
-   return false;
--}
-\ No newline at end of file
-+}
 diff --git a/xbmc/windowing/egl/EGLWrapper.cpp b/xbmc/windowing/egl/EGLWrapper.cpp
 index a5442e1..217959d 100644
 --- a/xbmc/windowing/egl/EGLWrapper.cpp
 +++ b/xbmc/windowing/egl/EGLWrapper.cpp
-@@ -22,7 +22,10 @@
+@@ -22,7 +22,12 @@
  
  #ifdef HAS_EGL
  
-+#include "system_gl.h"
++#if defined(ALLWINNERA10)
++  #include "system_gl.h"
++#endif
 +
  #include "utils/log.h"
 +#include "EGLNativeTypeA10.h"
  #include "EGLNativeTypeAndroid.h"
  #include "EGLNativeTypeAmlogic.h"
  #include "EGLNativeTypeRaspberryPI.h"
-@@ -84,6 +87,20 @@ bool CEGLWrapper::Initialize(const std::string &implementation)
-     }
-   }
- 
-+  if (!ret)
-+  {
-+    delete nativeGuess;
-+    nativeGuess = new CEGLNativeTypeA10;
-+    if (nativeGuess->CheckCompatibility())
-+    {
-+      if(implementation == nativeGuess->GetNativeName() || implementation == "auto")
-+      {
-+        m_nativeTypes = nativeGuess;
-+        ret = true;
-+      }
-+    }
-+  }
-+
-   if (ret && m_nativeTypes)
-     m_nativeTypes->Initialize();
- 
-@@ -268,6 +285,7 @@ bool CEGLWrapper::CreateSurface(EGLDisplay display, EGLConfig config, EGLSurface
- 
-   *surface = eglCreateWindowSurface(display, config, *nativeWindow, NULL);
-   CheckError();
-+
-   return *surface != EGL_NO_SURFACE;
- }
- 
-@@ -289,6 +307,20 @@ bool CEGLWrapper::BindContext(EGLDisplay display, EGLSurface surface, EGLContext
+@@ -81,6 +86,7 @@
+   // Try to create each backend in sequence and go with the first one
+   // that we know will work
+   if ((nativeGuess = CreateEGLNativeType<CEGLNativeTypeWayland>(implementation)) ||
++      (nativeGuess = CreateEGLNativeType<CEGLNativeTypeA10>(implementation)) ||
+       (nativeGuess = CreateEGLNativeType<CEGLNativeTypeAndroid>(implementation)) ||
+       (nativeGuess = CreateEGLNativeType<CEGLNativeTypeAmlogic>(implementation)) ||
+       (nativeGuess = CreateEGLNativeType<CEGLNativeTypeRaspberryPI>(implementation)))
+@@ -302,6 +308,22 @@
    EGLBoolean status;
    status = eglMakeCurrent(display, surface, surface, context);
    CheckError();
 +
++#if defined(ALLWINNERA10)
 +  // For EGL backend, it needs to clear all the back buffers of the window
 +  // surface before drawing anything, otherwise the image will be blinking
 +  // heavily.  The default eglWindowSurface has 3 gdl surfaces as the back
@@ -314,14 +292,15 @@ index a5442e1..217959d 100644
 +  eglSwapBuffers(display, surface);
 +  glClear (GL_COLOR_BUFFER_BIT);
 +  eglSwapBuffers(display, surface);
++#endif
 +
    return status;
  }
  
-diff --git a/xbmc/windowing/egl/Makefile b/xbmc/windowing/egl/Makefile
+diff --git a/xbmc/windowing/egl/Makefile.in b/xbmc/windowing/egl/Makefile.in
 index 241220a..8ad3b8f 100644
---- a/xbmc/windowing/egl/Makefile
-+++ b/xbmc/windowing/egl/Makefile
+--- a/xbmc/windowing/egl/Makefile.in
++++ b/xbmc/windowing/egl/Makefile.in
 @@ -1,6 +1,7 @@
  INCLUDES=-I.
  
