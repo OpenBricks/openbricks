@@ -1,0 +1,67 @@
+diff -aur --unidirectional-new-file a/xbmc/settings/GUIWindowSettingsCategory.cpp b/xbmc/settings/GUIWindowSettingsCategory.cpp
+--- a/xbmc/settings/GUIWindowSettingsCategory.cpp	2013-03-12 21:10:05.883085502 +0100
++++ b/xbmc/settings/GUIWindowSettingsCategory.cpp	2013-03-12 21:04:03.000000000 +0100
+@@ -25,6 +25,7 @@
+ #include "ApplicationMessenger.h"
+ #include "interfaces/Builtins.h"
+ #include "input/KeyboardLayoutConfiguration.h"
++#include "input/XBIRRemote.h"
+ #include "filesystem/Directory.h"
+ #include "Util.h"
+ #include "guilib/GUISpinControlEx.h"
+@@ -167,6 +168,8 @@
+   m_strOldTrackFormatRight = "";
+   m_returningFromSkinLoad = false;
+   m_delayedSetting.reset();
++
++  m_buttonCode = 0;
+ }
+ 
+ CGUIWindowSettingsCategory::~CGUIWindowSettingsCategory(void)
+@@ -175,11 +178,25 @@
+   delete m_pOriginalEdit;
+ }
+ 
++bool CGUIWindowSettingsCategory::OnAction(const CAction &action)
++{
++  m_buttonCode = action.GetButtonCode();
++  return CGUIWindow::OnAction(action);;
++}
++
+ bool CGUIWindowSettingsCategory::OnBack(int actionID)
+ {
+   g_settings.Save();
+   m_lastControlID = 0; // don't save the control as we go to a different window each time
+-  return CGUIWindow::OnBack(actionID);
++
++  if (actionID != ACTION_PREVIOUS_MENU ||
++      m_buttonCode == XINPUT_IR_REMOTE_BACK ||
++      m_buttonCode == CAction(0).GetButtonCode())
++    g_windowManager.PreviousWindow();
++  else
++    g_windowManager.ChangeActiveWindow(WINDOW_HOME);
++
++  return true;
+ }
+ 
+ bool CGUIWindowSettingsCategory::OnMessage(CGUIMessage &message)
+diff -aur --unidirectional-new-file a/xbmc/settings/GUIWindowSettingsCategory.h b/xbmc/settings/GUIWindowSettingsCategory.h
+--- a/xbmc/settings/GUIWindowSettingsCategory.h	2013-01-28 03:07:32.000000000 +0100
++++ b/xbmc/settings/GUIWindowSettingsCategory.h	2013-03-11 23:12:34.153804050 +0100
+@@ -34,6 +34,7 @@
+   CGUIWindowSettingsCategory(void);
+   virtual ~CGUIWindowSettingsCategory(void);
+   virtual bool OnMessage(CGUIMessage &message);
++  virtual bool OnAction(const CAction &action);
+   virtual bool OnBack(int actionID);
+   virtual void FrameMove();
+   virtual void Render();
+@@ -107,5 +108,7 @@
+ 
+   boost::shared_ptr<CBaseSettingControl> m_delayedSetting; ///< Current delayed setting \sa CBaseSettingControl::SetDelayed()
+   CStopWatch           m_delayedTimer;   ///< Delayed setting timer
++
++  unsigned m_buttonCode;
+ };
+ 
+

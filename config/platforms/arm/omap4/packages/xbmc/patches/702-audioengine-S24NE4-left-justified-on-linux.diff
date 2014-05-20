@@ -1,0 +1,131 @@
+--- a/xbmc/cores/AudioEngine/Utils/AEConvert.cpp	2014-04-16 12:49:19.000000000 +0200
++++ b/xbmc/cores/AudioEngine/Utils/AEConvert.cpp	2014-04-16 12:56:03.000000000 +0200
+@@ -50,6 +50,13 @@
+ 
+ #define INT32_SCALE (-1.0f / INT_MIN)
+ 
++// Windows expects the S24xE4 formats to be left justfied while Linux wants the way around...
++#if defined(TARGET_LINUX)
++#define S24NE4_LEFT_JUSTIFIED   0
++#else
++#define S24NE4_LEFT_JUSTIFIED   1
++#endif
++
+ static inline int safeRound(double f)
+ {
+   /* if the value is larger then we can handle, then clamp it */
+@@ -217,7 +224,11 @@
+ {
+   for (unsigned int i = 0; i < samples; ++i, data += 4)
+   {
++#if S24NE4_LEFT_JUSTIFIED
++    int s = (data[3] << 24) | (data[2] << 16) | (data[1] << 8);
++#else
+     int s = (data[2] << 24) | (data[1] << 16) | (data[0] << 8);
++#endif
+     *dest++ = (float)s * INT32_SCALE;
+   }
+   return samples;
+@@ -227,7 +238,11 @@
+ {
+   for (unsigned int i = 0; i < samples; ++i, data += 4)
+   {
++#if S24NE4_LEFT_JUSTIFIED
+     int s = (data[0] << 24) | (data[1] << 16) | (data[2] << 8);
++#else
++    int s = (data[1] << 24) | (data[2] << 16) | (data[3] << 8);
++#endif
+     *dest++ = (float)s * INT32_SCALE;
+   }
+   return samples;
+@@ -787,13 +802,20 @@
+   int32_t *dst = (int32_t*)dest;
+   #ifdef __SSE__
+ 
++  #if !(S24NE4_LEFT_JUSTIFIED)
++    const __m128i msk = _mm_set1_epi32(0xFFFFFF);
++  #endif
+   const __m128 mul = _mm_set_ps1((float)INT24_MAX+.5f);
+   unsigned int count = samples;
+ 
+   /* work around invalid alignment */
+   while ((((uintptr_t)data & 0xF) || ((uintptr_t)dest & 0xF)) && count > 0)
+   {
+-    dst[0] = safeRound(data[0] * ((float)INT24_MAX+.5f));
++    #if S24NE4_LEFT_JUSTIFIED
++      dst[0] = safeRound(data[0] * ((float)INT24_MAX+.5f)) << 8;
++    #else
++      dst[0] = safeRound(data[0] * ((float)INT24_MAX+.5f)) & 0xFFFFFF;
++    #endif
+     ++data;
+     ++dst;
+     --count;
+@@ -804,7 +826,11 @@
+   {
+     __m128  in  = _mm_mul_ps(_mm_load_ps(data), mul);
+     __m128i con = _mm_cvtps_epi32(in);
+-    con         = _mm_slli_epi32(con, 8);
++    #if S24NE4_LEFT_JUSTIFIED
++      con       = _mm_slli_epi32(con, 8);
++    #else
++      con       = _mm_and_si128(con, msk);
++    #endif
+     memcpy(dst, &con, sizeof(int32_t) * 4);
+   }
+ 
+@@ -812,7 +838,11 @@
+   {
+     const uint32_t odd = samples - even;
+     if (odd == 1)
+-      dst[0] = safeRound(data[0] * ((float)INT24_MAX+.5f));
++    #if S24NE4_LEFT_JUSTIFIED
++      dst[0] = safeRound(data[0] * ((float)INT24_MAX+.5f)) << 8;
++    #else
++      dst[0] = safeRound(data[0] * ((float)INT24_MAX+.5f)) & 0xFFFFFF;
++    #endif
+     else
+     {
+       __m128 in;
+@@ -820,8 +850,12 @@
+       {
+         in = _mm_setr_ps(data[0], data[1], 0, 0);
+         in = _mm_mul_ps(in, mul);
+-        __m64 con = _mm_cvtps_pi32(in);
+-        con       = _mm_slli_pi32(con, 8);
++        __m128i con = _mm_cvtps_epi32(in);
++        #if S24NE4_LEFT_JUSTIFIED
++          con       = _mm_slli_epi32(con, 8);
++        #else
++          con       = _mm_and_si128(con, msk);
++        #endif
+         memcpy(dst, &con, sizeof(int32_t) * 2);
+       }
+       else
+@@ -829,7 +863,11 @@
+         in = _mm_setr_ps(data[0], data[1], data[2], 0);
+         in = _mm_mul_ps(in, mul);
+         __m128i con = _mm_cvtps_epi32(in);
+-        con         = _mm_slli_epi32(con, 8);
++        #if S24NE4_LEFT_JUSTIFIED
++          con       = _mm_slli_epi32(con, 8);
++        #else
++          con       = _mm_and_si128(con, msk);
++        #endif
+         memcpy(dst, &con, sizeof(int32_t) * 3);
+       }
+     }
+@@ -837,7 +875,13 @@
+   _mm_empty();
+   #else /* no SSE */
+   for (uint32_t i = 0; i < samples; ++i)
+-    *dst++ = (safeRound(*data++ * ((float)INT24_MAX+.5f)) & 0xFFFFFF) << 8;
++  {
++    #if S24NE4_LEFT_JUSTIFIED
++      *dst++ = safeRound(*data++ * ((float)INT24_MAX+.5f)) << 8;
++    #else
++      *dst++ = safeRound(*data++ * ((float)INT24_MAX+.5f)) & 0xFFFFFF;
++    #endif
++  }
+   #endif
+ 
+   return samples << 2;
