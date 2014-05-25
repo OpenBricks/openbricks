@@ -1,0 +1,156 @@
+From 5c3b57b25c25200aa768e3dd5ebc0e8fb416e094 Mon Sep 17 00:00:00 2001
+From: Rudi <r.ihle@s-t.de>
+Date: Sun, 25 May 2014 10:34:24 +0200
+Subject: [PATCH 24/25] Dove: hookup hardware JPEG decoding
+
+---
+ xbmc/guilib/JpegIO.cpp |  122 ++++++++++++++++++++++++++++++++++++++++++++++--
+ xbmc/guilib/JpegIO.h   |    5 ++
+ 2 files changed, 122 insertions(+), 5 deletions(-)
+
+diff --git a/xbmc/guilib/JpegIO.cpp b/xbmc/guilib/JpegIO.cpp
+index ee59d9f..d50bb15 100644
+--- a/xbmc/guilib/JpegIO.cpp
++++ b/xbmc/guilib/JpegIO.cpp
+@@ -27,6 +27,7 @@
+ #include "utils/log.h"
+ #include "XBTF.h"
+ #include "JpegIO.h"
++#include "JpegHwDec.h"
+ #include "utils/StringUtils.h"
+ #include <setjmp.h>
+ 
+@@ -230,8 +231,10 @@ static void x_jpeg_mem_dest (j_compress_ptr cinfo,
+ 
+ CJpegIO::CJpegIO()
+ {
++  m_hwDec  = CJpegHwDec::create();
+   m_width  = 0;
+   m_height = 0;
++  m_headerSize = 0;
+   m_orientation = 0;
+   m_inputBuffSize = 0;
+   m_inputBuff = NULL;
+@@ -243,11 +246,12 @@ CJpegIO::CJpegIO()
+ CJpegIO::~CJpegIO()
+ {
+   Close();
++  CJpegHwDec::destroy(m_hwDec);
+ }
+ 
+ void CJpegIO::Close()
+ {
+-  free(m_inputBuff);
++  m_hwDec->FreeBuffer(m_inputBuff);
+   m_inputBuff = NULL;
+   m_inputBuffSize = 0;
+   ReleaseThumbnailBuffer();
+@@ -288,11 +292,11 @@ bool CJpegIO::Open(const CStdString &texturePath, unsigned int minx, unsigned in
+       if (!free_space)
+       { // (re)alloc
+         m_inputBuffSize += chunksize;
+-        unsigned char* new_buf = (unsigned char *)realloc(m_inputBuff, m_inputBuffSize);
++        unsigned char* new_buf = m_hwDec->ReallocBuffer(m_inputBuff, m_inputBuffSize);
+         if (!new_buf)
+         {
+           CLog::Log(LOGERROR, "%s unable to allocate buffer of size %u", __FUNCTION__, m_inputBuffSize);
+-          free(m_inputBuff);
++          m_hwDec->FreeBuffer(m_inputBuff);
+           return false;
+         }
+         else
+@@ -307,6 +311,7 @@ bool CJpegIO::Open(const CStdString &texturePath, unsigned int minx, unsigned in
+       if (!read)
+         break;
+     }
++    m_hwDec->PrepareBuffer(total_read);
+     m_inputBuffSize = total_read;
+     file.Close();
+ 
+@@ -374,13 +379,13 @@ bool CJpegIO::Read(unsigned char* buffer, unsigned int bufSize, unsigned int min
+     m_cinfo.scale_denom = 8;
+     m_cinfo.out_color_space = JCS_RGB;
+     unsigned int maxtexsize = g_Windowing.GetMaxTextureSize();
+-    for (unsigned int scale = 1; scale <= 8; scale++)
++    for (unsigned int scale = m_hwDec->FirstScale(); scale <= 8; scale = m_hwDec->NextScale(scale, +1) )
+     {
+       m_cinfo.scale_num = scale;
+       jpeg_calc_output_dimensions(&m_cinfo);
+       if ((m_cinfo.output_width > maxtexsize) || (m_cinfo.output_height > maxtexsize))
+       {
+-        m_cinfo.scale_num--;
++        m_cinfo.scale_num = m_hwDec->NextScale(scale, -1);
+         break;
+       }
+       if (m_cinfo.output_width >= minx && m_cinfo.output_height >= miny)
+@@ -392,6 +397,8 @@ bool CJpegIO::Read(unsigned char* buffer, unsigned int bufSize, unsigned int min
+ 
+     if (m_cinfo.marker_list)
+       m_orientation = GetExifOrientation(m_cinfo.marker_list->data, m_cinfo.marker_list->data_length);
++    
++    m_headerSize = bufSize - m_cinfo.src->bytes_in_buffer;
+     return true;
+   }
+ }
+@@ -399,6 +406,35 @@ bool CJpegIO::Read(unsigned char* buffer, unsigned int bufSize, unsigned int min
+ bool CJpegIO::Decode(const unsigned char *pixels, unsigned int pitch, unsigned int format)
+ {
+   unsigned char *dst = (unsigned char*)pixels;
++  unsigned int featureFlags = 0;
++
++  if (m_cinfo.progressive_mode)
++    featureFlags |= CJpegHwDec::ffProgressive;
++  if (m_cinfo.arith_code)
++    featureFlags |= CJpegHwDec::ffArithmeticCoding;
++
++  if (m_hwDec->CanDecode(featureFlags, m_cinfo.image_width, m_cinfo.image_height) )
++  {
++    if (!m_inputBuff)
++    {
++      unsigned buffSize = m_cinfo.src->bytes_in_buffer + m_headerSize;
++
++      m_inputBuff = m_hwDec->ReallocBuffer(0, buffSize);
++      if (m_inputBuff)
++      {
++        memcpy(m_inputBuff, m_cinfo.src->next_input_byte - m_headerSize, buffSize);
++        m_hwDec->PrepareBuffer(buffSize);
++        m_inputBuffSize = buffSize;
++      }
++    }
++
++    if (m_hwDec->Decode(dst, pitch, format, m_cinfo.output_width,
++                        m_cinfo.output_height, m_cinfo.scale_num, m_cinfo.scale_denom))
++    {
++      jpeg_destroy_decompress(&m_cinfo);
++      return true;
++    }
++  }
+ 
+   struct my_error_mgr jerr;
+   m_cinfo.err = jpeg_std_error(&jerr.pub);
+diff --git a/xbmc/guilib/JpegIO.h b/xbmc/guilib/JpegIO.h
+index 8129062..ea4b28b 100644
+--- a/xbmc/guilib/JpegIO.h
++++ b/xbmc/guilib/JpegIO.h
+@@ -30,6 +30,8 @@
+ #include "utils/StdString.h"
+ #include "iimage.h"
+ 
++class CJpegHwDec;
++
+ class CJpegIO : public IImage
+ {
+ 
+@@ -54,6 +56,9 @@ protected:
+ 
+   static unsigned int   GetExifOrientation(unsigned char* exif_data, unsigned int exif_data_size);
+ 
++  CJpegHwDec     *m_hwDec;
++  unsigned int   m_headerSize;
++
+   unsigned char  *m_inputBuff;
+   unsigned int   m_inputBuffSize;
+   struct         jpeg_decompress_struct m_cinfo;
+-- 
+1.7.9.5
+

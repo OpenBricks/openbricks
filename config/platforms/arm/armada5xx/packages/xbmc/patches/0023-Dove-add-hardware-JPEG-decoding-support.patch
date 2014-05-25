@@ -1,0 +1,999 @@
+From e5054524430d0b69e8fcf5c628b103eea1913aa1 Mon Sep 17 00:00:00 2001
+From: Rudi <r.ihle@s-t.de>
+Date: Sun, 25 May 2014 10:33:39 +0200
+Subject: [PATCH 23/26] Dove: add hardware JPEG decoding support
+
+---
+ xbmc/guilib/JpegHwDec.cpp      |   79 +++++
+ xbmc/guilib/JpegHwDec.h        |  115 +++++++
+ xbmc/guilib/JpegHwDecVMETA.cpp |  666 ++++++++++++++++++++++++++++++++++++++++
+ xbmc/guilib/JpegHwDecVMETA.h   |   80 +++++
+ xbmc/guilib/Makefile.in        |    4 +
+ 5 files changed, 944 insertions(+)
+ create mode 100644 xbmc/guilib/JpegHwDec.cpp
+ create mode 100644 xbmc/guilib/JpegHwDec.h
+ create mode 100644 xbmc/guilib/JpegHwDecVMETA.cpp
+ create mode 100644 xbmc/guilib/JpegHwDecVMETA.h
+
+diff --git a/xbmc/guilib/JpegHwDec.cpp b/xbmc/guilib/JpegHwDec.cpp
+new file mode 100644
+index 0000000..79cc25b
+--- /dev/null
++++ b/xbmc/guilib/JpegHwDec.cpp
+@@ -0,0 +1,79 @@
++/*
++*      Copyright (C) 2005-2014 Team XBMC
++*      http://www.xbmc.org
++*
++*  This Program is free software; you can redistribute it and/or modify
++*  it under the terms of the GNU General Public License as published by
++*  the Free Software Foundation; either version 2, or (at your option)
++*  any later version.
++*
++*  This Program is distributed in the hope that it will be useful,
++*  but WITHOUT ANY WARRANTY; without even the implied warranty of
++*  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++*  GNU General Public License for more details.
++*
++*  You should have received a copy of the GNU General Public License
++*  along with XBMC; see the file COPYING.  If not, see
++*  <http://www.gnu.org/licenses/>.
++*
++*/
++
++#if (defined HAVE_CONFIG_H) && (!defined WIN32)
++  #include "config.h"
++#elif defined(_WIN32)
++  #include "system.h"
++#endif
++
++#include "settings/Settings.h"
++#include "utils/log.h"
++#include "JpegHwDec.h"
++
++#if defined(HAS_MARVELL_DOVE)
++#include "JpegHwDecVMETA.h"
++#endif
++
++
++unsigned char *CJpegHwDec::ReallocBuffer(unsigned char *buffer, unsigned int size)
++{
++  return (unsigned char *)::realloc(buffer, size);
++}
++
++void CJpegHwDec::FreeBuffer(unsigned char *buffer)
++{
++  if (buffer)
++    ::free(buffer);
++}
++
++void CJpegHwDec::PrepareBuffer(unsigned int numBytes)
++{
++  (void)numBytes;
++}
++
++CJpegHwDec *CJpegHwDec::create()
++{
++#if defined(HAS_MARVELL_DOVE)
++#if 0
++  if (CSettings::Get().GetBool("videoscreen.use_hardware_jpeg"))
++#endif
++  {
++    CJpegHwDec *d = new CJpegHwDecVMeta();
++
++    if (d && d->Init())
++      return d;
++
++    delete d;
++  }
++#endif
++
++  return new CJpegHwDec();
++}
++
++void CJpegHwDec::destroy(CJpegHwDec *d)
++{
++  if (d)
++  {
++    d->Dispose();
++    delete d;
++  }
++}
++
+diff --git a/xbmc/guilib/JpegHwDec.h b/xbmc/guilib/JpegHwDec.h
+new file mode 100644
+index 0000000..5705227
+--- /dev/null
++++ b/xbmc/guilib/JpegHwDec.h
+@@ -0,0 +1,115 @@
++/*
++*      Copyright (C) 2005-2014 Team XBMC
++*      http://www.xbmc.org
++*
++*  This Program is free software; you can redistribute it and/or modify
++*  it under the terms of the GNU General Public License as published by
++*  the Free Software Foundation; either version 2, or (at your option)
++*  any later version.
++*
++*  This Program is distributed in the hope that it will be useful,
++*  but WITHOUT ANY WARRANTY; without even the implied warranty of
++*  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++*  GNU General Public License for more details.
++*
++*  You should have received a copy of the GNU General Public License
++*  along with XBMC; see the file COPYING.  If not, see
++*  <http://www.gnu.org/licenses/>.
++*
++*/
++
++#ifndef GUILIB_JPEGHWDEC_H
++#define GUILIB_JPEGHWDEC_H
++
++class CJpegHwDec
++{
++protected:
++  CJpegHwDec() {};
++  virtual ~CJpegHwDec() {}
++  
++protected:
++   /*!
++   \brief Initialize this instance
++   */
++  virtual bool Init() { return true; }
++
++  /*!
++   \brief Deinitialize this instance
++   */
++  virtual void Dispose() {};
++
++public:
++  /*!
++   \brief Return the minimum supported nominator for downscaling while decoding
++   \return The minimal nominator
++   */
++  virtual unsigned int FirstScale() { return 1; }
++  
++  /*!
++   \brief Return the next or previous nominator for downsacling while decoding
++   \param currScale The current nominator 
++   \param direction +1 for next, -1 for previous, otheres reserved
++   \return The next or previous nominator
++   */
++  virtual unsigned int NextScale(unsigned int currScale, 
++                                 int direction) { return currScale + direction; }
++
++  /*!
++   \brief (Re-)allocate input buffer
++   \param buffer Pointer to current input buffer, can be zero
++   \param size Requested size of the new input buffer 
++   \return Pointer a new input buffer of requested size
++   */
++  virtual unsigned char *ReallocBuffer(unsigned char *buffer, unsigned int size);
++
++  /*!
++   \brief Free input buffer
++   \param buffer Pointer to current input buffer
++   */
++  virtual void FreeBuffer(unsigned char *buffer);
++
++  /*!
++   \brief Prepare input buffer for use by hardware
++   \param numBytes Number of valid bytes in input buffer
++   */
++  virtual void PrepareBuffer(unsigned int numBytes);
++
++  /*!
++   \brief Check, if hardware decoding should be used
++   \param width The width of the image to be decoded
++   \param height The height of the image to be decoded
++   \param featureFlags A combination of ffXXXX enums
++   \return true if the hardware can/should handle this image
++   */
++  virtual bool CanDecode(unsigned int featureFlags, 
++                         unsigned int width, unsigned int height) const { return false; }
++  enum { ffForceFallback = 0x01, ffProgressive = 0x02, ffArithmeticCoding = 0x04 };
++                                   
++  /*!
++   \brief Decode the image
++   \param buffer Pointer to output buffer, size must be >= maxHeight * pitch
++   \param pitch Length of a line (in bytes) in the output buffer
++   \param format Output image format (currently XB_FMT_RGB8 or XB_FMT_A8R8G8B8)
++   \param maxWidth The maximum width of the output image
++   \param maxHeight The maximum height of the output image
++   \return true if image was decoded successfully
++   */
++  virtual bool Decode(unsigned char *dst, 
++                      unsigned int pitch, unsigned int format,
++                      unsigned int maxWidth, unsigned int maxHeight,
++                      unsigned int scaleNum, unsigned int scaleDenom) { return false; }
++
++  /*!
++   \brief Fabricate an instance. Modify this when adding new hardware.
++   \return Pointer to new CJpegHwDec instance
++   */
++  static CJpegHwDec  *create();
++
++  /*!
++   \brief Destruction of an instance
++   \param d Pointer to CJpegHwDec instance, can be 0
++   */
++  static void        destroy(CJpegHwDec *d);
++};
++
++#endif
+diff --git a/xbmc/guilib/JpegHwDecVMETA.cpp b/xbmc/guilib/JpegHwDecVMETA.cpp
+new file mode 100644
+index 0000000..1159d7a
+--- /dev/null
++++ b/xbmc/guilib/JpegHwDecVMETA.cpp
+@@ -0,0 +1,666 @@
++/*
++*      Copyright (C) 2005-2014 Team XBMC
++*      http://www.xbmc.org
++*
++*  This Program is free software; you can redistribute it and/or modify
++*  it under the terms of the GNU General Public License as published by
++*  the Free Software Foundation; either version 2, or (at your option)
++*  any later version.
++*
++*  This Program is distributed in the hope that it will be useful,
++*  but WITHOUT ANY WARRANTY; without even the implied warranty of
++*  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++*  GNU General Public License for more details.
++*
++*  You should have received a copy of the GNU General Public License
++*  along with XBMC; see the file COPYING.  If not, see
++*  <http://www.gnu.org/licenses/>.
++*
++*/
++
++#if (defined HAVE_CONFIG_H) && (!defined WIN32)
++  #include "config.h"
++#elif defined(_WIN32)
++  #include "system.h"
++#endif
++
++#if defined(HAS_MARVELL_DOVE)
++
++#include "utils/log.h"
++#include "filesystem/File.h"
++#include "threads/SystemClock.h"
++#include "settings/Settings.h"
++
++#include "XBTF.h"
++#include "JpegHwDecVMETA.h"
++
++
++#if 0
++static void writeBitmap(const char *fileName,
++                        unsigned numBits, const unsigned char *pixels,
++                        unsigned width, unsigned height, unsigned pitch)
++{
++#pragma pack(1)
++  struct
++  {
++    unsigned short  bfType;
++    unsigned        bfSize;
++    unsigned short  bfReserved1;
++    unsigned short  bfReserved2;
++    unsigned        bfOffBits;
++
++    unsigned        biSize;
++    unsigned        biWidth;
++    unsigned        biHeight;
++    unsigned short  biPlanes;
++    unsigned short  biBitCount;
++    unsigned        biCompression;
++    unsigned        biSizeImage;
++    int             biXPelsPerMeter;
++    int             biYPelsPerMeter;
++    unsigned        biClrUsed;
++    unsigned        biClrImportant;
++  } bmi;
++#pragma pack()
++
++  FILE        *fp;
++  unsigned    u, w;
++
++  memset( &bmi, 0, sizeof( bmi ) );
++  bmi.biSize   = 40;
++  bmi.biWidth  = width;
++  bmi.biHeight = height;
++  bmi.biPlanes = 1;
++  bmi.biBitCount = ( unsigned short )numBits;
++
++  w = ((( bmi.biBitCount * width ) + 31 ) & ~31 ) / 8;
++
++  bmi.bfType = 'B' | ( 'M' << 8 );
++  bmi.bfSize = sizeof( bmi ) + ( height * w );
++  bmi.bfOffBits = sizeof( bmi );
++
++  if(( fp = fopen( fileName, "wb" ) ) != NULL )
++  {
++    fwrite( &bmi, sizeof( bmi ), 1, fp );
++    for( u = 1; u <= bmi.biHeight; ++u )
++        fwrite( pixels + (bmi.biHeight - u) * pitch, w, 1, fp );
++    fclose( fp );
++  }
++}
++#endif
++
++
++
++#define CLIP_RANGE  384 // worst case: BT.709, 320 should be sufficient
++
++static uint32_t     clipByte1[CLIP_RANGE + 256 + CLIP_RANGE];
++static uint32_t     clipByte0[CLIP_RANGE + 256 + CLIP_RANGE];
++static uint32_t     clipByte2[CLIP_RANGE + 256 + CLIP_RANGE];
++static uint32_t     clipByte1a[CLIP_RANGE + 256 + CLIP_RANGE];
++
++static int32_t      yuvTab[3][256];
++static bool         tabInit = false;
++
++
++static void initClipTables()
++{
++  for (int i = 0; i < CLIP_RANGE + 256 + CLIP_RANGE; ++i)
++  {
++    uint32_t c;
++
++    if (i < CLIP_RANGE)
++      c = 0;
++    else if (i >= CLIP_RANGE + 256)
++      c = 255;
++    else
++      c = i - CLIP_RANGE;
++
++    clipByte0[i]  = ( c <<  0 );                        // byte 0
++    clipByte1[i]  = ( c <<  8 );                        // byte 1 for RGB
++    clipByte1a[i] = ( c <<  8 ) | 0xff000000;           // byte 1 for BGRA
++    clipByte2[i]  = ( c << 16 );                        // byte 2
++  }
++}
++
++
++static void initYuvTables(int mode)
++{
++  static double coeffTable[][5] =
++  {
++    { 1.000, 1.402, 1.772, -0.34414, -0.71414 },        // JPEG
++    { 1.164, 1.596, 2.018, -0.813,   -0.391   },        // BT.601
++    { 1.164, 1.793, 2.115, -0.534,   -0.213   },        // BT.709
++  };
++
++  int   cy  = (int)(65536 * coeffTable[mode][0]);
++  int   crv = (int)(65536 * coeffTable[mode][1]);
++  int   cbu = (int)(65536 * coeffTable[mode][2]);
++  int   cgu = (int)(65536 * coeffTable[mode][3]);
++  int   cgv = (int)(65536 * coeffTable[mode][4]);
++
++  for (int i = 0; i < 256; ++i)
++  {
++    if (mode == 0)
++      yuvTab[0][i] = i + CLIP_RANGE;
++    else
++      yuvTab[0][i] = ((cy * (i-16) + 32768) >> 16 ) + CLIP_RANGE;
++
++    yuvTab[1][i] = ((crv * (i-128) + 32768) & 0xffff0000) |
++                    (((cgv * (i-128) + 32768) >> 16) & 0x0000ffff);
++
++    yuvTab[2][i] = ((cbu * (i-128) + 32768) & 0xffff0000) |
++                    (((cgu * (i-128) + 32768) >> 16) & 0x0000ffff);
++  }
++}
++
++
++bool CJpegHwDecVMeta::Init()
++{
++  m_pCbTable = 0;
++  m_pDecState = 0;
++
++  memset(&m_input, 0, sizeof(m_input));
++  memset(&m_picture, 0, sizeof(m_picture));
++  memset(&m_VDecParSet, 0, sizeof(m_VDecParSet));
++
++  if (!tabInit)
++  {
++    initClipTables();
++    initYuvTables(0);
++    tabInit = true;
++  }
++
++  if (m_HwLock.IsOwner() && m_DllVMETA.Load() && m_DllMiscGen.Load())
++  {
++    if (m_DllMiscGen.miscInitGeneralCallbackTable(&m_pCbTable) == 0)
++    {
++      IppCodecStatus retCodec;
++
++      m_VDecParSet.opt_fmt  = IPP_YCbCr422I;
++      m_VDecParSet.strm_fmt = IPP_VIDEO_STRM_FMT_JPEG;
++
++      retCodec = m_DllVMETA.DecoderInitAlloc_Vmeta(&m_VDecParSet, m_pCbTable, &m_pDecState);
++      if (retCodec == IPP_STATUS_NOERR)
++        return true;
++
++      CLog::Log(LOGERROR, "%s: DecoderInitAlloc_Vmeta failed (%d)", __FUNCTION__, retCodec);
++    }
++  }
++  
++  return false;
++}
++
++
++void CJpegHwDecVMeta::Dispose()
++{
++  if (m_pDecState)
++  {
++    m_DllVMETA.DecodeSendCmd_Vmeta(IPPVC_STOP_DECODE_STREAM, NULL, NULL, m_pDecState);
++
++    DecodePopBuffers(IPP_VMETA_BUF_TYPE_PIC, ReleaseStorage);
++    DecodePopBuffers(IPP_VMETA_BUF_TYPE_STRM, ReleaseBuffer);
++
++    m_DllVMETA.DecoderFree_Vmeta(&m_pDecState);
++  }
++
++  if (m_input.pBuf)
++    FreeBuffer(m_input.pBuf);
++
++  if (m_pCbTable)
++    m_DllMiscGen.miscFreeGeneralCallbackTable(&m_pCbTable);
++
++  if (m_HwLock.IsOwner())
++  {
++    m_DllMiscGen.Unload();
++    m_DllVMETA.Unload();
++  }
++}
++
++
++unsigned int CJpegHwDecVMeta::FirstScale()
++{
++  // start with scale 8/2 = 4
++  return 2;
++}
++
++
++unsigned int CJpegHwDecVMeta::NextScale(unsigned int currScale, int direction)
++{
++  // scales:  8/1 = 8  ->  8/2 = 4  ->  8/4 = 2  ->  8/8 = 1
++  return (direction < 0) ?  (currScale >> (-direction)) : (currScale << direction);
++}
++
++
++unsigned char *CJpegHwDecVMeta::ReallocBuffer(unsigned char *buffer, unsigned int size)
++{
++  unsigned char         *pOldBuf  = m_input.pBuf;
++  unsigned int          nOldSize  = m_input.nBufSize;
++
++  (void)buffer;
++
++  // add 256 bytes for padding
++  size = (size + 256 + StreamBufAlloc - 1) & ~(StreamBufAlloc - 1);
++
++  //CLog::Log(LOGNOTICE, "%s: %d -> %d", __FUNCTION__, nOldSize, size);
++  if (size > nOldSize)
++  {
++    m_input.nPhyAddr = 0;
++    m_input.pBuf = (Ipp8u *)m_DllVMETA.vdec_os_api_dma_alloc_cached(
++                                       size, VMETA_STRM_BUF_ALIGN, &m_input.nPhyAddr);
++    m_input.nBufSize = size;
++
++    if (pOldBuf)
++    {
++      if (m_input.pBuf)
++        memcpy(m_input.pBuf, pOldBuf, nOldSize);
++
++      m_DllVMETA.vdec_os_api_dma_free(pOldBuf);
++    }
++  }
++  
++#if 0
++  CLog::Log(LOGNOTICE, "%s: @%08x %d phys %08x", 
++            __FUNCTION__, m_input.pBuf, m_input.nBufSize, m_input.nPhyAddr);
++#endif
++
++  return m_input.pBuf;
++}
++
++
++void CJpegHwDecVMeta::FreeBuffer(unsigned char *buffer)
++{
++  //CLog::Log(LOGNOTICE, "%s: @%08x", __FUNCTION__, m_input.pBuf);
++
++  (void)buffer;
++
++  if (m_input.pBuf)
++  {
++    m_DllVMETA.vdec_os_api_dma_free(m_input.pBuf);
++    m_input.pBuf = 0;
++    m_input.nPhyAddr = 0;
++  }
++
++  m_input.nFlag = 0;
++  m_input.nDataLen = 0;
++  m_input.nBufSize = 0;
++}
++
++
++void CJpegHwDecVMeta::PrepareBuffer(unsigned int numBytes)
++{
++  if (numBytes > m_input.nBufSize)
++  {
++    CLog::Log(LOGWARNING, "%s: numBytes > nBufSize", __FUNCTION__);
++    numBytes = m_input.nBufSize;
++  }
++
++  m_input.nDataLen = numBytes;
++  m_input.nFlag = IPP_VMETA_STRM_BUF_END_OF_UNIT;
++  
++  // append padding bytes (128 at least)
++  numBytes = (numBytes + 255) & ~127;
++  if (numBytes > m_input.nBufSize)
++    numBytes = m_input.nBufSize;
++
++  memset(m_input.pBuf + m_input.nDataLen, 0x88, numBytes - m_input.nDataLen);
++
++  //m_DllVMETA.vdec_os_api_flush_cache(m_input.pBuf, numBytes, DMA_TODEVICE);
++}
++
++
++int CJpegHwDecVMeta::DecodePopBuffers(IppVmetaBufferType type, ReturnMode mode, int maxCount)
++{
++  int count;
++
++  for (count = 0; count < maxCount; count++)
++  {
++    union { void *p; IppVmetaBitstream *strm; IppVmetaPicture *pic; };
++
++    p = 0;
++    m_DllVMETA.DecoderPopBuffer_Vmeta(type, &p, m_pDecState);
++
++    if (!p)
++      break;
++
++    if (mode & ReleaseStorage)
++    {
++      switch (type)
++      {
++      case IPP_VMETA_BUF_TYPE_STRM:
++        m_DllVMETA.vdec_os_api_dma_free(strm->pBuf);
++        strm->pBuf = 0;
++        break;
++
++      case  IPP_VMETA_BUF_TYPE_PIC:
++        m_DllVMETA.vdec_os_api_dma_free(pic->pBuf);
++        pic->pBuf = 0;
++        break;
++
++      default:
++        break;
++      }
++    }
++
++    if (mode & ReleaseBuffer)
++      ::free(p);
++  }
++
++  return count;
++}
++
++
++bool CJpegHwDecVMeta::DecodePicture(unsigned int maxWidth, 
++                                    unsigned int maxHeight, 
++                                    unsigned int scaleDivider)
++{
++  unsigned                    len;
++  bool                        bExit;
++  IppVmetaJPEGDecParSet       extParms;
++  IppVmetaDecInfo             m_VDecInfo;
++  int                         numSubmitted = 0;
++
++#if 0
++  CLog::Log(LOGNOTICE, "%s: width=%d, height=%d, divider=%d", 
++            __FUNCTION__, maxWidth, maxHeight, scaleDivider);
++#endif
++
++#if 0
++  DllLibVMETA::SetHardwareClock(CSettings::Get().GetInt("videoscreen.vmeta_clk") == VMETA_CLK_667);
++#else
++  DllLibVMETA::SetHardwareClock(true);
++#endif
++
++  do
++  {
++    bExit = false;
++    IppCodecStatus retCodec = m_DllVMETA.DecodeFrame_Vmeta(&m_VDecInfo, m_pDecState);
++
++    switch (retCodec)
++    {
++    case IPP_STATUS_NEED_INPUT:
++      //CLog::Log(LOGNOTICE, "IPP_STATUS_NEED_INPUT");
++
++      if (m_input.nOffset < m_input.nDataLen)
++      {
++        IppVmetaBitstream *pStream = (IppVmetaBitstream *)malloc(sizeof(IppVmetaBitstream));
++        memset(pStream, 0, sizeof(IppVmetaBitstream));
++
++        pStream->pBuf     = m_input.pBuf + m_input.nOffset;
++        pStream->nPhyAddr = m_input.nPhyAddr + m_input.nOffset;
++
++        len = m_input.nDataLen - m_input.nOffset;
++        pStream->nDataLen = (len < StreamBufLimit) ?  len : StreamBufLimit;
++
++        len = m_input.nBufSize - m_input.nOffset;
++        pStream->nBufSize = (len < StreamBufLimit) ?  len : StreamBufLimit;
++
++        if (pStream->nDataLen != pStream->nBufSize)
++          pStream->nFlag = IPP_VMETA_STRM_BUF_END_OF_UNIT;
++
++        m_input.nOffset += pStream->nDataLen;
++
++        retCodec = m_DllVMETA.DecoderPushBuffer_Vmeta(IPP_VMETA_BUF_TYPE_STRM, pStream, m_pDecState);
++        if (retCodec != IPP_STATUS_NOERR)
++        {
++          CLog::Log(LOGERROR, "%s: failure IPP_STATUS_NEED_INPUT %d", __FUNCTION__, retCodec);
++          free(pStream);
++          bExit = true;
++        }
++        else
++        {
++          numSubmitted++;
++        }
++      }
++      else
++      {
++        //CLog::Log(LOGNOTICE, "%s: sending END_OF_STREAM", __FUNCTION__);
++        m_DllVMETA.DecodeSendCmd_Vmeta(IPPVC_END_OF_STREAM, NULL, NULL, m_pDecState);
++      }
++      break;
++
++    case IPP_STATUS_RETURN_INPUT_BUF:
++      //CLog::Log(LOGNOTICE, "IPP_STATUS_RETURN_INPUT_BUF");
++
++      numSubmitted -= DecodePopBuffers(IPP_VMETA_BUF_TYPE_STRM, ReleaseBuffer, numSubmitted);
++      break;
++
++    case IPP_STATUS_NEED_OUTPUT_BUF:
++      //CLog::Log(LOGNOTICE, "IPP_STATUS_NEED_OUTPUT_BUF");
++
++      if (!m_picture.pBuf)
++      {
++        m_picture.pBuf = (Ipp8u *)m_DllVMETA.vdec_os_api_dma_alloc(
++                            m_VDecInfo.seq_info.dis_buf_size, VMETA_DIS_BUF_ALIGN, &m_picture.nPhyAddr);
++        m_picture.nBufSize = m_VDecInfo.seq_info.dis_buf_size;
++        m_picture.nDataLen = 0;
++
++        //CLog::Log(LOGNOTICE, "IPP_STATUS_NEED_OUTPUT_BUF size: %d", m_picture.nBufSize);
++
++        retCodec = m_DllVMETA.DecoderPushBuffer_Vmeta(IPP_VMETA_BUF_TYPE_PIC, &m_picture, m_pDecState);
++        if (retCodec != IPP_STATUS_NOERR)
++        {
++          CLog::Log(LOGERROR, "%s: failure IPP_STATUS_NEED_OUTPUT_BUF %d", __FUNCTION__, retCodec);
++
++          m_DllVMETA.vdec_os_api_dma_free(m_picture.pBuf);
++          m_picture.pBuf = 0;
++          bExit = true;
++        }
++      }
++      break;
++
++    case IPP_STATUS_FRAME_COMPLETE:
++      //CLog::Log(LOGNOTICE, "IPP_STATUS_FRAME_COMPLETE");
++
++      DecodePopBuffers(IPP_VMETA_BUF_TYPE_PIC, ReleaseNothing, 1);
++
++      numSubmitted -= DecodePopBuffers(IPP_VMETA_BUF_TYPE_STRM, ReleaseBuffer, numSubmitted);
++      bExit = true;
++      break;
++
++    case IPP_STATUS_END_OF_STREAM:
++      //CLog::Log(LOGNOTICE, "IPP_STATUS_END_OF_STREAM");
++
++      numSubmitted -= DecodePopBuffers(IPP_VMETA_BUF_TYPE_STRM, ReleaseBuffer, numSubmitted);
++      bExit = true;
++      break;
++
++    case IPP_STATUS_WAIT_FOR_EVENT:
++      //CLog::Log(LOGNOTICE, "IPP_STATUS_WAIT_FOR_EVENT");
++      break;
++
++    case IPP_STATUS_NEW_VIDEO_SEQ:
++      //CLog::Log(LOGNOTICE, "IPP_STATUS_NEW_VIDEO_SEQ");
++
++      if (m_picture.pBuf)
++      {
++        DecodePopBuffers(IPP_VMETA_BUF_TYPE_PIC, ReleaseStorage, 1);
++        m_picture.pBuf = 0;
++      }
++      
++      extParms.pp_hscale = scaleDivider;
++      extParms.pp_vscale = scaleDivider;
++      extParms.roi.x = extParms.roi.y = extParms.roi.width = extParms.roi.height = 0;
++
++      retCodec = m_DllVMETA.DecodeSendCmd_Vmeta(IPPVC_RECONFIG, &extParms, NULL, m_pDecState);
++      if (retCodec != IPP_STATUS_NOERR)
++      {
++        CLog::Log(LOGERROR, "%s: failure IPP_STATUS_NEW_VIDEO_SEQ %d", __FUNCTION__, retCodec);
++        bExit = true;
++      }
++      break;
++
++    default:
++      CLog::Log(LOGERROR, "%s: DecodeFrame_Vmeta returned %d", __FUNCTION__, retCodec);
++      bExit = true;
++    }
++
++  } while (!bExit);
++
++  DllLibVMETA::SetHardwareClock(false);
++
++  return m_picture.pBuf != 0;
++}
++
++
++void CJpegHwDecVMeta::ToRGB(unsigned char *dst, unsigned int pitch, 
++                            unsigned int width, unsigned int height)
++{
++  uint32_t *p = (uint32_t *)m_picture.pBuf;
++  unsigned skip = (m_picture.pic.picWidth >> 1) - ((width + 1) >> 1);
++
++#if 0
++  CLog::Log(LOGNOTICE, "%s: %dx%d, %d bytes, pitch %d width %d height %d", __FUNCTION__,
++            m_picture.pic.picWidth, m_picture.pic.picHeight, m_picture.nDataLen, pitch, width, height);
++#endif
++
++  for (unsigned j = 0; j < height; ++j)
++  {
++    int32_t     cr, cb, cg, y;
++    uint32_t    u1, u2, v;
++    uint8_t     *q = (uint8_t *)dst;
++
++    for (unsigned i = 0; i < width / 2; ++i, q += 6)
++    {
++      v = *p++;
++      cr = yuvTab[1][(v >> 16) & 0xff];
++      cb = yuvTab[2][(v >> 0) & 0xff];
++      cg = (int16_t)cr + (int16_t)cb;
++      cr >>= 16;
++      cb >>= 16;
++
++      y = yuvTab[0][(v >> 8) & 0xff];
++      u1 = clipByte0[y + cr] | clipByte1[y + cg] | clipByte2[y + cb];
++
++      y = yuvTab[0][(v >> 24) & 0xff];
++      u2 = clipByte0[y + cr] | clipByte1[y + cg] | clipByte2[y + cb];
++
++      *(uint32_t *)&q[0] = u1 | (u2 << 24);
++      *(uint16_t *)&q[4] = (uint16_t)(u2 >> 8);
++    }
++
++    if (width & 1)
++    {
++      v = *p++;
++      cr = yuvTab[1][(v >> 16) & 0xff];
++      cb = yuvTab[2][(v >> 0) & 0xff];
++      cg = (int16_t)cr + (int16_t)cb;
++      cr >>= 16;
++      cb >>= 16;
++
++      y = yuvTab[0][(v >> 8) & 0xff];
++      u1 = clipByte0[y + cr] | clipByte1[y + cg] | clipByte2[y + cb];
++      *(uint16_t *)&q[0] = (uint16_t)(u1);
++      *(uint8_t *)&q[2] = (uint8_t)(u1 >> 16);
++    }
++
++    dst += pitch;
++    p += skip;
++  }
++}
++
++
++void CJpegHwDecVMeta::ToBGRA(unsigned char *dst, unsigned int pitch, 
++                             unsigned int width, unsigned int height)
++{
++  uint32_t *p = (uint32_t *)m_picture.pBuf;
++  unsigned skip = (m_picture.pic.picWidth >> 1) - ((width + 1) >> 1);
++  
++#if 0
++  CLog::Log(LOGNOTICE, "%s: %dx%d, %d bytes, pitch %d width %d height %d", __FUNCTION__,
++            m_picture.pic.picWidth, m_picture.pic.picHeight, m_picture.nDataLen, pitch, width, height);
++#endif
++
++  for (unsigned j = 0; j < height; ++j)
++  {
++    int32_t    cr, cb, cg, y;
++    uint32_t   v, *q = (uint32_t *)dst;
++
++    for (unsigned i = 0; i < width / 2; ++i, q += 2)
++    {
++      v = *p++;
++      cr = yuvTab[1][(v >> 16) & 0xff];
++      cb = yuvTab[2][(v >> 0) & 0xff];
++      cg = (int16_t)cr + (int16_t)cb;
++      cr >>= 16;
++      cb >>= 16;
++
++      y = yuvTab[0][(v >> 8) & 0xff];
++      q[0] = clipByte0[y + cb] | clipByte1a[y + cg] | clipByte2[y + cr];
++
++      y = yuvTab[0][(v >> 24) & 0xff];
++      q[1] = clipByte0[y + cb] | clipByte1a[y + cg] | clipByte2[y + cr];
++    }
++
++    if (width & 1)
++    {
++      v = *p++;
++      cr = yuvTab[1][(v >> 16) & 0xff];
++      cb = yuvTab[2][(v >> 0) & 0xff];
++      cg = (int16_t)cr + (int16_t)cb;
++      cr >>= 16;
++      cb >>= 16;
++
++      y = yuvTab[0][(v >> 8) & 0xff];
++      q[0] = clipByte0[y + cb] | clipByte1a[y + cg] | clipByte2[y + cr];
++    }
++
++    dst += pitch;
++    p += skip;
++  }
++}
++
++
++bool CJpegHwDecVMeta::CanDecode(unsigned int featureFlags,
++                                unsigned int width, unsigned int height) const
++{
++  // Don't use hardware for small pictures ...
++  // Also don't try pictures using unsupported JPEG features
++  return m_pDecState != 0 && 
++         width * height >= 100 * 100 &&
++         !(featureFlags & (ffForceFallback | ffProgressive | ffArithmeticCoding));
++}
++
++
++bool CJpegHwDecVMeta::Decode(unsigned char *dst, 
++                             unsigned int pitch, unsigned int format,
++                             unsigned int maxWidth, unsigned int maxHeight,
++                             unsigned int scaleNum, unsigned int scaleDenom)
++{
++  bool bOk = DecodePicture(maxWidth, maxHeight, scaleDenom / scaleNum);
++
++  if( bOk )
++  {
++    if ((int)maxHeight > m_picture.pic.picHeight)
++      maxHeight = m_picture.pic.picHeight;
++    
++    if ((int)maxWidth > m_picture.pic.picWidth)
++      maxWidth = m_picture.pic.picWidth;
++
++    switch (format)
++    {
++    case XB_FMT_RGB8:
++      ToRGB(dst, pitch, maxWidth, maxHeight);
++      //writeBitmap("/root/output3.bmp", 24, dst, maxWidth, maxHeight, pitch);
++      break;
++
++    case XB_FMT_A8R8G8B8:
++      ToBGRA(dst, pitch, maxWidth, maxHeight);
++      //writeBitmap("/root/output4.bmp", 32, dst, maxWidth, maxHeight, pitch);
++      break;
++
++    default:
++      CLog::Log(LOGWARNING, "%s: Incorrect output format specified", __FUNCTION__);
++      bOk = false;
++    }
++
++    m_DllVMETA.vdec_os_api_dma_free(m_picture.pBuf);
++    m_picture.pBuf     = 0;
++    m_picture.nBufSize = 0;
++    m_picture.nDataLen = 0;
++  }
++
++  return bOk;
++}
++
++
++#endif
+diff --git a/xbmc/guilib/JpegHwDecVMETA.h b/xbmc/guilib/JpegHwDecVMETA.h
+new file mode 100644
+index 0000000..78a2d17
+--- /dev/null
++++ b/xbmc/guilib/JpegHwDecVMETA.h
+@@ -0,0 +1,80 @@
++/*
++*      Copyright (C) 2005-2014 Team XBMC
++*      http://www.xbmc.org
++*
++*  This Program is free software; you can redistribute it and/or modify
++*  it under the terms of the GNU General Public License as published by
++*  the Free Software Foundation; either version 2, or (at your option)
++*  any later version.
++*
++*  This Program is distributed in the hope that it will be useful,
++*  but WITHOUT ANY WARRANTY; without even the implied warranty of
++*  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++*  GNU General Public License for more details.
++*
++*  You should have received a copy of the GNU General Public License
++*  along with XBMC; see the file COPYING.  If not, see
++*  <http://www.gnu.org/licenses/>.
++*
++*/
++
++#ifndef GUILIB_JPEGHWDECVMETA_H
++#define GUILIB_JPEGHWDECVMETA_H
++
++#include "JpegIO.h"
++#include "JpegHwDec.h"
++#include "threads/SingleLock.h"
++
++#include "cores/dvdplayer/DVDCodecs/Video/DllVMETA.h"
++
++class CJpegHwDecVMeta : public CJpegHwDec
++{
++  CSingleTryLock                m_HwLock;
++  DllLibVMETA                   &m_DllVMETA;
++  DllLibMiscGen                 &m_DllMiscGen;
++
++  IppVmetaBitstream             m_input;
++  IppVmetaPicture               m_picture;
++
++  MiscGeneralCallbackTable      *m_pCbTable;
++  void                          *m_pDecState;
++  IppVmetaDecParSet             m_VDecParSet;
++
++public:
++  CJpegHwDecVMeta()
++  : CJpegHwDec(), 
++    m_HwLock(g_CritSecVMETA),
++    m_DllVMETA(g_DllLibVMETA),
++    m_DllMiscGen(g_DllLibMiscGen)  {}
++
++protected:
++  virtual bool Init();
++  virtual void Dispose();
++
++  virtual unsigned int  FirstScale();
++  virtual unsigned int  NextScale(unsigned int currScale, int direction);
++
++  virtual unsigned char *ReallocBuffer(unsigned char *buffer, unsigned int size);
++  virtual void          FreeBuffer(unsigned char *buffer);
++  virtual void          PrepareBuffer(unsigned int numBytes);
++
++  virtual bool          CanDecode(unsigned int featureFlags,
++                                  unsigned int width, unsigned int height) const;
++  virtual bool          Decode(unsigned char *dst, 
++                               unsigned int pitch, unsigned int format,
++                               unsigned int maxWidth, unsigned int maxHeight,
++                               unsigned int scaleNum, unsigned int scaleDenom);
++
++private:
++  enum { StreamBufAlloc = 128 * 1024, StreamBufLimit = 2047 * 1024 };
++  enum ReturnMode { ReleaseNothing = 0x00, ReleaseStorage = 0x01, ReleaseBuffer = 0x02, ReleaseAll = 0x03 };
++
++  int  DecodePopBuffers(IppVmetaBufferType type, ReturnMode mode, int maxCount = INT_MAX);
++  bool DecodePicture(unsigned int maxWidth, unsigned int maxHeight, unsigned int scaleDivider);
++
++  void ToBGRA(unsigned char *dst, unsigned int pitch, unsigned int width, unsigned int height);
++  void ToRGB(unsigned char *dst, unsigned int pitch, unsigned int width, unsigned int height);
++};
++
++
++#endif
+diff --git a/xbmc/guilib/Makefile.in b/xbmc/guilib/Makefile.in
+index 086fb0d..5f8263c 100644
+--- a/xbmc/guilib/Makefile.in
++++ b/xbmc/guilib/Makefile.in
+@@ -64,6 +64,10 @@ SRCS += GUIWindowManager.cpp
+ SRCS += GUIWrappingListContainer.cpp
+ SRCS += imagefactory.cpp
+ SRCS += IWindowManagerCallback.cpp
++SRCS += JpegHwDec.cpp
++ifeq (@USE_MARVELL_DOVE@,1)
++SRCS += JpegHwDecVMETA.cpp
++endif
+ SRCS += JpegIO.cpp
+ SRCS += Key.cpp
+ SRCS += LocalizeStrings.cpp
+-- 
+1.7.9.5
+
