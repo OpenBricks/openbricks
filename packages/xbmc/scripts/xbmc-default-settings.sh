@@ -20,7 +20,7 @@ set_system_prefix () {
   elif grep -q "Snowball" /proc/cpuinfo;          then SYS_PREFIX="snowball"
   elif grep -q "SolidRun CuBox" /proc/cpuinfo;    then SYS_PREFIX="cubox"
   elif grep -q "BCM2708" /proc/cpuinfo;           then SYS_PREFIX="rpi"
-  elif grep -q "sun4i" /proc/cpuinfo;             then SYS_PREFIX="a10"
+  elif grep -q "sun[4-7]i" /proc/cpuinfo;         then SYS_PREFIX="a10"
   elif grep -q "CM-FX6" /proc/cpuinfo;            then SYS_PREFIX="utilite"
   elif grep -q "i.MX6" /proc/cpuinfo;             then SYS_PREFIX="cuboxi"
   else                                            SYS_PREFIX="generic"     
