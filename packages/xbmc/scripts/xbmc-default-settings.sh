@@ -63,7 +63,15 @@ if [ ! -f "$GUI_SETTINGS" ] ; then
   [ -n "$TZ_COUNTRY_CODE" ] && \
     TZ_COUNTRY=`grep $TZ_COUNTRY_CODE ${ZONEINFO}iso3166.tab | cut -f2 | head -1`
 
-  sed -i -e "s,TZ_COUNTRY,$TZ_COUNTRY," -e "s,TZ,$TZ," $GUI_SETTINGS
+  GUI_LIMIT="1080"
+  if [ "$SYS_PREFIX" = "rpi" ] ; then
+    MEMSIZE=`cat /proc/meminfo | grep "MemTotal" | grep "[0-9]*" -o`
+    [ $MEMSIZE -le 262144 ] && GUI_LIMIT="720"
+  fi
+    
+  sed -i $GUI_SETTINGS \
+      -e "s,GUI_LIMIT,$GUI_LIMIT," \
+      -e "s,TZ_COUNTRY,$TZ_COUNTRY," -e "s,TZ,$TZ,"
 fi
 
 # set default sources.xml
