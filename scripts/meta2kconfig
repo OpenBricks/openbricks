@@ -7,9 +7,11 @@ KCONFIG=build/config/Kconfig.packages
 # process a package and write its configuration stanza to Kconfig.packages
 do_package() {
   package=$1
-  [ -f packages/$package/install ] || continue
-
+  
   get_meta $package
+  
+  [ -f packages/$PKG_SECTION/$package/install ] || continue
+
 
   KCONFIG_NAME="$PKG_NAME"
   [ -n "$PKG_SHORTDESC" ] && KCONFIG_NAME="$KCONFIG_NAME - $PKG_SHORTDESC"
@@ -136,19 +138,23 @@ echo -n "Building $KCONFIG."
 # Kconfig.packages generation starts here
 rm -f $KCONFIG
 
+SECTIONS="admin drivers filesystem firmware fonts games libs misc multimedia nodejs net perl python sound system utils x11"
+
 # populate SEC_$section variables with list of packages per section
-for package in packages/*; do
-  package=`echo $package | sed s:packages/::`
-  [ -f packages/$package/meta ] || continue
+for section in $SECTIONS ; do
+for package in packages/$section/*; do
+  package=`echo $package | sed s:packages/$section/::`
+  [ -f packages/$section/$package/meta ] || continue
   # source the package meta to populate PKG_SECTION
   PKG_SECTION=
-  . packages/$package/meta
+  . packages/$section/$package/meta
   old=
   cmd=
   var="SEC_$PKG_SECTION"
   old="`valueof $var`"
   cmd="$var=\"$old $package\""
   eval $cmd
+done
 done
 
 echo -n .
@@ -160,20 +166,20 @@ cat >> $KCONFIG <<EOF
 
 EOF
 
-SECTIONS="admin drivers filesystem firmware fonts games libs misc multimedia nodejs net perl python sound system utils x11"
-
 # check for packages with invalid section name
-for package in packages/*; do
-  package=`echo $package | sed s:packages/::`
-  [ -f packages/$package/meta ] || continue
-  . packages/$package/meta
+for section in $SECTIONS ; do
+for package in packages/$section/*; do
+  package=`echo $package | sed s:packages/$section/::`
+  [ -f packages/$section/$package/meta ] || continue
+  . packages/$section/$package/meta
   if [ "$(echo "$SECTIONS" | grep $PKG_SECTION)" != "$SECTIONS" ]; then
     echo ""
     echo "Error: $PKG_NAME has an invalid section name"
-    echo " Either fix packages/$package/meta file"
+    echo " Either fix packages/$section/$package/meta file"
     echo " or add new section name in scripts/meta2config file."
     exit 1
   fi
+done
 done
 
 # generate Kconfig menus for the various sections
