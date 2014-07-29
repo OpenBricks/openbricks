@@ -1,0 +1,144 @@
+From a7541bee41ba7ed3f35858cb8fffeabb8c582c1d Mon Sep 17 00:00:00 2001
+From: Rudi <r.ihle@s-t.de>
+Date: Tue, 29 Jul 2014 21:04:46 +0200
+Subject: [PATCH 09/10] ASoC: imx-hdmi-dma: Fix channel mapping for mmap mode
+
+Use the same channel mapping for both SND_PCM_ACCESS_RW_INTERLEAVED
+and SND_PCM_ACCESS_MMAP_INTERLEAVED.
+---
+ sound/soc/fsl/imx-hdmi-dma.c |   53 ++++++++++++++++++++++++++++++++----------
+ 1 file changed, 41 insertions(+), 12 deletions(-)
+
+diff --git a/sound/soc/fsl/imx-hdmi-dma.c b/sound/soc/fsl/imx-hdmi-dma.c
+index fd42e5c..f0eeb51 100644
+--- a/sound/soc/fsl/imx-hdmi-dma.c
++++ b/sound/soc/fsl/imx-hdmi-dma.c
+@@ -79,6 +79,9 @@ struct hdmi_dma_priv {
+ /* max 8 channels supported; channels are interleaved */
+ static u8 g_packet_head_table[48 * 8];
+ 
++/* channel remapping for hdmi_dma_copy_xxxx() */
++static u8 g_channel_remap_table[24];
++
+ union hdmi_audio_header_t iec_header;
+ EXPORT_SYMBOL(iec_header);
+ 
+@@ -257,6 +260,7 @@ static u32 hdmi_dma_add_frame_info(struct hdmi_dma_priv *priv,
+ 
+ static void init_table(int channels)
+ {
++	static u8 remap_offsets[] = { 0, 1, 5, 4, 2, 3, 6, 7 };
+ 	unsigned char *p = g_packet_head_table;
+ 	int i, ch = 0;
+ 
+@@ -275,6 +279,11 @@ static void init_table(int channels)
+ 			*p++ = (b << 4) | (c << 2) | (c << 3);
+ 		}
+ 	}
++
++	for (i = 0; i < 24; i++) {
++		g_channel_remap_table[i] = 
++			(i / channels) * channels + remap_offsets[i % channels];
++	}
+ }
+ 
+ /* Optimization for IEC head */
+@@ -282,31 +291,41 @@ static void hdmi_dma_copy_16_c_lut(u16 *src, u32 *dst, int samples,
+ 				u8 *lookup_table)
+ {
+ 	u32 sample, head;
+-	int i;
++	int i = 0;
+ 
+-	for (i = 0; i < samples; i++) {
++	while (samples--) {
+ 		/* get source sample */
+-		sample = *src++;
++		sample = src[g_channel_remap_table[i]];
+ 
+ 		/* get packet header and p-bit */
+ 		head = *lookup_table++ ^ (odd_ones(sample) << 3);
+ 
+ 		/* store sample and header */
+ 		*dst++ = (head << 24) | (sample << 8);
++
++		if (++i == 24) {
++			src += 24;
++			i = 0;
++		}
+ 	}
+ }
+ 
+ static void hdmi_dma_copy_16_c_fast(u16 *src, u32 *dst, int samples)
+ {
+ 	u32 sample;
+-	int i;
++	int i = 0;
+ 
+-	for (i = 0; i < samples; i++) {
++	while (samples--) {
+ 		/* get source sample */
+-		sample = *src++;
++		sample = src[g_channel_remap_table[i]];
+ 
+ 		/* store sample and p-bit */
+ 		*dst++ = (odd_ones(sample) << (3+24)) | (sample << 8);
++
++		if (++i == 24) {
++			src += 24;
++			i = 0;
++		}
+ 	}
+ }
+ 
+@@ -314,31 +333,41 @@ static void hdmi_dma_copy_24_c_lut(u32 *src, u32 *dst, int samples,
+ 				u8 *lookup_table)
+ {
+ 	u32 sample, head;
+-	int i;
++	int i = 0;
+ 
+-	for (i = 0; i < samples; i++) {
++	while (samples--) {
+ 		/* get source sample */
+-		sample = *src++ & 0x00ffffff;
++		sample = src[g_channel_remap_table[i]] & 0x00ffffff;
+ 
+ 		/* get packet header and p-bit */
+ 		head = *lookup_table++ ^ (odd_ones(sample) << 3);
+ 
+ 		/* store sample and header */
+ 		*dst++ = (head << 24) | sample;
++
++		if (++i == 24) {
++			src += 24;
++			i = 0;
++		}
+ 	}
+ }
+ 
+ static void hdmi_dma_copy_24_c_fast(u32 *src, u32 *dst, int samples)
+ {
+ 	u32 sample;
+-	int i;
++	int i = 0;
+ 
+-	for (i = 0; i < samples; i++) {
++	while (samples--) {
+ 		/* get source sample */
+-		sample = *src++ & 0x00ffffff;
++		sample = src[g_channel_remap_table[i]] & 0x00ffffff;
+ 
+ 		/* store sample and p-bit */
+ 		*dst++ = (odd_ones(sample) << (3+24)) | sample;
++
++		if (++i == 24) {
++			src += 24;
++			i = 0;
++		}
+ 	}
+ }
+ 
+-- 
+1.7.9.5
+
