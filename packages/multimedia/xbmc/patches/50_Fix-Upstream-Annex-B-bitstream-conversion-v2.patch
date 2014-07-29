@@ -1,0 +1,63 @@
+From a45f474b135a2f7a953aa954e8409e8ae8908cab Mon Sep 17 00:00:00 2001
+From: wolfgar <stephan.rafin@laposte.net>
+Date: Fri, 25 Jul 2014 19:23:12 +0200
+Subject: [PATCH] Bitsream conv full fix Refer to issue #65
+
+---
+ xbmc/utils/BitstreamConverter.cpp | 12 ++++++++++--
+ xbmc/utils/BitstreamConverter.h   |  1 +
+ 2 files changed, 11 insertions(+), 2 deletions(-)
+
+diff --git a/xbmc/utils/BitstreamConverter.cpp b/xbmc/utils/BitstreamConverter.cpp
+index 80b4a22..96516c7 100644
+--- a/xbmc/utils/BitstreamConverter.cpp
++++ b/xbmc/utils/BitstreamConverter.cpp
+@@ -645,6 +645,7 @@ bool CBitstreamConverter::BitstreamConvertInit(void *in_extradata, int in_extras
+   m_sps_pps_context.sps_pps_data = out;
+   m_sps_pps_context.size = total_size;
+   m_sps_pps_context.first_idr = 1;
++  m_sps_pps_context.idr_sps_pps_seen = 0;
+ 
+   return true;
+ }
+@@ -677,8 +678,12 @@ bool CBitstreamConverter::BitstreamConvert(uint8_t* pData, int iSize, uint8_t **
+     if (buf + nal_size > buf_end || nal_size < 0)
+       goto fail;
+ 
+-    // prepend only to the first type 5 NAL unit of an IDR picture
+-    if (m_sps_pps_context.first_idr && unit_type == 5)
++    // Don't add sps/pps if the unit already contain them
++    if (m_sps_pps_context.first_idr && (unit_type == 7 || unit_type == 8))
++      m_sps_pps_context.idr_sps_pps_seen = 1;
++
++      // prepend only to the first access unit of an IDR picture, if no sps/pps already present
++    if (m_sps_pps_context.first_idr && unit_type == 5 && !m_sps_pps_context.idr_sps_pps_seen)
+     {
+       BitstreamAllocAndCopy(poutbuf, poutbuf_size,
+         m_sps_pps_context.sps_pps_data, m_sps_pps_context.size, buf, nal_size);
+@@ -688,7 +693,10 @@ bool CBitstreamConverter::BitstreamConvert(uint8_t* pData, int iSize, uint8_t **
+     {
+       BitstreamAllocAndCopy(poutbuf, poutbuf_size, NULL, 0, buf, nal_size);
+       if (!m_sps_pps_context.first_idr && unit_type == 1)
++      {
+           m_sps_pps_context.first_idr = 1;
++          m_sps_pps_context.idr_sps_pps_seen = 0;
++      }
+     }
+ 
+     buf += nal_size;
+diff --git a/xbmc/utils/BitstreamConverter.h b/xbmc/utils/BitstreamConverter.h
+index d3ad346..f6f5312 100644
+--- a/xbmc/utils/BitstreamConverter.h
++++ b/xbmc/utils/BitstreamConverter.h
+@@ -182,6 +182,7 @@ class CBitstreamConverter
+   typedef struct omx_bitstream_ctx {
+       uint8_t  length_size;
+       uint8_t  first_idr;
++      uint8_t  idr_sps_pps_seen;
+       uint8_t *sps_pps_data;
+       uint32_t size;
+   } omx_bitstream_ctx;
+-- 
+1.9.3
+
