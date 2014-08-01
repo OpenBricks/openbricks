@@ -1,0 +1,93 @@
+From d79ada9bb90384e23d25eb6d1345291bd2d853e9 Mon Sep 17 00:00:00 2001
+From: warped-rudi <r.ihle@s-t.de>
+Date: Thu, 31 Jul 2014 09:38:37 +0200
+Subject: [PATCH 19/19] ASoC: imx-hdmi-dma: Cleanup, move channel maps to
+ central location
+
+---
+ sound/soc/fsl/imx-hdmi-dma.c |   32 ++++++++++++++++++++------------
+ 1 file changed, 20 insertions(+), 12 deletions(-)
+
+diff --git a/sound/soc/fsl/imx-hdmi-dma.c b/sound/soc/fsl/imx-hdmi-dma.c
+index 77803fe..28e1a2f 100644
+--- a/sound/soc/fsl/imx-hdmi-dma.c
++++ b/sound/soc/fsl/imx-hdmi-dma.c
+@@ -82,6 +82,17 @@ static u8 g_packet_head_table[48 * 8];
+ /* channel remapping for hdmi_dma_copy_xxxx() */
+ static u8 g_channel_remap_table[24];
+ 
++/* default mapping tables */
++static const u8 channel_maps[3][8] = { 
++	{ 0, 1, 2, 3, 4, 5, 6, 7 },	/* no remapping */
++	{ 0, 1, 4, 5, 3, 2, 6, 7 },	/* ALSA to CEA */
++	{ 0, 1, 5, 4, 2, 3, 6, 7 }	/* CEA to ALSA */
++};
++
++#define CHMAP_STRAIGHT	0
++#define CHMAP_ALSA_CEA	1
++#define CHMAP_CEA_ALSA	2
++
+ union hdmi_audio_header_t iec_header;
+ EXPORT_SYMBOL(iec_header);
+ 
+@@ -260,9 +271,8 @@ static u32 hdmi_dma_add_frame_info(struct hdmi_dma_priv *priv,
+ 
+ static void init_table(int channels)
+ {
+-	static u8 remap_offsets[] = { 0, 1, 5, 4, 2, 3, 6, 7 };
+ 	unsigned char *p = g_packet_head_table;
+-	int i, ch = 0;
++	int i, map_sel, ch = 0;
+ 
+ 	for (i = 0; i < 48; i++) {
+ 		int b = 0;
+@@ -280,9 +290,10 @@ static void init_table(int channels)
+ 		}
+ 	}
+ 
++	map_sel = (channels >= 6) ? CHMAP_CEA_ALSA : CHMAP_STRAIGHT;
+ 	for (i = 0; i < 24; i++) {
+-		g_channel_remap_table[i] = (channels >= 6) ?
+-			((i / channels) * channels + remap_offsets[i % channels]) : i;
++		g_channel_remap_table[i] = (i / channels) * channels + 
++			channel_maps[map_sel][i % channels];
+ 	}
+ }
+ 
+@@ -669,17 +680,13 @@ static int hdmi_dma_copy(struct snd_pcm_substream *substream, int channel,
+ 	int channel_no, pcm_idx, subframe_no, bits_left, sample_bits, map_sel;
+ 	u32 pcm_data[8], pcm_temp, *hw_buf, sample_block;
+ 	
+-	static int channel_map_pcm[2][8] = { 
+-		{ 0, 1, 2, 3, 4, 5, 6, 7 },	/* no remapping */
+-		{ 0, 1, 4, 5, 3, 2, 6, 7 }	/* standard ALSA to CEA */
+-	};
+-
+ 	/* Adding frame info to pcm data from userspace and copy to hw_buffer */
+ 	hw_buf = (u32 *)(priv->hw_buffer.area + (pos_bytes * priv->buffer_ratio));
+ 
+ 	sample_bits = priv->sample_align * 8;
+ 	sample_block = priv->sample_align * priv->channels;
+-	map_sel = (priv->channels >= 6 && iec_header.B.linear_pcm == 0) ? 1 : 0;
++	map_sel = (priv->channels >= 6 && 
++			iec_header.B.linear_pcm == 0) ? CHMAP_ALSA_CEA : CHMAP_STRAIGHT;
+ 
+ 	while (count > 0) {
+ 		if (copy_from_user(pcm_data, buf, sample_block))
+@@ -694,10 +701,11 @@ static int hdmi_dma_copy(struct snd_pcm_substream *substream, int channel,
+ 			bits_left = 32;
+ 			for (;;) {
+ 				/* re-map channels */
+-				subframe_no = channel_map_pcm[map_sel][channel_no];
++				subframe_no = channel_maps[map_sel][channel_no];
+ 
+ 				/* Save the header info to the audio dma buffer */
+-				hw_buf[subframe_no] = hdmi_dma_add_frame_info(priv, pcm_temp, subframe_no + 1);
++				hw_buf[subframe_no] = hdmi_dma_add_frame_info(
++							priv, pcm_temp, subframe_no + 1);
+ 				channel_no++;
+ 
+ 				if (bits_left <= sample_bits)
+-- 
+1.7.9.5
+
