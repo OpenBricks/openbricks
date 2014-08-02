@@ -1,0 +1,78 @@
+From 9a5c3dfa0663a41489fbd94a56a6c79ab2981f78 Mon Sep 17 00:00:00 2001
+From: Rudi <r.ihle@s-t.de>
+Date: Sat, 2 Aug 2014 18:34:24 +0200
+Subject: [PATCH 21/21] ASoC: imx-hdmi-dma: Swap 'side' and 'rear' channels in
+ 7.1 audio mode
+
+---
+ sound/soc/fsl/imx-hdmi-dma.c |   29 +++++++++++++++++------------
+ 1 file changed, 17 insertions(+), 12 deletions(-)
+
+diff --git a/sound/soc/fsl/imx-hdmi-dma.c b/sound/soc/fsl/imx-hdmi-dma.c
+index 7345a70..618e137 100644
+--- a/sound/soc/fsl/imx-hdmi-dma.c
++++ b/sound/soc/fsl/imx-hdmi-dma.c
+@@ -83,15 +83,21 @@ static u8 g_packet_head_table[48 * 8];
+ static u8 g_channel_remap_table[24];
+ 
+ /* default mapping tables */
+-static const u8 channel_maps[3][8] = { 
+-	{ 0, 1, 2, 3, 4, 5, 6, 7 },	/* no remapping */
+-	{ 0, 1, 4, 5, 3, 2, 6, 7 },	/* ALSA to CEA */
+-	{ 0, 1, 5, 4, 2, 3, 6, 7 }	/* CEA to ALSA */
++static const u8 channel_maps_alsa_cea[5][8] = { 
++	{ 0, 1, 2, 3, 4, 5, 6, 7 },	/* 0CH: no remapping */
++	{ 0, 1, 2, 3, 4, 5, 6, 7 },	/* 2CH: no remapping */
++	{ 0, 1, 2, 3, 4, 5, 6, 7 },	/* 4CH: no remapping */
++	{ 0, 1, 4, 5, 3, 2, 6, 7 },	/* 6CH: ALSA5.1 to CEA */
++	{ 0, 1, 6, 7, 3, 2, 4, 5 }	/* 8CH: ALSA7.1 to CEA */
+ };
+ 
+-#define CHMAP_STRAIGHT	0
+-#define CHMAP_ALSA_CEA	1
+-#define CHMAP_CEA_ALSA	2
++static const u8 channel_maps_cea_alsa[5][8] = { 
++	{ 0, 1, 2, 3, 4, 5, 6, 7 },	/* 0CH: no remapping */
++	{ 0, 1, 2, 3, 4, 5, 6, 7 },	/* 2CH: no remapping */
++	{ 0, 1, 2, 3, 4, 5, 6, 7 },	/* 4CH: no remapping */
++	{ 0, 1, 5, 4, 2, 3, 6, 7 },	/* 6CH: CEA to ALSA5.1 */
++	{ 0, 1, 5, 4, 6, 7, 2, 3 }	/* 8CH: CEA to ALSA7.1 */
++};
+ 
+ union hdmi_audio_header_t iec_header;
+ EXPORT_SYMBOL(iec_header);
+@@ -290,10 +296,10 @@ static void init_table(int channels)
+ 		}
+ 	}
+ 
+-	map_sel = (channels >= 6) ? CHMAP_CEA_ALSA : CHMAP_STRAIGHT;
++	map_sel = channels / 2;
+ 	for (i = 0; i < 24; i++) {
+ 		g_channel_remap_table[i] = (i / channels) * channels + 
+-			channel_maps[map_sel][i % channels];
++			channel_maps_cea_alsa[map_sel][i % channels];
+ 	}
+ }
+ 
+@@ -685,8 +691,7 @@ static int hdmi_dma_copy(struct snd_pcm_substream *substream, int channel,
+ 
+ 	sample_bits = priv->sample_align * 8;
+ 	sample_block = priv->sample_align * priv->channels;
+-	map_sel = (priv->channels >= 6 && 
+-			iec_header.B.linear_pcm == 0) ? CHMAP_ALSA_CEA : CHMAP_STRAIGHT;
++	map_sel = (iec_header.B.linear_pcm == 0) ? (priv->channels / 2) : 0;
+ 
+ 	while (count > 0) {
+ 		if (copy_from_user(pcm_data, buf, sample_block))
+@@ -701,7 +706,7 @@ static int hdmi_dma_copy(struct snd_pcm_substream *substream, int channel,
+ 			bits_left = 32;
+ 			for (;;) {
+ 				/* re-map channels */
+-				subframe_no = channel_maps[map_sel][channel_no];
++				subframe_no = channel_maps_alsa_cea[map_sel][channel_no];
+ 
+ 				/* Save the header info to the audio dma buffer */
+ 				hw_buf[subframe_no] = hdmi_dma_add_frame_info(
+-- 
+1.7.9.5
+
