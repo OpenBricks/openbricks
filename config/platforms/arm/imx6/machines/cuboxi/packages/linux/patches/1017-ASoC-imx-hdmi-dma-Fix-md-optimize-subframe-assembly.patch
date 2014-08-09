@@ -1,27 +1,22 @@
-From 48b9658c2204c835dd5459bb58e684d2063b24f6 Mon Sep 17 00:00:00 2001
-From: warped-rudi <r.ihle@s-t.de>
-Date: Fri, 25 Jul 2014 10:14:38 +0200
-Subject: [PATCH] ASoC: imx-hdmi-dma: Fix subframe assembly
+From fdde5e4f4a04ea629be0ad9aff6d8fd64642b393 Mon Sep 17 00:00:00 2001
+From: Rudi <r.ihle@s-t.de>
+Date: Sun, 3 Aug 2014 11:03:51 +0200
+Subject: [PATCH 1017/1020] ASoC: imx-hdmi-dma: Fix md optimize subframe
+ assembly.
 
-The original code would not work correctly for 24 bit samples.
-Also it includes unused bits of pcm_data in the parity calculation.
+Do not include unused bits of pcm_data in parity calculation and
+avoid make better use of odd_ones().
+
+Signed-off-by: Rudi <r.ihle@s-t.de>
 ---
- sound/soc/fsl/imx-hdmi-dma.c |   25 ++++++++++++-------------
- 1 file changed, 12 insertions(+), 13 deletions(-)
+ sound/soc/fsl/imx-hdmi-dma.c |   27 +++++++++++++--------------
+ 1 file changed, 13 insertions(+), 14 deletions(-)
 
 diff --git a/sound/soc/fsl/imx-hdmi-dma.c b/sound/soc/fsl/imx-hdmi-dma.c
-index 612f8ed..3af0450 100644
+index b320691..42e78df 100644
 --- a/sound/soc/fsl/imx-hdmi-dma.c
 +++ b/sound/soc/fsl/imx-hdmi-dma.c
-@@ -213,6 +213,7 @@ static void hdmi_mask(int mask)
- 
- static inline int odd_ones(unsigned a)
- {
-+	a ^= a >> 16;
- 	a ^= a >> 8;
- 	a ^= a >> 4;
- 	a ^= a >> 2;
-@@ -228,31 +229,29 @@ static u32 hdmi_dma_add_frame_info(struct hdmi_dma_priv *priv,
+@@ -229,31 +229,30 @@ static u32 hdmi_dma_add_frame_info(struct hdmi_dma_priv *priv,
  	union hdmi_audio_dma_data_t subframe;
  
  	subframe.U = 0;
@@ -35,11 +30,13 @@ index 612f8ed..3af0450 100644
 -		subframe.B.c = (iec_header.U >> priv->frame_idx) & 0x1;
 -	else
 -		subframe.B.c = 0;
+-
 +	if (priv->frame_idx < 42) {
-+		iec_header.B.channel = subframe_idx;
++		iec_header.B.channel = 
++			(iec_header.B.linear_pcm == 0) ? subframe_idx : 0;
 +		subframe.B.c = iec_header.U >> priv->frame_idx;
 +	}
- 	
++	
  	/* fill v (validity) */
  	subframe.B.v = iec_header.B.linear_pcm;
  
