@@ -1,4 +1,4 @@
-META = $(wildcard packages/*/meta)
+META = $(wildcard packages/*/*/meta)
 FLAVOURS = $(wildcard config/flavours/*/meta)
 ARCHS = $(wildcard config/platforms/*/meta)
 PLATFORMS = $(wildcard config/platforms/*/*/meta)
