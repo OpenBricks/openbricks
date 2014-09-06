@@ -1,0 +1,80 @@
+From b3f3bcc1653b15507b10430a0fa2809a73fdb6fc Mon Sep 17 00:00:00 2001
+From: Rudi <r.ihle@s-t.de>
+Date: Sat, 6 Sep 2014 10:18:04 +0200
+Subject: [PATCH 1100/1101] video: mxc_hdmi: Use color space converter to
+ limit output color range.
+
+This patch enhances commit:9119f4982209edf12dee44240bcfaa52fba2b4d3 to change
+the actual RGB color range itself. The previous solution would only allow to
+change what is reported to the sink via AVI info frame. Since overriding the
+color range is only supported by devices compliant to CEA-861D (i.e. HDMI1.3),
+the previous method will fail on some TVs (mostly Sony Bravia). This patch
+implements the following behavior:
+
+mode 'full':     range 0..255 indicated via AVI info frame Q1,Q0 = 1,0
+mode 'limited':  range 16..235 indicated via AVI info frame Q1,Q0 = 0,1
+mode 'default':  range 16..235 for CEA modes, range 0..255 for non-CEA Q1,Q0 = 0,0
+
+In DVI mode, the range is always 0..255 and the color space converter is bypassed.
+
+Signed-off-by: Rudi <r.ihle@s-t.de>
+---
+ drivers/video/mxc/mxc_hdmi.c |   28 ++++++++++++++++++++++++----
+ 1 file changed, 24 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/video/mxc/mxc_hdmi.c b/drivers/video/mxc/mxc_hdmi.c
+index 0aac1e0..2799df1 100644
+--- a/drivers/video/mxc/mxc_hdmi.c
++++ b/drivers/video/mxc/mxc_hdmi.c
+@@ -493,8 +493,10 @@ static void hdmi_video_sample(struct mxc_hdmi *hdmi)
+ 
+ static int isColorSpaceConversion(struct mxc_hdmi *hdmi)
+ {
+-	return (hdmi->hdmi_data.enc_in_format !=
+-		hdmi->hdmi_data.enc_out_format);
++	return (hdmi->hdmi_data.enc_in_format != hdmi->hdmi_data.enc_out_format) ||
++		(hdmi->hdmi_data.enc_out_format == RGB &&
++		  ((hdmi->hdmi_data.rgb_quant_range == HDMI_FC_AVICONF2_RGB_QUANT_LIMITED_RANGE) ||
++		   (hdmi->hdmi_data.rgb_quant_range == HDMI_FC_AVICONF2_RGB_QUANT_DEFAULT && hdmi->vic != 0)));
+ }
+ 
+ static int isColorSpaceDecimation(struct mxc_hdmi *hdmi)
+@@ -523,7 +525,25 @@ static void update_csc_coeffs(struct mxc_hdmi *hdmi)
+ 
+ 	if (isColorSpaceConversion(hdmi)) { /* csc needed */
+ 		if (hdmi->hdmi_data.enc_out_format == RGB) {
+-			if (hdmi->hdmi_data.colorimetry == eITU601) {
++			if (hdmi->hdmi_data.enc_in_format == RGB) {
++				csc_coeff[0][0] = 0x1b80;
++				csc_coeff[0][1] = 0x0000;
++				csc_coeff[0][2] = 0x0000;
++				csc_coeff[0][3] = 0x0020;
++
++				csc_coeff[1][0] = 0x0000;
++				csc_coeff[1][1] = 0x1b80;
++				csc_coeff[1][2] = 0x0000;
++				csc_coeff[1][3] = 0x0020;
++
++				csc_coeff[2][0] = 0x0000;
++				csc_coeff[2][1] = 0x0000;
++				csc_coeff[2][2] = 0x1b80;
++				csc_coeff[2][3] = 0x0020;
++
++				csc_scale = 1;
++				coeff_selected = true;
++			} else if (hdmi->hdmi_data.colorimetry == eITU601) {
+ 				csc_coeff[0][0] = 0x2000;
+ 				csc_coeff[0][1] = 0x6926;
+ 				csc_coeff[0][2] = 0x74fd;
+@@ -1770,7 +1790,7 @@ static void mxc_hdmi_enable_video_path(struct mxc_hdmi *hdmi)
+ 	hdmi_writeb(clkdis, HDMI_MC_CLKDIS);
+ 
+ 	/* Enable csc path */
+-	if (isColorSpaceConversion(hdmi)) {
++	if (isColorSpaceConversion(hdmi) && !hdmi->hdmi_data.video_mode.mDVI) {
+ 		clkdis &= ~HDMI_MC_CLKDIS_CSCCLK_DISABLE;
+ 		hdmi_writeb(clkdis, HDMI_MC_CLKDIS);
+ 	}
+-- 
+1.7.9.5
+
