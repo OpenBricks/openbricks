@@ -1,0 +1,41 @@
+From 05b97789c02bb791891118f17c8217ff80c5b5db Mon Sep 17 00:00:00 2001
+From: Johan Hovold <johan at>
+Date: Tue, 29 Jul 2014 14:14:55 +0200
+Subject: [PATCH 1200/1201] USB: option: reduce interrupt-urb logging
+ verbosity
+
+Do not log normal interrupt-urb shutdowns as errors.
+
+The option driver has always been logging any nonzero interrupt-urb
+status as an error, including when the urb is killed during normal
+operation.
+
+Commit 9096f1fbba91 ("USB: usb_wwan: fix potential NULL-deref at
+resume") moved the interrupt urb submission from port probe and release
+to open and close, thus potentially increasing the number of these
+false-positive error messages dramatically.
+
+Reported-by: Ed Butler <ressy66 <at> ausics.net>
+Tested-by: Ed Butler <ressy66 <at> ausics.net>
+Cc: <stable <at> vger.kernel.org>
+Signed-off-by: Johan Hovold <johan <at> kernel.org>
+---
+ drivers/usb/serial/option.c |    2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/usb/serial/option.c b/drivers/usb/serial/option.c
+index 9da566a..240c073 100644
+--- a/drivers/usb/serial/option.c
++++ b/drivers/usb/serial/option.c
+@@ -1917,6 +1917,8 @@ static void option_instat_callback(struct urb *urb)
+ 			dev_dbg(dev, "%s: type %x req %x\n", __func__,
+ 				req_pkt->bRequestType, req_pkt->bRequest);
+ 		}
++	} else if (status == -ENOENT || status == -ESHUTDOWN) {
++		dev_dbg(dev, "%s: urb stopped: %d\n", __func__, status);
+ 	} else
+ 		dev_err(dev, "%s: error %d\n", __func__, status);
+ 
+-- 
+1.7.9.5
+
