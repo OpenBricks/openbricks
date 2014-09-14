@@ -1,0 +1,116 @@
+From cc713022d2524b498ff4632538117c8e6223fd5f Mon Sep 17 00:00:00 2001
+From: Jon Nettleton <jon.nettleton@gmail.com>
+Date: Thu, 11 Sep 2014 22:36:02 +0200
+Subject: [PATCH 1201/1201] pcie: imx6: Make no-msi a device-tree property
+
+Currently MSI is not 100% working in the driver.  Rather than
+deal with kernel config options or the kernel cmdline that
+the user/distribution has to set, we flag it in the
+device-tree.
+
+This is the equivalent of setting pci=nomsi on the kernel
+commandline.
+---
+ arch/arm/boot/dts/imx6qdl-hummingboard.dtsi |   39 ++++++++++++++++++++++++---
+ drivers/pci/host/pci-imx6.c                 |    4 +++
+ 2 files changed, 39 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm/boot/dts/imx6qdl-hummingboard.dtsi b/arch/arm/boot/dts/imx6qdl-hummingboard.dtsi
+index edffb4c..99a09c8 100644
+--- a/arch/arm/boot/dts/imx6qdl-hummingboard.dtsi
++++ b/arch/arm/boot/dts/imx6qdl-hummingboard.dtsi
+@@ -92,6 +92,19 @@
+ 		late_init = <0>;
+ 		status = "okay";
+ 	};
++
++	v4l2_cap_0 {
++		compatible = "fsl,imx6q-v4l2-capture";
++		ipu_id = <0>;
++		csi_id = <1>;
++		mclk_source = <0>;
++		status = "okay";
++	};
++
++	v4l2_out {
++		compatible = "fsl,mxc_v4l2_output";
++		status = "okay";
++	};
+ };
+ 
+ &hdmi_core {
+@@ -117,7 +130,7 @@
+ };
+ 
+ &i2c2 {
+-	clock-frequency = <100000>;
++/*	clock-frequency = <100000>; */
+ 	pinctrl-names = "default";
+ 	pinctrl-0 = <&pinctrl_hummingboard_i2c2>;
+ 	status = "okay";
+@@ -151,14 +164,30 @@
+ 
+ 	/* Pro model */
+ 	sgtl5000: sgtl5000@0a {
+-		clocks = <&clks 201>;
+ 		compatible = "fsl,sgtl5000";
+-		pinctrl-names = "default";
+-		pinctrl-0 = <&pinctrl_hummingboard_sgtl5000>;
+ 		reg = <0x0a>;
++		clocks = <&clks 201>;
++		pinctrl-0 = <&pinctrl_hummingboard_sgtl5000>;
++		pinctrl-names = "default";
+ 		VDDA-supply = <&reg_3p3v>;
+ 		VDDIO-supply = <&reg_3p3v>;
+ 	};
++
++	ov5647_mipi: ov5647_mipi@3e {
++		compatible = "ovti,ov5647_mipi";
++		reg = <0x36>;
++		clocks = <&clks 147>;
++		clock-names = "csi_mclk";
++		DOVDD-supply = <&reg_3p3v>;
++		AVDD-supply = <&reg_3p3v>;
++		DVDD-supply = <&reg_3p3v>;
++		pwn-gpios = <&gpio2 10 0>;
++		ipu_id = <0>;
++		csi_id = <1>;
++		mclk = <22000000>;
++		mclk_source = <0>;
++		pwms = <&pwm4 0 45>;
++	};
+ };
+ 
+ &iomuxc {
+@@ -336,4 +365,6 @@
+ 	>;
+ 	reset-gpio = <&gpio3 4 0>;
+ 	status = "okay";
++	no-msi;
+ };
++
+diff --git a/drivers/pci/host/pci-imx6.c b/drivers/pci/host/pci-imx6.c
+index 2a57425..2dfcf56 100644
+--- a/drivers/pci/host/pci-imx6.c
++++ b/drivers/pci/host/pci-imx6.c
+@@ -29,6 +29,7 @@
+ #include <linux/types.h>
+ #include <linux/busfreq-imx6.h>
+ 
++#include "../pci.h"
+ #include "pcie-designware.h"
+ 
+ #define to_imx6_pcie(x)	container_of(x, struct imx6_pcie, pp)
+@@ -867,6 +868,9 @@ static int __init imx6_pcie_probe(struct platform_device *pdev)
+ 		goto err;
+ 	}
+ 
++        if (of_find_property(np, "no-msi", NULL))
++                pci_no_msi();
++
+ 	if (IS_ENABLED(CONFIG_EP_MODE_IN_EP_RC_SYS)) {
+ 		if (IS_ENABLED(CONFIG_EP_SELF_IO_TEST)) {
+ 			/* Prepare the test regions and data */
+-- 
+1.7.9.5
+
