@@ -1,0 +1,65 @@
+From be8be3186526628d68f276ce92dc48a768899ee8 Mon Sep 17 00:00:00 2001
+From: Rudi <r.ihle@s-t.de>
+Date: Mon, 22 Sep 2014 18:38:26 +0200
+Subject: [PATCH] ARM: Reduce power consumption in 'halt' state.
+
+Signed-off-by: Rudi <r.ihle@s-t.de>
+---
+ arch/arm/kernel/process.c |   20 ++++++++++++++++----
+ 1 file changed, 16 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm/kernel/process.c b/arch/arm/kernel/process.c
+index 693b744..53de529 100644
+--- a/arch/arm/kernel/process.c
++++ b/arch/arm/kernel/process.c
+@@ -149,6 +149,16 @@ static void null_restart(char mode, const char *cmd)
+ }
+ 
+ /*
++ *  Enter non-interruptable CPU halt state
++ */
++static void cpu_halt(void)
++{
++	local_irq_disable();
++	while (1)
++		cpu_do_idle();
++}
++
++/*
+  * Function pointers to optional machine specific functions
+  */
+ void (*pm_power_off)(void);
+@@ -247,15 +257,18 @@ void machine_shutdown(void)
+ void machine_halt(void)
+ {
+ 	machine_shutdown();
+-	local_irq_disable();
+-	while (1);
++
++	cpu_halt();
+ }
+ 
+ void machine_power_off(void)
+ {
+ 	machine_shutdown();
++
+ 	if (pm_power_off)
+ 		pm_power_off();
++
++	cpu_halt();
+ }
+ 
+ void machine_restart(char *cmd)
+@@ -269,8 +282,7 @@ void machine_restart(char *cmd)
+ 
+ 	/* Whoops - the platform was unable to reboot. Tell the user! */
+ 	printk("Reboot failed -- System halted\n");
+-	local_irq_disable();
+-	while (1);
++	cpu_halt();
+ }
+ 
+ void __show_regs(struct pt_regs *regs)
+-- 
+1.7.9.5
+
