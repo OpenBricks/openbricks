@@ -1,0 +1,43 @@
+From d662e18c29bc4f753d798922704721ccab62d85b Mon Sep 17 00:00:00 2001
+From: Rabeeh Khoury <rabeeh@solid-run.com>
+Date: Wed, 24 Sep 2014 19:23:12 +0300
+Subject: [PATCH 1200/1202] brcmfmac: kernel oops on wrong ifidx
+
+When calling brcmf_rx_frame() ifidx might not get set and return non zero value.
+Due to that ifp must not be set without proper ifidx otherwise it might get
+a wrong pointer (since ifidx is not set correctly) causing ifp->ndev to access
+an unmapped memory.
+
+The fix initializes ifp to null and in case it doesn't get properly initialized
+the skb will get deallocated in brcmu_pkt_buf_free_skb(skb) afterwards.
+
+Signed-off-by: Rabeeh Khoury <rabeeh@solid-run.com>
+---
+ .../net/wireless/brcm80211/brcmfmac/dhd_linux.c    |    4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/net/wireless/brcm80211/brcmfmac/dhd_linux.c b/drivers/net/wireless/brcm80211/brcmfmac/dhd_linux.c
+index 09dd8c1..a5c136c 100644
+--- a/drivers/net/wireless/brcm80211/brcmfmac/dhd_linux.c
++++ b/drivers/net/wireless/brcm80211/brcmfmac/dhd_linux.c
+@@ -514,7 +514,7 @@ netif_rx:
+ 
+ void brcmf_rx_frame(struct device *dev, struct sk_buff *skb)
+ {
+-	struct brcmf_if *ifp;
++	struct brcmf_if *ifp = NULL;
+ 	struct brcmf_bus *bus_if = dev_get_drvdata(dev);
+ 	struct brcmf_pub *drvr = bus_if->drvr;
+ 	struct brcmf_skb_reorder_data *rd;
+@@ -525,7 +525,7 @@ void brcmf_rx_frame(struct device *dev, struct sk_buff *skb)
+ 
+ 	/* process and remove protocol-specific header */
+ 	ret = brcmf_proto_hdrpull(drvr, true, &ifidx, skb);
+-	ifp = drvr->iflist[ifidx];
++	if (!ret) ifp = drvr->iflist[ifidx];
+ 
+ 	if (ret || !ifp || !ifp->ndev) {
+ 		if ((ret != -ENODATA) && ifp)
+-- 
+1.7.9.5
+
