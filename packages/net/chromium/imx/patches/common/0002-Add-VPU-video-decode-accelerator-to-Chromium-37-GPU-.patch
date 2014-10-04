@@ -1,0 +1,150 @@
+From ef258f57e11b47e67be61eee5e03c2285aba969e Mon Sep 17 00:00:00 2001
+From: Carlos Rafael Giani <dv@pseudoterminal.org>
+Date: Sat, 23 Aug 2014 23:07:46 +0200
+Subject: [PATCH] Add VPU video decode accelerator to Chromium 37 GPU media
+ stack
+
+Upstream-Status: Inappropriate [other]
+Upstream currently does not accept patches for video acceleration in Linux
+
+Signed-off-by: Carlos Rafael Giani <dv@pseudoterminal.org>
+---
+ build/common.gypi                                  |  3 ++
+ .../gpu/media/gpu_video_decode_accelerator.cc      |  7 +++++
+ content/content_common.gypi                        | 34 ++++++++++++++++++++++
+ gpu/config/software_rendering_list_json.cc         |  5 ++--
+ ui/gl/gl_implementation.h                          |  4 +--
+ 5 files changed, 49 insertions(+), 4 deletions(-)
+
+diff --git a/build/common.gypi b/build/common.gypi
+index 166130c..da5c662 100644
+--- a/build/common.gypi
++++ b/build/common.gypi
+@@ -1149,6 +1149,9 @@
+     # Use system ICU instead of bundled one.
+     'use_system_icu%' : 0,
+ 
++    # Whether or not the target platform is based on the i.MX SoC
++    'imx_platform%': 1,
++
+     # Default to enabled PIE; this is important for ASLR but we may need to be
+     # able to turn it off for various reasons.
+     'linux_disable_pie%': 0,
+diff --git a/content/common/gpu/media/gpu_video_decode_accelerator.cc b/content/common/gpu/media/gpu_video_decode_accelerator.cc
+index 0d315da..a6b2f64 100644
+--- a/content/common/gpu/media/gpu_video_decode_accelerator.cc
++++ b/content/common/gpu/media/gpu_video_decode_accelerator.cc
+@@ -26,6 +26,8 @@
+ #if defined(OS_WIN)
+ #include "base/win/windows_version.h"
+ #include "content/common/gpu/media/dxva_video_decode_accelerator.h"
++#elif defined(IMX_PLATFORM)
++#include "content/common/gpu/media/imxvpu_video_decode_accelerator.h"
+ #elif defined(OS_MACOSX)
+ #include "content/common/gpu/media/vt_video_decode_accelerator.h"
+ #elif defined(OS_CHROMEOS) && defined(ARCH_CPU_ARMEL) && defined(USE_X11)
+@@ -255,6 +257,11 @@ void GpuVideoDecodeAccelerator::Initialize(
+   DVLOG(0) << "Initializing DXVA HW decoder for windows.";
+   video_decode_accelerator_.reset(
+       new DXVAVideoDecodeAccelerator(make_context_current_));
++#elif defined(IMX_PLATFORM)
++  VLOG(1) << "Using the i.MX6 VPU decode accelerator";
++  video_decode_accelerator_.reset(new ImxVpuVideoDecodeAccelerator(
++      stub_->decoder()->AsWeakPtr(),
++      make_context_current_));
+ #elif defined(OS_MACOSX)
+   video_decode_accelerator_.reset(new VTVideoDecodeAccelerator(
+       static_cast<CGLContextObj>(
+diff --git a/content/content_common.gypi b/content/content_common.gypi
+index d74a4ac..4c4cec1 100644
+--- a/content/content_common.gypi
++++ b/content/content_common.gypi
+@@ -639,6 +639,40 @@
+         'common/gpu/media/android_video_decode_accelerator.h',
+       ],
+     }],
++    ['target_arch == "arm" and imx_platform == 1', {
++      'dependencies': [
++        '../ui/gl/gl.gyp:gl',
++      ],
++      'variables': {
++        'conditions': [
++          ['sysroot!=""', {
++            'pkg-config': '../build/linux/pkg-config-wrapper "<(sysroot)" "<(target_arch)"',
++          }, {
++            'pkg-config': 'pkg-config'
++          }],
++        ],
++      },
++      'sources': [
++        'common/gpu/media/imx_gl_viv_direct_texture.cc',
++        'common/gpu/media/imx_gl_viv_direct_texture.h',
++        'common/gpu/media/imxvpucodec_fslwrapper.c',
++        'common/gpu/media/imxvpucodec.h',
++        'common/gpu/media/imxvpucodec_platform_chromium.cc',
++        'common/gpu/media/imxvpucodec_platform_chromium.h',
++        'common/gpu/media/imxvpucodec_platform.h',
++        'common/gpu/media/imxvpu_video_decode_accelerator.cc',
++        'common/gpu/media/imxvpu_video_decode_accelerator.h',
++      ],
++      'defines': ['IMX_PLATFORM'],
++      'cflags': [
++        '<!@(<(pkg-config) --cflags libfslvpuwrap)',
++      ],
++      'link_settings': {
++        'libraries': [
++          '<!@(<(pkg-config) --libs libfslvpuwrap)',
++        ],
++      },
++    }],
+     ['OS=="android" and enable_webrtc==1', {
+       'dependencies': [
+         '../third_party/libyuv/libyuv.gyp:libyuv',
+diff --git a/gpu/config/software_rendering_list_json.cc b/gpu/config/software_rendering_list_json.cc
+index a1f0fc2..7317681 100644
+--- a/gpu/config/software_rendering_list_json.cc
++++ b/gpu/config/software_rendering_list_json.cc
+@@ -555,7 +555,8 @@ const char kSoftwareRenderingListJson[] = LONG_STRING_CONST(
+         "all"
+       ]
+     },
+-    {
++    // 48 disabled for i.MX6 integration
++/*    {
+       "id": 48,
+       "description": "Accelerated video decode is unavailable on Mac and Linux",
+       "cr_bugs": [137247, 133828],
+@@ -579,7 +580,7 @@ const char kSoftwareRenderingListJson[] = LONG_STRING_CONST(
+       "features": [
+         "accelerated_video_decode"
+       ]
+-    },
++    },*/
+     {
+       "id": 49,
+       "description": "NVidia GeForce GT 650M can cause the system to hang with flash 3D",
+diff --git a/ui/gl/gl_implementation.h b/ui/gl/gl_implementation.h
+index 7319b47..e651ba4 100644
+--- a/ui/gl/gl_implementation.h
++++ b/ui/gl/gl_implementation.h
+@@ -88,7 +88,7 @@ GL_EXPORT bool HasDesktopGLFeatures();
+ GLImplementation GetNamedGLImplementation(const std::string& name);
+ 
+ // Get the name of a GL implementation.
+-const char* GetGLImplementationName(GLImplementation implementation);
++GL_EXPORT const char* GetGLImplementationName(GLImplementation implementation);
+ 
+ // Add a native library to those searched for GL entry points.
+ void AddGLNativeLibrary(base::NativeLibrary library);
+@@ -107,7 +107,7 @@ GL_EXPORT void SetGLGetProcAddressProc(GLGetProcAddressProc proc);
+ // and when querying functions from the EGL library supplied by Android, it may
+ // return a function that prints a log message about the function being
+ // unsupported.
+-void* GetGLProcAddress(const char* name);
++GL_EXPORT void* GetGLProcAddress(const char* name);
+ 
+ // Return information about the GL window system binding implementation (e.g.,
+ // EGL, GLX, WGL). Returns true if the information was retrieved successfully.
+-- 
+1.8.3.2
+

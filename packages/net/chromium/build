@@ -1,0 +1,120 @@
+#!/bin/sh
+
+. config/options
+
+get_meta $1
+cd $PKG_BUILD_DIR
+
+## gyp files
+cp $ROOT/$PACKAGES/$PKG_SECTION/$1/config/component-build.gypi .
+
+if [ "$TARGET_ARCH" = i386 ] ; then 
+  cp $ROOT/$PACKAGES/$PKG_SECTION/$1/config/i386/* .
+fi
+
+if [ "$TARGET_ARCH" = x86_64 ] ; then
+  cp $ROOT/$PACKAGES/$PKG_SECTION/$1/config/x86_64/* .
+fi
+
+arm_float_abi=""
+if [ "$TARGET_ARCH" = "arm" ]; then
+  if [ "$ARM_HARDFLOAT_ABI" = yes ]; then
+    arm_float_abi=hard
+  else
+    arm_float_abi=softfp
+  fi
+  cp $ROOT/$PACKAGES/$PKG_SECTION/$1/config/armv7a/* .
+fi
+
+if pkg_uses $1 imx ; then
+  if [ -f imx-applied ] ; then
+    echo "patches for imx already applied"
+  else
+    cp -r $ROOT/$PACKAGES/$PKG_SECTION/$1/imx/src/* .
+    cd -
+    for i in $ROOT/$PACKAGES/$PKG_SECTION/$PKG_NAME/patches/$PKG_VERSION/imx/*.patch ; do
+      echo $i
+      apply_patch $1 $i
+    done
+    cd $PKG_BUILD_DIR
+    touch imx-applied
+  fi
+fi
+
+EXTRA_OEGYP=" -Dangle_use_commit_id=0            \
+              -Dlinux_use_gold_binary=0          \
+              -Dlinux_use_gold_flags=0           \
+              -Ddisable_fatal_linker_warnings=1  \
+              -Dwerror=                          \
+	      -I $PWD/defaults.gypi          \
+	      -I $PWD/include.gypi           \
+	      -I $PWD/component-build.gypi   \
+	      -f ninja                           \
+"
+
+##
+
+## To be tested
+U_EGL=""
+if pkg_uses $1 egl ; then
+  U_EGL=" --use-gl=egl"
+fi
+ 
+CHROMIUM_EXTRA_ARGS="$U_EGL --gpu-no-context-lost --enable-gpu-rasterization --enable-impl-side-painting"
+
+
+if [ -n "$arm_float_abi" ] ; then
+  if pkg_uses imx ; then
+    GYP_DEFINES="imx_platform=1 host_clang=0 clang=0 arm_float_abi=$arm_float_abi release_extra_cflags='-Wno-error=unused-local-typedefs' sysroot='' proprietary_codecs=1 ffmpeg_branding=Chrome"
+  else
+    GYP_DEFINES="host_clang=0 clang=0 arm_float_abi=$arm_float_abi release_extra_cflags='-Wno-error=unused-local-typedefs' sysroot='' proprietary_codecs=1 ffmpeg_branding=Chrome"
+  fi
+else
+  GYP_DEFINES="host_clang=0 clang=0 release_extra_cflags='-Wno-error=unused-local-typedefs' sysroot='' proprietary_codecs=1 ffmpeg_branding=Chrome"
+fi
+
+export GYP_CROSSCOMPILE=1
+export GYP_DEFINES
+
+# remove -f* from TARGET_CFLAGS else build fails
+setup_toolchain target
+for i in ffast-math fPIC fgraphite-identity ftree-loop-distribution floop-interchange floop-strip-mine floop-block; do
+  CFLAGS=$(echo $CFLAGS | sed -e "s%-$i%%")
+done
+
+# be sure all values are set
+export CC=$TARGET_CC
+export CXX=$TARGET_CXX
+export CC_host=$HOST_CC
+export CXX_host=$HOST_CXX
+export LD
+unset CCACHE_DIR
+
+build/gyp_chromium --depth=. ${EXTRA_OEGYP}
+ninja -C $PWD/out/Release chrome chrome_sandbox
+
+CHROME_DIR="$PWD/.install/usr/bin/chrome"
+install_dir="$PWD/.install"
+install_dir_debug="$PWD/.install-debuginfo"
+mkdir -p "$install_dir" "$install_dir_debug/usr/lib/debug"
+mkdir -p $CHROME_DIR/locales
+mkdir -p .install/usr/sbin
+mkdir -p .install/usr/lib/chrome
+
+cp out/Release/chrome $CHROME_DIR/chrome
+cp out/Release/*.pak $CHROME_DIR
+cp out/Release/icudtl.dat $CHROME_DIR
+cp out/Release/product_logo_48.png $CHROME_DIR
+cp out/Release/libffmpegsumo.so $CHROME_DIR
+cp out/Release/lib/*.so .install/usr/lib/chrome
+cp out/Release/chrome_sandbox .install/usr/sbin/chrome-devel-sandbox
+cp out/Release/locales/*.pak $CHROME_DIR/locales
+
+
+
+# stripping binaries
+strip_libs "$install_dir" "$install_dir_debug/usr/lib/debug"
+do_strip bin $CHROME_DIR/chrome
+
+cp $ROOT/$PACKAGES/$PKG_SECTION/$1/scripts/google-chrome .install/usr/bin
+sed -i "s/CHROME_EXTRA_ARGS=\"\"/CHROME_EXTRA_ARGS=\"$CHROMIUM_EXTRA_ARGS\"/" .install/usr/bin/google-chrome

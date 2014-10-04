@@ -1,0 +1,163 @@
+From 1f68e3aa0d607edcb386dc72ff6bae354f547c08 Mon Sep 17 00:00:00 2001
+From: Carlos Rafael Giani <dv@pseudoterminal.org>
+Date: Sat, 23 Aug 2014 23:37:44 +0200
+Subject: [PATCH] Add VPU video decode accelerator to Chromium 35 GPU media
+ stack
+
+Upstream-Status: Inappropriate [other]
+Chromium developers currently do not accept patches for video accel in Linux
+
+Signed-off-by: Carlos Rafael Giani <dv@pseudoterminal.org>
+---
+ build/common.gypi                                  |  3 ++
+ .../gpu/media/gpu_video_decode_accelerator.cc      |  7 +++++
+ content/content_common.gypi                        | 34 ++++++++++++++++++++++
+ gpu/config/software_rendering_list_json.cc         | 25 ----------------
+ ui/gl/gl_implementation.h                          |  4 +--
+ 5 files changed, 46 insertions(+), 27 deletions(-)
+
+diff --git a/build/common.gypi b/build/common.gypi
+index 5c9d589..5415f38 100644
+--- a/build/common.gypi
++++ b/build/common.gypi
+@@ -1072,6 +1072,9 @@
+     # Use system ICU instead of bundled one.
+     'use_system_icu%' : 0,
+ 
++    # Whether or not the target platform is based on the i.MX SoC
++    'imx_platform%': 1,
++
+     # Default to enabled PIE; this is important for ASLR but we may need to be
+     # able to turn it off for various reasons.
+     'linux_disable_pie%': 0,
+diff --git a/content/common/gpu/media/gpu_video_decode_accelerator.cc b/content/common/gpu/media/gpu_video_decode_accelerator.cc
+index 755563e..f0aede7 100644
+--- a/content/common/gpu/media/gpu_video_decode_accelerator.cc
++++ b/content/common/gpu/media/gpu_video_decode_accelerator.cc
+@@ -25,6 +25,8 @@
+ #if defined(OS_WIN)
+ #include "base/win/windows_version.h"
+ #include "content/common/gpu/media/dxva_video_decode_accelerator.h"
++#elif defined(IMX_PLATFORM)
++#include "content/common/gpu/media/imxvpu_video_decode_accelerator.h"
+ #elif defined(OS_CHROMEOS) && defined(ARCH_CPU_ARMEL) && defined(USE_X11)
+ #include "content/common/gpu/media/v4l2_video_decode_accelerator.h"
+ #include "content/common/gpu/media/v4l2_video_device.h"
+@@ -260,6 +262,11 @@ void GpuVideoDecodeAccelerator::Initialize(
+   DVLOG(0) << "Initializing DXVA HW decoder for windows.";
+   video_decode_accelerator_.reset(
+       new DXVAVideoDecodeAccelerator(make_context_current_));
++#elif defined(IMX_PLATFORM)
++  VLOG(1) << "Using the i.MX6 VPU decode accelerator";
++  video_decode_accelerator_.reset(new ImxVpuVideoDecodeAccelerator(
++      stub_->decoder()->AsWeakPtr(),
++      make_context_current_));
+ #elif defined(OS_CHROMEOS) && defined(ARCH_CPU_ARMEL) && defined(USE_X11)
+   scoped_ptr<V4L2Device> device = V4L2Device::Create();
+   if (!device.get()) {
+diff --git a/content/content_common.gypi b/content/content_common.gypi
+index a28e37f..af83b82 100644
+--- a/content/content_common.gypi
++++ b/content/content_common.gypi
+@@ -600,6 +600,40 @@
+         'common/gpu/media/android_video_encode_accelerator.h',
+       ],
+     }],
++    ['target_arch == "arm" and imx_platform == 1', {
++      'dependencies': [
++        '../ui/gl/gl.gyp:gl',
++      ],
++      'variables': {
++        'conditions': [
++          ['sysroot!=""', {
++            'pkg-config': '../build/linux/pkg-config-wrapper "<(sysroot)" "<(target_arch)"',
++          }, {
++            'pkg-config': 'pkg-config'
++          }],
++        ],
++      },
++      'sources': [
++        'common/gpu/media/imx_gl_viv_direct_texture.cc',
++        'common/gpu/media/imx_gl_viv_direct_texture.h',
++        'common/gpu/media/imxvpucodec_fslwrapper.c',
++        'common/gpu/media/imxvpucodec.h',
++        'common/gpu/media/imxvpucodec_platform_chromium.cc',
++        'common/gpu/media/imxvpucodec_platform_chromium.h',
++        'common/gpu/media/imxvpucodec_platform.h',
++        'common/gpu/media/imxvpu_video_decode_accelerator.cc',
++        'common/gpu/media/imxvpu_video_decode_accelerator.h',
++      ],
++      'defines': ['IMX_PLATFORM', 'IMXVPU_NEEDS_NOTIFY_INIT', 'IMXVPU_WITH_VDA_IMPL'],
++      'cflags': [
++        '<!@(<(pkg-config) --cflags libfslvpuwrap)',
++      ],
++      'link_settings': {
++        'libraries': [
++          '<!@(<(pkg-config) --libs libfslvpuwrap)',
++        ],
++      },
++    }],
+     ['target_arch=="arm" and chromeos == 1 and use_x11 == 1', {
+       'dependencies': [
+         '../media/media.gyp:media',
+diff --git a/gpu/config/software_rendering_list_json.cc b/gpu/config/software_rendering_list_json.cc
+index d3df510..1cd07e9 100644
+--- a/gpu/config/software_rendering_list_json.cc
++++ b/gpu/config/software_rendering_list_json.cc
+@@ -481,31 +481,6 @@ const char kSoftwareRenderingListJson[] = LONG_STRING_CONST(
+       ]
+     },
+     {
+-      "id": 48,
+-      "description": "Accelerated video decode is unavailable on Mac and Linux",
+-      "cr_bugs": [137247, 133828],
+-      "exceptions": [
+-        {
+-          "os": {
+-            "type": "chromeos"
+-          }
+-        },
+-        {
+-          "os": {
+-            "type": "win"
+-          }
+-        },
+-        {
+-          "os": {
+-            "type": "android"
+-          }
+-        }
+-      ],
+-      "features": [
+-        "accelerated_video_decode"
+-      ]
+-    },
+-    {
+       "id": 49,
+       "description": "NVidia GeForce GT 650M can cause the system to hang with flash 3D",
+       "cr_bugs": [140175],
+diff --git a/ui/gl/gl_implementation.h b/ui/gl/gl_implementation.h
+index 7319b47..e651ba4 100644
+--- a/ui/gl/gl_implementation.h
++++ b/ui/gl/gl_implementation.h
+@@ -88,7 +88,7 @@ GL_EXPORT bool HasDesktopGLFeatures();
+ GLImplementation GetNamedGLImplementation(const std::string& name);
+ 
+ // Get the name of a GL implementation.
+-const char* GetGLImplementationName(GLImplementation implementation);
++GL_EXPORT const char* GetGLImplementationName(GLImplementation implementation);
+ 
+ // Add a native library to those searched for GL entry points.
+ void AddGLNativeLibrary(base::NativeLibrary library);
+@@ -107,7 +107,7 @@ GL_EXPORT void SetGLGetProcAddressProc(GLGetProcAddressProc proc);
+ // and when querying functions from the EGL library supplied by Android, it may
+ // return a function that prints a log message about the function being
+ // unsupported.
+-void* GetGLProcAddress(const char* name);
++GL_EXPORT void* GetGLProcAddress(const char* name);
+ 
+ // Return information about the GL window system binding implementation (e.g.,
+ // EGL, GLX, WGL). Returns true if the information was retrieved successfully.
+-- 
+1.8.3.2
+
