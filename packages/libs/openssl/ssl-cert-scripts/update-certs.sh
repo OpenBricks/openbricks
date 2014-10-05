@@ -1,4 +1,12 @@
 #!/bin/bash
+##################################
+# update-certs.sh
+# Created Oct 5 2014
+# Author: Joel Green
+# Downloads SSL certficates from mozilla.org and installs them into geexbox
+# Expired certficates are removed
+# Useful when downloading from https sources to avoid certificate errors
+##################################
 
 set -e
 set -u
