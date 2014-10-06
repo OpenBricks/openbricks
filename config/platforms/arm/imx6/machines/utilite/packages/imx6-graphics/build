@@ -1,0 +1,94 @@
+#!/bin/sh
+
+. config/options
+
+require_glibc $1
+
+get_meta $1
+cd $PKG_BUILD_DIR
+
+if [ -d .install ] ; then
+  rm -rf .install
+fi
+
+mkdir -p .install/usr/lib/pkgconfig
+mkdir -p .install/usr/include
+
+dir_pc_files=$ROOT/$PACKAGES/$PKG_SECTION/$1/config
+pc_files="egl glesv1_cm glesv2 vg"
+
+if [ "$ARM_HARDFLOAT_ABI" = yes ] ; then
+  data=$PWD/hfp
+else
+  data=$PWD/sfp
+fi
+
+cp -P $data/usr/lib/*.so* .install/usr/lib
+cp -r $data/usr/include/* .install/usr/include
+cp -r $data/opt .install/
+
+## install pc files
+if pkg_uses $1 x11 ; then
+  backend=x11
+  for i in $pc_files ; do
+    cp $dir_pc_files/${i}_x11.pc .install/usr/lib/pkgconfig/$i.pc
+  done
+  cp -r $data/usr/lib/dri .install/usr/lib
+elif pkg_uses $1 wayland ; then
+  backend=wl
+  for i in $pc_files gc_wayland_protocol wayland-egl wayland-viv ; do
+    cp $dir_pc_files/$i.pc .install/usr/lib/pkgconfig/$i.pc
+  done
+else
+  for i in $pc_files ; do
+    cp $dir_pc_files/$i.pc .install/usr/lib/pkgconfig/$i.pc
+  done
+  if pkg_uses $1 directfb ; then
+    backend=dfb
+    mkdir -p .install/etc
+    cp $dir_pc_files/directfbrc .install/etc
+    cp $data/usr/lib/directfb-1.6.0/* .instal/usr/lib
+  else
+    backend=fb
+  fi
+fi
+sed -i -e "s:/usr:$LIB_PREFIX:g" .install/usr/lib/pkgconfig/*.pc
+
+##
+
+## Install libs
+mv .install/usr/lib/libGL.so.1.2 .install/usr/lib/libGL.so.1.2.0
+ln -sf libGL.so.1.2.0 .install/usr/lib/libGL.so.1.2
+ln -sf libGL.so.1.2.0 .install/usr/lib/libGL.so.1
+ln -sf libGL.so.1.2.0 .install/usr/lib/libGL.so
+
+mv .install/usr/lib/libEGL-$backend.so .install/usr/lib/libEGL.so.1.0
+ln -sf libEGL.so.1.0 .install/usr/lib/libEGL.so.1
+ln -sf libEGL.so.1.0 .install/usr/lib/libEGL.so
+
+mv .install/usr/lib/libGAL-$backend.so .install/usr/lib/libGAL.so
+
+mv .install/usr/lib/libVIVANTE-$backend.so .install/usr/lib/libVIVANTE.so
+
+
+# uneeded for this version ...
+# mv .install/usr/lib/libGLESv2-$backend.so .install/usr/lib/libGLESv2.so.2.0.0
+# ln -sf libGLESv2.so.2.0.0 .install/usr/lib/libGLESv2.so.2
+# ln -sf libGLESv2.so.2.0.0 .install/usr/lib/libGLESv2.so
+
+##
+
+## clean a little
+
+if ! pkg_uses $1 wayland ; then
+  rm .install/usr/lib/libgc_wayland_protocol.*
+  rm .install/usr/lib/libwayland-viv.*
+fi
+
+for backend in wl x11 fb dfb; do
+  find .install/usr/lib -name "*-$backend.so" -exec rm '{}' ';'
+done
+
+if [ "$DEVROOTFS" = yes ] ; then
+  ln -sf .install .install-unstripped
+fi
