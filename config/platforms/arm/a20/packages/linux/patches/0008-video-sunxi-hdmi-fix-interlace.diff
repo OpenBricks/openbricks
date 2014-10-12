@@ -1,0 +1,53 @@
+diff -aur --unidirectional-new-file a/disp/disp_hdmi.c b/disp/disp_hdmi.c
+--- a/drivers/video/sunxi/disp/disp_hdmi.c	2014-08-24 19:03:13.000000000 +0200
++++ b/drivers/video/sunxi/disp/disp_hdmi.c	2014-10-11 19:35:29.000000000 +0200
+@@ -226,9 +226,18 @@
+ 	video_timing->VBP = mode->upper_margin + mode->vsync_len;
+ 	video_timing->VFP = mode->lower_margin;
+ 	video_timing->VPSW = mode->vsync_len;
+-	if (mode->vmode & FB_VMODE_INTERLACED)
++
++	if (mode->vmode & FB_VMODE_INTERLACED) {
+ 		video_timing->I = true;
+ 
++		video_timing->VBP /= 2;
++		video_timing->VFP /= 2;
++		video_timing->VPSW /= 2;
++
++		if ((video_timing->HT * (video_timing->VT + 1) * (mode->refresh/2)) == video_timing->PCLK)
++			video_timing->VT++;
++	}
++
+ 	if (mode->sync & FB_SYNC_HOR_HIGH_ACT)
+ 		video_timing->HSYNC = true;
+ 
+@@ -272,7 +281,11 @@
+ 		goto failure;
+ 
+ 	gdisp.screen[sel].hdmi_mode = DISP_TV_MODE_EDID;
+-	gdisp.screen[sel].b_out_interlace = new_video_timing->I;
++
++	if (gdisp.screen[sel].b_out_interlace != new_video_timing->I) {
++	      gdisp.screen[sel].b_out_interlace = new_video_timing->I;
++	      Disp_set_out_interlace(sel);
++	}
+ 
+ 	kfree(old_video_timing);
+ 	kfree(new_video_timing);
+diff -aur --unidirectional-new-file a/disp/disp_lcd.c b/disp/disp_lcd.c
+--- a/drivers/video/sunxi/disp/disp_lcd.c	2014-08-24 19:03:13.000000000 +0200
++++ b/drivers/video/sunxi/disp/disp_lcd.c	2014-10-12 12:11:49.584166307 +0200
+@@ -1840,8 +1840,12 @@
+ 	videomode->xres = BSP_disp_get_screen_width(sel);
+ 	videomode->yres = BSP_disp_get_screen_height(sel);
+ 
+-	if (interlaced)
++	if (interlaced) {
+ 		videomode->vmode = FB_VMODE_INTERLACED;
++		videomode->lower_margin *= 2;
++		videomode->upper_margin *= 2;
++		videomode->vsync_len *= 2;
++	}
+ 
+ 	if (vsync)
+ 		videomode->sync = FB_SYNC_VERT_HIGH_ACT;

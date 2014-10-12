@@ -1,0 +1,176 @@
+diff -aur --unidirectional-new-file a/hdmi/drv_hdmi.c b/hdmi/drv_hdmi.c
+--- a/drivers/video/sunxi/hdmi/drv_hdmi.c	2014-08-24 19:03:13.000000000 +0200
++++ b/drivers/video/sunxi/hdmi/drv_hdmi.c	2014-10-12 12:24:33.516143737 +0200
+@@ -17,9 +17,6 @@
+  * MA 02111-1307 USA
+  */
+ 
+-/*
+- * Semaphore stuff seems quite broken in here. --libv
+- */
+ #include "drv_hdmi_i.h"
+ #include "hdmi_core.h"
+ #include "dev_hdmi.h"
+@@ -33,18 +30,23 @@
+ extern void audio_set_hdmi_func(__audio_hdmi_func *hdmi_func);
+ 
+ 
+-static struct semaphore *run_sem;
++static DEFINE_MUTEX(HDMI_mutex);
+ static struct task_struct *HDMI_task;
+ void __iomem *hdmi_base;
+ 
+ 
+ static __s32 Hdmi_enable(__bool enable)
+ {
+-	if ((video_enable != enable) &&
+-	    (hdmi_state >= HDMI_State_Video_config))
+-		hdmi_state = HDMI_State_Video_config;
++	if (video_enable != enable) {
++		mutex_lock(&HDMI_mutex);
++
++		video_enable = enable;
+ 
+-	video_enable = enable;
++		if (hdmi_state > HDMI_State_Video_config)
++		      hdmi_state = HDMI_State_Video_config;
++
++		mutex_unlock(&HDMI_mutex);
++	}
+ 
+ 	return 0;
+ }
+@@ -155,11 +157,17 @@
+ 
+ 	ghdmi.mode = mode;
+ 	if (hdmi_mode != video_mode) {
+-		if (hdmi_state >= HDMI_State_Video_config)
+-			hdmi_state = HDMI_State_Video_config;
++		mutex_lock(&HDMI_mutex);
+ 
+ 		video_mode = hdmi_mode;
++
++		if (hdmi_state > HDMI_State_Video_config)
++			hdmi_state = HDMI_State_Video_config;
++
++		mutex_unlock(&HDMI_mutex);
+ 	}
++
++
+ 	return 0;
+ }
+ 
+@@ -172,13 +180,15 @@
+ 
+ 	if (memcmp(mode, &video_timing[video_timing_edid],
+ 			sizeof(struct __disp_video_timing)) != 0) {
+-
+-		if (hdmi_state >= HDMI_State_Video_config)
+-			hdmi_state = HDMI_State_Video_config;
++		mutex_lock(&HDMI_mutex);
+ 
+ 		memcpy(&video_timing[video_timing_edid], mode,
+ 			   sizeof(struct __disp_video_timing));
+ 
++		if (hdmi_state > HDMI_State_Video_config)
++			hdmi_state = HDMI_State_Video_config;
++
++		mutex_unlock(&HDMI_mutex);
+ 	}
+ 
+ 	return 0;
+@@ -191,9 +201,14 @@
+ 	__inf("[Hdmi_Audio_Enable],ch:%d\n", channel);
+ 
+ 	if (audio_info.audio_en != audio_en) {
++		mutex_lock(&HDMI_mutex);
++
+ 		audio_info.audio_en = audio_en;
++
+ 		if (hdmi_state > HDMI_State_Audio_config)
+ 			hdmi_state = HDMI_State_Audio_config;
++
++		mutex_unlock(&HDMI_mutex);
+ 	}
+ 
+ 	return 0;
+@@ -209,28 +224,35 @@
+ 		return -1;
+ 
+ 	if (audio_para->sample_bit != audio_info.sample_bit) {
+-		if (hdmi_state >= HDMI_State_Audio_config)
+-			hdmi_state = HDMI_State_Audio_config;
+-		audio_info.sample_bit = audio_para->sample_bit;
++		change = 1;
++		__inf("sample_bit:%d in Hdmi_hal_set_audio_para\n",
++		      audio_info.sample_bit);
+ 	}
+ 
+ 	if (audio_para->sample_rate != audio_info.sample_rate) {
+-		audio_info.sample_rate = audio_para->sample_rate;
+-		change = audio_info.audio_en;
+-
++		change = 1;
+ 		__inf("sample_rate:%d in Hdmi_hal_set_audio_para\n",
+ 		      audio_info.sample_rate);
+ 	}
+-	if (audio_para->channel_num != audio_info.channel_num) {
+-		audio_info.channel_num = audio_para->channel_num;
+-		change = audio_info.audio_en;
+ 
++	if (audio_para->channel_num != audio_info.channel_num) {
++		change = 1;
+ 		__inf("channel_num:%d in Hdmi_hal_set_audio_para\n",
+ 		      audio_info.channel_num);
+ 	}
+ 
+-	if (change && hdmi_state > HDMI_State_Audio_config)
+-		hdmi_state = HDMI_State_Audio_config;
++	if (change) {
++		mutex_lock(&HDMI_mutex);
++	  
++		audio_info.sample_bit = audio_para->sample_bit;
++		audio_info.sample_rate = audio_para->sample_rate;
++		audio_info.channel_num = audio_para->channel_num;
++	  
++		if (hdmi_state > HDMI_State_Audio_config)
++			hdmi_state = HDMI_State_Audio_config;
++
++		mutex_unlock(&HDMI_mutex);
++	}
+ 
+ 	return 0;
+ }
+@@ -284,8 +306,12 @@
+ Hdmi_run_thread(void *parg)
+ {
+ 	while (1) {
++		mutex_lock(&HDMI_mutex);
++	  
+ 		hdmi_main_task_loop();
+ 
++		mutex_unlock(&HDMI_mutex);
++
+ 		if (kthread_should_stop())
+ 			break;
+ 
+@@ -305,9 +331,6 @@
+ 	__disp_hdmi_func disp_func;
+ 	int err = 0;
+ 
+-	run_sem = kmalloc(sizeof(struct semaphore), GFP_KERNEL | __GFP_ZERO);
+-	sema_init((struct semaphore *)run_sem, 0);
+-
+ 	hdmi_base = (void __iomem *) ghdmi.base_hdmi;
+ 	hdmi_core_initial();
+ 	err = hdmi_i2c_sunxi_probe(dev);
+@@ -369,9 +392,6 @@
+ __s32 Hdmi_exit(struct platform_device *dev)
+ {
+ 
+-	kfree(run_sem);
+-	run_sem = NULL;
+-
+ 	if (HDMI_task) {
+ 		kthread_stop(HDMI_task);
+ 		HDMI_task = NULL;
