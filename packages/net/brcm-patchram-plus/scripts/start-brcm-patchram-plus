@@ -1,26 +1,19 @@
 #!/bin/sh
  
-a=`cat /sys/class/mmc_host/mmc0/mmc0\:0001/mmc0\:0001\:1/device`
+a=`cat /sys/class/mmc_host/mmc0/mmc0\:0001/mmc0\:0001\:1/device 2>/dev/null`
 
 HCD=""
 EXTRA=""
 
-if [ "$a" = "0x4329" ] ; then
-  HCD="bcm4329.hcd"
-fi
+case "$a" in
+  "0x4329") HCD="bcm4329.hcd";;
+  "0x4330") HCD="bcm4330.hcd"; EXTRA="--no2bytes --tosleep=50000";;
+        "") echo "No device found."; exit 0;;
+         *) echo "Unknown device: $a"; exit 1;;
+esac
  
-if [ "$a" = "0x4330" ] ; then
-  HCD="bcm4330.hcd"
-  EXTRA="--no2bytes --tosleep=50000 "
-fi
-
-if [ -n "$HCD" ] ; then
-  echo "Found chip version $a."
-  /usr/bin/brcm_patchram_plus -d --patchram /lib/firmware/brcm/$HCD --baudrate 3000000 --use_baudrate_for_download /dev/ttymxc3 --enable_hci $EXTRA &
-else
-  echo " No device Found."
-  exit 1
-fi
+echo "Found chip version $a."
+/usr/bin/brcm_patchram_plus -d --patchram /lib/firmware/brcm/$HCD --baudrate 3000000 --use_baudrate_for_download /dev/ttymxc3 --enable_hci $EXTRA &
 
 for i in 1 2 3 4 5 ; do
   b=`hciconfig | grep UART | cut -d: -f1`
@@ -31,6 +24,5 @@ for i in 1 2 3 4 5 ; do
     sleep $i
   fi
 done
-
 
 exit 0
