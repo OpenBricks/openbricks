@@ -1,0 +1,459 @@
+diff -aur --unidirectional-new-file b/drivers/video/sunxi/disp/dev_disp.h c/drivers/video/sunxi/disp/dev_disp.h
+--- b/drivers/video/sunxi/disp/dev_disp.h	2014-08-24 19:03:13.000000000 +0200
++++ c/drivers/video/sunxi/disp/dev_disp.h	2014-10-14 20:28:29.000000000 +0200
+@@ -38,7 +38,8 @@
+ int disp_resume(int clk, int status);
+ 
+ int disp_check_fbmem(int sel, int width, int height);
+-void hdmi_edid_received(unsigned char *edid, int block);
++const struct fb_videomode *hdmi_edid_received(unsigned char *edid, int block, __u8 *vic_support);
++
+ __s32 Fb_Init(__u32 from);
+ __s32 DRV_lcd_open(__u32 sel);
+ __s32 DRV_lcd_close(__u32 sel);
+diff -aur --unidirectional-new-file b/drivers/video/sunxi/disp/dev_fb.c c/drivers/video/sunxi/disp/dev_fb.c
+--- b/drivers/video/sunxi/disp/dev_fb.c	2014-08-24 19:03:13.000000000 +0200
++++ c/drivers/video/sunxi/disp/dev_fb.c	2014-10-14 21:35:40.000000000 +0200
+@@ -90,6 +90,15 @@
+ 	}
+ }
+ 
++static int check_pll_freq(const struct fb_videomode *mode)
++{
++	int dummy;
++	struct __disp_video_timing timing;
++
++	videomode_to_video_timing(&timing, mode);
++	return disp_get_pll_freq(timing.PCLK, &dummy, &dummy);
++}
++
+ static int parse_output_mode(char *mode, int type, int fallback, __bool *edid)
+ {
+ 	u32 i, width, height, interlace, frame_rate;
+@@ -1081,8 +1090,9 @@
+  */
+ static int Fb_check_var(struct fb_var_screeninfo *var, struct fb_info *info)
+ {
++	struct fb_videomode mode;
+ 	__disp_pixel_fmt_t fmt;
+-	int dummy, sel;
++	int sel;
+ 	__inf("Fb_check_var: %dx%d %dbits\n", var->xres, var->yres,
+ 	      var->bits_per_pixel);
+ 
+@@ -1095,9 +1105,8 @@
+ 			continue;
+ 
+ 		/* Check that pll is found */
+-		if (disp_get_pll_freq(
+-			fb_videomode_pixclock_to_hdmi_pclk(var->pixclock),
+-				&dummy, &dummy))
++		fb_var_to_videomode(&mode, var);
++		if (check_pll_freq(&mode))
+ 			return -EINVAL;
+ 	}
+ 
+@@ -1168,7 +1177,13 @@
+ 				if (!fb_mode_is_equal(&new_mode, &old_mode)) {
+ 					mode_changed = (BSP_disp_set_videomode(
+ 							sel, &new_mode) == 0);
++				}
+ 
++				if (mode_changed) {
++					struct fb_event event;
++					event.info = info;
++					event.data = &new_mode;
++					fb_notifier_call_chain(FB_EVENT_MODE_CHANGE, &event);
+ 				}
+ 			}
+ 
+@@ -1693,11 +1708,12 @@
+ }
+ EXPORT_SYMBOL(disp_check_fbmem);
+ 
+-void hdmi_edid_received(unsigned char *edid, int block_count)
++const struct fb_videomode *hdmi_edid_received(unsigned char *edid, int block_count, __u8 *vic_support)
+ {
+ 	struct fb_event event;
+ 	struct fb_modelist *m, *n;
+-	int dummy;
++	struct fb_videomode currMode, *dflt = NULL;
++	int i, vic;
+ 	__u32 sel = 0;
+ 	__u32 block = 0;
+ 	LIST_HEAD(old_modelist);
+@@ -1717,8 +1733,14 @@
+ 			console_lock();
+ 		}
+ 
++		memset(&currMode, 0, sizeof(currMode));
+ 		for (block = 0; block < block_count; block++) {
+ 			if (block == 0) {
++				if (fbi->mode) {
++					memcpy(&currMode, fbi->mode, sizeof(currMode));
++					fbi->mode = NULL;
++				}
++
+ 				if (fbi->monspecs.modedb != NULL) {
+ 					fb_destroy_modedb(fbi->monspecs.modedb);
+ 					fbi->monspecs.modedb = NULL;
+@@ -1752,11 +1774,8 @@
+ 
+ 		/* Filter out modes which we cannot do */
+ 		list_for_each_entry_safe(m, n, &fbi->modelist, list) {
+-			if (disp_get_pll_freq(
+-				fb_videomode_pixclock_to_hdmi_pclk(
+-				    m->mode.pixclock), &dummy, &dummy) != 0 ||
+-			    disp_check_fbmem(sel,
+-					   m->mode.xres, m->mode.yres) != 0) {
++			if (check_pll_freq(&m->mode) != 0 ||
++			    disp_check_fbmem(sel, m->mode.xres, m->mode.yres) != 0) {
+ 				list_del(&m->list);
+ 				kfree(m);
+ 			}
+@@ -1778,6 +1797,36 @@
+ 		}
+ 
+ 		/*
++		 * Determine default mode and vic support
++		 */
++		list_for_each_entry(m, &fbi->modelist, list) {
++			for (vic = 0, i = 1; i < ARRAY_SIZE(cea_modes); i++) {
++				if (cea_modes[i].xres == m->mode.xres &&
++				    cea_modes[i].yres == m->mode.yres &&
++				    cea_modes[i].vmode == m->mode.vmode &&
++				    cea_modes[i].refresh == m->mode.refresh) {
++					vic_support[i] = 1;
++					vic = i;
++					break;
++				}
++			}
++
++			if (!dflt && (m->mode.flag & FB_MODE_IS_FIRST))
++				dflt = &m->mode;
++
++			if (!fbi->mode && fb_mode_is_equal(&m->mode, &currMode))
++				fbi->mode = &m->mode;
++
++			pr_info("Supported mode: VIC:%d %ux%u%c-%u%s\n",
++				vic, m->mode.xres, m->mode.yres, 
++				(m->mode.vmode & FB_VMODE_INTERLACED) ? 'i' : 'p', 
++				m->mode.refresh, (&m->mode == dflt) ?  " (*)" : "");
++		}
++
++		if (!fbi->mode)
++			fbi->mode = dflt;
++
++		/*
+ 		 * Tell framebuffer users that modelist was replaced. This is
+ 		 * to avoid use of old removed modes and to avoid panics.
+ 		 */
+@@ -1794,6 +1843,8 @@
+ 		WARN_ON(err);
+ 	}
+ 	mutex_unlock(&g_fbi_mutex);
++	
++	return dflt;
+ }
+ EXPORT_SYMBOL(hdmi_edid_received);
+ 
+diff -aur --unidirectional-new-file b/drivers/video/sunxi/disp/disp_hdmi.c c/drivers/video/sunxi/disp/disp_hdmi.c
+--- b/drivers/video/sunxi/disp/disp_hdmi.c	2014-10-12 13:25:46.000000000 +0200
++++ c/drivers/video/sunxi/disp/disp_hdmi.c	2014-10-14 21:32:12.000000000 +0200
+@@ -187,7 +187,7 @@
+ 	return DIS_SUCCESS;
+ }
+ 
+-__u32 fb_videomode_pixclock_to_hdmi_pclk(__u32 pixclock)
++static __u32 fb_videomode_pixclock_to_hdmi_pclk(__u32 pixclock)
+ {
+ 	/*
+ 	 * The pixelclock -> picoseconds -> pixelclock conversions we do
+@@ -209,6 +209,18 @@
+ void videomode_to_video_timing(struct __disp_video_timing *video_timing,
+ 		const struct fb_videomode *mode)
+ {
++	static struct pclk_override {
++		struct __disp_video_timing video_timing;
++		int pclk;
++	} pclk_override[] = {
++		/*  VIC        PCLK  AVI_PR INPUTX INPUTY HT   HBP  HFP  HPSW  VT  VBP VFP VPSW I  HS VS   override */
++		{ { 511, 146250000, 0, 1680, 1050, 2240, 456, 104, 176, 1089, 36,  3, 6,  0, 0, 1 }, 146000000 },
++		{ { 511,  83500000, 0, 1280,  800, 1680, 328,  72, 128,  831, 28,  3, 6,  0, 0, 1 },  83250000 },
++		{ { 511,  83500000, 0, 1280,  800, 1680, 328,  72, 128,  831, 21, 10, 6,  0, 1, 1 },  83250000 },
++	};
++
++	int i;
++
+ 	memset(video_timing, 0, sizeof(struct __disp_video_timing));
+ 	video_timing->VIC = 511;
+ 	video_timing->PCLK =
+@@ -244,6 +256,12 @@
+ 	if (mode->sync & FB_SYNC_VERT_HIGH_ACT)
+ 		video_timing->VSYNC = true;
+ 
++	for (i = 0; i < ARRAY_SIZE(pclk_override); i++) {
++		if (memcmp(video_timing, &pclk_override[i].video_timing, sizeof(*video_timing)) == 0) {
++			video_timing->PCLK = pclk_override[i].pclk;
++			break;
++		}
++	}
+ }
+ 
+ __s32 BSP_disp_set_videomode(__u32 sel, const struct fb_videomode *mode)
+diff -aur --unidirectional-new-file b/drivers/video/sunxi/disp/disp_hdmi.h c/drivers/video/sunxi/disp/disp_hdmi.h
+--- b/drivers/video/sunxi/disp/disp_hdmi.h	2014-08-24 19:03:13.000000000 +0200
++++ c/drivers/video/sunxi/disp/disp_hdmi.h	2014-10-14 21:32:32.000000000 +0200
+@@ -22,6 +22,6 @@
+ 
+ __s32 Display_Hdmi_Init(void);
+ __s32 Display_Hdmi_Exit(void);
+-__u32 fb_videomode_pixclock_to_hdmi_pclk(__u32 pixclock);
++void videomode_to_video_timing(struct __disp_video_timing *video_timing, const struct fb_videomode *mode);
+ 
+ #endif
+diff -aur --unidirectional-new-file b/drivers/video/sunxi/hdmi/hdmi_edid.c c/drivers/video/sunxi/hdmi/hdmi_edid.c
+--- b/drivers/video/sunxi/hdmi/hdmi_edid.c	2014-10-12 12:29:38.000000000 +0200
++++ c/drivers/video/sunxi/hdmi/hdmi_edid.c	2014-10-14 20:55:15.209451574 +0200
+@@ -21,6 +21,7 @@
+ #include <linux/fb.h>
+ #include "hdmi_core.h"
+ #include "../disp/dev_disp.h"
++#include "../disp/disp_hdmi.h"
+ #include "../disp/sunxi_disp_regs.h"
+ #include "hdmi_cec.h"
+ 
+@@ -71,171 +71,6 @@
+ 	return 0;
+ }
+ 
+-struct pclk_override {
+-	struct __disp_video_timing video_timing;
+-	int pclk;
+-};
+-
+-struct pclk_override pclk_override[] = {
+-	/*  VIC        PCLK  AVI_PR INPUTX INPUTY HT   HBP  HFP  HPSW  VT  VBP VFP VPSW I  HS VS   override */
+-	{ { HDMI_EDID, 146250000, 0, 1680, 1050, 2240, 456, 104, 176, 1089, 36,  3, 6,  0, 0, 1 }, 146000000 },
+-	{ { HDMI_EDID,  83500000, 0, 1280,  800, 1680, 328,  72, 128,  831, 28,  3, 6,  0, 0, 1 },  83250000 },
+-	{ { HDMI_EDID,  83500000, 0, 1280,  800, 1680, 328,  72, 128,  831, 21, 10, 6,  0, 1, 1 },  83250000 },
+-	{ { 0, }, -1 }
+-};
+-
+-static __s32
+-Parse_DTD_Block(__u8 *pbuf)
+-{
+-	__u32 i, dummy, pclk, sizex, Hblanking, sizey, Vblanking, Hsync_offset,
+-		Hsync_pulsew, Vsync_offset, Vsync_pulsew, H_image_size,
+-		V_image_size, H_Border, V_Border, pixels_total, frame_rate,
+-		Hsync, Vsync, HT, VT;
+-	pclk = (((__u32) pbuf[1] << 8) + pbuf[0]) * 10000;
+-	sizex = (((__u32) pbuf[4] << 4) & 0x0f00) + pbuf[2];
+-	Hblanking = (((__u32) pbuf[4] << 8) & 0x0f00) + pbuf[3];
+-	sizey = (((__u32) pbuf[7] << 4) & 0x0f00) + pbuf[5];
+-	Vblanking = (((__u32) pbuf[7] << 8) & 0x0f00) + pbuf[6];
+-	Hsync_offset = (((__u32) pbuf[11] << 2) & 0x0300) + pbuf[8];
+-	Hsync_pulsew = (((__u32) pbuf[11] << 4) & 0x0300) + pbuf[9];
+-	Vsync_offset = (((__u32) pbuf[11] << 2) & 0x0030) + (pbuf[10] >> 4);
+-	Vsync_pulsew = (((__u32) pbuf[11] << 4) & 0x0030) + (pbuf[10] & 0x0f);
+-	H_image_size = (((__u32) pbuf[14] << 4) & 0x0f00) + pbuf[12];
+-	V_image_size = (((__u32) pbuf[14] << 8) & 0x0f00) + pbuf[13];
+-	H_Border = pbuf[15];
+-	V_Border = pbuf[16];
+-	Hsync = (pbuf[17] & 0x02) >> 1;
+-	Vsync = (pbuf[17] & 0x04) >> 2;
+-	HT = sizex + Hblanking;
+-	VT = sizey + Vblanking;
+-
+-	pixels_total = HT * VT;
+-
+-	if ((pbuf[0] == 0) && (pbuf[1] == 0))
+-		return 0;
+-
+-	if (pixels_total == 0)
+-		return 0;
+-	else
+-		frame_rate = pclk / pixels_total;
+-
+-	if ((frame_rate == 59) || (frame_rate == 60)) {
+-		if ((sizex == 720) && (sizey == 240))
+-			Device_Support_VIC[HDMI1440_480I] = 1;
+-
+-		if ((sizex == 720) && (sizey == 480))
+-			Device_Support_VIC[HDMI480P] = 1;
+-
+-		if ((sizex == 1280) && (sizey == 720))
+-			Device_Support_VIC[HDMI720P_60] = 1;
+-
+-		if ((sizex == 1920) && (sizey == 540))
+-			Device_Support_VIC[HDMI1080I_60] = 1;
+-
+-		if ((sizex == 1920) && (sizey == 1080))
+-			Device_Support_VIC[HDMI1080P_60] = 1;
+-
+-	} else if ((frame_rate == 49) || (frame_rate == 50)) {
+-		if ((sizex == 720) && (sizey == 288))
+-			Device_Support_VIC[HDMI1440_576I] = 1;
+-
+-		if ((sizex == 720) && (sizey == 576))
+-			Device_Support_VIC[HDMI576P] = 1;
+-
+-		if ((sizex == 1280) && (sizey == 720))
+-			Device_Support_VIC[HDMI720P_50] = 1;
+-
+-		if ((sizex == 1920) && (sizey == 540))
+-			Device_Support_VIC[HDMI1080I_50] = 1;
+-
+-		if ((sizex == 1920) && (sizey == 1080))
+-			Device_Support_VIC[HDMI1080P_50] = 1;
+-
+-	} else if ((frame_rate == 23) || (frame_rate == 24)) {
+-		if ((sizex == 1920) && (sizey == 1080))
+-			Device_Support_VIC[HDMI1080P_24] = 1;
+-	}
+-
+-	pr_info("PCLK=%d X %d %d %d %d Y %d %d %d %d fr %d %s%s\n", pclk,
+-		sizex, sizex + Hsync_offset,
+-		sizex + Hsync_offset + Hsync_pulsew, HT,
+-		sizey, sizey + Vsync_offset,
+-		sizey + Vsync_offset + Vsync_pulsew, VT,
+-		frame_rate, Hsync ? "P" : "N", Vsync ? "P" : "N");
+-
+-	/* Pick the first mode with a width which is a multiple of 8 and
+-	   a supported pixel-clock */
+-	if (Device_Support_VIC[HDMI_EDID] || (sizex & 7))
+-		return 0;
+-
+-	video_timing[video_timing_edid].VIC = HDMI_EDID;
+-	video_timing[video_timing_edid].PCLK = pclk;
+-	video_timing[video_timing_edid].AVI_PR = 0;
+-	video_timing[video_timing_edid].INPUTX = sizex;
+-	video_timing[video_timing_edid].INPUTY = sizey;
+-	video_timing[video_timing_edid].HT = HT;
+-	video_timing[video_timing_edid].HBP = Hblanking - Hsync_offset;
+-	video_timing[video_timing_edid].HFP = Hsync_offset;
+-	video_timing[video_timing_edid].HPSW = Hsync_pulsew;
+-	video_timing[video_timing_edid].VT = VT;
+-	video_timing[video_timing_edid].VBP = Vblanking - Vsync_offset;
+-	video_timing[video_timing_edid].VFP = Vsync_offset;
+-	video_timing[video_timing_edid].VPSW = Vsync_pulsew;
+-	video_timing[video_timing_edid].I = (pbuf[17] & 0x80) >> 7;
+-	video_timing[video_timing_edid].HSYNC = Hsync;
+-	video_timing[video_timing_edid].VSYNC = Vsync;
+-
+-	for (i = 0; pclk_override[i].pclk != -1; i++) {
+-		if (memcmp(&video_timing[video_timing_edid],
+-			   &pclk_override[i].video_timing,
+-			   sizeof(struct __disp_video_timing)) == 0) {
+-			pr_info("Patching %d pclk to %d\n", pclk,
+-				pclk_override[i].pclk);
+-			video_timing[video_timing_edid].PCLK =
+-				pclk_override[i].pclk;
+-			break;
+-		}
+-	}
+-
+-	if (disp_get_pll_freq(video_timing[video_timing_edid].PCLK,
+-			      &dummy, &dummy) != 0)
+-		return 0;
+-
+-	if (disp_check_fbmem(-1, sizex, sizey) != 0)
+-		return 0;
+-
+-	pr_info("Using above mode as preferred EDID mode\n");
+-
+-	if (video_timing[video_timing_edid].I) {
+-		video_timing[video_timing_edid].INPUTY *= 2;
+-		video_timing[video_timing_edid].VT *= 2;
+-
+-		/* Should VT be VT * 2 + 1, or VT * 2 ? */
+-		frame_rate = (frame_rate + 1) / 2;
+-		if ((HT * (VT * 2 + 1) * frame_rate) == pclk)
+-			video_timing[video_timing_edid].VT++;
+-
+-		pr_info("Interlaced VT %d\n",
+-			video_timing[video_timing_edid].VT);
+-	}
+-	Device_Support_VIC[HDMI_EDID] = 1;
+-
+-	return 0;
+-}
+-
+-static __s32
+-Parse_VideoData_Block(__u8 *pbuf, __u8 size)
+-{
+-	int i = 0;
+-	while (i < size) {
+-		Device_Support_VIC[pbuf[i] & 0x7f] = 1;
+-		pr_info("Parse_VideoData_Block: VIC %d%s support\n",
+-			pbuf[i] & 0x7f, (pbuf[i] & 0x80) ? " (native)" : "");
+-		i++;
+-	}
+-	return 0;
+-}
+-
+ static __s32
+ Parse_AudioData_Block(__u8 *pbuf, __u8 size)
+ {
+@@ -345,8 +180,6 @@
+ 			} else {
+ 				if (tag == 1) { /* ADB */
+ 					Parse_AudioData_Block(EDID_Buf + 0x80 * i + bsum + 1, len);
+-				} else if (tag == 2) { /* VDB */
+-					Parse_VideoData_Block(EDID_Buf + 0x80 * i + bsum + 1, len);
+ 				} else if (tag == 3) { /* vendor specific */
+ 					Parse_HDMI_VSDB(EDID_Buf + 0x80 * i + bsum + 1, len);
+ 				}
+@@ -354,18 +187,8 @@
+ 
+ 			bsum += (len + 1);
+ 		}
+-	} else {
+-		pr_info("no data in block%d\n", i);
+ 	}
+ 
+-	if (offset >= 4) { /* deal with 18-byte timing block */
+-		while (offset < (0x80 - 18)) {
+-			Parse_DTD_Block(EDID_Buf + 0x80 * i + offset);
+-			offset += 18;
+-		}
+-	} else {
+-		pr_info("no DTD in block%d\n", i);
+-	}
+ 	return 1;
+ }
+ 
+@@ -432,6 +255,7 @@
+ {
+ 	__u8 BlockCount;
+ 	__u32 i;
++	const struct fb_videomode *dfltMode;
+ 	unsigned char *EDID_Buf = kmalloc(EDID_LENGTH*EDID_MAX_BLOCKS, GFP_KERNEL);
+ 	if (!EDID_Buf)
+ 		return -ENOMEM;
+@@ -456,11 +280,6 @@
+ 	if (EDID_Version_Check(EDID_Buf) != 0)
+ 		goto ret;
+ 
+-	Parse_DTD_Block(EDID_Buf + 0x36);
+-	Parse_DTD_Block(EDID_Buf + 0x48);
+-	Parse_DTD_Block(EDID_Buf + 0x5A);
+-	Parse_DTD_Block(EDID_Buf + 0x6C);
+-
+ 	BlockCount = EDID_Buf[0x7E] + 1;
+ 	if (BlockCount > EDID_MAX_BLOCKS)
+ 		BlockCount = EDID_MAX_BLOCKS;
+@@ -476,7 +295,12 @@
+ 		}
+ 	}
+ 
+-	hdmi_edid_received(EDID_Buf, BlockCount);
++	dfltMode = hdmi_edid_received(EDID_Buf, BlockCount, Device_Support_VIC);
++
++	if (!Device_Support_VIC[HDMI_EDID] && dfltMode) {
++		videomode_to_video_timing(&video_timing[video_timing_edid], dfltMode);
++		Device_Support_VIC[HDMI_EDID] = 1;
++	}
+ 
+ ret:
+ 	kfree(EDID_Buf);
