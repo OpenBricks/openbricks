@@ -1,0 +1,133 @@
+diff -Naur llvm-3.5.0/autoconf/configure.ac llvm-3.5.0-cross/autoconf/configure.ac
+--- llvm-3.5.0/autoconf/configure.ac	2014-07-25 19:47:30.000000000 +0200
++++ llvm-3.5.0-cross/autoconf/configure.ac	2014-10-21 11:35:48.933326804 +0200
+@@ -485,6 +485,10 @@
+        AC_CHECK_PROG(BUILD_CXX, c++, c++, , , /usr/ucb/c++)
+      fi
+   fi
++  AC_SUBST(BUILD_CPPFLAGS)
++  AC_SUBST(BUILD_CFLAGS)
++  AC_SUBST(BUILD_CXXFLAGS)
++  AC_SUBST(BUILD_LDFLAGS)
+ else
+   AC_SUBST(LLVM_CROSS_COMPILING, [0])
+ fi
+diff -Naur llvm-3.5.0/autoconf/m4/build_exeext.m4 llvm-3.5.0-cross/autoconf/m4/build_exeext.m4
+--- llvm-3.5.0/autoconf/m4/build_exeext.m4	2008-09-26 19:27:58.000000000 +0200
++++ llvm-3.5.0-cross/autoconf/m4/build_exeext.m4	2014-10-21 11:36:57.645324546 +0200
+@@ -18,7 +18,7 @@
+      fi
+   fi
+   test -z "$BUILD_CC" && AC_MSG_ERROR([no acceptable cc found in \$PATH])
+-  ac_build_link='${BUILD_CC-cc} -o conftest $CFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $LIBS 1>&AS_MESSAGE_LOG_FD'
++  ac_build_link='${BUILD_CC-cc} -o conftest $BUILD_CFLAGS $BUILD_CPPFLAGS $BUILD_LDFLAGS conftest.$ac_ext $LIBS 1>&AS_MESSAGE_LOG_FD'
+   rm -f conftest*
+   echo 'int main () { return 0; }' > conftest.$ac_ext
+   ac_cv_build_exeext=
+diff -Naur llvm-3.5.0/Makefile llvm-3.5.0-cross/Makefile
+--- llvm-3.5.0/Makefile	2014-03-25 22:45:41.000000000 +0100
++++ llvm-3.5.0-cross/Makefile	2014-10-21 11:37:37.541323235 +0200
+@@ -99,54 +99,6 @@
+   DIRS := $(filter-out unittests, $(DIRS))
+ endif
+ 
+-# If we're cross-compiling, build the build-hosted tools first
+-ifeq ($(LLVM_CROSS_COMPILING),1)
+-all:: cross-compile-build-tools
+-
+-clean::
+-	$(Verb) rm -rf BuildTools
+-
+-cross-compile-build-tools:
+-	$(Verb) if [ ! -f BuildTools/Makefile ]; then \
+-          $(MKDIR) BuildTools; \
+-	  cd BuildTools ; \
+-	  unset CFLAGS ; \
+-	  unset CXXFLAGS ; \
+-	  AR=$(BUILD_AR) ; \
+-	  AS=$(BUILD_AS) ; \
+-	  LD=$(BUILD_LD) ; \
+-	  CC=$(BUILD_CC) ; \
+-	  CXX=$(BUILD_CXX) ; \
+-	  unset SDKROOT ; \
+-	  unset UNIVERSAL_SDK_PATH ; \
+-	  configure_opts= ; \
+-	  if test "$(ENABLE_LIBCPP)" -ne 0 ; then \
+-	    configure_opts="$$configure_opts --enable-libcpp"; \
+-	  fi; \
+-	  $(PROJ_SRC_DIR)/configure --build=$(BUILD_TRIPLE) \
+-		--host=$(BUILD_TRIPLE) --target=$(BUILD_TRIPLE) \
+-	        --disable-polly $$configure_opts; \
+-	  cd .. ; \
+-	fi; \
+-	($(MAKE) -C BuildTools \
+-	  BUILD_DIRS_ONLY=1 \
+-	  UNIVERSAL= \
+-	  UNIVERSAL_SDK_PATH= \
+-	  SDKROOT= \
+-	  TARGET_NATIVE_ARCH="$(TARGET_NATIVE_ARCH)" \
+-	  TARGETS_TO_BUILD="$(TARGETS_TO_BUILD)" \
+-	  TARGET_LIBS="$(LIBS)" \
+-	  ENABLE_OPTIMIZED=$(ENABLE_OPTIMIZED) \
+-	  ENABLE_PROFILING=$(ENABLE_PROFILING) \
+-	  ENABLE_COVERAGE=$(ENABLE_COVERAGE) \
+-	  DISABLE_ASSERTIONS=$(DISABLE_ASSERTIONS) \
+-	  ENABLE_EXPENSIVE_CHECKS=$(ENABLE_EXPENSIVE_CHECKS) \
+-	  ENABLE_LIBCPP=$(ENABLE_LIBCPP) \
+-	  CFLAGS= \
+-	  CXXFLAGS= \
+-	) || exit 1;
+-endif
+-
+ # Include the main makefile machinery.
+ include $(LLVM_SRC_ROOT)/Makefile.rules
+ 
+diff -Naur llvm-3.5.0/Makefile.config.in llvm-3.5.0-cross/Makefile.config.in
+--- llvm-3.5.0/Makefile.config.in	2014-07-16 18:50:34.000000000 +0200
++++ llvm-3.5.0-cross/Makefile.config.in	2014-10-21 11:39:07.977320264 +0200
+@@ -135,6 +135,10 @@
+ # call if we're cross-compiling).
+ BUILD_CC=@BUILD_CC@
+ BUILD_CXX=@BUILD_CXX@
++BUILD_CPPFLAGS=@BUILD_CPPFLAGS@
++BUILD_CFLAGS=@BUILD_CFLAGS@
++BUILD_CXXFLAGS=@BUILD_CXXFLAGS@
++BUILD_LDFLAGS=@BUILD_LDFLAGS@
+ 
+ # Triple for configuring build tools when cross-compiling
+ BUILD_TRIPLE=@build@
+diff -Naur llvm-3.5.0/Makefile.rules llvm-3.5.0-cross/Makefile.rules
+--- llvm-3.5.0/Makefile.rules	2014-06-20 21:00:41.000000000 +0200
++++ llvm-3.5.0-cross/Makefile.rules	2014-10-21 11:44:01.049310634 +0200
+@@ -594,15 +594,6 @@
+   endif
+ endif
+ 
+-ifdef SHARED_LIBRARY
+-ifneq ($(HOST_OS), $(filter $(HOST_OS), Cygwin MingW))
+-ifneq ($(HOST_OS),Darwin)
+-  LD.Flags += $(RPATH) -Wl,'$$ORIGIN'
+-else
+-  LD.Flags += -Wl,-install_name  -Wl,"@rpath/lib$(LIBRARYNAME)$(SHLIBEXT)"
+-endif
+-endif
+-endif
+ 
+ ifdef TOOL_VERBOSE
+   C.Flags += -v
+@@ -650,14 +641,7 @@
+   ifndef TOOL_NO_EXPORTS
+     LD.Flags += $(RDYNAMIC)
+   endif
+-  ifneq ($(HOST_OS), Darwin)
+-    ifdef TOOLNAME
+-      LD.Flags += $(RPATH) -Wl,'$$ORIGIN/../lib'
+-    endif
+-  else
+-    ifneq ($(DARWIN_MAJVERS),4)
+-      LD.Flags += $(RPATH) -Wl,@executable_path/../lib
+-    endif
++  ifeq ($(HOST_OS), Darwin)
+     ifeq ($(RC_XBS),YES)
+       TempFile := $(shell mkdir -p ${OBJROOT}/dSYMs ; mktemp ${OBJROOT}/dSYMs/llvm-lto.XXXXXX)
+       LD.Flags += -Wl,-object_path_lto -Wl,$(TempFile)
