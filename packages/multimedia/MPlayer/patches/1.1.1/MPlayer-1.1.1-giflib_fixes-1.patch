@@ -1,0 +1,252 @@
+Submitted By:            Armin K. <krejzi at email dot com>
+Date:                    2013-08-04
+Initial Package Version: 1.1.1
+Upstream Status:         Fixed in svn
+Origin:                  Upstream
+Description:             Fixes building with Giflib 5.0.x.
+
+--- a/configure	2012-05-22 20:01:51.000000000 +0200
++++ b/configure	2013-08-04 16:12:22.553812451 +0200
+@@ -4934,6 +4934,7 @@
+   _gif=no
+   for ld_gif in "-lungif" "-lgif" ; do
+     statement_check gif_lib.h 'QuantizeBuffer(0, 0, 0, 0, 0, 0, 0, 0)' $ld_gif && _gif=yes && break
++    statement_check_broken stdlib.h gif_lib.h 'GifQuantizeBuffer(0, 0, 0, 0, 0, 0, 0, 0)' $ld_gif && _gif=yes && break
+   done
+ fi
+ 
+@@ -4967,8 +4968,12 @@
+ static void catch(int sig) { exit(1); }
+ int main(void) {
+   signal(SIGSEGV, catch);  // catch segfault
++#if defined(GIFLIB_MAJOR) && GIFLIB_MAJOR >= 5
++  printf("EGifPutExtensionLeader is at address %p\n", EGifPutExtensionLeader);
++#else
+   printf("EGifPutExtensionFirst is at address %p\n", EGifPutExtensionFirst);
+   EGifSetGifVersion("89a");   // this will segfault a buggy gif lib.
++#endif
+   return 0;
+ }
+ EOF
+@@ -4989,16 +4994,7 @@
+   echocheck "broken giflib workaround"
+   def_gif_tvt_hack='#define CONFIG_GIF_TVT_HACK 1'
+ 
+-  cat > $TMPC << EOF
+-#include <stdio.h>
+-#include <gif_lib.h>
+-int main(void) {
+-  GifFileType gif = {.UserData = NULL};
+-  printf("UserData is at address %p\n", gif.UserData);
+-  return 0;
+-}
+-EOF
+-  if cc_check "$ld_gif" ; then
++  if statement_check_broken stdio.h gif_lib.h 'GifFileType gif = {.UserData = NULL}; printf("UserData is at address %p\n", gif.UserData)' "$ld_gif" ; then
+     def_gif_tvt_hack='#undef CONFIG_GIF_TVT_HACK'
+     echores "disabled"
+   else
+--- a/libmpdemux/demux_gif.c	2010-12-12 11:37:15.000000000 +0100
++++ b/libmpdemux/demux_gif.c	2013-08-04 16:10:01.802497246 +0200
+@@ -45,6 +45,32 @@
+ 
+ #define GIF_SIGNATURE (('G' << 16) | ('I' << 8) | 'F')
+ 
++#if defined GIFLIB_MAJOR && GIFLIB_MAJOR >= 5
++#define DGifOpen(a, b) DGifOpen(a, b, NULL)
++#define DGifOpenFileHandle(a) DGifOpenFileHandle(a, NULL)
++#define GifError() (gif ? gif->Error : 0)
++#define GifErrorString() GifErrorString(gif->Error)
++#endif
++
++/* >= 4.2 prior GIFLIB did not have MAJOR/MINOR defines */
++#if defined GIFLIB_MAJOR && GIFLIB_MAJOR >= 4
++static void print_gif_error(GifFileType *gif)
++{
++  int err = GifError();
++  char *err_str = GifErrorString();
++
++  if (err_str)
++    mp_msg(MSGT_DEMUX, MSGL_ERR, "\n[gif] GIF-LIB error: %s.\n", err_str);
++  else
++    mp_msg(MSGT_DEMUX, MSGL_ERR, "\n[gif] GIF-LIB undefined error %d.\n", err);
++}
++#else
++static void print_gif_error(GifFileType *gif)
++{
++  PrintGifError();
++}
++#endif
++
+ #ifndef CONFIG_GIF_TVT_HACK
+ // not supported by certain versions of the library
+ static int my_read_gif(GifFileType *gif, uint8_t *buf, int len)
+@@ -94,14 +120,14 @@
+ 
+   while (type != IMAGE_DESC_RECORD_TYPE) {
+     if (DGifGetRecordType(gif, &type) == GIF_ERROR) {
+-      PrintGifError();
++      print_gif_error(priv->gif);
+       return 0; // oops
+     }
+     if (type == TERMINATE_RECORD_TYPE)
+       return 0; // eof
+     if (type == SCREEN_DESC_RECORD_TYPE) {
+       if (DGifGetScreenDesc(gif) == GIF_ERROR) {
+-        PrintGifError();
++        print_gif_error(priv->gif);
+         return 0; // oops
+       }
+     }
+@@ -109,7 +135,7 @@
+       int code;
+       unsigned char *p = NULL;
+       if (DGifGetExtension(gif, &code, &p) == GIF_ERROR) {
+-        PrintGifError();
++        print_gif_error(priv->gif);
+         return 0; // oops
+       }
+       if (code == 0xF9) {
+@@ -138,7 +164,7 @@
+ 	  comments[length] = 0;
+ 	  printf("%s", comments);
+           if (DGifGetExtensionNext(gif, &p) == GIF_ERROR) {
+-            PrintGifError();
++            print_gif_error(priv->gif);
+             return 0; // oops
+           }
+ 	}
+@@ -146,7 +172,7 @@
+       }
+       while (p != NULL) {
+         if (DGifGetExtensionNext(gif, &p) == GIF_ERROR) {
+-          PrintGifError();
++          print_gif_error(priv->gif);
+           return 0; // oops
+         }
+       }
+@@ -154,7 +180,7 @@
+   }
+ 
+   if (DGifGetImageDesc(gif) == GIF_ERROR) {
+-    PrintGifError();
++    print_gif_error(priv->gif);
+     return 0; // oops
+   }
+ 
+@@ -167,8 +193,9 @@
+     memset(dp->buffer, gif->SBackGroundColor, priv->w * priv->h);
+ 
+   if (DGifGetLine(gif, buf, len) == GIF_ERROR) {
+-    PrintGifError();
++    print_gif_error(priv->gif);
+     free(buf);
++    free_demux_packet(dp);
+     return 0; // oops
+   }
+ 
+@@ -260,7 +287,7 @@
+   gif = DGifOpen(demuxer->stream, my_read_gif);
+ #endif
+   if (!gif) {
+-    PrintGifError();
++    print_gif_error(NULL);
+     free(priv);
+     return NULL;
+   }
+@@ -302,7 +329,7 @@
+   gif_priv_t *priv = demuxer->priv;
+   if (!priv) return;
+   if (priv->gif && DGifCloseFile(priv->gif) == GIF_ERROR)
+-    PrintGifError();
++    print_gif_error(priv->gif);
+   free(priv->refimg);
+   free(priv);
+ }
+--- a/libvo/vo_gif89a.c	2011-05-07 12:59:11.000000000 +0200
++++ b/libvo/vo_gif89a.c	2013-08-04 16:10:01.805830608 +0200
+@@ -44,13 +44,13 @@
+  * entire argument being interpretted as the filename.
+  */
+ 
+-#include <gif_lib.h>
+-
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+ #include <unistd.h>
+ 
++#include <gif_lib.h>
++
+ #include "config.h"
+ #include "subopt-helper.h"
+ #include "video_out.h"
+@@ -69,6 +69,12 @@
+ 
+ const LIBVO_EXTERN(gif89a)
+ 
++#if defined GIFLIB_MAJOR && GIFLIB_MAJOR >= 5
++#define EGifOpenFileName(a, b) EGifOpenFileName(a, b, NULL)
++#define MakeMapObject GifMakeMapObject
++#define FreeMapObject GifFreeMapObject
++#define QuantizeBuffer GifQuantizeBuffer
++#endif
+ 
+ // how many frames per second we are aiming for during output.
+ static float target_fps;
+@@ -156,7 +162,7 @@
+ 		uint32_t d_height, uint32_t flags, char *title,
+ 		uint32_t format)
+ {
+-#ifdef CONFIG_GIF_4
++#if defined CONFIG_GIF_4 || GIFLIB_MAJOR >= 5
+ 	// these are control blocks for the gif looping extension.
+ 	char LB1[] = "NETSCAPE2.0";
+ 	char LB2[] = { 1, 0, 0 };
+@@ -185,23 +191,25 @@
+ 		return 1;
+ 	}
+ 
++	new_gif = EGifOpenFileName(gif_filename, 0);
++	if (new_gif == NULL) {
++		mp_msg(MSGT_VO, MSGL_ERR, "GIF89a: error opening file \"%s\" for output.\n", gif_filename);
++		return 1;
++	}
++
++#if defined GIFLIB_MAJOR && GIFLIB_MAJOR >= 5
++	EGifSetGifVersion(new_gif, 1);
++#elif defined CONFIG_GIF_4
+ 	// the EGifSetGifVersion line causes segfaults in certain
+ 	// earlier versions of libungif.  i don't know exactly which,
+ 	// but certainly in all those before v4.  if you have problems,
+ 	// you need to upgrade your gif library.
+-#ifdef CONFIG_GIF_4
+ 	EGifSetGifVersion("89a");
+ #else
+ 	mp_msg(MSGT_VO, MSGL_ERR, "GIF89a: Your version of libungif needs to be upgraded.\n");
+ 	mp_msg(MSGT_VO, MSGL_ERR, "GIF89a: Some functionality has been disabled.\n");
+ #endif
+ 
+-	new_gif = EGifOpenFileName(gif_filename, 0);
+-	if (new_gif == NULL) {
+-		mp_msg(MSGT_VO, MSGL_ERR, "GIF89a: error opening file \"%s\" for output.\n", gif_filename);
+-		return 1;
+-	}
+-
+ 	slice_data = malloc(img_width * img_height * 3);
+ 	if (slice_data == NULL) {
+ 		mp_msg(MSGT_VO, MSGL_ERR, "GIF89a: malloc failed.\n");
+@@ -231,7 +239,12 @@
+ 
+ 	// set the initial width and height info.
+ 	EGifPutScreenDesc(new_gif, s_width, s_height, 256, 0, reduce_cmap);
+-#ifdef CONFIG_GIF_4
++#if defined GIFLIB_MAJOR && GIFLIB_MAJOR >= 5
++	EGifPutExtensionLeader(new_gif, 0xFF);
++	EGifPutExtensionBlock(new_gif, 11, LB1);
++	EGifPutExtensionBlock(new_gif, 3, LB2);
++	EGifPutExtensionTrailer(new_gif);
++#elif defined CONFIG_GIF_4
+ 	// version 3 of libungif does not support multiple control blocks.
+ 	// looping requires multiple control blocks.
+ 	// therefore, looping is only enabled for v4 and up.
