@@ -1,0 +1,70 @@
+--- wscan-20140118/scan.c.org	2014-01-18 16:00:31.000000000 +0100
++++ wscan-20140118/scan.c	2014-05-08 11:53:22.651800734 +0200
+@@ -553,7 +553,38 @@
+         }
+         return 0;
+ }
+-
++/*
++ * Parse LCN for Italian DVBT
++ */
++void parser_lcn(const unsigned char *buf){
++	int i, n, channel_num, service_id;
++	struct list_head *p1, *p2;
++	struct transponder *t;
++	struct service *s;
++
++	// 32 bits per record
++	n = buf[1] / 4;
++	debug("LCN Len: %d\n",n);
++	if (n < 1)
++		return;
++	// desc id, desc len, (service id, service number)
++	buf += 2;
++	for (i = 0; i < n; i++) {
++		//UK= ((buf[2] & 0x03) << 8) | buf[3];
++		service_id=(buf[0] << 8) | buf[1];
++		channel_num=((buf[2]&0x03)<<8)|(buf[3]&0xff);
++		debug("Service ID 0x%x has buffer2 0x%X and buffer3 0x%X and has channel number %d\n", service_id, buf[2],buf[3],channel_num);
++		list_for_each(p1, &scanned_transponders) {
++			t = list_entry(p1, struct transponder, list);
++			list_for_each(p2, &t->services) {
++				s = list_entry(p2, struct service, list);
++				if (s->service_id == service_id)
++					s->channel_num = channel_num;
++			}
++		}
++		buf += 4;
++	}
++}
+ static void parse_descriptors(enum table_id t, const unsigned char *buf,
+                               int descriptors_loop_len, void *data, scantype_t scantype) {
+         while (descriptors_loop_len > 0) {
+@@ -716,7 +747,9 @@
+                         case dts_descriptor:
+                         case aac_descriptor:
+                                 break;                
+-                        case 0x83:
++                        case logical_channel_descriptor:
++                        	//LCN
++                        	parser_lcn(buf);
+                         case 0xF2: // 0xF2 Private DVB Descriptor  Premiere.de, Content Transmission Descriptor
+                                 break;                     
+                         default:
+@@ -3484,4 +3517,3 @@
+ 
+         return 0;
+ }
+-
+--- wscan-20140118/dump-vdr.c	2013-10-31 09:43:05.000000000 +0100
++++ wscan-20140118/dump-vdr.c.ftp21	2014-05-09 09:26:11.277999282 +0200
+@@ -383,6 +383,9 @@
+         if (! flags->ca_select && s->scrambled)
+                 return;
+ 
++	if (s->channel_num>0)
++        	fprintf (f, ":@%d\n", s->channel_num);
++
+         fprintf (f, "%s", s->service_name);
+ 
+         if (flags->dump_provider)
