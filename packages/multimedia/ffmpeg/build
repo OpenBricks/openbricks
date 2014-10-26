@@ -37,46 +37,158 @@ cd $PKG_BUILD_DIR
 
 do_gcc_strip_lto
 do_gcc_strip_gold
-./configure --enable-cross-compile \
-            --cross-prefix=$TARGET_PREFIX \
-            --arch=$TARGET_ARCH \
-            --prefix=/usr \
-            --target-os=linux \
-            --extra-cflags="$CFLAGS" \
-            --cpu=$TARGET_CPU \
-            --enable-static \
-            --enable-shared \
-            --enable-gpl \
-            --disable-ffserver \
-            --enable-ffmpeg \
-            --enable-postproc \
-            --enable-avfilter \
-            --enable-pthreads \
-            --disable-x11grab \
-            $OPTIM_CONFIG \
-            --enable-encoders \
-            --enable-decoders \
-            --enable-muxers \
-            --enable-demuxers \
-            --enable-parsers \
-            --enable-bsfs \
-            --enable-protocols \
-            --disable-indevs \
-            --disable-outdevs \
-            --disable-devices \
-            --enable-filters \
-            --enable-zlib \
-            --enable-bzlib \
-            --disable-ffplay \
-            --disable-libvpx \
-            $DEBUG_CONFIG \
-            $VDPAU_CONFIG \
-            $VAAPI_CONFIG \
-            $FPU_CONFIG \
-            --disable-symver \
+case "$TARGET_ARCH" in
+  arm)
+      FFMPEG_CPU=""
+      FFMPEG_TABLES="--enable-hardcoded-tables"
+      FFMPEG_PIC="--enable-pic"
+  ;;
+  i?86)
+      FFMPEG_CPU=""
+      FFMPEG_TABLES="--disable-hardcoded-tables"
+      FFMPEG_PIC="--disable-pic"
+  ;;
+  x86_64)
+      FFMPEG_CPU=""
+      FFMPEG_TABLES="--disable-hardcoded-tables"
+      FFMPEG_PIC="--enable-pic"
+  ;;
+esac
+
+case "$TARGET_FPU" in
+  neon*)
+      FFMPEG_FPU="--enable-neon"
+  ;;
+  vfp*)
+      FFMPEG_FPU=""
+  ;;
+  *)
+      FFMPEG_FPU=""
+  ;;
+esac
+
+#export LIBRARY_PATH=$XORG_PREFIX/lib
+sed -i 's/-lflite"/-lflite -lasound"/' configure &&
+./configure --prefix=/usr \
+              --cpu=$TARGET_CPU \
+              --arch=$TARGET_ARCH \
+              --enable-cross-compile \
+              --cross-prefix=$TARGET_PREFIX \
+              --sysroot=$SYSROOT_PREFIX \
+              --sysinclude="$SYSROOT_PREFIX/usr/include" \
+              --target-os="linux" \
+              --extra-version="$PKG_VERSION" \
+              --nm="$NM" \
+              --ar="$AR" \
+              --as="$CC" \
+              --cc="$CC" \
+              --ld="$CC" \
+              --host-cc="$HOST_CC" \
+              --host-cflags="$HOST_CFLAGS" \
+              --host-ldflags="$HOST_LDFLAGS" \
+              --host-libs="-lm" \
+              --extra-cflags="$CFLAGS" \
+              --extra-ldflags="$LDFLAGS" \
+              --extra-libs="" \
+              --extra-version="" \
+              --build-suffix="" \
+              --disable-static \
+              --enable-shared \
+              --enable-gpl \
+              --disable-version3 \
+              --disable-nonfree \
+              --enable-logging \
+              --disable-doc \
+              $FFMPEG_DEBUG \
+              $FFMPEG_PIC \
+              --enable-optimizations \
+              --disable-armv5te --disable-armv6t2 \
+              --disable-extra-warnings \
+              --disable-ffprobe \
+              --disable-ffplay \
+              --disable-ffserver \
+              --enable-ffmpeg \
+              --enable-avdevice \
+              --enable-avcodec \
+              --enable-avformat \
+              --enable-swscale \
+              --enable-postproc \
+              --enable-avfilter \
+              --disable-devices \
+              --enable-pthreads \
+              --disable-w32threads \
+              --disable-x11grab \
+              --enable-network \
+              --disable-gnutls --enable-libressl \
+              --disable-gray \
+              --enable-swscale-alpha \
+              $FFMPEG_OPTIM \
+              --enable-dct \
+              --enable-fft \
+              --enable-mdct \
+              --enable-rdft \
+              --disable-crystalhd \
+              $FFMPEG_VAAPI \
+              $FFMPEG_VDPAU \
+              --disable-dxva2 \
+              --enable-runtime-cpudetect \
+              $FFMPEG_TABLES \
+              --disable-memalign-hack \
+              --disable-encoders \
+              --enable-encoder=ac3 \
+              --enable-encoder=aac \
+              --enable-encoder=wmav2 \
+              --disable-decoder=mpeg_xvmc \
+              --enable-hwaccels \
+              --disable-muxers \
+              --enable-muxer=spdif \
+              --enable-muxer=adts \
+              --enable-muxer=asf \
+              --enable-muxer=ipod \
+              --enable-demuxers \
+              --enable-parsers \
+              --enable-bsfs \
+              --enable-protocol=http \
+              --disable-indevs \
+              --disable-outdevs \
+              --enable-filters \
+              --disable-avisynth \
+              --enable-bzlib \
+              --disable-frei0r \
+              --disable-libopencore-amrnb \
+              --disable-libopencore-amrwb \
+              --disable-libopencv \
+              --disable-libdc1394 \
+              --disable-libfaac \
+              --disable-libfreetype \
+              --disable-libgsm \
+              --disable-libmp3lame \
+              --disable-libnut \
+              --disable-libopenjpeg \
+              --disable-librtmp \
+              --disable-libschroedinger \
+              --disable-libspeex \
+              --disable-libtheora \
+              --disable-libvo-aacenc \
+              --disable-libvo-amrwbenc \
+              --enable-libvorbis --enable-muxer=ogg --enable-encoder=libvorbis \
+              --disable-libvpx \
+              --disable-libx264 \
+              --disable-libxavs \
+              --disable-libxvid \
+              --enable-zlib \
+              --enable-asm \
+              --disable-altivec \
+              $FFMPEG_CPU \
+              $FFMPEG_FPU \
+              --enable-yasm \
+              --disable-symver
 
 [ $TARGET_LIBC = "uclibc" ] && ! pkg_uses $1 ipv6 && \
   sed "s%#define HAVE_STRUCT_IPV6_MREQ.*%#define HAVE_STRUCT_IPV6_MREQ 0%" -i config.h
 
 make
+$TARGET_CC tools/qt-faststart.c -o tools/qt-faststart
+unset LIBRARY_PATH
 make_install
+cp tools/qt-faststart .install/usr/bin
