@@ -1,0 +1,340 @@
+diff -ruN dvbhddevice-0.0.4hg-20120207/dvbhddevice.c dvbhddevice-0.0.4dag-20120207/dvbhddevice.c
+--- dvbhddevice-0.0.4hg-20120207/dvbhddevice.c	2012-02-07 22:12:07.409537688 +0100
++++ dvbhddevice-0.0.4dag-20120207/dvbhddevice.c	2012-02-08 20:23:42.590662007 +0100
+@@ -12,13 +12,11 @@
+ #include "menu.h"
+ #include "setup.h"
+ 
+-static const char *VERSION        = "0.0.4";
++static const char *VERSION        = "0.0.4dag";
+ static const char *DESCRIPTION    = trNOOP("HD Full Featured DVB device");
+ static const char *MAINMENUENTRY  = "dvbhddevice";
+ 
+ class cPluginDvbhddevice : public cPlugin {
+-private:
+-  cDvbHdFfDeviceProbe *probe;
+   bool mIsUserInactive;
+ public:
+   cPluginDvbhddevice(void);
+@@ -30,17 +28,55 @@
+   virtual cOsdObject *MainMenuAction(void);
+   virtual cMenuSetupPage *SetupMenu(void);
+   virtual bool SetupParse(const char *Name, const char *Value);
++  virtual bool Initialize();
+   };
+ 
+-cPluginDvbhddevice::cPluginDvbhddevice(void)
+-:   mIsUserInactive(true)
+-{
+-  probe = new cDvbHdFfDeviceProbe;
+-}
++cPluginDvbhddevice::cPluginDvbhddevice(void){}
+ 
+-cPluginDvbhddevice::~cPluginDvbhddevice()
++cPluginDvbhddevice::~cPluginDvbhddevice(){}
++
++bool cPluginDvbhddevice::Initialize()
+ {
+-  delete probe;
++    dsyslog("cPluginDvbhddevice::Initialize");
++  static uint32_t SubsystemIds[] = {
++    0x13C23009, // Technotrend S2-6400 HDFF development samples
++    0x13C2300A, // Technotrend S2-6400 HDFF production version
++    0x00000000
++    };
++  
++  for (int Adapter = 0; Adapter<MAXDVBDEVICES; Adapter++)
++  {
++         cString FileName;
++         cReadLine ReadLine;
++         FILE *f = NULL;
++         uint32_t SubsystemId = 0;
++         FileName = cString::sprintf("/sys/class/dvb/dvb%d.frontend0/device/subsystem_vendor", Adapter);
++         if ((f = fopen(FileName, "r")) != NULL) {
++            if (char *s = ReadLine.Read(f))
++               SubsystemId = strtoul(s, NULL, 0) << 16;
++            fclose(f);
++            }
++         FileName = cString::sprintf("/sys/class/dvb/dvb%d.frontend0/device/subsystem_device", Adapter);
++         if ((f = fopen(FileName, "r")) != NULL) {
++            if (char *s = ReadLine.Read(f))
++               SubsystemId |= strtoul(s, NULL, 0);
++            fclose(f);
++            }
++         for (uint32_t *sid = SubsystemIds; *sid; sid++) {
++             if (*sid == SubsystemId) {
++                FileName = cString::sprintf("/dev/dvb/adapter%d/osd0", Adapter);
++                int fd = open(FileName, O_RDWR);
++                if (fd != -1) { //TODO treat the second path of the S2-6400 as a budget device
++                   close(fd);
++                   dsyslog("creating cDvbHdFfDevice");
++                   new cDvbHdFfDevice(Adapter, 0);            
++                   return true;
++                   }
++                }
++             }    
++  }
++
++  return false;
+ }
+ 
+ void cPluginDvbhddevice::MainThreadHook(void)
+diff -ruN dvbhddevice-0.0.4hg-20120207/dvbhdffdevice.c dvbhddevice-0.0.4dag-20120207/dvbhdffdevice.c
+--- dvbhddevice-0.0.4hg-20120207/dvbhdffdevice.c	2012-02-07 22:12:07.409537688 +0100
++++ dvbhddevice-0.0.4dag-20120207/dvbhdffdevice.c	2012-02-08 20:22:51.870657978 +0100
+@@ -28,12 +28,13 @@
+ int cDvbHdFfDevice::devHdffOffset = -1;
+ 
+ cDvbHdFfDevice::cDvbHdFfDevice(int Adapter, int Frontend)
+-:cDvbDevice(Adapter, Frontend)
+ {
+   spuDecoder = NULL;
+   audioChannel = 0;
+   playMode = pmNone;
+   mHdffCmdIf = NULL;
++  adapter = Adapter;
++  frontend = Frontend;
+ 
+   // Devices that are only present on cards with decoders:
+ 
+@@ -45,7 +46,7 @@
+ 
+   isHdffPrimary = false;
+   if (devHdffOffset < 0) {
+-     devHdffOffset = adapter;
++     devHdffOffset = DeviceNumber();
+      isHdffPrimary = true;
+      mHdffCmdIf = new HDFF::cHdffCmdIf(fd_osd);
+      mHdffCmdIf->CmdAvSetAudioDelay(gHdffSetup.AudioDelay);
+@@ -67,8 +68,9 @@
+      }
+ 
+   // Video format:
+-
+   SetVideoFormat(Setup.VideoFormat);
++
++  SetPlayMode(pmNone);
+ }
+ 
+ cDvbHdFfDevice::~cDvbHdFfDevice()
+@@ -86,11 +88,25 @@
+     // caused segfaults. Besides, the program is about to terminate anyway...
+ }
+ 
++cString cDvbHdFfDevice::DvbName(const char *Name, int Adapter, int Frontend)
++{
++  return cString::sprintf("%s%d/%s%d", DEV_DVB_ADAPTER, Adapter, Name, Frontend);
++}
++
++int cDvbHdFfDevice::DvbOpen(const char *Name, int Adapter, int Frontend, int Mode, bool ReportError)
++{
++  cString FileName = DvbName(Name, Adapter, Frontend);
++  int fd = open(FileName, Mode);
++  if (fd < 0 && ReportError)
++     LOG_ERROR_STR(*FileName);
++  return fd;
++}
++
+ void cDvbHdFfDevice::MakePrimaryDevice(bool On)
+ {
+   if (On)
+      new cHdffOsdProvider(mHdffCmdIf);
+-  cDvbDevice::MakePrimaryDevice(On);
++  cDevice::MakePrimaryDevice(On);
+ }
+ 
+ bool cDvbHdFfDevice::HasDecoder(void) const
+@@ -232,81 +248,6 @@
+   return true;
+ }
+ 
+-void cDvbHdFfDevice::TurnOffLiveMode(bool LiveView)
+-{
+-  // Turn off live PIDs:
+-
+-  DetachAll(pidHandles[ptAudio].pid);
+-  DetachAll(pidHandles[ptVideo].pid);
+-  DetachAll(pidHandles[ptPcr].pid);
+-  DetachAll(pidHandles[ptTeletext].pid);
+-  DelPid(pidHandles[ptAudio].pid);
+-  DelPid(pidHandles[ptVideo].pid);
+-  DelPid(pidHandles[ptPcr].pid, ptPcr);
+-  DelPid(pidHandles[ptTeletext].pid);
+-  DelPid(pidHandles[ptDolby].pid);
+-}
+-
+-bool cDvbHdFfDevice::SetChannelDevice(const cChannel *Channel, bool LiveView)
+-{
+-  int apid = Channel->Apid(0);
+-  int vpid = Channel->Vpid();
+-  int dpid = Channel->Dpid(0);
+-
+-  bool DoTune = !IsTunedToTransponder(Channel);
+-
+-  bool pidHandlesVideo = pidHandles[ptVideo].pid == vpid;
+-  bool pidHandlesAudio = pidHandles[ptAudio].pid == apid;
+-
+-  bool TurnOffLivePIDs = DoTune
+-                         || !IsPrimaryDevice()
+-                         || LiveView // for a new live view the old PIDs need to be turned off
+-                         || pidHandlesVideo // for recording the PIDs must be shifted from DMX_PES_AUDIO/VIDEO to DMX_PES_OTHER
+-                         ;
+-
+-  bool StartTransferMode = IsPrimaryDevice() && !DoTune
+-                           && (LiveView && HasPid(vpid ? vpid : apid) && (!pidHandlesVideo || (!pidHandlesAudio && (dpid ? pidHandles[ptAudio].pid != dpid : true)))// the PID is already set as DMX_PES_OTHER
+-                              || !LiveView && (pidHandlesVideo || pidHandlesAudio) // a recording is going to shift the PIDs from DMX_PES_AUDIO/VIDEO to DMX_PES_OTHER
+-                              );
+-  if (CamSlot() && !ChannelCamRelations.CamDecrypt(Channel->GetChannelID(), CamSlot()->SlotNumber()))
+-     StartTransferMode |= LiveView && IsPrimaryDevice() && Channel->Ca() >= CA_ENCRYPTED_MIN;
+-
+-  bool TurnOnLivePIDs = !StartTransferMode && LiveView;
+-
+-  // Turn off live PIDs if necessary:
+-
+-  if (TurnOffLivePIDs)
+-     TurnOffLiveMode(LiveView);
+-
+-  // Set the tuner:
+-
+-  if (!cDvbDevice::SetChannelDevice(Channel, LiveView))
+-     return false;
+-
+-  // If this channel switch was requested by the EITScanner we don't wait for
+-  // a lock and don't set any live PIDs (the EITScanner will wait for the lock
+-  // by itself before setting any filters):
+-
+-  if (EITScanner.UsesDevice(this)) //XXX
+-     return true;
+-
+-  // PID settings:
+-
+-  if (TurnOnLivePIDs) {
+-     //SetAudioBypass(false);//TODO obsolete?
+-     if (!(AddPid(Channel->Ppid(), ptPcr) && AddPid(vpid, ptVideo, Channel->Vtype()) && AddPid(apid, ptAudio))) {
+-        esyslog("ERROR: failed to set PIDs for channel %d on device %d", Channel->Number(), CardIndex() + 1);
+-        return false;
+-        }
+-     if (IsPrimaryDevice())
+-        AddPid(Channel->Tpid(), ptTeletext);//TODO obsolete?
+-     }
+-  else if (StartTransferMode)
+-     cControl::Launch(new cTransferControl(this, Channel));
+-
+-  return true;
+-}
+-
+ int cDvbHdFfDevice::GetAudioChannelDevice(void)
+ {
+   return audioChannel;
+@@ -330,7 +271,6 @@
+ 
+ void cDvbHdFfDevice::SetAudioTrackDevice(eTrackType Type)
+ {
+-  //printf("SetAudioTrackDevice %d\n", Type);
+   const tTrackId *TrackId = GetTrack(Type);
+   if (TrackId && TrackId->id) {
+      if (IS_AUDIO_TRACK(Type)) {
+@@ -375,9 +315,6 @@
+      mHdffCmdIf->CmdAvSetPlayMode(0, true);
+      }
+   else {
+-     if (playMode == pmNone)
+-        TurnOffLiveMode(true);
+-
+      mHdffCmdIf->CmdAvSetPlayMode(1, Transferring() || (cTransferControl::ReceiverDevice() == this));
+      mHdffCmdIf->CmdAvSetStc(0, 100000);
+      mHdffCmdIf->CmdAvEnableSync(0, true);
+@@ -752,43 +689,3 @@
+      }
+   return NULL;
+ }
+-
+-// --- cDvbHdFfDeviceProbe ---------------------------------------------------
+-
+-bool cDvbHdFfDeviceProbe::Probe(int Adapter, int Frontend)
+-{
+-  static uint32_t SubsystemIds[] = {
+-    0x13C23009, // Technotrend S2-6400 HDFF development samples
+-    0x13C2300A, // Technotrend S2-6400 HDFF production version
+-    0x00000000
+-    };
+-  cString FileName;
+-  cReadLine ReadLine;
+-  FILE *f = NULL;
+-  uint32_t SubsystemId = 0;
+-  FileName = cString::sprintf("/sys/class/dvb/dvb%d.frontend%d/device/subsystem_vendor", Adapter, Frontend);
+-  if ((f = fopen(FileName, "r")) != NULL) {
+-     if (char *s = ReadLine.Read(f))
+-        SubsystemId = strtoul(s, NULL, 0) << 16;
+-     fclose(f);
+-     }
+-  FileName = cString::sprintf("/sys/class/dvb/dvb%d.frontend%d/device/subsystem_device", Adapter, Frontend);
+-  if ((f = fopen(FileName, "r")) != NULL) {
+-     if (char *s = ReadLine.Read(f))
+-        SubsystemId |= strtoul(s, NULL, 0);
+-     fclose(f);
+-     }
+-  for (uint32_t *sid = SubsystemIds; *sid; sid++) {
+-      if (*sid == SubsystemId) {
+-         FileName = cString::sprintf("/dev/dvb/adapter%d/osd0", Adapter);
+-         int fd = open(FileName, O_RDWR);
+-         if (fd != -1) { //TODO treat the second path of the S2-6400 as a budget device
+-            close(fd);
+-            dsyslog("creating cDvbHdFfDevice");
+-            new cDvbHdFfDevice(Adapter, Frontend);
+-            return true;
+-            }
+-         }
+-      }
+-  return false;
+-}
+diff -ruN dvbhddevice-0.0.4hg-20120207/dvbhdffdevice.h dvbhddevice-0.0.4dag-20120207/dvbhdffdevice.h
+--- dvbhddevice-0.0.4hg-20120207/dvbhdffdevice.h	2012-02-07 22:12:07.410537688 +0100
++++ dvbhddevice-0.0.4dag-20120207/dvbhdffdevice.h	2012-02-08 20:22:51.871657978 +0100
+@@ -10,16 +10,18 @@
+ #define __DVBHDFFDEVICE_H
+ 
+ #include "hdffcmd.h"
+-#include "vdr/dvbdevice.h"
++#include "vdr/device.h"
+ #include "vdr/dvbspu.h"
+ 
+ /// The cDvbHdFfDevice implements a DVB device which can be accessed through the Linux DVB driver API.
+ 
+-class cDvbHdFfDevice : public cDvbDevice {
++class cDvbHdFfDevice : public cDevice {
+ private:
+-  int fd_osd, fd_audio, fd_video;
++  int adapter, frontend, fd_osd, fd_audio, fd_video;
+ protected:
+   virtual void MakePrimaryDevice(bool On);
++  static cString DvbName(const char *Name, int Adapter, int Frontend);
++  static int DvbOpen(const char *Name, int Adapter, int Frontend, int Mode, bool ReportError = false);
+ public:
+   static bool Probe(int Adapter, int Frontend);
+   cDvbHdFfDevice(int Adapter, int Frontend);
+@@ -33,13 +35,6 @@
+ public:
+   virtual cSpuDecoder *GetSpuDecoder(void);
+ 
+-// Channel facilities
+-
+-private:
+-  void TurnOffLiveMode(bool LiveView);
+-protected:
+-  virtual bool SetChannelDevice(const cChannel *Channel, bool LiveView);
+-
+ // PID handle facilities
+ 
+ protected:
+@@ -117,9 +112,4 @@
+   HDFF::cHdffCmdIf *mHdffCmdIf;
+ };
+ 
+-class cDvbHdFfDeviceProbe : public cDvbDeviceProbe {
+-public:
+-  virtual bool Probe(int Adapter, int Frontend);
+-  };
+-
+ #endif //__DVBHDFFDEVICE_H
+

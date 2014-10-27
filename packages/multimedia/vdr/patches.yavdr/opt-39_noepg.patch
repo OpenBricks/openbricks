@@ -1,0 +1,156 @@
+Description: The patch allows to disable normal epg update for specified channels.
+ This is useful if you get epg data of the channels from external sources.
+Author:
+Origin: http://winni.vdr-developer.org/noepgmenu/downloads/beta
+
+Index: vdr/config.c
+===================================================================
+--- vdr.orig/config.c	2011-12-11 02:29:35.000000000 +0100
++++ vdr/config.c	2011-12-11 02:29:40.000000000 +0100
+@@ -392,6 +392,8 @@
+   SetSystemTime = 0;
+   TimeSource = 0;
+   TimeTransponder = 0;
++  noEPGMode=0;
++  noEPGList=strdup("");
+   MarginStart = 2;
+   MarginStop = 10;
+   AudioLanguages[0] = -1;
+@@ -473,11 +475,18 @@
+   EmergencyExit = 1;
+ }
+ 
++cSetup::~cSetup()
++{
++  free(noEPGList);
++}
++
+ cSetup& cSetup::operator= (const cSetup &s)
+ {
+   memcpy(&__BeginData__, &s.__BeginData__, (char *)&s.__EndData__ - (char *)&s.__BeginData__);
+   InitialChannel = s.InitialChannel;
+   DeviceBondings = s.DeviceBondings;
++  free(noEPGList);
++  noEPGList = strdup(s.noEPGList);
+   return *this;
+ }
+ 
+@@ -594,6 +603,11 @@
+   else if (!strcasecmp(Name, "SetSystemTime"))       SetSystemTime      = atoi(Value);
+   else if (!strcasecmp(Name, "TimeSource"))          TimeSource         = cSource::FromString(Value);
+   else if (!strcasecmp(Name, "TimeTransponder"))     TimeTransponder    = atoi(Value);
++  else if (!strcasecmp(Name, "noEPGMode"))           noEPGMode          = atoi(Value);
++  else if (!strcasecmp(Name, "noEPGList")) {
++    free(noEPGList);
++    noEPGList=strdup(Value ? Value : "");
++  }
+   else if (!strcasecmp(Name, "MarginStart"))         MarginStart        = atoi(Value);
+   else if (!strcasecmp(Name, "MarginStop"))          MarginStop         = atoi(Value);
+   else if (!strcasecmp(Name, "AudioLanguages"))      return ParseLanguages(Value, AudioLanguages);
+@@ -699,6 +713,8 @@
+   Store("SetSystemTime",      SetSystemTime);
+   Store("TimeSource",         cSource::ToString(TimeSource));
+   Store("TimeTransponder",    TimeTransponder);
++  Store("noEPGMode",          noEPGMode);
++  Store("noEPGList",          noEPGList);
+   Store("MarginStart",        MarginStart);
+   Store("MarginStop",         MarginStop);
+   StoreLanguages("AudioLanguages", AudioLanguages);
+Index: vdr/config.h
+===================================================================
+--- vdr.orig/config.h	2011-12-11 02:29:35.000000000 +0100
++++ vdr/config.h	2011-12-11 02:29:40.000000000 +0100
+@@ -255,6 +255,7 @@
+   int SetSystemTime;
+   int TimeSource;
+   int TimeTransponder;
++  int noEPGMode;
+   int MarginStart, MarginStop;
+   int AudioLanguages[I18N_MAX_LANGUAGES + 1];
+   int DisplaySubtitles;
+@@ -324,7 +325,9 @@
+   int __EndData__;
+   cString InitialChannel;
+   cString DeviceBondings;
++  char *noEPGList; // pointer not to be flat-copied
+   cSetup(void);
++  ~cSetup();
+   cSetup& operator= (const cSetup &s);
+   bool Load(const char *FileName);
+   bool Save(void);
+Index: vdr/eit.c
+===================================================================
+--- vdr.orig/eit.c	2011-12-11 02:29:35.000000000 +0100
++++ vdr/eit.c	2011-12-11 02:29:40.000000000 +0100
+@@ -24,8 +24,28 @@
+ class cEIT : public SI::EIT {
+ public:
+   cEIT(cSchedules *Schedules, int Source, u_char Tid, const u_char *Data, bool OnlyRunningStatus = false);
++
++private:
++  bool allowedEPG(tChannelID kanalID);
+   };
+ 
++bool cEIT::allowedEPG(tChannelID kanalID) {
++  bool rc;
++
++  if (Setup.noEPGMode == 1) {
++     rc=false;
++     if (strstr(::Setup.noEPGList,kanalID.ToString())!=NULL)
++        rc=true;
++     }
++  else {
++     rc=true;
++     if (strstr(::Setup.noEPGList,kanalID.ToString())!=NULL)
++        rc=false;
++     }
++
++  return rc;
++}
++
+ cEIT::cEIT(cSchedules *Schedules, int Source, u_char Tid, const u_char *Data, bool OnlyRunningStatus)
+ :SI::EIT(Data, false)
+ {
+@@ -37,6 +57,12 @@
+   if (!channel)
+      return; // only collect data for known channels
+ 
++  // only use epg from channels not blocked by noEPG-patch
++  tChannelID kanalID;
++  kanalID=channel->GetChannelID();
++  if (!allowedEPG(kanalID))
++    return;
++
+   cSchedule *pSchedule = (cSchedule *)Schedules->GetSchedule(channel, true);
+ 
+   bool Empty = true;
+Index: vdr/menu.c
+===================================================================
+--- vdr.orig/menu.c	2011-12-11 02:29:35.000000000 +0100
++++ vdr/menu.c	2011-12-11 02:29:40.000000000 +0100
+@@ -2831,6 +2831,7 @@
+ 
+ class cMenuSetupEPG : public cMenuSetupBase {
+ private:
++  const char *noEPGModes[2];
+   int originalNumLanguages;
+   int numLanguages;
+   void Setup(void);
+@@ -2853,6 +2854,9 @@
+ {
+   int current = Current();
+ 
++  noEPGModes[0]=tr("Blacklist");
++  noEPGModes[1]=tr("Whitelist");
++
+   Clear();
+ 
+   Add(new cMenuEditIntItem( tr("Setup.EPG$EPG scan timeout (h)"),      &data.EPGScanTimeout));
+@@ -2861,6 +2865,7 @@
+   Add(new cMenuEditBoolItem(tr("Setup.EPG$Set system time"),           &data.SetSystemTime));
+   if (data.SetSystemTime)
+      Add(new cMenuEditTranItem(tr("Setup.EPG$Use time from transponder"), &data.TimeTransponder, &data.TimeSource));
++  Add(new cMenuEditStraItem(tr("Setup.EPG$Mode noEPG-Patch"),          &data.noEPGMode, 2, noEPGModes));
+   // TRANSLATORS: note the plural!
+   Add(new cMenuEditIntItem( tr("Setup.EPG$Preferred languages"),       &numLanguages, 0, I18nLanguages()->Size()));
+   for (int i = 0; i < numLanguages; i++)

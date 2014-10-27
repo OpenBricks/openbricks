@@ -1,0 +1,67 @@
+#!/bin/sh
+
+. /etc/pvr.conf
+
+#Accendi il televisore
+killall -9 libcec-daemon && systemctl stop libcec-daemon.service --force
+echo 'on 0' | cec-client -s
+systemctl start libcec-daemon.service
+
+chvt 1
+sync
+
+#/usr/bin/wait_fornet.sh
+export TERM=linux
+export LANG="it_IT.UTF8"
+export LC_CTYPE="it_IT.UTF8"
+export LC_ALL="it_IT.UTF8"
+export LC_TIME="it_IT.UTF-8"
+export LC_NUMERIC="it_IT.UTF-8"
+export LC_MONETARY="it_IT.UTF-8"
+export LC_PAPER="it_IT.UTF-8"
+export LC_NAME="it_IT.UTF-8"
+export LC_TELEPHONE="it_IT.UTF-8"
+export LC_MEASUREMENT="it_IT.UTF-8"
+export LC_IDENTIFICATION="it_IT.UTF-8"
+export LANGUAGE="it_IT:it"
+
+[ "$BACKEND" != vdr ] && exit 0
+
+[ ! -d /media/video ] && mkdir -p /media/video
+[ ! -d /media/shares ] && mkdir -p /external
+#[ ! -d /media/video/shares ] && ln -s /external /media/video/shares
+
+PLUGINS=""
+for file in /etc/vdr/plugins.d/*; do
+  if [ -f "$file" ]; then
+    # plugins are enabled by default
+    PLUGIN=""
+    OPTIONS=""
+    INITCMD=""
+    ENABLED=yes
+    . $file
+    [ "$ENABLED" = yes ] && PLUGINS="$PLUGINS -P'$PLUGIN $OPTIONS'"
+    [ -n "$INITCMD" ] && eval $INITCMD
+  fi
+done
+
+[ -r /etc/locale.conf ] && export LANG=`cat /etc/locale.conf | cut -d= -f2`
+export DISPLAY=":0.0"
+
+# special for germany :
+[ "$LANG" = de_DE.UTF-8 ] && export VDR_CHARSET_OVERRIDE=”ISO-8859-15″
+
+#sleep 10
+if dmesg | tail -n 250 | grep -i "error while loading driver" > /dev/null; then 
+   rmmod dvb-usb-af9035         
+   modprobe dvb-usb-af9035          
+   sleep 1                
+fi
+/bin/systemctl restart mixer.service                                            
+sleep 1       
+/usr/bin/ply-image /usr/share/plymouth/black.png 
+
+eval vdr -g /tmp -L /usr/lib/vdr/plugins --log=3 -p 6419 --vfat --no-kbd $PLUGINS -v /media/video -c /etc/vdr -w 0 --lirc -s /usr/bin/vdrshutdown
+ 
+#eval vdr -g /tmp -L /usr/lib/vdr/plugins --buffer=/media/video --log=3 -p 6419 --vfat --no-kbd $PLUGINS -v /media/video -c /etc/vdr -w 0 --lirc -s /usr/bin/vdrshutdown
+

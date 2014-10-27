@@ -1,0 +1,60 @@
+--- vdr-1.7.36.orig/lirc.c	2013-01-26 15:55:49.000000000 +0100
++++ vdr-1.7.36/lirc.c	2013-01-26 15:56:02.000000000 +0100
+@@ -12,6 +12,10 @@
+ #include "lirc.h"
+ #include <netinet/in.h>
+ #include <sys/socket.h>
++#ifdef USE_LIRCSETTINGS
++#include "config.h"
++#endif /* LIRCSETTINGS */
++
+ 
+ #define REPEATDELAY 350 // ms
+ #define REPEATFREQ 100 // ms
+@@ -95,7 +99,11 @@
+               continue;
+               }
+            if (count == 0) {
++#ifdef USE_LIRCSETTINGS
++              if (strcmp(KeyName, LastKeyName) == 0 && FirstTime.Elapsed() < (unsigned int)Setup.LircRepeatDelay)
++#else
+               if (strcmp(KeyName, LastKeyName) == 0 && FirstTime.Elapsed() < REPEATDELAY)
++#endif /* LIRCSETTINGS */
+                  continue; // skip keys coming in too fast
+               if (repeat)
+                  Put(LastKeyName, false, true);
+@@ -105,18 +113,34 @@
+               timeout = -1;
+               }
+            else {
++#ifdef USE_LIRCSETTINGS
++              if (LastTime.Elapsed() < (unsigned int)Setup.LircRepeatFreq)
++#else
+               if (LastTime.Elapsed() < REPEATFREQ)
++#endif /* LIRCSETTINGS */
+                  continue; // repeat function kicks in after a short delay (after last key instead of first key)
++#ifdef USE_LIRCSETTINGS
++              if (FirstTime.Elapsed() < (unsigned int)Setup.LircRepeatDelay)
++#else
+               if (FirstTime.Elapsed() < REPEATDELAY)
++#endif /* LIRCSETTINGS */
+                  continue; // skip keys coming in too fast (for count != 0 as well)
+               repeat = true;
++#ifdef USE_LIRCSETTINGS
++              timeout = Setup.LircRepeatDelay;
++#else
+               timeout = REPEATDELAY;
++#endif /* LIRCSETTINGS */
+               }
+            LastTime.Set();
+            Put(KeyName, repeat);
+            }
+         else if (repeat) { // the last one was a repeat, so let's generate a release
++#ifdef USE_LIRCSETTINGS
++           if (LastTime.Elapsed() >= (unsigned int)Setup.LircRepeatTimeout) {
++#else
+            if (LastTime.Elapsed() >= REPEATTIMEOUT) {
++#endif /* LIRCSETTINGS */
+               Put(LastKeyName, false, true);
+               repeat = false;
+               *LastKeyName = 0;

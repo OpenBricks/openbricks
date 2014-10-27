@@ -1,0 +1,54 @@
+#!/bin/sh
+
+. config/options
+
+get_meta vdr
+verlte 1.7.36 $PKG_VERSION && VDRINS="no" || VDRINS="yes"
+
+get_meta $1
+cd $PKG_BUILD_DIR
+
+mkdir -p .install/etc/vdr/plugins/skinnopacity/icons/ || true
+mkdir -p .install/etc/vdr/plugins/skinnopacity/logos/ || true
+mkdir -p .install/var/cache/vdr/epgimages || true
+mkdir -p .install/etc/vdr/themes || true
+mkdir -p .install/etc/vdr/symbols || true
+cp -r icons/* .install/etc/vdr/plugins/skinnopacity/icons/
+cp -r $ROOT/$PACKAGES/$PKG_SECTION/$1/icons .install/etc/vdr/plugins/skinnopacity/
+cp $ROOT/$PACKAGES/$PKG_SECTION/$1/config/rssfeeds.conf .install/etc/vdr/plugins/skinnopacity/
+cp -r $ROOT/$PACKAGES/$PKG_SECTION/$1/themes/* .install/etc/vdr/themes/
+cp -r $ROOT/$PACKAGES/$PKG_SECTION/$1/themes/darkred/* .install/etc/vdr/themes/
+cp -r themes/* .install/etc/vdr/themes/
+cp -r symbols/* .install/etc/vdr/symbols/
+
+mkdir -p .install/var/cache/vdr/epgimages || true
+do_install etc
+do_install var
+
+#mkdir -p $INSTALL/usr/lib/vdr/plugins
+#cp -a lib*.so.* $INSTALL/usr/lib/vdr/plugins
+
+if [ $VDRINS = "no" ]; then
+  mkdir -p $INSTALL/usr/lib/vdr/plugins
+  cp -a lib$1*.so.* $INSTALL/usr/lib/vdr/plugins
+  for loc in $INCLUDED_LOCALES; do
+  LOCALE=`echo $loc|cut -f1 -d.`
+    if [ -d locale/$LOCALE ]; then
+      mkdir -p $INSTALL/usr/share/locale/$LOCALE
+      cp -a locale/$LOCALE/* $INSTALL/usr/share/locale/$LOCALE/
+    fi
+  done
+else
+  do_install usr
+fi
+
+
+NAME=`echo ${PKG_NAME}| sed s/vdr-//`
+
+mkdir -p $INSTALL/etc/vdr/plugins/$NAME
+
+mkdir -p $INSTALL/etc/vdr/plugins.d
+echo "PLUGIN=${NAME}" > $INSTALL/etc/vdr/plugins.d/50_$NAME
+echo "OPTIONS=\"--epgimages=/var/cache/vdr/epgimages --iconpath=/etc/vdr/plugins/skinnopacity/icons/ --logopath=/etc/vdr/plugins/skinnopacity/logos/\"" >> $INSTALL/etc/vdr/plugins.d/50_$NAME
+echo "ENABLED=yes" >> $INSTALL/etc/vdr/plugins.d/50_$NAME
+

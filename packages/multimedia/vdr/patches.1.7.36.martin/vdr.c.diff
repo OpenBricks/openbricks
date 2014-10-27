@@ -1,0 +1,166 @@
+--- vdr-1.7.36.orig/vdr.c	2013-01-26 15:55:49.000000000 +0100
++++ vdr-1.7.36/vdr.c	2013-01-26 15:56:02.000000000 +0100
+@@ -45,6 +45,9 @@
+ #include "dvbdevice.h"
+ #include "eitscan.h"
+ #include "epg.h"
++#ifdef USE_VASARAJANAULOJA
++#include "filetransfer.h"
++#endif /* VASARAJANAULOJA */
+ #include "i18n.h"
+ #include "interface.h"
+ #include "keys.h"
+@@ -65,6 +68,9 @@
+ #include "tools.h"
+ #include "transfer.h"
+ #include "videodir.h"
++#ifdef USE_PINPLUGIN
++#include "status.h"
++#endif /* USE_PINPLUGIN */
+ 
+ #define MINCHANNELWAIT        10 // seconds to wait between failed channel switchings
+ #define ACTIVITYTIMEOUT       60 // seconds before starting housekeeping
+@@ -623,7 +629,12 @@
+   RecordingCommands.Load(AddDirectory(ConfigDirectory, "reccmds.conf"));
+   SVDRPhosts.Load(AddDirectory(ConfigDirectory, "svdrphosts.conf"), true);
+   Keys.Load(AddDirectory(ConfigDirectory, "remote.conf"));
++#ifdef USE_ALTERNATECHANNEL
++  KeyMacros.Load(AddDirectory(ConfigDirectory, "keymacros.conf"), true) &&
++    Channels.LoadAlternativeChannels(AddDirectory(ConfigDirectory, "channel_alternative.conf"));
++#else
+   KeyMacros.Load(AddDirectory(ConfigDirectory, "keymacros.conf"), true);
++#endif /* ALTERNATECHANNEL */
+   Folders.Load(AddDirectory(ConfigDirectory, "folders.conf"));
+ 
+   if (!*cFont::GetFontFileName(Setup.FontOsd)) {
+@@ -937,6 +948,21 @@
+            Recordings.Update();
+            DeletedRecordings.Update();
+            }
++#ifdef USE_MCLI
++        cPlugin *mcliPlugin = cPluginManager::GetPlugin("mcli");
++        if (mcliPlugin) {
++           if (!ShutdownHandler.countdown) { // if kPower has been pressed, cMenuShutdown takes precedence over other menus
++              cOsdObject *MyMenu = mcliPlugin->AltMenuAction();
++              if (MyMenu) { // is there any cam-menu waiting?
++                 DELETE_MENU;
++                 if (cControl::Control())
++                    cControl::Control()->Hide();
++                    Menu = MyMenu;
++                    Menu->Show();
++                 }
++              }
++           }
++#endif /* MCLI */
+         // CAM control:
+         if (!Menu && !cOsd::IsOpen())
+            Menu = CamControl();
+@@ -947,6 +973,9 @@
+         cOsdObject *Interact = Menu ? Menu : cControl::Control();
+         eKeys key = Interface->GetKey(!Interact || !Interact->NeedsFastResponse());
+         if (ISREALKEY(key)) {
++#ifdef USE_PINPLUGIN
++           cStatus::MsgUserAction(key, Interact);
++#endif /* PINPLUGIN */
+            EITScanner.Activity();
+            // Cancel shutdown countdown:
+            if (ShutdownHandler.countdown)
+@@ -1019,10 +1048,16 @@
+                      cControl::Control()->Hide();
+                   cPlugin *plugin = cPluginManager::GetPlugin(PluginName);
+                   if (plugin) {
++#ifdef USE_PINPLUGIN
++                  if (!cStatus::MsgPluginProtected(plugin)) {
++#endif /* PINPLUGIN */
+                      Menu = plugin->MainMenuAction();
+                      if (Menu)
+                         Menu->Show();
+                      }
++#ifdef USE_PINPLUGIN
++                     }
++#endif /* PINPLUGIN */
+                   else
+                      esyslog("ERROR: unknown plugin '%s'", PluginName);
+                   }
+@@ -1211,13 +1246,26 @@
+                   Channels.SwitchTo(PreviousChannel[PreviousChannelIndex ^= 1]);
+                   break;
+                   }
++#ifdef USE_VOLCTRL
++             // Left/Right volume control
++#else
+              // Direct Channel Select:
+              case k1 ... k9:
+              // Left/Right rotates through channel groups:
++#endif // USE_VOLCTRL
+              case kLeft|k_Repeat:
+              case kLeft:
+              case kRight|k_Repeat:
+              case kRight:
++#ifdef USE_VOLCTRL
++                  if (Setup.LRVolumeControl && Setup.LRChannelGroups < 2) {
++                    cRemote::Put(NORMALKEY(key) == kLeft ? kVolDn : kVolUp, true);
++                    break;
++                    }
++                  // else fall through
++             // Direct Channel Select:
++             case k1 ... k9:
++#endif // USE_VOLCTRL
+              // Previous/Next rotates through channel groups:
+              case kPrev|k_Repeat:
+              case kPrev:
+@@ -1235,11 +1283,17 @@
+              // Instant resume of the last viewed recording:
+              case kPlay:
+                   if (cReplayControl::LastReplayed()) {
++#ifdef USE_PINPLUGIN
++                     if (cStatus::MsgReplayProtected(0, cReplayControl::LastReplayed(), 0, false) == false) {
++#endif /* PINPLUGIN */
+                      cControl::Shutdown();
+                      cControl::Launch(new cReplayControl);
+                      }
+                   else
+                      DirectMainFunction(osRecordings); // no last viewed recording, so enter the Recordings menu
++#ifdef USE_PINPLUGIN
++                     }
++#endif /* PINPLUGIN */
+                   break;
+              default:    break;
+              }
+@@ -1253,6 +1307,14 @@
+               else
+                  Skins.Message(mtInfo, tr("Editing process finished"));
+               }
++#ifdef USE_VASARAJANAULOJA
++		   if (!cFileTransfer::Active() && cFileTransfer::Ended()) {
++			   if (cFileTransfer::Error())
++				   Skins.Message(mtError, tr("File transfer failed!"));
++			   else
++				   Skins.Message(mtInfo, tr("File transfer finished"));
++		   }
++#endif /* VASARAJANAULOJA */
+            }
+ 
+         // SIGHUP shall cause a restart:
+@@ -1268,7 +1330,11 @@
+               ShutdownHandler.countdown.Cancel();
+            }
+ 
++#ifdef USE_VASARAJANAULOJA
++		if ((Now - LastInteract) > ACTIVITYTIMEOUT && !cRecordControls::Active() && !cCutter::Active() && !cFileTransfer::Active() && !Interface->HasSVDRPConnection() && (Now - cRemote::LastActivity()) > ACTIVITYTIMEOUT) {
++#else
+         if ((Now - LastInteract) > ACTIVITYTIMEOUT && !cRecordControls::Active() && !cCutter::Active() && !Interface->HasSVDRPConnection() && (Now - cRemote::LastActivity()) > ACTIVITYTIMEOUT) {
++#endif /* VASARAJANAULOJA */
+            // Handle housekeeping tasks
+ 
+            // Shutdown:
+@@ -1317,6 +1383,9 @@
+ 
+   PluginManager.StopPlugins();
+   cRecordControls::Shutdown();
++#ifdef USE_VASARAJANAULOJA
++  cFileTransfer::Stop();
++#endif /* VASARAJANAULOJA */
+   cCutter::Stop();
+   delete Menu;
+   cControl::Shutdown();

@@ -1,0 +1,304 @@
+Description: Shows info, if it is possible to record an event in the timer-info of
+ vdr - see README.timer-info for details.
+Author: Andreas Brugger <brougs78@gmx.net>, Thomas Günther <tom@toms-cafe.de>
+Origin: http://toms-cafe.de/vdr/download/vdr-timer-info-0.5-1.7.13.diff
+
+Index: vdr/README.timer-info
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ vdr/README.timer-info	2011-12-11 02:29:43.000000000 +0100
+@@ -0,0 +1,69 @@
+++------------------------------------------------------------------------------+
++|               Info about the timer-info-patch by Brougs78                    |
++|                brougs78@gmx.net / home.pages.at/brougs78                     |
+++------------------------------------------------------------------------------+
++
++
++README timer-info:
++------------------
++
++Features:
++ - Shows info, if it is possible to record an event in the timer menu of vdr.
++   For calculations the free space incl. the deleted recordings is used,
++   considering an average consumtion of 25.75 MB/min (also used by vdr itself).
++   The first column in the timer-list shows:
++      ( + ) recording will be most probably possible (enough space)
++      (+/-) recording may be possible
++      ( - ) recording will most probably fail (to less space)
++   The calculations also consider repeating timers.
++ - It is possible to deactivate the patch in the OSD-menu of VDR.
++
++
++HISTORY timer-info:
++-------------------
++
++25.11.2004: v0.1
++ - Initial release
++
++11.01.2005: v0.1b
++ - Bugfixes for vdr-1.3.18
++ - In the menu the free recording-time no longer includes the space of the
++   deleted recordings, because this slowed the vdr down to much.
++
++08.07.2005: v0.1c
++ - Made the patch configurable
++
++29.01.2006: v0.2 - Thomas Günther <tom@toms-cafe.de>
++ - Rewritten great parts for vdr-1.3.38+
++   http://toms-cafe.de/vdr/download/vdr-timer-info-0.2-1.3.38+.diff
++
++05.02.2006: v0.3 - Thomas Günther <tom@toms-cafe.de>
++ - Fixed refresh of timer menu in cMenuTimers::OnOff
++ - Fixed check of repeating timers
++ - Syslog debug messages can be enabled with Define DEBUG_TIMER_INFO
++   http://toms-cafe.de/vdr/download/vdr-timer-info-0.3-1.3.38+.diff
++
++03.03.2006: v0.4 - Thomas Günther <tom@toms-cafe.de>
++ - Adapted to vdr-1.3.44
++ - Removed setup parameter "Show timer-info"
++   http://toms-cafe.de/vdr/download/vdr-timer-info-0.4-1.3.44.diff
++
++26.03.2006:      - Tobias Grimm <tg@e-tobi.net>
++ - Adapted to vdr-1.3.45
++   http://toms-cafe.de/vdr/download/vdr-timer-info-0.4-1.3.45.diff
++
++14.01.2008:      - Thomas Günther <tom@toms-cafe.de>
++ - Adapted to vdr-1.5.13
++   http://toms-cafe.de/vdr/download/vdr-timer-info-0.4-1.5.13.diff
++
++17.02.2008:      - Tobias Grimm <tg@e-tobi.net>
++ - Adapted to vdr-1.5.15
++   http://toms-cafe.de/vdr/download/vdr-timer-info-0.4-1.5.15.diff
++
++12.04.2008: v0.5 - Thomas Günther <tom@toms-cafe.de>
++ - Fixed display of +/- sign with UTF-8
++   http://toms-cafe.de/vdr/download/vdr-timer-info-0.5-1.5.15.diff
++
++28.02.2010:      - Thomas Günther <tom@toms-cafe.de>
++ - Adapted to vdr-1.7.13
++   http://toms-cafe.de/vdr/download/vdr-timer-info-0.5-1.7.13.diff
+Index: vdr/menu.c
+===================================================================
+--- vdr.orig/menu.c	2011-12-11 02:29:40.000000000 +0100
++++ vdr/menu.c	2011-12-11 02:29:43.000000000 +0100
+@@ -1021,8 +1021,10 @@
+ class cMenuTimerItem : public cOsdItem {
+ private:
+   cTimer *timer;
++  char diskStatus;
+ public:
+   cMenuTimerItem(cTimer *Timer);
++  void SetDiskStatus(char DiskStatus);
+   virtual int Compare(const cListObject &ListObject) const;
+   virtual void Set(void);
+   cTimer *Timer(void) { return timer; }
+@@ -1031,6 +1033,7 @@
+ cMenuTimerItem::cMenuTimerItem(cTimer *Timer)
+ {
+   timer = Timer;
++  diskStatus = ' ';
+   Set();
+ }
+ 
+@@ -1061,7 +1064,10 @@
+      File++;
+   else
+      File = timer->File();
+-  SetText(cString::sprintf("%c\t%d\t%s%s%s\t%02d:%02d\t%02d:%02d\t%s",
++  cCharSetConv csc("ISO-8859-1", cCharSetConv::SystemCharacterTable());
++  char diskStatusString[2] = { diskStatus, 0 };
++  SetText(cString::sprintf("%s%c\t%d\t%s%s%s\t%02d:%02d\t%02d:%02d\t%s",
++                    csc.Convert(diskStatusString),
+                     !(timer->HasFlags(tfActive)) ? ' ' : timer->FirstDay() ? '!' : timer->Recording() ? '#' : '>',
+                     timer->Channel()->Number(),
+                     *name,
+@@ -1074,6 +1080,57 @@
+                     File));
+ }
+ 
++void cMenuTimerItem::SetDiskStatus(char DiskStatus)
++{
++  diskStatus = DiskStatus;
++  Set();
++}
++
++// --- cTimerEntry -----------------------------------------------------------
++
++class cTimerEntry : public cListObject {
++private:
++  cMenuTimerItem *item;
++  const cTimer *timer;
++  time_t start;
++public:
++  cTimerEntry(cMenuTimerItem *item) : item(item), timer(item->Timer()), start(timer->StartTime()) {}
++  cTimerEntry(const cTimer *timer, time_t start) : item(NULL), timer(timer), start(start) {}
++  virtual int Compare(const cListObject &ListObject) const;
++  bool active(void) const { return timer->HasFlags(tfActive); }
++  time_t startTime(void) const { return start; }
++  int priority(void) const { return timer->Priority(); }
++  int duration(void) const;
++  bool repTimer(void) const { return !timer->IsSingleEvent(); }
++  bool isDummy(void) const { return item == NULL; }
++  const cTimer *Timer(void) const { return timer; }
++  void SetDiskStatus(char DiskStatus);
++  };
++
++int cTimerEntry::Compare(const cListObject &ListObject) const
++{
++  cTimerEntry *entry = (cTimerEntry *)&ListObject;
++  int r = startTime() - entry->startTime();
++  if (r == 0)
++     r = entry->priority() - priority();
++  return r;
++}
++
++int cTimerEntry::duration(void) const
++{
++  int dur = (timer->Stop()  / 100 * 60 + timer->Stop()  % 100) -
++            (timer->Start() / 100 * 60 + timer->Start() % 100);
++  if (dur < 0)
++     dur += 24 * 60;
++  return dur;
++}
++
++void cTimerEntry::SetDiskStatus(char DiskStatus)
++{
++  if (item)
++     item->SetDiskStatus(DiskStatus);
++}
++
+ // --- cMenuTimers -----------------------------------------------------------
+ 
+ class cMenuTimers : public cOsdMenu {
+@@ -1086,14 +1143,17 @@
+   eOSState Info(void);
+   cTimer *CurrentTimer(void);
+   void SetHelpKeys(void);
++  void ActualiseDiskStatus(void);
++  bool actualiseDiskStatus;
+ public:
+   cMenuTimers(void);
+   virtual ~cMenuTimers();
++  virtual void Display(void);
+   virtual eOSState ProcessKey(eKeys Key);
+   };
+ 
+ cMenuTimers::cMenuTimers(void)
+-:cOsdMenu(tr("Timers"), 2, CHNUMWIDTH, 10, 6, 6)
++:cOsdMenu(tr("Timers"), 3, CHNUMWIDTH, 10, 6, 6)
+ {
+   helpKeys = -1;
+   for (cTimer *timer = Timers.First(); timer; timer = Timers.Next(timer)) {
+@@ -1104,6 +1164,7 @@
+   SetCurrent(First());
+   SetHelpKeys();
+   Timers.IncBeingEdited();
++  actualiseDiskStatus = true;
+ }
+ 
+ cMenuTimers::~cMenuTimers()
+@@ -1142,7 +1203,7 @@
+      timer->OnOff();
+      timer->SetEventFromSchedule();
+      RefreshCurrent();
+-     DisplayCurrent(true);
++     Display();
+      if (timer->FirstDay())
+         isyslog("timer %s first day set to %s", *timer->ToDescr(), *timer->PrintFirstDay());
+      else
+@@ -1201,6 +1262,67 @@
+   return osContinue;
+ }
+ 
++void cMenuTimers::ActualiseDiskStatus(void)
++{
++  if (!actualiseDiskStatus || !Count())
++     return;
++
++  // compute free disk space
++  int freeMB, freeMinutes, runshortMinutes;
++  VideoDiskSpace(&freeMB);
++  freeMinutes = int(double(freeMB) * 1.1 / MB_PER_MINUTE); // overestimate by 10 percent
++  runshortMinutes = freeMinutes / 5; // 20 Percent
++
++  // fill entries list
++  cTimerEntry *entry;
++  cList<cTimerEntry> entries;
++  for (cOsdItem *item = First(); item; item = Next(item))
++     entries.Add(new cTimerEntry((cMenuTimerItem *)item));
++
++  // search last start time
++  time_t last = 0;
++  for (entry = entries.First(); entry; entry = entries.Next(entry))
++     last = max(entry->startTime(), last);
++
++  // add entries for repeating timers
++  for (entry = entries.First(); entry; entry = entries.Next(entry))
++     if (entry->repTimer() && !entry->isDummy())
++        for (time_t start = cTimer::IncDay(entry->startTime(), 1);
++             start <= last;
++             start = cTimer::IncDay(start, 1))
++           if (entry->Timer()->DayMatches(start))
++              entries.Add(new cTimerEntry(entry->Timer(), start));
++
++  // set the disk-status
++  entries.Sort();
++  for (entry = entries.First(); entry; entry = entries.Next(entry)) {
++     char status = ' ';
++     if (entry->active()) {
++        freeMinutes -= entry->duration();
++        status = freeMinutes > runshortMinutes ? '+' : freeMinutes > 0 ? 177 /* +/- */ : '-';
++        }
++     entry->SetDiskStatus(status);
++#ifdef DEBUG_TIMER_INFO
++     dsyslog("timer-info: %c | %d | %s | %s | %3d | %+5d -> %+5d",
++             status,
++             entry->startTime(),
++             entry->active() ? "aktiv " : "n.akt.",
++             entry->repTimer() ? entry->isDummy() ? "  dummy  " : "mehrmalig" : "einmalig ",
++             entry->duration(),
++             entry->active() ? freeMinutes + entry->duration() : freeMinutes,
++             freeMinutes);
++#endif
++     }
++
++  actualiseDiskStatus = false;
++}
++
++void cMenuTimers::Display(void)
++{
++  ActualiseDiskStatus();
++  cOsdMenu::Display();
++}
++
+ eOSState cMenuTimers::ProcessKey(eKeys Key)
+ {
+   int TimerNumber = HasSubMenu() ? Count() : -1;
+@@ -1209,18 +1331,22 @@
+   if (state == osUnknown) {
+      switch (Key) {
+        case kOk:     return Edit();
+-       case kRed:    state = OnOff(); break; // must go through SetHelpKeys()!
++       case kRed:    actualiseDiskStatus = true;
++                     state = OnOff(); break; // must go through SetHelpKeys()!
+        case kGreen:  return New();
+-       case kYellow: state = Delete(); break;
++       case kYellow: actualiseDiskStatus = true;
++                     state = Delete(); break;
+        case kInfo:
+        case kBlue:   return Info();
+                      break;
+        default: break;
+        }
+      }
+-  if (TimerNumber >= 0 && !HasSubMenu() && Timers.Get(TimerNumber)) {
+-     // a newly created timer was confirmed with Ok
+-     Add(new cMenuTimerItem(Timers.Get(TimerNumber)), true);
++  if (TimerNumber >= 0 && !HasSubMenu()) {
++     if (Timers.Get(TimerNumber)) // a newly created timer was confirmed with Ok
++        Add(new cMenuTimerItem(Timers.Get(TimerNumber)), true);
++     Sort();
++     actualiseDiskStatus = true;
+      Display();
+      }
+   if (Key != kNone)

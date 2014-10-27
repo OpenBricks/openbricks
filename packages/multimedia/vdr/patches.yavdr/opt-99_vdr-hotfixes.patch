@@ -1,0 +1,43 @@
+Description: Hotfix-Patches which maybe will go into vdr 1.7.23
+Author: Lars Hanisch <dvb@flensrocker.de>
+
+--- a/dvbdevice.c
++++ b/dvbdevice.c
+@@ -662,6 +662,9 @@
+ 
+ void cDvbTuner::ExecuteDiseqc(const cDiseqc *Diseqc, unsigned int *Frequency)
+ {
++  static cMutex scrMutex;
++  if (Diseqc->IsScr())
++     scrMutex.Lock();
+   struct dvb_diseqc_master_cmd cmd;
+   const char *CurrentAction = NULL;
+   for (;;) {
+@@ -682,6 +685,8 @@
+       }
+   if (scr)
+      ResetToneAndVoltage(); // makes sure we don't block the bus!
++  if (Diseqc->IsScr())
++     scrMutex.Unlock();
+ }
+ 
+ void cDvbTuner::ResetToneAndVoltage(void)
+@@ -1203,7 +1208,7 @@
+                      Device2 = Device2->SubDevice();
+                   if (cDvbDevice *DvbDevice1 = dynamic_cast<cDvbDevice *>(Device1)) {
+                      if (cDvbDevice *DvbDevice2 = dynamic_cast<cDvbDevice *>(Device2)) {
+-                        if (!DvbDevice2->Bond(DvbDevice1))
++                        if (!DvbDevice1->Bond(DvbDevice2))
+                            return false; // Bond() has already logged the error
+                         }
+                      else
+--- a/config.c
++++ b/config.c
+@@ -69,7 +69,6 @@
+ {
+   size = Size;
+   array = MALLOC(int, size);
+-  memset(array, size * sizeof(int), 0);
+   FromString(s);
+ }
+ 

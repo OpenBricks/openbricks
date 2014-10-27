@@ -1,0 +1,41 @@
+Alexander Wenzel, <HondaNSX@Gmx.de>
+call CMD after a recording where deleted
+
+diff -ruNp vdr-1.7.30/recording.c vdr-1.7.30-patched/recording.c
+--- vdr-1.7.30/recording.c	2012-09-06 11:57:31.000000000 +0200
++++ vdr-1.7.30-patched/recording.c	2012-09-11 08:56:57.512288266 +0200
+@@ -1010,8 +1010,10 @@ bool cRecording::Delete(void)
+         RemoveVideoFile(NewName);
+         }
+      isyslog("deleting recording '%s'", FileName());
+-     if (access(FileName(), F_OK) == 0)
++     if (access(FileName(), F_OK) == 0) {
+         result = RenameVideoFile(FileName(), NewName);
++        cRecordingUserCommand::InvokeCommand(RUC_DELETERECORDING, NewName);
++     }
+      else {
+         isyslog("recording '%s' vanished", FileName());
+         result = true; // well, we were going to delete it, anyway
+diff -ruNp vdr-1.7.30/recording.h vdr-1.7.30-patched/recording.h
+--- vdr-1.7.30/recording.h	2012-09-06 11:59:11.000000000 +0200
++++ vdr-1.7.30-patched/recording.h	2012-09-11 08:58:04.896762990 +0200
+@@ -240,6 +240,7 @@ public:
+ #define RUC_BEFORERECORDING "before"
+ #define RUC_AFTERRECORDING  "after"
+ #define RUC_EDITEDRECORDING "edited"
++#define RUC_DELETERECORDING "deleted"
+ 
+ class cRecordingUserCommand {
+ private:
+diff -ruNp vdr-1.7.30/vdr.c vdr-1.7.30-patched/vdr.c
+--- vdr-1.7.30/vdr.c	2012-09-01 15:30:19.000000000 +0200
++++ vdr-1.7.30-patched/vdr.c	2012-09-11 09:01:35.334205183 +0200
+@@ -466,7 +466,7 @@ int main(int argc, char *argv[])
+                "  -p PORT,  --port=PORT    use PORT for SVDRP (default: %d)\n"
+                "                           0 turns off SVDRP\n"
+                "  -P OPT,   --plugin=OPT   load a plugin defined by the given options\n"
+-               "  -r CMD,   --record=CMD   call CMD before and after a recording\n"
++               "  -r CMD,   --record=CMD   call CMD before, after, edited or delete a recording\n"
+                "            --resdir=DIR   read resource files from DIR (default: %s)\n"
+                "  -s CMD,   --shutdown=CMD call CMD to shutdown the computer\n"
+                "            --split        split edited files at the editing marks (only\n"

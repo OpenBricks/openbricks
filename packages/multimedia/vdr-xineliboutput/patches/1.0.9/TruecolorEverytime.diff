@@ -1,0 +1,71 @@
+diff -Naur xineliboutput-1.0.90.git.1355089073/config.c xineliboutput-1.0.90.git.1355089073.patched/config.c
+--- xineliboutput-1.0.90.git.1355089073/config.c	2012-12-10 18:37:18.792445420 +0100
++++ xineliboutput-1.0.90.git.1355089073.patched/config.c	2013-07-07 18:36:59.207278022 +0200
+@@ -737,7 +737,7 @@
+ 
+ bool config_t::ProcessArgs(int argc, char *argv[])
+ {
+-  static const char short_options[] = "fDw:h:l:mr:A:V:d:P:C:pc";
++  static const char short_options[] = "fDw:h:l:mr:A:V:d:P:C:pct";
+ 
+   static const struct option long_options[] = {
+       { "fullscreen",   no_argument,       NULL, 'f' },
+@@ -760,6 +760,7 @@
+       { "config",       required_argument, NULL, 'C' },
+       { "primary",      no_argument,       NULL, 'p' },
+       { "exit-on-close",no_argument,       NULL, 'c' },
++      { "truecolor",    no_argument,       NULL, 't' },
+       { NULL,           no_argument,       NULL,  0  }
+     };
+ 
+@@ -777,6 +778,8 @@
+               break;
+     case 'f': ProcessArg("Fullscreen", "1");
+               break;
++    case 't': ProcessArg("truecoloreverytime", "1");
++	      break;
+     case 'D': ProcessArg("X11.HUDOSD", "1");
+               if (optarg && strstr(optarg, "xshape")) {
+                 ProcessArg("XShapeHUDOSD", "1");
+@@ -895,6 +898,7 @@
+   else if (!strcasecmp(Name, "X11.OpenglAlways")) opengl = atoi(Value);
+   else if (!strcasecmp(Name, "X11.OpenglHUDOSD")) hud_osd |= (atoi(Value) ? HUD_OPENGL : 0);
+   else if (!strcasecmp(Name, "X11.XShapeHUDOSD")) hud_osd |= (atoi(Value) ? HUD_XSHAPE : 0);
++  else if (!strcasecmp(Name, "truecoloreverytime")) truecoloreverytime = atoi(Value);
+ 
+   else if (!strcasecmp(Name, "Audio.Driver")) STRN0CPY(audio_driver, Value);
+   else if (!strcasecmp(Name, "Audio.Port"))   STRN0CPY(audio_port, Value);
+diff -Naur xineliboutput-1.0.90.git.1355089073/config.h xineliboutput-1.0.90.git.1355089073.patched/config.h
+--- xineliboutput-1.0.90.git.1355089073/config.h	2012-12-10 18:37:18.793445433 +0100
++++ xineliboutput-1.0.90.git.1355089073.patched/config.h	2013-07-07 18:13:36.086308691 +0200
+@@ -294,6 +294,7 @@
+     int  window_id;        // use existing X11 window
+     int  hud_osd;          // head up display OSD
+     int  opengl;           // use opengl acceleration for video and HUD OSD
++    int  truecoloreverytime;
+ 
+     // Audio settings
+     int  speaker_type;
+diff -Naur xineliboutput-1.0.90.git.1355089073/frontend_svr.c xineliboutput-1.0.90.git.1355089073.patched/frontend_svr.c
+--- xineliboutput-1.0.90.git.1355089073/frontend_svr.c	2012-12-10 18:37:18.795445457 +0100
++++ xineliboutput-1.0.90.git.1355089073.patched/frontend_svr.c	2013-07-07 18:10:44.770312436 +0200
+@@ -783,7 +783,7 @@
+         has_clients++;
+     }
+ 
+-  return has_clients ? 1 : -1;
++  return has_clients || xc.truecoloreverytime ? 1 : -1;
+ }
+ 
+ int cXinelibServer::PlayFileCtrl(const char *Cmd, int TimeoutMs)
+diff -Naur xineliboutput-1.0.90.git.1355089073/xineliboutput.c xineliboutput-1.0.90.git.1355089073.patched/xineliboutput.c
+--- xineliboutput-1.0.90.git.1355089073/xineliboutput.c	2012-12-10 18:37:18.825445843 +0100
++++ xineliboutput-1.0.90.git.1355089073.patched/xineliboutput.c	2013-07-07 17:56:25.102331226 +0200
+@@ -152,6 +152,7 @@
+ "                           there are active frontend(s)\n"
+ "  -c        --exit-on-close  Exit vdr when local frontend window is closed\n"
+ "  -C        --config=file  Use xine-lib config file\n"
++"  -t        --truecolor    Support True Color OSD if no client is connected\n"
+ ;
+ 
+ const char *cPluginXinelibOutput::CommandLineHelp(void)

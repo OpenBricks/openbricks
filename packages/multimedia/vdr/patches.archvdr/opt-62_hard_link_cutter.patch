@@ -1,0 +1,612 @@
+diff -Naur vdr-1.7.27/config.c vdr-1.7.27-hlcutter/config.c
+--- vdr-1.7.27/config.c	2012-02-29 11:15:54.000000000 +0100
++++ vdr-1.7.27-hlcutter/config.c	2012-03-31 13:25:56.000000000 +0200
+@@ -445,8 +445,10 @@
+   FontSmlSize = 18;
+   FontFixSize = 20;
+   MaxVideoFileSize = MAXVIDEOFILESIZEDEFAULT;
++  MaxRecordingSize = DEFAULTRECORDINGSIZE;
+   SplitEditedFiles = 0;
+   DelTimeshiftRec = 0;
++  HardLinkCutter = 0;
+   MinEventTimeout = 30;
+   MinUserInactivity = 300;
+   NextWakeupTime = 0;
+@@ -639,8 +641,10 @@
+   else if (!strcasecmp(Name, "FontSmlSize"))         FontSmlSize        = atoi(Value);
+   else if (!strcasecmp(Name, "FontFixSize"))         FontFixSize        = atoi(Value);
+   else if (!strcasecmp(Name, "MaxVideoFileSize"))    MaxVideoFileSize   = atoi(Value);
++  else if (!strcasecmp(Name, "MaxRecordingSize"))    MaxRecordingSize   = atoi(Value);
+   else if (!strcasecmp(Name, "SplitEditedFiles"))    SplitEditedFiles   = atoi(Value);
+   else if (!strcasecmp(Name, "DelTimeshiftRec"))     DelTimeshiftRec    = atoi(Value);
++  else if (!strcasecmp(Name, "HardLinkCutter"))      HardLinkCutter     = atoi(Value);
+   else if (!strcasecmp(Name, "MinEventTimeout"))     MinEventTimeout    = atoi(Value);
+   else if (!strcasecmp(Name, "MinUserInactivity"))   MinUserInactivity  = atoi(Value);
+   else if (!strcasecmp(Name, "NextWakeupTime"))      NextWakeupTime     = atoi(Value);
+@@ -736,8 +740,10 @@
+   Store("FontSmlSize",        FontSmlSize);
+   Store("FontFixSize",        FontFixSize);
+   Store("MaxVideoFileSize",   MaxVideoFileSize);
++  Store("MaxRecordingSize",   MaxRecordingSize);
+   Store("SplitEditedFiles",   SplitEditedFiles);
+   Store("DelTimeshiftRec",    DelTimeshiftRec);
++  Store("HardLinkCutter",     HardLinkCutter);
+   Store("MinEventTimeout",    MinEventTimeout);
+   Store("MinUserInactivity",  MinUserInactivity);
+   Store("NextWakeupTime",     NextWakeupTime);
+diff -Naur vdr-1.7.27/config.h vdr-1.7.27-hlcutter/config.h
+--- vdr-1.7.27/config.h	2012-03-11 11:41:44.000000000 +0100
++++ vdr-1.7.27-hlcutter/config.h	2012-03-31 13:25:56.000000000 +0200
+@@ -299,8 +299,10 @@
+   int FontSmlSize;
+   int FontFixSize;
+   int MaxVideoFileSize;
++  int MaxRecordingSize;
+   int SplitEditedFiles;
+   int DelTimeshiftRec;
++  int HardLinkCutter;
+   int MinEventTimeout, MinUserInactivity;
+   time_t NextWakeupTime;
+   int MultiSpeedMode;
+diff -Naur vdr-1.7.27/cutter.c vdr-1.7.27-hlcutter/cutter.c
+--- vdr-1.7.27/cutter.c	2012-02-16 13:08:39.000000000 +0100
++++ vdr-1.7.27-hlcutter/cutter.c	2012-03-31 13:26:51.000000000 +0200
+@@ -80,6 +80,7 @@
+      Mark = fromMarks.Next(Mark);
+      off_t FileSize = 0;
+      int CurrentFileNumber = 0;
++     bool SkipThisSourceFile = false;
+      int LastIFrame = 0;
+      toMarks.Add(0);
+      toMarks.Save();
+@@ -98,13 +99,93 @@
+ 
+            // Read one frame:
+ 
+-           if (fromIndex->Get(Index++, &FileNumber, &FileOffset, &Independent, &Length)) {
+-              if (FileNumber != CurrentFileNumber) {
+-                 fromFile = fromFileName->SetOffset(FileNumber, FileOffset);
+-                 if (fromFile)
+-                    fromFile->SetReadAhead(MEGABYTE(20));
+-                 CurrentFileNumber = FileNumber;
+-                 }
++           if (!fromIndex->Get(Index++, &FileNumber, &FileOffset, &Independent, &Length)) {
++              // Error, unless we're past last cut-in and there's no cut-out
++              if (Mark || LastMark)
++                 error = "index";
++              break;
++              }
++
++           if (FileNumber != CurrentFileNumber) {
++              fromFile = fromFileName->SetOffset(FileNumber, FileOffset);
++              if (fromFile)
++                 fromFile->SetReadAhead(MEGABYTE(20));
++              CurrentFileNumber = FileNumber;
++              if (SkipThisSourceFile) {
++                 // At end of fast forward: Always skip to next file
++                 toFile = toFileName->NextFile();
++                 if (!toFile) {
++                    error = "toFile 4";
++                    break;
++                    }
++                 FileSize = 0;
++                 SkipThisSourceFile = false;
++                 }                 
++              
++
++              if (Setup.HardLinkCutter && FileOffset == 0) {
++                 // We are at the beginning of a new source file.
++                 // Do we need to copy the whole file?
++
++                 // if !Mark && LastMark, then we're past the last cut-out and continue to next I-frame
++                 // if !Mark && !LastMark, then there's just a cut-in, but no cut-out
++                 // if Mark, then we're between a cut-in and a cut-out
++                 
++                 uint16_t MarkFileNumber;
++                 off_t MarkFileOffset;
++                 // Get file number of next cut mark
++                 if (!Mark && !LastMark
++                     || Mark
++                        && fromIndex->Get(Mark->Position(), &MarkFileNumber, &MarkFileOffset)
++                        && (MarkFileNumber != CurrentFileNumber)) {
++                    // The current source file will be copied completely.
++                    // Start new output file unless we did that already
++                    if (FileSize != 0) {
++                       toFile = toFileName->NextFile();
++                       if (!toFile) {
++                          error = "toFile 3";
++                          break;
++                          }
++                       FileSize = 0;
++                       }
++
++                    // Safety check that file has zero size
++                    struct stat buf;
++                    if (stat(toFileName->Name(), &buf) == 0) {
++                       if (buf.st_size != 0) {
++                          esyslog("cCuttingThread: File %s exists and has nonzero size", toFileName->Name());
++                          error = "nonzero file exist";
++                          break;
++                          }
++                       }
++                    else if (errno != ENOENT) {
++                       esyslog("cCuttingThread: stat failed on %s", toFileName->Name());
++                       error = "stat";
++                       break;
++                       }
++
++                    // Clean the existing 0-byte file
++                    toFileName->Close();
++                    cString ActualToFileName(ReadLink(toFileName->Name()), true);
++                    unlink(ActualToFileName);
++                    unlink(toFileName->Name());
++
++                    // Try to create a hard link
++                    if (HardLinkVideoFile(fromFileName->Name(), toFileName->Name())) {
++                       // Success. Skip all data transfer for this file
++                       SkipThisSourceFile = true;
++                       cutIn = false;
++                       toFile = NULL; // was deleted by toFileName->Close()
++                       } 
++                    else {
++                       // Fallback: Re-open the file if necessary
++                       toFile = toFileName->Open();
++                       }
++                    }
++                 } 
++              }
++
++           if (!SkipThisSourceFile) {
+               if (fromFile) {
+                  int len = ReadFrame(fromFile, buffer,  Length, sizeof(buffer));
+                  if (len < 0) {
+@@ -121,19 +202,12 @@
+                  break;
+                  }
+               }
+-           else {
+-              // Error, unless we're past the last cut-in and there's no cut-out
+-              if (Mark || LastMark)
+-                 error = "index";
+-              break;
+-              }
+-
+            // Write one frame:
+ 
+            if (Independent) { // every file shall start with an independent frame
+               if (LastMark) // edited version shall end before next I-frame
+                  break;
+-              if (FileSize > maxVideoFileSize) {
++              if (!SkipThisSourceFile && FileSize > toFileName->MaxFileSize()) {
+                  toFile = toFileName->NextFile();
+                  if (!toFile) {
+                     error = "toFile 1";
+@@ -143,7 +217,7 @@
+                     }
+                  CheckForSeamlessStream = false;
+                  }
+-              if (cutIn) {
++              if (!SkipThisSourceFile && cutIn) {
+                  if (isPesRecording)
+                     cRemux::SetBrokenLink(buffer, Length);
+                  else
+@@ -151,7 +225,7 @@
+                  cutIn = false;
+                  }
+               }
+-           if (toFile->Write(buffer, Length) < 0) {
++           if (!SkipThisSourceFile && toFile->Write(buffer, Length) < 0) {
+               error = "safe_write";
+               break;
+               }
+@@ -186,7 +260,7 @@
+                     }
+                  }
+               else
+-                 LastMark = true;
++                 LastMark = true; // After last cut-out: Write on until next I-frame, then exit
+               }
+            }
+      Recordings.TouchUpdate();
+diff -Naur vdr-1.7.27/menu.c vdr-1.7.27-hlcutter/menu.c
+--- vdr-1.7.27/menu.c	2012-03-13 14:14:38.000000000 +0100
++++ vdr-1.7.27-hlcutter/menu.c	2012-03-31 13:25:56.000000000 +0200
+@@ -3116,8 +3116,10 @@
+   Add(new cMenuEditStrItem( tr("Setup.Recording$Name instant recording"),     data.NameInstantRecord, sizeof(data.NameInstantRecord)));
+   Add(new cMenuEditIntItem( tr("Setup.Recording$Instant rec. time (min)"),   &data.InstantRecordTime, 1, MAXINSTANTRECTIME));
+   Add(new cMenuEditIntItem( tr("Setup.Recording$Max. video file size (MB)"), &data.MaxVideoFileSize, MINVIDEOFILESIZE, MAXVIDEOFILESIZETS));
++  Add(new cMenuEditIntItem( tr("Setup.Recording$Max. recording size (GB)"),  &data.MaxRecordingSize, MINRECORDINGSIZE, MAXRECORDINGSIZE));
+   Add(new cMenuEditBoolItem(tr("Setup.Recording$Split edited files"),        &data.SplitEditedFiles));
+   Add(new cMenuEditStraItem(tr("Setup.Recording$Delete timeshift recording"),&data.DelTimeshiftRec, 3, delTimeshiftRecTexts));
++  Add(new cMenuEditBoolItem(tr("Setup.Recording$Hard Link Cutter"),          &data.HardLinkCutter));
+ }
+ 
+ // --- cMenuSetupReplay ------------------------------------------------------
+diff -Naur vdr-1.7.27/po/de_DE.po vdr-1.7.27-hlcutter/po/de_DE.po
+--- vdr-1.7.27/po/de_DE.po	2012-03-11 11:44:44.000000000 +0100
++++ vdr-1.7.27-hlcutter/po/de_DE.po	2012-03-31 13:36:31.000000000 +0200
+@@ -1071,12 +1071,18 @@
+ msgid "Setup.Recording$Max. video file size (MB)"
+ msgstr "Max. Videodateigröße (MB)"
+ 
++msgid "Setup.Recording$Max. recording size (GB)"
++msgstr "Max. Aufnahmegröße (GB)"
++
+ msgid "Setup.Recording$Split edited files"
+ msgstr "Editierte Dateien aufteilen"
+ 
+ msgid "Setup.Recording$Delete timeshift recording"
+ msgstr "Zeitversetzte Aufnahme löschen"
+ 
++msgid "Setup.Recording$Hard Link Cutter"
++msgstr "Hard Link Cutter"
++
+ msgid "Replay"
+ msgstr "Wiedergabe"
+ 
+diff -Naur vdr-1.7.27/po/fi_FI.po vdr-1.7.27-hlcutter/po/fi_FI.po
+--- vdr-1.7.27/po/fi_FI.po	2012-03-11 11:44:43.000000000 +0100
++++ vdr-1.7.27-hlcutter/po/fi_FI.po	2012-03-31 13:39:33.000000000 +0200
+@@ -1074,12 +1074,18 @@
+ msgid "Setup.Recording$Max. video file size (MB)"
+ msgstr "Suurin tiedostokoko (Mt)"
+ 
++msgid "Setup.Recording$Max. recording size (GB)"
++msgstr "Suurin tallennekoko (Gt)"
++
+ msgid "Setup.Recording$Split edited files"
+ msgstr "Jaottele muokatut tallenteet"
+ 
+ msgid "Setup.Recording$Delete timeshift recording"
+ msgstr "Poista ajansiirtotallenne"
+ 
++msgid "Setup.Recording$Hard Link Cutter"
++msgstr "KÃ¤ytÃ¤ kovia linkkejÃ¤ muokkauksessa"
++
+ msgid "Replay"
+ msgstr "Toisto"
+ 
+diff -Naur vdr-1.7.27/README-HLCUTTER vdr-1.7.27-hlcutter/README-HLCUTTER
+--- vdr-1.7.27/README-HLCUTTER	1970-01-01 01:00:00.000000000 +0100
++++ vdr-1.7.27-hlcutter/README-HLCUTTER	2012-03-31 13:40:55.000000000 +0200
+@@ -0,0 +1,128 @@
++
++                    VDR-HLCUTTER README
++
++
++Written by:           Udo Richter
++Available at:         http://www.udo-richter.de/vdr/patches.html#hlcutter
++                      http://www.udo-richter.de/vdr/patches.en.html#hlcutter
++Contact:              udo_richter@gmx.de
++
++
++
++About
++-----
++
++The hard link cutter patch changes the recording editing algorithms of VDR to
++use filesystem hard links to 'copy' recording files whenever possible to speed
++up editing recordings noticeably.
++
++The patch has matured to be quite stable, at least I'm using it without issues.
++Nevertheless the patch is still in development and should be used with caution. 
++The patch is EXPERIMENTAL for multiple /videoxx folders. The safety checks 
++should prevent data loss, but you should always carefully check the results.
++
++While editing a recording, the patch searches for any 00x.vdr files that don't
++contain editing marks and would normally be copied 1:1 unmodified to the edited
++recording. In this case the current target 00x.vdr file will be aborted, and 
++the cutter process attempts to duplicate the source file as a hard link, so 
++that both files share the same disk space. If this succeeds, the editing 
++process fast-forwards through the duplicated file and continues normally 
++beginning with the next source file. If hard linking fails, the cutter process
++continues with plain old copying. (but does not take up the aborted last file.)
++
++After editing, the un-edited recording can be deleted as usual, the hard linked
++copies will continue to exist as the only remaining copy.
++
++To be effective, the default 'Max. video file size (MB)' should be lowered. 
++The patch lowers the smallest possible file size to 1mb. Since VDR only 
++supports up to 255 files, this would limit the recording size to 255Mb or
++10 minutes, in other words: This setting is insane!
++
++To make sure that the 255 file limit will not be reached, the patch also 
++introduces "Max. recording size (GB)" with a default of 100Gb (66 hours), and 
++increases the file size to 2000Mb early enough, so that 100Gb-recordings will
++fit into the 255 files.
++
++Picking the right parameters can be tricky. The smaller the file size, the 
++faster the editing process works. However, with a small file size, long 
++recordings will fall back to 2000Mb files soon, that are slow on editing again.
++
++Here are some examples:
++
++Max file size:      100Gb   100Gb   100Gb   100Gb   100Gb   100Gb   100Gb
++Max recording size: 1Mb     10Mb    20Mb    30Mb    40Mb    50Mb    100Mb
++
++Small files:        1-203   1-204   1-205   1-206   1-207   1-209   1-214
++  GBytes:           0.2     2.0     4.0     6.0     8.1     10.2    20.9
++  Hours:            0.13    1.3     2.65    4       5.4     6.8     13.9
++
++Big (2000mb) files: 204-255 204-255 206-255 207-255 208-255 210-255 215-255
++  GBytes:           101.5   99.6    97.7    95.7    93.8    89.8    80.1
++  Hours:            67      66      65      63      62      60      53
++
++A recording limit of 100Gb keeps plenty of reserve without blocking too much
++file numbers. And with a file size of 30-40Mb, recordings of 4-5 hours fit into
++small files completely. (depends on bit rate of course)
++
++
++
++The patch must be enabled in Setup-> Recordings-> Hard Link Cutter. When 
++disabled, the cutter process behaves identical to VDR's default cutter.
++
++There's a //#define HARDLINK_TEST_ONLY in the videodir.c file that enables a
++test-mode that hard-links 00x.vdr_ files only, and continues the classic 
++editing. The resulting 00x.vdr and 00x.vdr_ files should be identical. If you 
++delete the un-edited recording, don't forget to delete the *.vdr_ files too, 
++they will now eat real disk space.
++
++Note: 'du' displays the disk space of hard links only on first appearance, and
++usually you will see a noticeably smaller size on the edited recording.
++
++
++History
++-------
++
++Version 0.2.3
++  Fix: Compatible to VDR-1.7.27+ thx to Ville SkyttÃ¤
++  New: Add German translation
++  New: Add Finnish translation, thx to Ville SkyttÃ¤
++
++Version 0.2.2
++  Fix: Adapt to GCC-4.4, thx to Ville SkyttÃ¤
++
++Version 0.2.1
++  New: Support for TS recordings with up to 65535 files and up to 1TB per file
++
++Version 0.2.0
++  New: Support for multiple /videoXX recording folders, using advanced searching
++       for matching file systems where a hard link can be created.
++       Also supports deep mounted file systems.
++  Fix: Do not fail if last mark is a cut-in. (Again.)
++
++Version 0.1.4
++  New: Dynamic increase of file size before running out of xxx.vdr files
++  Fix: Last edit mark is not a cut-out
++  Fix: Write error if link-copied file is smaller than allowed file size
++  Fix: Broken index/marks if cut-in is at the start of a new file
++  Fix: Clear dangling pointer to free'd cUnbufferedFile, 
++       thx to Matthias Schwarzott
++
++Version 0.1.0
++  Initial release
++
++
++
++
++Future plans
++------------
++
++Since original and edited copy share disk space, free space is wrong if one of
++them is moved to *.del. Free space should only count files with hard link 
++count = 1. This still goes wrong if all copies get deleted.
++
++
++For more safety, the hard-linked files may be made read-only, as modifications
++to one copy will affect the other copy too. (except deleting, of course)
++
++
++SetBrokenLink may get lost on rare cases, this needs some more thoughts.
+diff -Naur vdr-1.7.27/recorder.c vdr-1.7.27-hlcutter/recorder.c
+--- vdr-1.7.27/recorder.c	2011-09-04 11:26:44.000000000 +0200
++++ vdr-1.7.27-hlcutter/recorder.c	2012-03-31 13:25:56.000000000 +0200
+@@ -89,7 +89,7 @@
+ bool cRecorder::NextFile(void)
+ {
+   if (recordFile && frameDetector->IndependentFrame()) { // every file shall start with an independent frame
+-     if (fileSize > MEGABYTE(off_t(Setup.MaxVideoFileSize)) || RunningLowOnDiskSpace()) {
++     if (fileSize > fileName->MaxFileSize() || RunningLowOnDiskSpace()) {
+         recordFile = fileName->NextFile();
+         fileSize = 0;
+         }
+diff -Naur vdr-1.7.27/recording.c vdr-1.7.27-hlcutter/recording.c
+--- vdr-1.7.27/recording.c	2012-03-13 14:17:57.000000000 +0100
++++ vdr-1.7.27-hlcutter/recording.c	2012-03-31 13:25:56.000000000 +0200
+@@ -2064,6 +2064,20 @@
+   return NULL;
+ }
+ 
++off_t cFileName::MaxFileSize() {
++  const int maxVideoFileSize = isPesRecording ? MAXVIDEOFILESIZEPES : MAXVIDEOFILESIZETS;
++  const int setupMaxVideoFileSize = min(maxVideoFileSize, Setup.MaxVideoFileSize);
++  const int maxFileNumber = isPesRecording ? 255 : 65535;
++
++  const off_t smallFiles = (maxFileNumber * off_t(maxVideoFileSize) - 1024 * Setup.MaxRecordingSize)
++                           / max(maxVideoFileSize - setupMaxVideoFileSize, 1);
++
++  if (fileNumber <= smallFiles)
++     return MEGABYTE(off_t(setupMaxVideoFileSize));
++  
++  return MEGABYTE(off_t(maxVideoFileSize));
++}
++
+ cUnbufferedFile *cFileName::NextFile(void)
+ {
+   return SetOffset(fileNumber + 1);
+diff -Naur vdr-1.7.27/recording.h vdr-1.7.27-hlcutter/recording.h
+--- vdr-1.7.27/recording.h	2012-03-13 13:41:05.000000000 +0100
++++ vdr-1.7.27-hlcutter/recording.h	2012-03-31 13:25:56.000000000 +0200
+@@ -264,9 +264,17 @@
+ // before the next independent frame, to have a complete Group Of Pictures):
+ #define MAXVIDEOFILESIZETS  1048570 // MB
+ #define MAXVIDEOFILESIZEPES    2000 // MB
+-#define MINVIDEOFILESIZE        100 // MB
++#define MINVIDEOFILESIZE          1 // MB
+ #define MAXVIDEOFILESIZEDEFAULT MAXVIDEOFILESIZEPES
+ 
++#define MINRECORDINGSIZE      25 // GB
++#define MAXRECORDINGSIZE     500 // GB
++#define DEFAULTRECORDINGSIZE 100 // GB
++// Dynamic recording size:
++// Keep recording file size at Setup.MaxVideoFileSize for as long as possible,
++// but switch to MAXVIDEOFILESIZE early enough, so that Setup.MaxRecordingSize
++// will be reached, before recording to file 65535.vdr
++
+ struct tIndexTs;
+ class cIndexFileGenerator;
+ 
+@@ -319,6 +327,8 @@
+   cUnbufferedFile *Open(void);
+   void Close(void);
+   cUnbufferedFile *SetOffset(int Number, off_t Offset = 0); // yes, Number is int for easier internal calculating
++  off_t MaxFileSize();
++      // Dynamic file size for this file
+   cUnbufferedFile *NextFile(void);
+   };
+ 
+diff -Naur vdr-1.7.27/videodir.c vdr-1.7.27-hlcutter/videodir.c
+--- vdr-1.7.27/videodir.c	2008-02-16 14:00:03.000000000 +0100
++++ vdr-1.7.27-hlcutter/videodir.c	2012-03-31 13:25:56.000000000 +0200
+@@ -19,6 +19,9 @@
+ #include "recording.h"
+ #include "tools.h"
+ 
++
++//#define HARDLINK_TEST_ONLY
++
+ const char *VideoDirectory = VIDEODIR;
+ 
+ class cVideoDirectory {
+@@ -168,6 +171,120 @@
+   return RemoveFileOrDir(FileName, true);
+ }
+ 
++static bool StatNearestDir(const char *FileName, struct stat *Stat)
++{
++  cString Name(FileName);
++  char *p;
++  while ((p = strrchr((char*)(const char*)Name + 1, '/')) != NULL) {
++        *p = 0; // truncate at last '/'
++        if (stat(Name, Stat) == 0) {
++           isyslog("StatNearestDir: Stating %s", (const char*)Name);
++           return true;
++           }
++        }
++  return false;
++}
++
++bool HardLinkVideoFile(const char *OldName, const char *NewName)
++{
++  // Incoming name must be in base video directory:
++  if (strstr(OldName, VideoDirectory) != OldName) {
++     esyslog("ERROR: %s not in %s", OldName, VideoDirectory);
++     return false;
++     }
++  if (strstr(NewName, VideoDirectory) != NewName) {
++     esyslog("ERROR: %s not in %s", NewName, VideoDirectory);
++     return false;
++     }
++
++  const char *ActualNewName = NewName;
++  cString ActualOldName(ReadLink(OldName), true);
++
++  // Some safety checks:
++  struct stat StatOldName;
++  if (lstat(ActualOldName, &StatOldName) == 0) {
++     if (S_ISLNK(StatOldName.st_mode)) {
++        esyslog("HardLinkVideoFile: Failed to resolve symbolic link %s", (const char*)ActualOldName);
++        return false;
++        }
++     }
++  else {
++     esyslog("HardLinkVideoFile: lstat failed on %s", (const char*)ActualOldName);
++     return false;
++     }
++  isyslog("HardLinkVideoFile: %s is on %i", (const char*)ActualOldName, (int)StatOldName.st_dev);
++
++  // Find the video directory where ActualOldName is located
++
++  cVideoDirectory Dir;
++  struct stat StatDir;
++  if (!StatNearestDir(NewName, &StatDir)) {
++     esyslog("HardLinkVideoFile: stat failed on %s", NewName);
++     return false;
++     }
++  
++  isyslog("HardLinkVideoFile: %s is on %i", NewName, (int)StatDir.st_dev);
++  if (StatDir.st_dev != StatOldName.st_dev) {
++     // Not yet found.
++     
++     if (!Dir.IsDistributed()) {
++        esyslog("HardLinkVideoFile: No matching video folder to hard link %s", (const char*)ActualOldName);
++        return false;
++        }
++
++     // Search in video01 and upwards
++     bool found = false;
++     while (Dir.Next()) {
++           Dir.Store();
++           const char *TmpNewName = Dir.Adjust(NewName);
++           if (StatNearestDir(TmpNewName, &StatDir) && StatDir.st_dev == StatOldName.st_dev) {
++              isyslog("HardLinkVideoFile: %s is on %i (match)", TmpNewName, (int)StatDir.st_dev);
++              ActualNewName = TmpNewName;
++              found = true;
++              break;
++              }
++           isyslog("HardLinkVideoFile: %s is on %i", TmpNewName, (int)StatDir.st_dev);
++           }
++     if (ActualNewName == NewName) {
++        esyslog("HardLinkVideoFile: No matching video folder to hard link %s", (const char*)ActualOldName);
++        return false;
++        }
++
++     // Looking good, we have a match. Create necessary folders.
++     if (!MakeDirs(ActualNewName, false))
++        return false;
++     // There's no guarantee that the directory of ActualNewName 
++     // is on the same device as the dir that StatNearestDir found.
++     // But worst case is that the link fails.
++     }
++
++#ifdef HARDLINK_TEST_ONLY
++  // Do the hard link to *.vdr_ for testing only
++  char *name = NULL;
++  asprintf(&name, "%s_",ActualNewName);
++  link(ActualOldName, name); 
++  free(name);
++  return false;
++#endif // HARDLINK_TEST_ONLY
++  
++  // Try creating the hard link
++  if (link(ActualOldName, ActualNewName) != 0) {
++     // Failed to hard link. Maybe not allowed on file system.
++     LOG_ERROR_STR(ActualNewName);
++     isyslog("HardLinkVideoFile: failed to hard link from %s to %s", (const char*)ActualOldName, ActualNewName);
++     return false;
++     }
++  
++  if (ActualNewName != NewName) {
++     // video01 and up. Do the remaining symlink
++     if (symlink(ActualNewName, NewName) < 0) {
++        LOG_ERROR_STR(NewName);
++        return false;
++        }
++     }
++  return true;
++}
++
+ bool VideoFileSpaceAvailable(int SizeMB)
+ {
+   cVideoDirectory Dir;
+diff -Naur vdr-1.7.27/videodir.h vdr-1.7.27-hlcutter/videodir.h
+--- vdr-1.7.27/videodir.h	2008-02-16 13:53:11.000000000 +0100
++++ vdr-1.7.27-hlcutter/videodir.h	2012-03-31 13:25:56.000000000 +0200
+@@ -19,6 +19,7 @@
+ int CloseVideoFile(cUnbufferedFile *File);
+ bool RenameVideoFile(const char *OldName, const char *NewName);
+ bool RemoveVideoFile(const char *FileName);
++bool HardLinkVideoFile(const char *OldName, const char *NewName);
+ bool VideoFileSpaceAvailable(int SizeMB);
+ int VideoDiskSpace(int *FreeMB = NULL, int *UsedMB = NULL); // returns the used disk space in percent
+ cString PrefixVideoFileName(const char *FileName, char Prefix);

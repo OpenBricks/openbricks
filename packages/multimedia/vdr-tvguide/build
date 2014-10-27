@@ -1,0 +1,39 @@
+#!/bin/sh
+
+. config/options
+
+get_meta vdr
+VDR_VERSION=$PKG_VERSION
+
+get_meta linux
+verlte 3.6.11 $PKG_VERSION && INSDVB="yes" || INSDVB="no"
+if [ $INSDVB = "no" ]; then
+   DVB_DIR=""
+else
+   DVB_DIR="../linux"
+fi
+
+$SCRIPTS/build vdr
+
+VDR_DIR=`basename $BUILD/vdr-$VDR_VERSION`
+
+cd $BUILD/$1*
+#sed -i "/### The directory environment:/a VDRDIR=\"../vdr-$VDR_VERSION\"" Makefile
+make all \
+  VDRDIR="../$VDR_DIR" \
+  LIBDIR="." \
+  DVBDIR=$DVB_DIR \
+  LOCALEDIR="./locale" \
+
+#cp lib$1.so lib$1.so.${VDR_VERSION}
+#do_strip bin lib$1.so.*
+get_meta vdr
+verlte 1.7.36 $PKG_VERSION && VDRINS="no" || VDRINS="yes"
+
+if [ $VDRINS = "yes" ]; then
+  make_install
+  rm -rf .install-debuginfo || true
+else
+  do_strip bin lib$1.so.*
+fi
+

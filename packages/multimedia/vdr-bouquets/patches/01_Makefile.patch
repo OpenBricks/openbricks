@@ -1,0 +1,39 @@
+--- vdr-bouquets-0.3/Makefile.org	2012-05-25 23:15:05.787704223 +0200
++++ vdr-bouquets-0.3/Makefile	2012-05-25 23:15:16.347704229 +0200
+@@ -75,6 +75,11 @@
+ 
+ ISPO = $(shell grep '\#define APIVERSNUM' $(VDRDIR)/config.h | awk '{if($$3>=10507){printf("yes")}else{printf("no")}}')
+ 
++PODIR     = po
++LOCALEDIR = $(VDRDIR)/locale
++I18Npo    = $(wildcard $(PODIR)/*.po)
++I18Nmsgs  = $(addprefix $(LOCALEDIR)/, $(addsuffix /LC_MESSAGES/vdr-$(PLUGIN).mo, $(notdir $(foreach file, $(I18Npo), $(basename $(file))))))
++I18Npot   = $(PODIR)/$(PLUGIN).pot
+ 
+ 
+ ### Targets:
+--- vdr-bouquets-0.3/Makefile.org	2012-05-25 23:25:36.987704547 +0200
++++ vdr-bouquets-0.3/Makefile	2012-05-25 23:26:47.817704583 +0200
+@@ -81,6 +81,22 @@
+ I18Nmsgs  = $(addprefix $(LOCALEDIR)/, $(addsuffix /LC_MESSAGES/vdr-$(PLUGIN).mo, $(notdir $(foreach file, $(I18Npo), $(basename $(file))))))
+ I18Npot   = $(PODIR)/$(PLUGIN).pot
+ 
++%.mo: %.po
++	msgfmt -c -o $@ $<
++
++$(I18Npot): $(wildcard *.c)
++	xgettext -C -cTRANSLATORS --no-wrap --no-location -k -ktr -ktrNOOP --msgid-bugs-address='<see README>' -o $@ $^
++
++%.po: $(I18Npot)
++	msgmerge -U --no-wrap --no-location --backup=none -q $@ $<
++	@touch $@
++
++$(I18Nmsgs): $(LOCALEDIR)/%/LC_MESSAGES/vdr-$(PLUGIN).mo: $(PODIR)/%.mo
++	@mkdir -p $(dir $@)
++	cp $< $@
++
++.PHONY: i18n
++i18n: $(I18Nmsgs) $(I18Npot)
+ 
+ ### Targets:
+ 

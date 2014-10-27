@@ -1,0 +1,97 @@
+--- vdr-1.7.36.orig/channels.h	2013-01-26 15:55:50.000000000 +0100
++++ vdr-1.7.36/channels.h	2013-01-26 15:56:02.000000000 +0100
+@@ -35,6 +35,9 @@
+ #define MAXDPIDS 16 // dolby (AC3 + DTS)
+ #define MAXSPIDS 32 // subtitles
+ #define MAXCAIDS 12 // conditional access
++#ifdef USE_TTXTSUBS
++#define MAXTXTPAGES 8 // teletext pages
++#endif // USE_TTXTSUBS
+ 
+ #define MAXLANGCODE1 4 // a 3 letter language code, zero terminated
+ #define MAXLANGCODE2 8 // up to two 3 letter language codes, separated by '+' and zero terminated
+@@ -71,6 +74,17 @@
+   static const tChannelID InvalidID;
+   };
+ 
++#ifdef USE_TTXTSUBS
++struct tTeletextSubtitlePage {
++  tTeletextSubtitlePage(void) { ttxtPage = ttxtMagazine = 0; ttxtType = 0x02; strcpy(ttxtLanguage, "und"); }
++  tTeletextSubtitlePage(int page) { ttxtMagazine = (page / 100) & 0x7; ttxtPage = (((page % 100) / 10) << 4) + (page % 10); ttxtType = 0x02; strcpy(ttxtLanguage, "und"); }
++  char ttxtLanguage[MAXLANGCODE1];
++  uchar ttxtPage;
++  uchar ttxtMagazine;
++  uchar ttxtType;
++  int PageNumber(void) const { return BCDCHARTOINT(ttxtMagazine) * 100 + BCDCHARTOINT(ttxtPage); }
++  };
++#endif // USE_TTXTSUBS
+ class cChannel;
+ 
+ class cLinkChannel : public cListObject {
+@@ -96,6 +110,9 @@
+   char *shortName;
+   char *provider;
+   char *portalName;
++#ifdef USE_ALTERNATECHANNEL
++  tChannelID alternativeChannelID;
++#endif /* ALTERNATECHANNEL */
+   int __BeginData__;
+   int frequency; // MHz
+   int source;
+@@ -115,6 +132,11 @@
+   uint16_t compositionPageIds[MAXSPIDS];
+   uint16_t ancillaryPageIds[MAXSPIDS];
+   int tpid;
++#ifdef USE_TTXTSUBS
++  int fixedTtxtSubtitlePages;
++  int totalTtxtSubtitlePages;
++  tTeletextSubtitlePage teletextSubtitlePages[MAXTXTPAGES];
++#endif // USE_TTXTSUBS
+   int caids[MAXCAIDS + 1]; // list is zero-terminated
+   int nid;
+   int tid;
+@@ -143,6 +165,9 @@
+   const char *ShortName(bool OrName = false) const;
+   const char *Provider(void) const { return provider; }
+   const char *PortalName(void) const { return portalName; }
++#ifdef USE_ALTERNATECHANNEL
++  const tChannelID AlternativeChannelID(void) const { return alternativeChannelID; }
++#endif /* ALTERNATECHANNEL */
+   int Frequency(void) const { return frequency; } ///< Returns the actual frequency, as given in 'channels.conf'
+   int Transponder(void) const;                    ///< Returns the transponder frequency in MHz, plus the polarization in case of sat
+   static int Transponder(int Frequency, char Polarization); ///< builds the transponder from the given Frequency and Polarization
+@@ -166,6 +191,10 @@
+   uint16_t CompositionPageId(int i) const { return (0 <= i && i < MAXSPIDS) ? compositionPageIds[i] : uint16_t(0); }
+   uint16_t AncillaryPageId(int i) const { return (0 <= i && i < MAXSPIDS) ? ancillaryPageIds[i] : uint16_t(0); }
+   int Tpid(void) const { return tpid; }
++#ifdef USE_TTXTSUBS
++  const tTeletextSubtitlePage *TeletextSubtitlePages() const { return teletextSubtitlePages; }
++  int TotalTeletextSubtitlePages() const { return totalTtxtSubtitlePages; }
++#endif // USE_TTXTSUBS
+   const int *Caids(void) const { return caids; }
+   int Ca(int Index = 0) const { return Index < MAXCAIDS ? caids[Index] : 0; }
+   int Nid(void) const { return nid; }
+@@ -191,7 +220,13 @@
+   void SetId(int Nid, int Tid, int Sid, int Rid = 0);
+   void SetName(const char *Name, const char *ShortName, const char *Provider);
+   void SetPortalName(const char *PortalName);
++#ifdef USE_ALTERNATECHANNEL
++  void SetAlternativeChannelID(const char *AlternativeChannelID);
++#endif /* ALTERNATECHANNEL */
+   void SetPids(int Vpid, int Ppid, int Vtype, int *Apids, int *Atypes, char ALangs[][MAXLANGCODE2], int *Dpids, int *Dtypes, char DLangs[][MAXLANGCODE2], int *Spids, char SLangs[][MAXLANGCODE2], int Tpid);
++#ifdef USE_TTXTSUBS
++  void SetTeletextSubtitlePages(tTeletextSubtitlePage pages[], int numberOfPages);
++#endif // USE_TTXTSUBS
+   void SetCaIds(const int *CaIds); // list must be zero-terminated
+   void SetCaDescriptors(int Level);
+   void SetLinkChannels(cLinkChannels *LinkChannels);
+@@ -211,6 +246,9 @@
+ public:
+   cChannels(void);
+   bool Load(const char *FileName, bool AllowComments = false, bool MustExist = false);
++#ifdef USE_ALTERNATECHANNEL
++  bool LoadAlternativeChannels(const char *FileName);
++#endif /* ALTERNATECHANNEL */
+   void HashChannel(cChannel *Channel);
+   void UnhashChannel(cChannel *Channel);
+   int GetNextGroup(int Idx);   // Get next channel group

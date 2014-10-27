@@ -2,15 +2,10 @@
 
 . config/options
 
-get_meta vdr
-VDR_DIR=$ROOT/$PKG_BUILD_DIR
-echo $VDR_DIR
-
 get_meta $1
 cd $PKG_BUILD_DIR
-echo $PKG_BUILD_DIR
 
-
+VDR_DIR=`basename $BUILD/vdr-2*`
 
 if [ "$TARGET_ARCH" = powerpc ]; then
   CFLAGS="-mpowerpc"
@@ -43,8 +38,23 @@ if pkg_uses $1 dvbcsa; then
   CFG_DVBCSA="LIBDVBCSA=1"
 fi
 
+if [ "$TARGET_ARCH" = x86_64 ]; then
+  sed -i "s|PARALLEL   ?= PARALLEL_32_INT|PARALLEL   ?= PARALLEL_128_SSE|" Makefile
+  sed -i "s|CSAFLAGS   ?= -Wall -fPIC -g -O3 -fomit-frame-pointer -fexpensive-optimizations -funroll-loops|CSAFLAGS   ?= -fPIC -O3 -fexpensive-optimizations -funroll-loops -mmmx -msse -msse2 -msse3|" Makefile
+fi
+
 make \
-  VDRDIR="$VDR_DIR" \
+  VDRDIR="../$VDR_DIR" \
   LIBDIR="." \
+  DVBDIR=$DVB_DIR \
   LOCALEDIR="./locale" \
   $CFG_DVBCSA
+
+get_meta vdr
+verlte 1.7.36 $PKG_VERSION && VDRINS="no" || VDRINS="yes"
+if [ $VDRINS = "yes" ]; then
+  make_install
+  rm -rf .install-debuginfo || true
+else
+  do_strip bin lib$1.so.*
+fi

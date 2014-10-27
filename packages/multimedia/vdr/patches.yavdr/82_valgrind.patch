@@ -1,0 +1,96 @@
+Description: In order to allow valgrind to find memory leaks in VDR plugins,
+ VDR must not unload the plugin libraries when shutting down. This patch adds a
+ new option -k / --keep-plugins (which is only available in the debug build)
+ to disable plugin unloading.
+Author: Tobias Grimm <tg@e-tobi.net>
+
+Index: vdr/plugin.c
+===================================================================
+--- vdr.orig/plugin.c	2011-12-10 22:22:04.000000000 +0100
++++ vdr/plugin.c	2011-12-11 01:49:08.000000000 +0100
+@@ -152,6 +152,10 @@
+ 
+ // --- cDll ------------------------------------------------------------------
+ 
++#ifdef VDRDEBUG
++bool cDll::keepPlugins = false;
++#endif
++
+ cDll::cDll(const char *FileName, const char *Args)
+ {
+   fileName = strdup(FileName);
+@@ -163,8 +167,16 @@
+ cDll::~cDll()
+ {
+   delete plugin;
++#ifdef VDRDEBUG
++  if (!keepPlugins)
++  {
++    if (handle)
++       dlclose(handle);
++    }
++#else
+   if (handle)
+      dlclose(handle);
++#endif
+   free(args);
+   free(fileName);
+ }
+Index: vdr/plugin.h
+===================================================================
+--- vdr.orig/plugin.h	2011-12-10 22:22:04.000000000 +0100
++++ vdr/plugin.h	2011-12-11 01:49:08.000000000 +0100
+@@ -68,6 +68,9 @@
+   void *handle;
+   cPlugin *plugin;
+ public:
++  #ifdef VDRDEBUG
++  static bool keepPlugins;
++  #endif
+   cDll(const char *FileName, const char *Args);
+   virtual ~cDll();
+   bool Load(bool Log = false);
+Index: vdr/vdr.c
+===================================================================
+--- vdr.orig/vdr.c	2011-12-11 01:48:50.000000000 +0100
++++ vdr/vdr.c	2011-12-11 01:49:08.000000000 +0100
+@@ -228,6 +228,9 @@
+       { "grab",     required_argument, NULL, 'g' },
+       { "help",     no_argument,       NULL, 'h' },
+       { "instance", required_argument, NULL, 'i' },
++#ifdef VDRDEBUG
++      { "keep-plugins", no_argument,   NULL, 'k' },
++#endif
+       { "lib",      required_argument, NULL, 'L' },
+       { "lirc",     optional_argument, NULL, 'l' | 0x100 },
+       { "localedir",required_argument, NULL, 'l' | 0x200 },
+@@ -251,7 +254,7 @@
+     };
+ 
+   int c;
+-  while ((c = getopt_long(argc, argv, "a:c:dD:e:E:g:hi:l:L:mp:P:r:s:t:u:v:Vw:", long_options, NULL)) != -1) {
++  while ((c = getopt_long(argc, argv, "a:c:dD:e:E:g:hi:kl:L:mp:P:r:s:t:u:v:Vw:", long_options, NULL)) != -1) {
+         switch (c) {
+           case 'a': AudioCommand = optarg;
+                     break;
+@@ -292,6 +295,10 @@
+                        }
+                     fprintf(stderr, "vdr: invalid instance id: %s\n", optarg);
+                     return 2;
++#ifdef VDRDEBUG
++          case 'k': cDll::keepPlugins = true;
++                    break;
++#endif
+           case 'l': {
+                       char *p = strchr(optarg, '.');
+                       if (p)
+@@ -440,6 +447,9 @@
+                "                           or symlinks (default: none, same as -g-)\n"
+                "  -h,       --help         print this help and exit\n"
+                "  -i ID,    --instance=ID  use ID as the id of this VDR instance (default: 0)\n"
++#ifdef VDRDEBUG
++               "  -k        --keep-plugins Support valgrind by not unloading plugins\n"
++#endif
+                "  -l LEVEL, --log=LEVEL    set log level (default: 3)\n"
+                "                           0 = no logging, 1 = errors only,\n"
+                "                           2 = errors and info, 3 = errors, info and debug\n"

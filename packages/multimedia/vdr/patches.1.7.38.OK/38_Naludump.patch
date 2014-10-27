@@ -1,0 +1,685 @@
+diff -urN vdr-1.7.38-live/config.c vdr-1.7.38/config.c
+--- vdr-1.7.38-live/config.c	2013-02-22 09:07:33.159436471 +0100
++++ vdr-1.7.38/config.c	2013-02-22 09:41:12.803471140 +0100
+@@ -434,6 +434,9 @@
+   VideoDisplayFormat = 1;
+   VideoFormat = 0;
+   UpdateChannels = 5;
++#ifdef USE_CHANNELBIND
++  ChannelBindingByRid = 0;
++#endif /* CHANNELBIND */
+   UseDolbyDigital = 1;
+   ChannelInfoPos = 0;
+   ChannelInfoTime = 5;
+@@ -461,6 +464,9 @@
+   MaxVideoFileSize = MAXVIDEOFILESIZEDEFAULT;
+   SplitEditedFiles = 0;
+   DelTimeshiftRec = 0;
++#ifdef USE_NALUDUMP
++  DumpNaluFill = 0;
++#endif // USE_NALUDUMP
+   MinEventTimeout = 30;
+   MinUserInactivity = 300;
+   NextWakeupTime = 0;
+@@ -699,6 +705,9 @@
+   else if (!strcasecmp(Name, "MaxVideoFileSize"))    MaxVideoFileSize   = atoi(Value);
+   else if (!strcasecmp(Name, "SplitEditedFiles"))    SplitEditedFiles   = atoi(Value);
+   else if (!strcasecmp(Name, "DelTimeshiftRec"))     DelTimeshiftRec    = atoi(Value);
++#ifdef USE_NALUDUMP
++  else if (!strcasecmp(Name, "DumpNaluFill"))        DumpNaluFill       = atoi(Value);
++#endif // USE_NALUDUMP
+   else if (!strcasecmp(Name, "MinEventTimeout"))     MinEventTimeout    = atoi(Value);
+   else if (!strcasecmp(Name, "MinUserInactivity"))   MinUserInactivity  = atoi(Value);
+   else if (!strcasecmp(Name, "NextWakeupTime"))      NextWakeupTime     = atoi(Value);
+@@ -822,6 +831,9 @@
+   Store("MaxVideoFileSize",   MaxVideoFileSize);
+   Store("SplitEditedFiles",   SplitEditedFiles);
+   Store("DelTimeshiftRec",    DelTimeshiftRec);
++#ifdef USE_NALUDUMP
++  Store("DumpNaluFill",       DumpNaluFill);
++#endif // USE_NALUDUMP
+   Store("MinEventTimeout",    MinEventTimeout);
+   Store("MinUserInactivity",  MinUserInactivity);
+   Store("NextWakeupTime",     NextWakeupTime);
+diff -urN vdr-1.7.38-live/config.h vdr-1.7.38/config.h
+--- vdr-1.7.38-live/config.h	2013-02-22 09:06:09.187435030 +0100
++++ vdr-1.7.38/config.h	2013-02-22 09:42:38.383472608 +0100
+@@ -31,6 +31,10 @@
+ #define APIVERSION  "1.7.38"
+ #define APIVERSNUM   10738  // Version * 10000 + Major * 100 + Minor
+ 
++#ifdef USE_YAEPG
++#define YAEPGHDVERSNUM 1
++#endif /* YAEPG */
++
+ // When loading plugins, VDR searches them by their APIVERSION, which
+ // may be smaller than VDRVERSION in case there have been no changes to
+ // VDR header files since the last APIVERSION. This allows compiled
+@@ -332,6 +336,9 @@
+   int MaxVideoFileSize;
+   int SplitEditedFiles;
+   int DelTimeshiftRec;
++#ifdef USE_NALUDUMP
++  int DumpNaluFill;
++#endif // USE_NALUDUMP
+   int MinEventTimeout, MinUserInactivity;
+   time_t NextWakeupTime;
+   int MultiSpeedMode;
+diff -urN vdr-1.7.38-live/menu.c vdr-1.7.38/menu.c
+--- vdr-1.7.38-live/menu.c	2013-02-22 09:15:27.535444614 +0100
++++ vdr-1.7.38/menu.c	2013-02-22 09:45:54.443475974 +0100
+@@ -3392,6 +3392,9 @@
+   Add(new cMenuEditIntItem( tr("Setup.Recording$Max. video file size (MB)"), &data.MaxVideoFileSize, MINVIDEOFILESIZE, MAXVIDEOFILESIZETS));
+   Add(new cMenuEditBoolItem(tr("Setup.Recording$Split edited files"),        &data.SplitEditedFiles));
+   Add(new cMenuEditStraItem(tr("Setup.Recording$Delete timeshift recording"),&data.DelTimeshiftRec, 3, delTimeshiftRecTexts));
++#ifdef USE_NALUDUMP
++  Add(new cMenuEditBoolItem(tr("Setup.Recording$Dump NALU Fill data"),       &data.DumpNaluFill));
++#endif /* USE_NALUDUMP */
+ }
+ 
+ // --- cMenuSetupReplay ------------------------------------------------------
+diff -urN vdr-1.7.38-live/recorder.c vdr-1.7.38/recorder.c
+--- vdr-1.7.38-live/recorder.c	2013-02-22 09:06:09.199435031 +0100
++++ vdr-1.7.38/recorder.c	2013-02-22 09:50:10.143480367 +0100
+@@ -49,6 +49,16 @@
+      Type = 0x06;
+      }
+   frameDetector = new cFrameDetector(Pid, Type);
++#ifdef USE_NALUDUMP
++  if (   Type == 0x1B // MPEG4 video
++      && (Setup.DumpNaluFill ? (strstr(FileName, "NALUKEEP") == NULL) : (strstr(FileName, "NALUDUMP") != NULL))) { // MPEG4
++     isyslog("Starting NALU fill dumper");
++     naluStreamProcessor = new cNaluStreamProcessor();
++     naluStreamProcessor->SetPid(Pid);
++     }
++  else
++     naluStreamProcessor = NULL;
++#endif // USE_NALUDUMP
+   index = NULL;
+   fileSize = 0;
+   lastDiskSpaceCheck = time(NULL);
+@@ -70,6 +80,14 @@
+ cRecorder::~cRecorder()
+ {
+   Detach();
++#ifdef USE_NALUDUMP
++  if (naluStreamProcessor) {
++     long long int TotalPackets = naluStreamProcessor->GetTotalPackets();
++     long long int DroppedPackets = naluStreamProcessor->GetDroppedPackets();
++     isyslog("NALU fill dumper: %lld of %lld packets dropped, %lli%%", DroppedPackets, TotalPackets, TotalPackets ? DroppedPackets*100/TotalPackets : 0);
++     delete naluStreamProcessor;
++     }
++#endif // USE_NALUDUMP
+   delete index;
+   delete fileName;
+   delete frameDetector;
+@@ -161,11 +179,39 @@
+                              fileSize += TS_SIZE;
+                              }
+                        }
++#ifndef USE_NALUDUMP
+                     if (recordFile->Write(b, Count) < 0) {
+                        LOG_ERROR_STR(fileName->Name());
+                        break;
+                        }
+                     fileSize += Count;
++#else
++                    if (naluStreamProcessor) {
++                       naluStreamProcessor->PutBuffer(b, Count);
++                       bool Fail = false;
++                       while (true) {
++                             int OutLength = 0;
++                             uchar *OutData = naluStreamProcessor->GetBuffer(OutLength);
++                             if (!OutData || OutLength <= 0)
++                                break;
++                             if (recordFile->Write(OutData, OutLength) < 0) {
++                                LOG_ERROR_STR(fileName->Name());
++                                Fail = true;
++                                break;
++                                }
++                             fileSize += OutLength;
++                             }
++                       if (Fail)
++                          break;
++                       }
++                    else {
++                    if (recordFile->Write(b, Count) < 0) {
++                          LOG_ERROR_STR(fileName->Name());
++                          break;
++                       }
++                       fileSize += Count;
++                    }
++#endif // USE_NALUDUMP
+                     t = time(NULL);
+                     }
+                  }
+diff -urN vdr-1.7.38-live/recorder.h vdr-1.7.38/recorder.h
+--- vdr-1.7.38-live/recorder.h	2013-02-22 09:06:09.199435031 +0100
++++ vdr-1.7.38/recorder.h	2013-02-22 09:50:33.167480759 +0100
+@@ -25,6 +25,9 @@
+   cRingBufferLinear *ringBuffer;
+   cFrameDetector *frameDetector;
+   cPatPmtGenerator patPmtGenerator;
++#ifdef USE_NALUDUMP
++  cNaluStreamProcessor *naluStreamProcessor;
++#endif // USE_NALUDUMP
+   cFileName *fileName;
+ #ifdef USE_LIVEBUFFER
+   cIndex *index;
+diff -urN vdr-1.7.38-live/remux.c vdr-1.7.38/remux.c
+--- vdr-1.7.38-live/remux.c	2013-02-22 09:04:45.383433592 +0100
++++ vdr-1.7.38/remux.c	2013-02-22 10:10:09.583500951 +0100
+@@ -193,6 +193,43 @@
+         l -= TS_SIZE;
+         }
+ }
++#ifdef USE_NALUDUMP
++void TsExtendAdaptionField(unsigned char *Packet, int ToLength)
++{
++    // Hint: ExtenAdaptionField(p, TsPayloadOffset(p) - 4) is a null operation
++
++    int Offset = TsPayloadOffset(Packet); // First byte after existing adaption field
++
++    if (ToLength <= 0)
++    {
++        // Remove adaption field
++        Packet[3] = Packet[3] & ~TS_ADAPT_FIELD_EXISTS;
++        return;
++    }
++
++    // Set adaption field present
++    Packet[3] = Packet[3] | TS_ADAPT_FIELD_EXISTS;
++
++    // Set new length of adaption field:
++    Packet[4] = ToLength <= TS_SIZE-4 ? ToLength-1 : TS_SIZE-4-1;
++
++    if (Packet[4] == TS_SIZE-4-1)
++    {
++        // No more payload, remove payload flag
++        Packet[3] = Packet[3] & ~TS_PAYLOAD_EXISTS;
++    }
++
++    int NewPayload = TsPayloadOffset(Packet); // First byte after new adaption field
++
++    // Fill new adaption field
++    if (Offset == 4 && Offset < NewPayload)
++        Offset++; // skip adaptation_field_length
++    if (Offset == 5 && Offset < NewPayload)
++        Packet[Offset++] = 0; // various flags set to 0
++    while (Offset < NewPayload)
++        Packet[Offset++] = 0xff; // stuffing byte
++}
++#endif // USE_NALUDUMP
+ 
+ // --- Some PES handling tools -----------------------------------------------
+ 
+@@ -1546,3 +1583,346 @@
+         }
+   return Processed;
+ }
++#ifdef USE_NALUDUMP
++
++// --- cNaluDumper ---------------------------------------------------------
++
++cNaluDumper::cNaluDumper()
++{
++    LastContinuityOutput = -1;
++    reset();
++}
++
++void cNaluDumper::reset()
++{
++    LastContinuityInput = -1;
++    ContinuityOffset = 0;
++    PesId = -1;
++    PesOffset = 0;
++    NaluFillState = NALU_NONE;
++    NaluOffset = 0;
++    History = 0xffffffff;
++    DropAllPayload = false;
++}
++
++void cNaluDumper::ProcessPayload(unsigned char *Payload, int size, bool PayloadStart, sPayloadInfo &Info)
++{
++    Info.DropPayloadStartBytes = 0;
++    Info.DropPayloadEndBytes = 0;
++    int LastKeepByte = -1;
++
++    if (PayloadStart)
++    {
++        History = 0xffffffff;
++        PesId = -1;
++        NaluFillState = NALU_NONE;
++    }
++
++    for (int i=0; i<size; i++) {
++        History = (History << 8) | Payload[i];
++
++        PesOffset++;
++        NaluOffset++;
++
++        bool DropByte = false;
++
++        if (History >= 0x00000180 && History <= 0x000001FF)
++        {
++            // Start of PES packet
++            PesId = History & 0xff;
++            PesOffset = 0;
++            NaluFillState = NALU_NONE;
++        }
++        else if (PesId >= 0xe0 && PesId <= 0xef // video stream
++                 && History >= 0x00000100 && History <= 0x0000017F) // NALU start code
++        {
++            int NaluId = History & 0xff;
++            NaluOffset = 0;
++            NaluFillState = ((NaluId & 0x1f) == 0x0c) ? NALU_FILL : NALU_NONE;
++        }
++
++        if (PesId >= 0xe0 && PesId <= 0xef // video stream
++            && PesOffset >= 1 && PesOffset <= 2)
++        {
++            Payload[i] = 0; // Zero out PES length field
++        }
++
++        if (NaluFillState == NALU_FILL && NaluOffset > 0) // Within NALU fill data
++        {
++            // We expect a series of 0xff bytes terminated by a single 0x80 byte.
++
++            if (Payload[i] == 0xFF)
++            {
++                DropByte = true;
++            }
++            else if (Payload[i] == 0x80)
++            {
++                NaluFillState = NALU_TERM; // Last byte of NALU fill, next byte sets NaluFillEnd=true
++                DropByte = true;
++            }
++            else // Invalid NALU fill
++            {
++                dsyslog("cNaluDumper: Unexpected NALU fill data: %02x", Payload[i]);
++                NaluFillState = NALU_END;
++                if (LastKeepByte == -1)
++                {
++                    // Nalu fill from beginning of packet until last byte
++                    // packet start needs to be dropped
++                    Info.DropPayloadStartBytes = i;
++                }
++            }
++        }
++        else if (NaluFillState == NALU_TERM) // Within NALU fill data
++        {
++            // We are after the terminating 0x80 byte
++            NaluFillState = NALU_END;
++            if (LastKeepByte == -1)
++            {
++                // Nalu fill from beginning of packet until last byte
++                // packet start needs to be dropped
++                Info.DropPayloadStartBytes = i;
++            }
++        }
++
++        if (!DropByte)
++            LastKeepByte = i; // Last useful byte
++    }
++
++    Info.DropAllPayloadBytes = (LastKeepByte == -1);
++    Info.DropPayloadEndBytes = size-1-LastKeepByte;
++}
++
++bool cNaluDumper::ProcessTSPacket(unsigned char *Packet)
++{
++    bool HasAdaption = TsHasAdaptationField(Packet);
++    bool HasPayload = TsHasPayload(Packet);
++
++    // Check continuity:
++    int ContinuityInput = TsContinuityCounter(Packet);
++    if (LastContinuityInput >= 0)
++    {
++        int NewContinuityInput = HasPayload ? (LastContinuityInput + 1) & TS_CONT_CNT_MASK : LastContinuityInput;
++        int Offset = (NewContinuityInput - ContinuityInput) & TS_CONT_CNT_MASK;
++        if (Offset > 0)
++            dsyslog("cNaluDumper: TS continuity offset %i", Offset);
++        if (Offset > ContinuityOffset)
++            ContinuityOffset = Offset; // max if packets get dropped, otherwise always the current one.
++    }
++    LastContinuityInput = ContinuityInput;
++
++    if (HasPayload) {
++        sPayloadInfo Info;
++        int Offset = TsPayloadOffset(Packet);
++        ProcessPayload(Packet + Offset, TS_SIZE - Offset, TsPayloadStart(Packet), Info);
++
++        if (DropAllPayload && !Info.DropAllPayloadBytes)
++        {
++            // Return from drop packet mode to normal mode
++            DropAllPayload = false;
++
++            // Does the packet start with some remaining NALU fill data?
++            if (Info.DropPayloadStartBytes > 0)
++            {
++                // Add these bytes as stuffing to the adaption field.
++
++                // Sample payload layout:
++                // FF FF FF FF FF 80 00 00 01 xx xx xx xx
++                //                   ^DropPayloadStartBytes
++
++                TsExtendAdaptionField(Packet, Offset - 4 + Info.DropPayloadStartBytes);
++            }
++        }
++
++        bool DropThisPayload = DropAllPayload;
++
++        if (!DropAllPayload && Info.DropPayloadEndBytes > 0) // Payload ends with 0xff NALU Fill
++        {
++            // Last packet of useful data
++            // Do early termination of NALU fill data
++            Packet[TS_SIZE-1] = 0x80;
++            DropAllPayload = true;
++            // Drop all packets AFTER this one
++
++            // Since we already wrote the 0x80, we have to make sure that
++            // as soon as we stop dropping packets, any beginning NALU fill of next
++            // packet gets dumped. (see DropPayloadStartBytes above)
++        }
++
++        if (DropThisPayload && HasAdaption)
++        {
++            // Drop payload data, but keep adaption field data
++            TsExtendAdaptionField(Packet, TS_SIZE-4);
++            DropThisPayload = false;
++        }
++
++        if (DropThisPayload)
++        {
++            return true; // Drop packet
++        }
++    }
++
++    // Fix Continuity Counter and reproduce incoming offsets:
++    int NewContinuityOutput = TsHasPayload(Packet) ? (LastContinuityOutput + 1) & TS_CONT_CNT_MASK : LastContinuityOutput;
++    NewContinuityOutput = (NewContinuityOutput + ContinuityOffset) & TS_CONT_CNT_MASK;
++    TsSetContinuityCounter(Packet, NewContinuityOutput);
++    LastContinuityOutput = NewContinuityOutput;
++    ContinuityOffset = 0;
++
++    return false; // Keep packet
++}
++
++// --- cNaluStreamProcessor ---------------------------------------------------------
++
++cNaluStreamProcessor::cNaluStreamProcessor()
++{
++    pPatPmtParser = NULL;
++    vpid = -1;
++    data = NULL;
++    length = 0;
++    tempLength = 0;
++    tempLengthAtEnd = false;
++    TotalPackets = 0;
++    DroppedPackets = 0;
++}
++
++void cNaluStreamProcessor::PutBuffer(uchar *Data, int Length)
++{
++    if (length > 0)
++        esyslog("cNaluStreamProcessor::PutBuffer: New data before old data was processed!");
++
++    data = Data;
++    length = Length;
++}
++
++uchar* cNaluStreamProcessor::GetBuffer(int &OutLength)
++{
++    if (length <= 0)
++    {
++        // Need more data - quick exit
++        OutLength = 0;
++        return NULL;
++    }
++    if (tempLength > 0) // Data in temp buffer?
++    {
++        if (tempLengthAtEnd) // Data is at end, copy to beginning
++        {
++            // Overlapping src and dst!
++            for (int i=0; i<tempLength; i++)
++                tempBuffer[i] = tempBuffer[TS_SIZE-tempLength+i];
++        }
++        // Normalize TempBuffer fill
++        if (tempLength < TS_SIZE && length > 0)
++        {
++            int Size = min(TS_SIZE-tempLength, length);
++            memcpy(tempBuffer+tempLength, data, Size);
++            data += Size;
++            length -= Size;
++            tempLength += Size;
++        }
++        if (tempLength < TS_SIZE)
++        {
++            // All incoming data buffered, but need more data
++            tempLengthAtEnd = false;
++            OutLength = 0;
++            return NULL;
++        }
++        // Now: TempLength==TS_SIZE
++        if (tempBuffer[0] != TS_SYNC_BYTE)
++        {
++            // Need to sync on TS within temp buffer
++            int Skipped = 1;
++            while (Skipped < TS_SIZE && (tempBuffer[Skipped] != TS_SYNC_BYTE || (Skipped < length && data[Skipped] != TS_SYNC_BYTE)))
++                Skipped++;
++            esyslog("ERROR: skipped %d bytes to sync on start of TS packet", Skipped);
++            // Pass through skipped bytes
++            tempLengthAtEnd = true;
++            tempLength = TS_SIZE - Skipped; // may be 0, thats ok
++            OutLength = Skipped;
++            return tempBuffer;
++        }
++        // Now: TempBuffer is a TS packet
++        int Pid = TsPid(tempBuffer);
++        if (pPatPmtParser)
++        {
++            if (Pid == 0)
++                pPatPmtParser->ParsePat(tempBuffer, TS_SIZE);
++            else if (Pid == pPatPmtParser->IsPmtPid(Pid))
++                pPatPmtParser->ParsePmt(tempBuffer, TS_SIZE);
++        }
++
++        TotalPackets++;
++        bool Drop = false;
++        if (Pid == vpid || (pPatPmtParser && Pid == pPatPmtParser->Vpid() && pPatPmtParser->Vtype() == 0x1B))
++            Drop = NaluDumper.ProcessTSPacket(tempBuffer);
++        if (!Drop)
++        {
++            // Keep this packet, then continue with new data
++            tempLength = 0;
++            OutLength = TS_SIZE;
++            return tempBuffer;
++        }
++        // Drop TempBuffer
++        DroppedPackets++;
++        tempLength = 0;
++    }
++    // Now: TempLength==0, just process data/length
++
++    // Pointer to processed data / length:
++    uchar *Out = data;
++    uchar *OutEnd = Out;
++
++    while (length >= TS_SIZE)
++    {
++        if (data[0] != TS_SYNC_BYTE) {
++            int Skipped = 1;
++            while (Skipped < length && (data[Skipped] != TS_SYNC_BYTE || (length - Skipped > TS_SIZE && data[Skipped + TS_SIZE] != TS_SYNC_BYTE)))
++                Skipped++;
++            esyslog("ERROR: skipped %d bytes to sync on start of TS packet", Skipped);
++
++            // Pass through skipped bytes
++            if (OutEnd != data)
++                memcpy(OutEnd, data, Skipped);
++            OutEnd += Skipped;
++            continue;
++        }
++        // Now: Data starts with complete TS packet
++
++        int Pid = TsPid(data);
++        if (pPatPmtParser)
++        {
++            if (Pid == 0)
++                pPatPmtParser->ParsePat(data, TS_SIZE);
++            else if (Pid == pPatPmtParser->IsPmtPid(Pid))
++                pPatPmtParser->ParsePmt(data, TS_SIZE);
++        }
++
++        TotalPackets++;
++        bool Drop = false;
++        if (Pid == vpid || (pPatPmtParser && Pid == pPatPmtParser->Vpid() && pPatPmtParser->Vtype() == 0x1B))
++            Drop = NaluDumper.ProcessTSPacket(data);
++        if (!Drop)
++        {
++            if (OutEnd != data)
++                memcpy(OutEnd, data, TS_SIZE);
++            OutEnd += TS_SIZE;
++        }
++        else
++        {
++            DroppedPackets++;
++        }
++        data += TS_SIZE;
++        length -= TS_SIZE;
++    }
++    // Now: Less than a packet remains.
++    if (length > 0)
++    {
++        // copy remains into temp buffer
++        memcpy(tempBuffer, data, length);
++        tempLength = length;
++        tempLengthAtEnd = false;
++        length = 0;
++    }
++    OutLength = (OutEnd - Out);
++    return OutLength > 0 ? Out : NULL;
++}
++#endif // USE_NALUDUMP
+diff -urN vdr-1.7.38-live/remux.h vdr-1.7.38/remux.h
+--- vdr-1.7.38-live/remux.h	2013-02-22 09:04:45.383433592 +0100
++++ vdr-1.7.38/remux.h	2013-02-22 10:01:41.859492239 +0100
+@@ -62,6 +62,14 @@
+   return p[3] & TS_PAYLOAD_EXISTS;
+ }
+ 
++#ifdef USE_NALUDUMP
++inline bool TsSetPayload(const uchar *p)
++{
++  return p[3] & TS_PAYLOAD_EXISTS;
++}
++
++#endif // USE_NALUDUMP
++
+ inline bool TsHasAdaptationField(const uchar *p)
+ {
+   return p[3] & TS_ADAPT_FIELD_EXISTS;
+@@ -118,6 +126,13 @@
+   return p[3] & TS_CONT_CNT_MASK;
+ }
+ 
++#ifdef USE_NALUDUMP
++inline void TsSetContinuityCounter(uchar *p, int Counter)
++{
++  p[3] = (p[3] & ~TS_CONT_CNT_MASK) | (Counter & TS_CONT_CNT_MASK);
++}
++
++#endif // USE_NALUDUMP
+ inline int64_t TsGetPcr(const uchar *p)
+ {
+   if (TsHasAdaptationField(p)) {
+@@ -140,6 +155,9 @@
+ // The following functions all take a pointer to a sequence of complete TS packets.
+ 
+ int64_t TsGetPts(const uchar *p, int l);
++#ifdef USE_NALUDUMP
++void TsExtendAdaptionField(unsigned char *Packet, int ToLength);
++#endif // USE_NALUDUMP
+ int64_t TsGetDts(const uchar *p, int l);
+ void TsSetPts(uchar *p, int l, int64_t Pts);
+ void TsSetDts(uchar *p, int l, int64_t Dts);
+@@ -521,4 +539,80 @@
+       ///< available.
+   };
+ 
++#ifdef USE_NALUDUMP
++
++#define PATCH_NALUDUMP 100
++
++class cNaluDumper {
++    unsigned int History;
++
++    int LastContinuityInput;
++    int LastContinuityOutput;
++    int ContinuityOffset;
++
++    bool DropAllPayload;
++
++    int PesId;
++    int PesOffset;
++
++    int NaluOffset;
++
++    enum eNaluFillState {
++        NALU_NONE=0,    // currently not NALU fill stream
++        NALU_FILL,      // Within NALU fill stream, 0xff bytes and NALU start code in byte 0
++        NALU_TERM,      // Within NALU fill stream, read 0x80 terminating byte
++        NALU_END        // Beyond end of NALU fill stream, expecting 0x00 0x00 0x01 now
++        };
++
++    eNaluFillState NaluFillState;
++
++    struct sPayloadInfo {
++        int DropPayloadStartBytes;
++        int DropPayloadEndBytes;
++        bool DropAllPayloadBytes;
++    };
++
++public:
++    cNaluDumper();
++
++    void reset();
++
++    // Single packet interface:
++    bool ProcessTSPacket(unsigned char *Packet);
++
++private:
++    void ProcessPayload(unsigned char *Payload, int size, bool PayloadStart, sPayloadInfo &Info);
++};
++
++class cNaluStreamProcessor {
++    //Buffer stream interface:
++    int vpid;
++    uchar *data;
++    int length;
++    uchar tempBuffer[TS_SIZE];
++    int tempLength;
++    bool tempLengthAtEnd;
++    cPatPmtParser *pPatPmtParser;
++    cNaluDumper NaluDumper;
++
++    long long int TotalPackets;
++    long long int DroppedPackets;
++public:
++    cNaluStreamProcessor();
++
++    void SetPid(int VPid) { vpid = VPid; }
++    void SetPatPmtParser(cPatPmtParser *_pPatPmtParser) { pPatPmtParser = _pPatPmtParser; }
++    // Set either a PID or set a pointer to an PatPmtParser that will detect _one_ PID
++
++    void PutBuffer(uchar *Data, int Length);
++    // Add new data to be processed. Data must be valid until Get() returns NULL.
++    uchar* GetBuffer(int &OutLength);
++    // Returns filtered data, or NULL/0 to indicate that all data from Put() was processed
++    // or buffered.
++
++    long long int GetTotalPackets() { return TotalPackets; }
++    long long int GetDroppedPackets() { return DroppedPackets; }
++};
++
++#endif // USE_NALUDUMP
+ #endif // __REMUX_H

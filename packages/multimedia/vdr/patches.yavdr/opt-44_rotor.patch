@@ -1,0 +1,114 @@
+Description: This patch is needed for the rotor plugin.
+Author: Thomas Bergwinkl <Bergwinkl.Thomas@vr-web.de>
+Origin: extracted from the rotor plugin 0.1.4-vdr1.5
+
+Index: vdr/device.h
+===================================================================
+--- vdr.orig/device.h	2011-12-11 02:29:26.000000000 +0100
++++ vdr/device.h	2011-12-11 02:29:53.000000000 +0100
+@@ -24,6 +24,8 @@
+ #include "spu.h"
+ #include "thread.h"
+ #include "tools.h"
++#include <asm/types.h>
++#include <linux/dvb/frontend.h>
+ 
+ #define MAXDEVICES         16 // the maximum number of devices in the system
+ #define MAXPIDHANDLES      64 // the maximum number of different PIDs per device
+@@ -324,6 +326,7 @@
+   virtual bool HasProgramme(void);
+          ///< Returns true if the device is currently showing any programme to
+          ///< the user, either through replaying or live.
++  virtual bool SendDiseqcCmd(dvb_diseqc_master_cmd cmd) {return false;}
+ 
+ // PID handle facilities
+ 
+Index: vdr/dvbdevice.c
+===================================================================
+--- vdr.orig/dvbdevice.c	2011-12-10 21:59:26.000000000 +0100
++++ vdr/dvbdevice.c	2011-12-11 02:29:53.000000000 +0100
+@@ -261,6 +261,7 @@
+ private:
+   static cMutex bondMutex;
+   enum eTunerStatus { tsIdle, tsSet, tsTuned, tsLocked };
++  bool SendDiseqc;
+   const cDvbDevice *device;
+   int fd_frontend;
+   int adapter, frontend;
+@@ -276,6 +277,7 @@
+   cMutex mutex;
+   cCondVar locked;
+   cCondVar newSet;
++  dvb_diseqc_master_cmd diseqc_cmd;
+   cDvbTuner *bondedTuner;
+   bool bondedMaster;
+   bool bondedMasterFailed;
+@@ -300,12 +302,14 @@
+   bool Locked(int TimeoutMs = 0);
+   int GetSignalStrength(void) const;
+   int GetSignalQuality(void) const;
++  bool SendDiseqcCmd(dvb_diseqc_master_cmd cmd);
+   };
+ 
+ cMutex cDvbTuner::bondMutex;
+ 
+ cDvbTuner::cDvbTuner(const cDvbDevice *Device, int Fd_Frontend, int Adapter, int Frontend, fe_delivery_system FrontendType)
+ {
++  SendDiseqc=false;
+   device = Device;
+   fd_frontend = Fd_Frontend;
+   adapter = Adapter;
+@@ -625,6 +629,18 @@
+   return -1;
+ }
+ 
++bool cDvbTuner::SendDiseqcCmd(dvb_diseqc_master_cmd cmd)
++{
++  cMutexLock MutexLock(&mutex);
++  if ((frontendType != SYS_DVBS && frontendType != SYS_DVBS2) || SendDiseqc)
++    return false;
++  diseqc_cmd=cmd;
++  SendDiseqc=true;
++  newSet.Broadcast();
++  return true;
++}
++
++
+ static unsigned int FrequencyToHz(unsigned int f)
+ {
+   while (f && f < 1000000)
+@@ -813,6 +829,10 @@
+         if (GetFrontendStatus(NewStatus))
+            Status = NewStatus;
+         cMutexLock MutexLock(&mutex);
++        if (SendDiseqc) {
++           CHECK(ioctl(fd_frontend, FE_DISEQC_SEND_MASTER_CMD, &diseqc_cmd));
++           SendDiseqc=false;
++           }
+         switch (tunerStatus) {
+           case tsIdle:
+                break;
+@@ -1415,6 +1435,11 @@
+   return dvbTuner ? dvbTuner->Locked(TimeoutMs) : false;
+ }
+ 
++bool cDvbDevice::SendDiseqcCmd(dvb_diseqc_master_cmd cmd)
++{
++  return dvbTuner->SendDiseqcCmd(cmd);
++}
++
+ void cDvbDevice::SetTransferModeForDolbyDigital(int Mode)
+ {
+   setTransferModeForDolbyDigital = Mode;
+Index: vdr/dvbdevice.h
+===================================================================
+--- vdr.orig/dvbdevice.h	2011-12-10 21:59:26.000000000 +0100
++++ vdr/dvbdevice.h	2011-12-11 02:29:53.000000000 +0100
+@@ -181,6 +181,7 @@
+   virtual bool SetChannelDevice(const cChannel *Channel, bool LiveView);
+ public:
+   virtual bool HasLock(int TimeoutMs = 0);
++  virtual bool SendDiseqcCmd(dvb_diseqc_master_cmd cmd);
+ 
+ // PID handle facilities
+ 

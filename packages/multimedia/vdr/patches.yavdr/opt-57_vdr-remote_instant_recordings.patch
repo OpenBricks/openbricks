@@ -1,0 +1,107 @@
+Description: Patch for vdr-plugin-remotetimers
+Author: Frank Schmirler <vdrdev@schmirler.de> 
+Origin: http://vdr.schmirler.de/
+
+diff -urNad vdr-1.7.22-orig/config.h vdr-1.7.22-remote/config.h
+--- vdr-1.7.22-orig/config.h	2011-12-22 15:27:46.000000000 +0100
++++ vdr-1.7.22-remote/config.h	2011-12-22 15:29:37.448120030 +0100
+@@ -44,6 +44,8 @@
+ #define MAINMENUHOOKSVERSION "1.0.1"
+ #define MAINMENUHOOKSVERSNUM 10001  // Version * 10000 + Major * 100 + Minor
+ 
++#define REMOTEINSTANTVERSION 1.0
++
+ #define MAXPRIORITY 99
+ #define MAXLIFETIME 99
+ 
+diff -urNad vdr-1.7.22-orig/menu.c vdr-1.7.22-remote/menu.c
+--- vdr-1.7.22-orig/menu.c	2011-12-22 15:27:46.000000000 +0100
++++ vdr-1.7.22-remote/menu.c	2011-12-22 15:29:37.458120030 +0100
+@@ -33,6 +33,7 @@
+ #include "timers.h"
+ #include "transfer.h"
+ #include "videodir.h"
++#include "remotetimers.h"
+ #include "menuorgpatch.h"
+ 
+ #define MAXWAIT4EPGINFO   3 // seconds
+@@ -4764,6 +4765,50 @@
+ 
+ bool cRecordControls::Start(cTimer *Timer, bool Pause)
+ {
++  if (!Timer) {
++     cTimer *t = new cTimer(true, Pause);
++
++     //get event
++     cSchedulesLock SchedulesLock;
++     const cEvent *event = NULL;;
++     const cSchedules *Schedules = cSchedules::Schedules(SchedulesLock);
++     if (Schedules) {
++        const cSchedule *Schedule = Schedules->GetSchedule(t->Channel());
++        if (Schedule) {
++           event = Schedule->GetEventAround(t->StartTime() + INSTANT_REC_EPG_LOOKAHEAD);
++        }
++     }
++
++     if (cPluginManager::GetPlugin("timersync")) {
++        // sets the file name
++        cRecording recording(t, event);
++        Timers.Add(t);
++        Timers.SetModified();
++        if (!cReplayControl::LastReplayed())
++           cReplayControl::SetRecording(recording.FileName(), recording.Name());
++        return true;
++     }
++     else {
++        RemoteTimers_InstantRecording_v1_0 ir;
++        ir.timer = t;
++        ir.pause = Pause;
++        ir.event = event;
++        ir.name = NULL;
++        ir.fileName = NULL;
++ 
++        if (cPluginManager::CallFirstService("RemoteTimers::InstantRecording-v1.0", &ir)) {
++           if (!cReplayControl::LastReplayed())
++              cReplayControl::SetRecording(ir.fileName, ir.name);
++ 	  delete t;
++ 	  // empty names indicate an error
++ 	  return *ir.fileName && *ir.name;
++        }
++        // service disabled or an error occured and the user confirmed local recording
++        // fall through to local instant recording
++     }
++     delete t;
++  }
++
+   static time_t LastNoDiskSpaceMessage = 0;
+   int FreeMB = 0;
+   if (Timer) {
+diff -urNad vdr-1.7.22-orig/remotetimers.h vdr-1.7.22-remote/remotetimers.h
+--- vdr-1.7.22-orig/remotetimers.h	1970-01-01 01:00:00.000000000 +0100
++++ vdr-1.7.22-remote/remotetimers.h	2011-12-22 15:29:37.458120030 +0100
+@@ -0,0 +1,25 @@
++/*
++ * remotetimers.h: Public interface of the plugin's services
++ *
++ * See the README file for copyright information and how to reach the author.
++ */
++
++#ifndef _SERVICE__H
++#define _SERVICE__H
++
++#ifndef __TIMERS_H
++#include <vdr/timer.h>
++#include <vdr/epg.h>
++#endif
++
++struct RemoteTimers_InstantRecording_v1_0 {
++//in
++	const cTimer	*timer;
++	bool		pause;
++	const cEvent	*event;
++//out
++	cString		name;
++	cString		fileName;
++};
++
++#endif //_SERVICE__H

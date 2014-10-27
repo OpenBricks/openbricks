@@ -1,0 +1,58 @@
+--- vdr-1.7.36.orig/cutter.c	2013-01-26 15:55:49.000000000 +0100
++++ vdr-1.7.36/cutter.c	2013-01-26 15:56:02.000000000 +0100
+@@ -8,6 +8,9 @@
+  */
+ 
+ #include "cutter.h"
++#ifdef USE_VASARAJANAULOJA
++#include "interface.h"
++#endif /* VASARAJANAULOJA */
+ #include "menu.h"
+ #include "recording.h"
+ #include "remux.h"
+@@ -635,7 +638,11 @@
+ bool cCutter::error = false;
+ bool cCutter::ended = false;
+ 
++#ifdef USE_VASARAJANAULOJA
++bool cCutter::Start(const char *FileName, const char *TargetFileName, bool Overwrite)
++#else
+ bool cCutter::Start(const char *FileName)
++#endif /* VASARAJANAULOJA */
+ {
+   cMutexLock MutexLock(&mutex);
+   if (!cuttingThread) {
+@@ -649,11 +656,25 @@
+      if (cMark *First = FromMarks.GetNextBegin())
+         Recording.SetStartTime(Recording.Start() + (int(First->Position() / Recording.FramesPerSecond() + 30) / 60) * 60);
+ 
++#ifdef USE_VASARAJANAULOJA
++	 cString evn = (TargetFileName && *TargetFileName) ? Recording.UpdateFileName(TargetFileName) : Recording.PrefixFileName('%');
++	 if (!Overwrite && *evn && (access(*evn, F_OK) == 0) && !Interface->Confirm(tr("File already exists - overwrite?"))) {
++		 do {
++			 evn = PrefixVideoFileName(*evn, '%');
++		 } while (*evn && (access(*evn, F_OK) == 0));
++	 }
++	 if (*evn && RemoveVideoFile(*evn) && MakeDirs(*evn, true)) {
++#else
+      const char *evn = Recording.PrefixFileName('%');
+      if (evn && RemoveVideoFile(evn) && MakeDirs(evn, true)) {
++#endif /* VASARAJANAULOJA */
+         // XXX this can be removed once RenameVideoFile() follows symlinks (see videodir.c)
+         // remove a possible deleted recording with the same name to avoid symlink mixups:
++#ifdef USE_VASARAJANAULOJA
++		 char *s = strdup(*evn);
++#else
+         char *s = strdup(evn);
++#endif /* VASARAJANAULOJA */
+         char *e = strrchr(s, '.');
+         if (e) {
+            if (strcmp(e, ".rec") == 0) {
+@@ -706,6 +727,7 @@
+      editedVersionName = NULL;
+      ended = true;
+      }
++
+   return false;
+ }
+ 

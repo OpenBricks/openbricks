@@ -1,0 +1,180 @@
+--- vdr-1.7.36.orig/dvbplayer.c	2013-01-26 15:55:50.000000000 +0100
++++ vdr-1.7.36/dvbplayer.c	2013-01-26 15:56:02.000000000 +0100
+@@ -204,6 +204,9 @@
+   cNonBlockingFileReader *nonBlockingFileReader;
+   cRingBufferFrame *ringBuffer;
+   cPtsIndex ptsIndex;
++#ifdef USE_JUMPPLAY
++  cMarks marks;
++#endif /* JUMPPLAY */
+   cFileName *fileName;
+   cIndexFile *index;
+   cUnbufferedFile *replayFile;
+@@ -286,6 +289,9 @@
+      }
+   else if (PauseLive)
+      framesPerSecond = cRecording(FileName).FramesPerSecond(); // the fps rate might have changed from the default
++#ifdef USE_JUMPPLAY
++  marks.Load(FileName, framesPerSecond, isPesRecording);
++#endif /* JUMPPLAY */
+ }
+ 
+ cDvbPlayer::~cDvbPlayer()
+@@ -364,11 +370,31 @@
+   if (index) {
+      int Index = ptsIndex.FindIndex(DeviceGetSTC());
+      if (Index >= 0) {
++#ifdef USE_JUMPPLAY
++        // set resume position to 0 if replay stops at the first mark
++        if (Setup.PlayJump && marks.First() &&
++            abs(Index - marks.First()->Position()) <= int(round(RESUMEBACKUP * framesPerSecond)))
++           Index = 0;
++#endif /* JUMPPLAY */
++#ifdef USE_VASARAJANAULOJA
++        int backup = int(round(RESUMEBACKUP * framesPerSecond));
++        if (Index >= index->Last() - backup)
++#else
+         Index -= int(round(RESUMEBACKUP * framesPerSecond));
+         if (Index > 0)
+            Index = index->GetNextIFrame(Index, false);
+         else
++#endif /* VASARAJANAULOJA */
+            Index = 0;
++#ifdef USE_VASARAJANAULOJA
++        else {
++           Index -= backup;
++           if (Index > 0)
++              Index = index->GetNextIFrame(Index, false);
++           else
++              Index = 0;
++           }
++#endif /* VASARAJANAULOJA */
+         if (Index >= 0)
+            return index->StoreResume(Index);
+         }
+@@ -390,11 +416,30 @@
+ {
+   uchar *p = NULL;
+   int pc = 0;
++#ifdef USE_JUMPPLAY
++  bool cutIn = false;
++  int total = -1;
++#endif /* JUMPPLAY */
+ 
+   readIndex = Resume();
+   if (readIndex >= 0)
+      isyslog("resuming replay at index %d (%s)", readIndex, *IndexToHMSF(readIndex, true, framesPerSecond));
+ 
++#ifdef USE_JUMPPLAY
++  if (Setup.PlayJump && readIndex <= 0 && marks.First() && index) {
++     int Index = marks.First()->Position();
++     uint16_t FileNumber;
++     off_t FileOffset;
++     if (index->Get(Index, &FileNumber, &FileOffset) &&
++         NextFile(FileNumber, FileOffset)) {
++        isyslog("PlayJump: start replay at first mark %d (%s)",
++                Index, *IndexToHMSF(Index, true, framesPerSecond));
++        readIndex = Index;
++        }
++     }
++
++  bool LastMarkPause = false;
++#endif /* JUMPPLAY */
+   nonBlockingFileReader = new cNonBlockingFileReader;
+   int Length = 0;
+   bool Sleep = false;
+@@ -421,7 +466,11 @@
+ 
+           // Read the next frame from the file:
+ 
++#ifdef USE_JUMPPLAY
++          if (playMode != pmStill && playMode != pmPause && !LastMarkPause) {
++#else
+           if (playMode != pmStill && playMode != pmPause) {
++#endif /* JUMPPLAY */
+              if (!readFrame && (replayFile || readIndex >= 0)) {
+                 if (!nonBlockingFileReader->Reading()) {
+                    if (!SwitchToPlayFrame && (playMode == pmFast || (playMode == pmSlow && playDir == pdBackward))) {
+@@ -458,6 +507,46 @@
+                    else if (index) {
+                       uint16_t FileNumber;
+                       off_t FileOffset;
++#ifdef USE_JUMPPLAY
++                      if (Setup.PlayJump || Setup.PauseLastMark) {
++                         // check for end mark - jump to next mark or pause
++                         readIndex++;
++                         marks.Update();
++                         cMark *m = marks.Get(readIndex);
++                         if (m && (m->Index() & 0x01) != 0) {
++                            m = marks.Next(m);
++                            int Index;
++                            if (m)
++                               Index = m->Position();
++                            else if (Setup.PauseLastMark) {
++                               // pause at last mark
++                               isyslog("PauseLastMark: pause at position %d (%s)",
++                                       readIndex, *IndexToHMSF(readIndex, true, framesPerSecond));
++                               LastMarkPause = true;
++                               Index = -1;
++                               }
++                            else if (total == index->Last())
++                               // at last mark jump to end of recording
++                               Index = index->Last() - 1;
++                            else
++                               // jump but stay off end of live-recordings
++                               Index = index->GetNextIFrame(index->Last() - int(round(MAXSTUCKATEOF * framesPerSecond)), true);
++                            // don't jump in edited recordings
++                            if (Setup.PlayJump && Index > readIndex &&
++                                Index > index->GetNextIFrame(readIndex, true)) {
++                               isyslog("PlayJump: %d frames to %d (%s)",
++                                       Index - readIndex, Index,
++                                       *IndexToHMSF(Index, true, framesPerSecond));
++                               readIndex = Index;
++                               cutIn = true;
++                               }
++                            }
++                         readIndex--;
++                      }
++                      // for detecting growing length of live-recordings
++                      if (index->Get(readIndex + 1, &FileNumber, &FileOffset, &readIndependent) && readIndependent)
++                         total = index->Last();
++#endif /* JUMPPLAY */
+                       if (index->Get(readIndex + 1, &FileNumber, &FileOffset, &readIndependent, &Length) && NextFile(FileNumber, FileOffset))
+                          readIndex++;
+                       else
+@@ -502,6 +591,15 @@
+              // Store the frame in the buffer:
+ 
+              if (readFrame) {
++#ifdef USE_JUMPPLAY
++
++
++
++
++
++
++
++#endif /* JUMPPLAY */
+                 if (ringBuffer->Put(readFrame))
+                    readFrame = NULL;
+                 else
+@@ -567,8 +665,19 @@
+                 p = NULL;
+                 }
+              }
++#ifdef USE_JUMPPLAY
++          else {
++             if (LastMarkPause) {
++                LastMarkPause = false;
++                playMode = pmPause;
++                }
++#else
+           else
++#endif /* JUMPPLAY */
+              Sleep = true;
++#ifdef USE_JUMPPLAY
++             }
++#endif /* JUMPPLAY */
+ 
+           // Handle hitting begin/end of recording:
+ 

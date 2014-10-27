@@ -1,0 +1,1017 @@
+Description: This patch is needed for the ttxtsubs plugin.
+Origin: ttxsubs plugin
+
+Index: vdr/MANUAL
+===================================================================
+--- vdr.orig/MANUAL	2011-12-11 02:29:23.000000000 +0100
++++ vdr/MANUAL	2011-12-11 02:29:26.000000000 +0100
+@@ -730,6 +730,9 @@
+                          background transparency. By default the values as broadcast
+                          are used.
+ 
++  Record Teletext Subtitles = no
++                         If set to 'yes', teletext subtitles will be recorded.
++
+   LNB:
+ 
+   Use DiSEqC = no        Generally turns DiSEqC support on or off.
+Index: vdr/Makefile
+===================================================================
+--- vdr.orig/Makefile	2011-12-11 02:29:03.000000000 +0100
++++ vdr/Makefile	2011-12-11 02:29:26.000000000 +0100
+@@ -47,6 +47,8 @@
+        skinclassic.o skins.o skinsttng.o sourceparams.o sources.o spu.o status.o svdrp.o themes.o thread.o\
+        timers.o tools.o transfer.o vdr.o videodir.o
+ 
++OBJS += vdrttxtsubshooks.o
++
+ ifndef NO_KBD
+ DEFINES += -DREMOTE_KBD
+ endif
+Index: vdr/channels.c
+===================================================================
+--- vdr.orig/channels.c	2011-12-10 22:22:04.000000000 +0100
++++ vdr/channels.c	2011-12-11 02:29:26.000000000 +0100
+@@ -378,6 +378,26 @@
+      }
+ }
+ 
++void cChannel::SetTeletextSubtitlePages(tTeletextSubtitlePage pages[], int numberOfPages)
++{
++  int mod = CHANNELMOD_NONE;
++  if (totalTtxtSubtitlePages != (fixedTtxtSubtitlePages + numberOfPages))
++     mod |= CHANNELMOD_PIDS;
++  totalTtxtSubtitlePages = fixedTtxtSubtitlePages;
++  for (int i = 0; (i < numberOfPages) && (totalTtxtSubtitlePages < MAXTXTPAGES); i++) {
++      if (teletextSubtitlePages[totalTtxtSubtitlePages].ttxtMagazine != pages[i].ttxtMagazine ||
++          teletextSubtitlePages[totalTtxtSubtitlePages].ttxtPage != pages[i].ttxtPage ||
++          teletextSubtitlePages[totalTtxtSubtitlePages].ttxtType != pages[i].ttxtType ||
++          strcmp(teletextSubtitlePages[totalTtxtSubtitlePages].ttxtLanguage, pages[i].ttxtLanguage)) {
++         mod |= CHANNELMOD_PIDS;
++         teletextSubtitlePages[totalTtxtSubtitlePages] = pages[i];
++         }
++      totalTtxtSubtitlePages++;
++      }
++  modification |= mod;
++  Channels.SetModified();
++}
++
+ void cChannel::SetCaIds(const int *CaIds)
+ {
+   if (caids[0] && caids[0] <= CA_USER_MAX)
+@@ -506,10 +526,17 @@
+         q += IntArrayToString(q, Channel->dpids, 10, Channel->dlangs, Channel->dtypes);
+         }
+      *q = 0;
+-     const int TBufferSize = MAXSPIDS * (5 + 1 + MAXLANGCODE2) + 10; // 5 digits plus delimiting ',' or ';' plus optional '=cod+cod', +10: paranoia and tpid
++     const int TBufferSize = (MAXTXTPAGES * MAXSPIDS) * (5 + 1 + MAXLANGCODE2) + 10; // 5 digits plus delimiting ',' or ';' plus optional '=cod+cod', +10: paranoia and tpid
+      char tpidbuf[TBufferSize];
+      q = tpidbuf;
+      q += snprintf(q, sizeof(tpidbuf), "%d", Channel->tpid);
++     if (Channel->fixedTtxtSubtitlePages > 0) {
++        *q++ = '+';
++        for (int i = 0; i < Channel->fixedTtxtSubtitlePages; ++i) {
++            tTeletextSubtitlePage page = Channel->teletextSubtitlePages[i];
++            q += snprintf(q, sizeof(tpidbuf) - (q - tpidbuf), "%d=%s", page.PageNumber(), page.ttxtLanguage);
++            }
++        }
+      if (Channel->spids[0]) {
+         *q++ = ';';
+         q += IntArrayToString(q, Channel->spids, 10, Channel->slangs);
+@@ -678,6 +705,32 @@
+                     }
+               spids[NumSpids] = 0;
+               }
++           fixedTtxtSubtitlePages = 0;
++           if ((p = strchr(tpidbuf, '+')) != NULL) {
++              *p++ = 0;
++              char *q;
++              char *strtok_next;
++              while ((q = strtok_r(p, ",", &strtok_next)) != NULL) {
++                    if (fixedTtxtSubtitlePages < MAXTXTPAGES) {
++                       int page;
++                       char *l = strchr(q, '=');
++                       if (l)
++                          *l++ = 0;
++                       if (sscanf(q, "%d", &page) == 1) {
++                          teletextSubtitlePages[fixedTtxtSubtitlePages] = tTeletextSubtitlePage(page);
++                          if (l)
++                             strn0cpy(teletextSubtitlePages[fixedTtxtSubtitlePages].ttxtLanguage, l, MAXLANGCODE2);
++                          fixedTtxtSubtitlePages++;
++                          }
++                       else
++                          esyslog("ERROR: invalid Teletext page!"); // no need to set ok to 'false'
++                       }
++                    else
++                       esyslog("ERROR: too many Teletext pages!"); // no need to set ok to 'false'
++                    p = NULL;
++                    }
++              totalTtxtSubtitlePages = fixedTtxtSubtitlePages;
++              }
+            if (sscanf(tpidbuf, "%d", &tpid) != 1)
+               return false;
+            if (caidbuf) {
+Index: vdr/channels.h
+===================================================================
+--- vdr.orig/channels.h	2011-12-10 22:22:04.000000000 +0100
++++ vdr/channels.h	2011-12-11 02:29:26.000000000 +0100
+@@ -35,6 +35,7 @@
+ #define MAXDPIDS 16 // dolby (AC3 + DTS)
+ #define MAXSPIDS 32 // subtitles
+ #define MAXCAIDS 12 // conditional access
++#define MAXTXTPAGES 8 // teletext pages
+ 
+ #define MAXLANGCODE1 4 // a 3 letter language code, zero terminated
+ #define MAXLANGCODE2 8 // up to two 3 letter language codes, separated by '+' and zero terminated
+@@ -71,6 +72,16 @@
+   static const tChannelID InvalidID;
+   };
+ 
++struct tTeletextSubtitlePage {
++  tTeletextSubtitlePage(void) { ttxtPage = ttxtMagazine = 0; ttxtType = 0x02; strcpy(ttxtLanguage, "und"); }
++  tTeletextSubtitlePage(int page) { ttxtMagazine = (page / 100) & 0x7; ttxtPage = (((page % 100) / 10) << 4) + (page % 10); ttxtType = 0x02; strcpy(ttxtLanguage, "und"); }
++  char ttxtLanguage[MAXLANGCODE1];
++  uchar ttxtPage;
++  uchar ttxtMagazine;
++  uchar ttxtType;
++  int PageNumber(void) const { return BCDCHARTOINT(ttxtMagazine) * 100 + BCDCHARTOINT(ttxtPage); }
++  };
++
+ class cChannel;
+ 
+ class cLinkChannel : public cListObject {
+@@ -115,6 +126,9 @@
+   uint16_t compositionPageIds[MAXSPIDS];
+   uint16_t ancillaryPageIds[MAXSPIDS];
+   int tpid;
++  int fixedTtxtSubtitlePages;
++  int totalTtxtSubtitlePages;
++  tTeletextSubtitlePage teletextSubtitlePages[MAXTXTPAGES];
+   int caids[MAXCAIDS + 1]; // list is zero-terminated
+   int nid;
+   int tid;
+@@ -164,6 +178,8 @@
+   uint16_t CompositionPageId(int i) const { return (0 <= i && i < MAXSPIDS) ? compositionPageIds[i] : uint16_t(0); }
+   uint16_t AncillaryPageId(int i) const { return (0 <= i && i < MAXSPIDS) ? ancillaryPageIds[i] : uint16_t(0); }
+   int Tpid(void) const { return tpid; }
++  const tTeletextSubtitlePage *TeletextSubtitlePages() const { return teletextSubtitlePages; }
++  int TotalTeletextSubtitlePages() const { return totalTtxtSubtitlePages; }
+   const int *Caids(void) const { return caids; }
+   int Ca(int Index = 0) const { return Index < MAXCAIDS ? caids[Index] : 0; }
+   int Nid(void) const { return nid; }
+@@ -190,6 +206,7 @@
+   void SetName(const char *Name, const char *ShortName, const char *Provider);
+   void SetPortalName(const char *PortalName);
+   void SetPids(int Vpid, int Ppid, int Vtype, int *Apids, int *Atypes, char ALangs[][MAXLANGCODE2], int *Dpids, int *Dtypes, char DLangs[][MAXLANGCODE2], int *Spids, char SLangs[][MAXLANGCODE2], int Tpid);
++  void SetTeletextSubtitlePages(tTeletextSubtitlePage pages[], int numberOfPages);
+   void SetCaIds(const int *CaIds); // list must be zero-terminated
+   void SetCaDescriptors(int Level);
+   void SetLinkChannels(cLinkChannels *LinkChannels);
+Index: vdr/ci.c
+===================================================================
+--- vdr.orig/ci.c	2011-12-10 22:22:04.000000000 +0100
++++ vdr/ci.c	2011-12-11 02:29:26.000000000 +0100
+@@ -1913,6 +1913,8 @@
+          AddPid(Channel->Sid(), *Dpid, STREAM_TYPE_PRIVATE);
+      for (const int *Spid = Channel->Spids(); *Spid; Spid++)
+          AddPid(Channel->Sid(), *Spid, STREAM_TYPE_PRIVATE);
++     if (Channel->Tpid() && Setup.SupportTeletext)
++        AddPid(Channel->Sid(), Channel->Tpid(), STREAM_TYPE_PRIVATE);
+      }
+ }
+ 
+@@ -1936,6 +1938,9 @@
+          CaPmt.AddPid(*Dpid, STREAM_TYPE_PRIVATE);
+      for (const int *Spid = Channel->Spids(); *Spid; Spid++)
+          CaPmt.AddPid(*Spid, STREAM_TYPE_PRIVATE); 
++     if (Channel->Tpid() && Setup.SupportTeletext) {
++        CaPmt.AddPid(Channel->Tpid(), STREAM_TYPE_PRIVATE);
++        }
+      cas->SendPMT(&CaPmt);
+      cTimeMs Timeout(QUERY_REPLY_TIMEOUT);
+      do {
+Index: vdr/config.c
+===================================================================
+--- vdr.orig/config.c	2011-12-11 02:29:23.000000000 +0100
++++ vdr/config.c	2011-12-11 02:29:26.000000000 +0100
+@@ -396,6 +396,7 @@
+   MarginStop = 10;
+   AudioLanguages[0] = -1;
+   DisplaySubtitles = 0;
++  SupportTeletext = 0;
+   SubtitleLanguages[0] = -1;
+   SubtitleOffset = 0;
+   SubtitleFgTransparency = 0;
+@@ -593,6 +594,7 @@
+   else if (!strcasecmp(Name, "MarginStop"))          MarginStop         = atoi(Value);
+   else if (!strcasecmp(Name, "AudioLanguages"))      return ParseLanguages(Value, AudioLanguages);
+   else if (!strcasecmp(Name, "DisplaySubtitles"))    DisplaySubtitles   = atoi(Value);
++  else if (!strcasecmp(Name, "SupportTeletext"))     SupportTeletext    = atoi(Value);
+   else if (!strcasecmp(Name, "SubtitleLanguages"))   return ParseLanguages(Value, SubtitleLanguages);
+   else if (!strcasecmp(Name, "SubtitleOffset"))      SubtitleOffset     = atoi(Value);
+   else if (!strcasecmp(Name, "SubtitleFgTransparency")) SubtitleFgTransparency = atoi(Value);
+@@ -693,6 +695,7 @@
+   Store("MarginStop",         MarginStop);
+   StoreLanguages("AudioLanguages", AudioLanguages);
+   Store("DisplaySubtitles",   DisplaySubtitles);
++  Store("SupportTeletext",    SupportTeletext);
+   StoreLanguages("SubtitleLanguages", SubtitleLanguages);
+   Store("SubtitleOffset",     SubtitleOffset);
+   Store("SubtitleFgTransparency", SubtitleFgTransparency);
+Index: vdr/config.h
+===================================================================
+--- vdr.orig/config.h	2011-12-11 02:29:23.000000000 +0100
++++ vdr/config.h	2011-12-11 02:29:26.000000000 +0100
+@@ -258,6 +258,7 @@
+   int MarginStart, MarginStop;
+   int AudioLanguages[I18N_MAX_LANGUAGES + 1];
+   int DisplaySubtitles;
++  int SupportTeletext;
+   int SubtitleLanguages[I18N_MAX_LANGUAGES + 1];
+   int SubtitleOffset;
+   int SubtitleFgTransparency, SubtitleBgTransparency;
+Index: vdr/device.c
+===================================================================
+--- vdr.orig/device.c	2011-12-11 02:29:08.000000000 +0100
++++ vdr/device.c	2011-12-11 02:29:26.000000000 +0100
+@@ -18,6 +18,7 @@
+ #include "receiver.h"
+ #include "status.h"
+ #include "transfer.h"
++#include "vdrttxtsubshooks.h"
+ 
+ // --- cLiveSubtitle ---------------------------------------------------------
+ 
+@@ -1268,6 +1269,13 @@
+                   }
+                break;
+           case 0xBD: { // private stream 1
++               // EBU Teletext data, ETSI EN 300 472
++               // if PES data header length = 24 and data_identifier = 0x10..0x1F (EBU Data)
++               if (Data[8] == 0x24 && Data[45] >= 0x10 && Data[45] < 0x20) {
++                  cVDRTtxtsubsHookListener::Hook()->PlayerTeletextData((uint8_t*)Data, Length);
++                  break;
++                  }
++
+                int PayloadOffset = Data[8] + 9;
+ 
+                // Compatibility mode for old subtitles plugin:
+@@ -1427,6 +1435,7 @@
+      tsToPesVideo.Reset();
+      tsToPesAudio.Reset();
+      tsToPesSubtitle.Reset();
++     tsToPesTeletext.Reset();
+      }
+   else if (Length < TS_SIZE) {
+      esyslog("ERROR: skipped %d bytes of TS fragment", Length);
+@@ -1472,6 +1481,17 @@
+                     if (!VideoOnly || HasIBPTrickSpeed())
+                        PlayTsSubtitle(Data, TS_SIZE);
+                     }
++                 else if (Pid == patPmtParser.Tpid()) {
++                    if (!VideoOnly || HasIBPTrickSpeed()) {
++                       int l;
++                       tsToPesTeletext.PutTs(Data, Length);
++                       if (const uchar *p = tsToPesTeletext.GetPes(l)) {
++                          if ((l > 45) && (p[0] == 0x00) && (p[1] == 0x00) && (p[2] == 0x01) && (p[3] == 0xbd) && (p[8] == 0x24) && (p[45] >= 0x10) && (p[45] < 0x20))
++                             cVDRTtxtsubsHookListener::Hook()->PlayerTeletextData((uchar *)p, l, false, patPmtParser.TeletextSubtitlePages(), patPmtParser.TotalTeletextSubtitlePages());
++                          tsToPesTeletext.Reset();
++                          }
++                       }
++                    }
+                  }
+               }
+            else if (Pid == patPmtParser.Ppid()) {
+Index: vdr/device.h
+===================================================================
+--- vdr.orig/device.h	2011-12-11 02:29:08.000000000 +0100
++++ vdr/device.h	2011-12-11 02:29:26.000000000 +0100
+@@ -560,6 +560,7 @@
+   cTsToPes tsToPesVideo;
+   cTsToPes tsToPesAudio;
+   cTsToPes tsToPesSubtitle;
++  cTsToPes tsToPesTeletext;
+   bool isPlayingVideo;
+ protected:
+   const cPatPmtParser *PatPmtParser(void) const { return &patPmtParser; }
+Index: vdr/menu.c
+===================================================================
+--- vdr.orig/menu.c	2011-12-11 02:29:23.000000000 +0100
++++ vdr/menu.c	2011-12-11 02:29:26.000000000 +0100
+@@ -2980,6 +2980,7 @@
+      Add(new cMenuEditIntItem( tr("Setup.DVB$Subtitle foreground transparency"), &data.SubtitleFgTransparency, 0, 9));
+      Add(new cMenuEditIntItem( tr("Setup.DVB$Subtitle background transparency"), &data.SubtitleBgTransparency, 0, 10));
+      }
++  Add(new cMenuEditBoolItem(tr("Setup.DVB$Enable teletext support"), &data.SupportTeletext));
+ 
+   SetCurrent(Get(current));
+   Display();
+Index: vdr/pat.c
+===================================================================
+--- vdr.orig/pat.c	2011-12-10 22:22:04.000000000 +0100
++++ vdr/pat.c	2011-12-11 02:29:26.000000000 +0100
+@@ -13,6 +13,7 @@
+ #include "libsi/section.h"
+ #include "libsi/descriptor.h"
+ #include "thread.h"
++#include "vdrttxtsubshooks.h"
+ 
+ #define PMT_SCAN_TIMEOUT  10 // seconds
+ 
+@@ -343,6 +344,8 @@
+         char DLangs[MAXDPIDS][MAXLANGCODE2] = { "" };
+         char SLangs[MAXSPIDS][MAXLANGCODE2] = { "" };
+         int Tpid = 0;
++        tTeletextSubtitlePage TeletextSubtitlePages[MAXTXTPAGES];
++        int NumTPages = 0;
+         int NumApids = 0;
+         int NumDpids = 0;
+         int NumSpids = 0;
+@@ -434,8 +437,21 @@
+                                     NumSpids++;
+                                     }
+                                  break;
+-                            case SI::TeletextDescriptorTag:
++                            case SI::TeletextDescriptorTag: {
+                                  Tpid = esPid;
++                                 SI::TeletextDescriptor *sd = (SI::TeletextDescriptor *)d;
++                                 SI::TeletextDescriptor::Teletext ttxt;
++                                 for (SI::Loop::Iterator it; sd->teletextLoop.getNext(ttxt, it); ) {
++                                     bool isSubtitlePage = (ttxt.getTeletextType() == 0x02) || (ttxt.getTeletextType() == 0x05);
++                                     if ((NumTPages < MAXTXTPAGES) && ttxt.languageCode[0] && isSubtitlePage) {
++                                        strn0cpy(TeletextSubtitlePages[NumTPages].ttxtLanguage, I18nNormalizeLanguageCode(ttxt.languageCode), MAXLANGCODE1);
++                                        TeletextSubtitlePages[NumTPages].ttxtPage = ttxt.getTeletextPageNumber();
++                                        TeletextSubtitlePages[NumTPages].ttxtMagazine = ttxt.getTeletextMagazineNumber();
++                                        TeletextSubtitlePages[NumTPages].ttxtType = ttxt.getTeletextType();
++                                        NumTPages++;
++                                        }
++                                     }
++                                 }
+                                  break;
+                             case SI::ISO639LanguageDescriptorTag: {
+                                  SI::ISO639LanguageDescriptor *ld = (SI::ISO639LanguageDescriptor *)d;
+@@ -537,6 +553,12 @@
+             }
+         if (Setup.UpdateChannels >= 2) {
+            Channel->SetPids(Vpid, Ppid, Vtype, Apids, Atypes, ALangs, Dpids, Dtypes, DLangs, Spids, SLangs, Tpid);
++           if (NumTPages < MAXTXTPAGES) {
++              int manualPageNumber = cVDRTtxtsubsHookListener::Hook()->ManualPageNumber(Channel);
++              if (manualPageNumber)
++                 TeletextSubtitlePages[NumTPages++] = tTeletextSubtitlePage(manualPageNumber);
++              }
++           Channel->SetTeletextSubtitlePages(TeletextSubtitlePages, NumTPages);
+            Channel->SetCaIds(CaDescriptors->CaIds());
+            Channel->SetSubtitlingDescriptors(SubtitlingTypes, CompositionPageIds, AncillaryPageIds);
+            }
+Index: vdr/po/ca_ES.po
+===================================================================
+--- vdr.orig/po/ca_ES.po	2011-12-10 22:22:04.000000000 +0100
++++ vdr/po/ca_ES.po	2011-12-11 02:29:26.000000000 +0100
+@@ -950,6 +950,9 @@
+ msgid "Setup.DVB$Subtitle background transparency"
+ msgstr "Transparència fons subtítols"
+ 
++msgid "Setup.DVB$Enable teletext support"
++msgstr ""
++
+ msgid "LNB"
+ msgstr "Configuració de l'LNB"
+ 
+Index: vdr/po/cs_CZ.po
+===================================================================
+--- vdr.orig/po/cs_CZ.po	2011-12-10 22:22:04.000000000 +0100
++++ vdr/po/cs_CZ.po	2011-12-11 02:29:26.000000000 +0100
+@@ -949,6 +949,9 @@
+ msgid "Setup.DVB$Subtitle background transparency"
+ msgstr "PrÅ¯hlednost pozadÃ­ titulkÅ¯"
+ 
++msgid "Setup.DVB$Enable teletext support"
++msgstr ""
++
+ msgid "LNB"
+ msgstr "LNB"
+ 
+Index: vdr/po/da_DK.po
+===================================================================
+--- vdr.orig/po/da_DK.po	2011-12-10 22:22:04.000000000 +0100
++++ vdr/po/da_DK.po	2011-12-11 02:29:26.000000000 +0100
+@@ -947,6 +947,9 @@
+ msgid "Setup.DVB$Subtitle background transparency"
+ msgstr "Undertekst baggrundsgennemsigtighed"
+ 
++msgid "Setup.DVB$Enable teletext support"
++msgstr ""
++
+ msgid "LNB"
+ msgstr "LNB"
+ 
+Index: vdr/po/de_DE.po
+===================================================================
+--- vdr.orig/po/de_DE.po	2011-12-11 02:29:23.000000000 +0100
++++ vdr/po/de_DE.po	2011-12-11 02:29:26.000000000 +0100
+@@ -947,6 +947,9 @@
+ msgid "Setup.DVB$Subtitle background transparency"
+ msgstr "Untertitel-Transparenz Hintergrund"
+ 
++msgid "Setup.DVB$Enable teletext support"
++msgstr "Videotext-Unterstützung aktivieren"
++
+ msgid "LNB"
+ msgstr "LNB"
+ 
+Index: vdr/po/el_GR.po
+===================================================================
+--- vdr.orig/po/el_GR.po	2011-12-10 22:22:04.000000000 +0100
++++ vdr/po/el_GR.po	2011-12-11 02:29:26.000000000 +0100
+@@ -947,6 +947,9 @@
+ msgid "Setup.DVB$Subtitle background transparency"
+ msgstr ""
+ 
++msgid "Setup.DVB$Enable teletext support"
++msgstr ""
++
+ msgid "LNB"
+ msgstr "LNB"
+ 
+Index: vdr/po/es_ES.po
+===================================================================
+--- vdr.orig/po/es_ES.po	2011-12-10 22:22:04.000000000 +0100
++++ vdr/po/es_ES.po	2011-12-11 02:29:26.000000000 +0100
+@@ -948,6 +948,9 @@
+ msgid "Setup.DVB$Subtitle background transparency"
+ msgstr "Transparencia fondo subtítulos"
+ 
++msgid "Setup.DVB$Enable teletext support"
++msgstr ""
++
+ msgid "LNB"
+ msgstr "LNB"
+ 
+Index: vdr/po/et_EE.po
+===================================================================
+--- vdr.orig/po/et_EE.po	2011-12-11 02:29:03.000000000 +0100
++++ vdr/po/et_EE.po	2011-12-11 02:29:26.000000000 +0100
+@@ -947,6 +947,9 @@
+ msgid "Setup.DVB$Subtitle background transparency"
+ msgstr "Subtiitri tausta läbipaistvus"
+ 
++msgid "Setup.DVB$Enable teletext support"
++msgstr "Teleteksti tugi"
++
+ msgid "LNB"
+ msgstr "LNB"
+ 
+Index: vdr/po/fi_FI.po
+===================================================================
+--- vdr.orig/po/fi_FI.po	2011-12-11 02:29:03.000000000 +0100
++++ vdr/po/fi_FI.po	2011-12-11 02:29:26.000000000 +0100
+@@ -950,6 +950,9 @@
+ msgid "Setup.DVB$Subtitle background transparency"
+ msgstr "Tekstityksen taustan lÃ¤pinÃ¤kyvyys"
+ 
++msgid "Setup.DVB$Enable teletext support"
++msgstr "Salli teksti-TV-tuki"
++
+ msgid "LNB"
+ msgstr "LNB"
+ 
+Index: vdr/po/fr_FR.po
+===================================================================
+--- vdr.orig/po/fr_FR.po	2011-12-11 02:29:23.000000000 +0100
++++ vdr/po/fr_FR.po	2011-12-11 02:29:26.000000000 +0100
+@@ -953,6 +953,9 @@
+ msgid "Setup.DVB$Subtitle background transparency"
+ msgstr "Transparence du fond"
+ 
++msgid "Setup.DVB$Enable teletext support"
++msgstr ""
++
+ msgid "LNB"
+ msgstr "LNB"
+ 
+Index: vdr/po/hr_HR.po
+===================================================================
+--- vdr.orig/po/hr_HR.po	2011-12-10 22:22:04.000000000 +0100
++++ vdr/po/hr_HR.po	2011-12-11 02:29:26.000000000 +0100
+@@ -949,6 +949,9 @@
+ msgid "Setup.DVB$Subtitle background transparency"
+ msgstr "Transparentnost pozadine titla"
+ 
++msgid "Setup.DVB$Enable teletext support"
++msgstr ""
++
+ msgid "LNB"
+ msgstr "LNB"
+ 
+Index: vdr/po/hu_HU.po
+===================================================================
+--- vdr.orig/po/hu_HU.po	2011-12-10 22:22:04.000000000 +0100
++++ vdr/po/hu_HU.po	2011-12-11 02:29:26.000000000 +0100
+@@ -950,6 +950,9 @@
+ msgid "Setup.DVB$Subtitle background transparency"
+ msgstr "Felirat hátterének transzparenciája"
+ 
++msgid "Setup.DVB$Enable teletext support"
++msgstr ""
++
+ msgid "LNB"
+ msgstr "LNB"
+ 
+Index: vdr/po/it_IT.po
+===================================================================
+--- vdr.orig/po/it_IT.po	2011-12-10 22:22:04.000000000 +0100
++++ vdr/po/it_IT.po	2011-12-11 02:29:26.000000000 +0100
+@@ -954,6 +954,9 @@
+ msgid "Setup.DVB$Subtitle background transparency"
+ msgstr "Trasparenza sfondo sottotitoli"
+ 
++msgid "Setup.DVB$Enable teletext support"
++msgstr ""
++
+ msgid "LNB"
+ msgstr "LNB"
+ 
+Index: vdr/po/lt_LT.po
+===================================================================
+--- vdr.orig/po/lt_LT.po	2011-12-10 22:22:04.000000000 +0100
++++ vdr/po/lt_LT.po	2011-12-11 02:29:26.000000000 +0100
+@@ -947,6 +947,9 @@
+ msgid "Setup.DVB$Subtitle background transparency"
+ msgstr "SubtitrÅ³ fono permatomumas"
+ 
++msgid "Setup.DVB$Enable teletext support"
++msgstr ""
++
+ msgid "LNB"
+ msgstr "Konverteris (LNB)"
+ 
+Index: vdr/po/nl_NL.po
+===================================================================
+--- vdr.orig/po/nl_NL.po	2011-12-10 22:22:04.000000000 +0100
++++ vdr/po/nl_NL.po	2011-12-11 02:29:26.000000000 +0100
+@@ -951,6 +951,9 @@
+ msgid "Setup.DVB$Subtitle background transparency"
+ msgstr "Transparantie achtergrond ondertiteling"
+ 
++msgid "Setup.DVB$Enable teletext support"
++msgstr ""
++
+ msgid "LNB"
+ msgstr "LNB"
+ 
+Index: vdr/po/nn_NO.po
+===================================================================
+--- vdr.orig/po/nn_NO.po	2011-12-10 22:22:04.000000000 +0100
++++ vdr/po/nn_NO.po	2011-12-11 02:29:26.000000000 +0100
+@@ -948,6 +948,9 @@
+ msgid "Setup.DVB$Subtitle background transparency"
+ msgstr ""
+ 
++msgid "Setup.DVB$Enable teletext support"
++msgstr ""
++
+ msgid "LNB"
+ msgstr "LNB"
+ 
+Index: vdr/po/pl_PL.po
+===================================================================
+--- vdr.orig/po/pl_PL.po	2011-12-10 22:22:04.000000000 +0100
++++ vdr/po/pl_PL.po	2011-12-11 02:29:26.000000000 +0100
+@@ -948,6 +948,9 @@
+ msgid "Setup.DVB$Subtitle background transparency"
+ msgstr "Prze¼rocze podtytu³ów: T³o"
+ 
++msgid "Setup.DVB$Enable teletext support"
++msgstr ""
++
+ msgid "LNB"
+ msgstr "LNB"
+ 
+Index: vdr/po/pt_PT.po
+===================================================================
+--- vdr.orig/po/pt_PT.po	2011-12-10 22:22:04.000000000 +0100
++++ vdr/po/pt_PT.po	2011-12-11 02:29:26.000000000 +0100
+@@ -948,6 +948,9 @@
+ msgid "Setup.DVB$Subtitle background transparency"
+ msgstr "Transparência de fundo das legendas"
+ 
++msgid "Setup.DVB$Enable teletext support"
++msgstr ""
++
+ msgid "LNB"
+ msgstr "LNB"
+ 
+Index: vdr/po/ro_RO.po
+===================================================================
+--- vdr.orig/po/ro_RO.po	2011-12-10 22:22:04.000000000 +0100
++++ vdr/po/ro_RO.po	2011-12-11 02:29:26.000000000 +0100
+@@ -950,6 +950,9 @@
+ msgid "Setup.DVB$Subtitle background transparency"
+ msgstr "Transparenþa fundalului subtitrãrii"
+ 
++msgid "Setup.DVB$Enable teletext support"
++msgstr ""
++
+ msgid "LNB"
+ msgstr "LNB"
+ 
+Index: vdr/po/ru_RU.po
+===================================================================
+--- vdr.orig/po/ru_RU.po	2011-12-11 02:29:03.000000000 +0100
++++ vdr/po/ru_RU.po	2011-12-11 02:29:26.000000000 +0100
+@@ -948,6 +948,9 @@
+ msgid "Setup.DVB$Subtitle background transparency"
+ msgstr "¿àÞ×àÐçÝÞáâì äÞÝÐ áãÑâØâàÞÒ"
+ 
++msgid "Setup.DVB$Enable teletext support"
++msgstr ""
++
+ msgid "LNB"
+ msgstr "ºÞÝÒÕàâÕà"
+ 
+Index: vdr/po/sk_SK.po
+===================================================================
+--- vdr.orig/po/sk_SK.po	2011-12-10 22:22:04.000000000 +0100
++++ vdr/po/sk_SK.po	2011-12-11 02:29:26.000000000 +0100
+@@ -947,6 +947,9 @@
+ msgid "Setup.DVB$Subtitle background transparency"
+ msgstr "Priehµadnos» pozadia titulkov"
+ 
++msgid "Setup.DVB$Enable teletext support"
++msgstr ""
++
+ msgid "LNB"
+ msgstr "LNB"
+ 
+Index: vdr/po/sl_SI.po
+===================================================================
+--- vdr.orig/po/sl_SI.po	2011-12-10 22:22:04.000000000 +0100
++++ vdr/po/sl_SI.po	2011-12-11 02:29:26.000000000 +0100
+@@ -948,6 +948,9 @@
+ msgid "Setup.DVB$Subtitle background transparency"
+ msgstr "Transparentnost ozadja podnapisov"
+ 
++msgid "Setup.DVB$Enable teletext support"
++msgstr ""
++
+ msgid "LNB"
+ msgstr "LNB"
+ 
+Index: vdr/po/sv_SE.po
+===================================================================
+--- vdr.orig/po/sv_SE.po	2011-12-10 22:22:04.000000000 +0100
++++ vdr/po/sv_SE.po	2011-12-11 02:29:26.000000000 +0100
+@@ -950,6 +950,9 @@
+ msgid "Setup.DVB$Subtitle background transparency"
+ msgstr "Transparent bakgrund textremsa"
+ 
++msgid "Setup.DVB$Enable teletext support"
++msgstr ""
++
+ msgid "LNB"
+ msgstr "LNB"
+ 
+Index: vdr/po/tr_TR.po
+===================================================================
+--- vdr.orig/po/tr_TR.po	2011-12-10 22:22:04.000000000 +0100
++++ vdr/po/tr_TR.po	2011-12-11 02:29:26.000000000 +0100
+@@ -947,6 +947,9 @@
+ msgid "Setup.DVB$Subtitle background transparency"
+ msgstr "Altyazý arka þeffaflýk"
+ 
++msgid "Setup.DVB$Enable teletext support"
++msgstr ""
++
+ msgid "LNB"
+ msgstr "LNB"
+ 
+Index: vdr/po/uk_UA.po
+===================================================================
+--- vdr.orig/po/uk_UA.po	2011-12-10 22:22:04.000000000 +0100
++++ vdr/po/uk_UA.po	2011-12-11 02:29:26.000000000 +0100
+@@ -947,6 +947,9 @@
+ msgid "Setup.DVB$Subtitle background transparency"
+ msgstr "ÐŸÑ€Ð¾Ð·Ð¾Ñ€Ñ–ÑÑ‚ÑŒ Ð·Ð°Ð´Ð½ÑŒÐ¾Ð³Ð¾ Ð¿Ð»Ð°Ð½Ñƒ ÑÑƒÐ±Ñ‚Ð¸Ñ‚Ñ€Ñ–Ð²"
+ 
++msgid "Setup.DVB$Enable teletext support"
++msgstr ""
++
+ msgid "LNB"
+ msgstr "ÐšÐ¾Ð½Ð²ÐµÑ€Ñ‚ÐµÑ€"
+ 
+Index: vdr/po/zh_CN.po
+===================================================================
+--- vdr.orig/po/zh_CN.po	2011-12-10 22:22:04.000000000 +0100
++++ vdr/po/zh_CN.po	2011-12-11 02:29:26.000000000 +0100
+@@ -950,6 +950,9 @@
+ msgid "Setup.DVB$Subtitle background transparency"
+ msgstr "å­—å¹•èƒŒæ™¯é€æ˜Žåº¦"
+ 
++msgid "Setup.DVB$Enable teletext support"
++msgstr ""
++
+ msgid "LNB"
+ msgstr "åˆ‡æ¢å™¨è®¾ç½®"
+ 
+Index: vdr/receiver.c
+===================================================================
+--- vdr.orig/receiver.c	2011-12-10 22:22:04.000000000 +0100
++++ vdr/receiver.c	2011-12-11 02:29:26.000000000 +0100
+@@ -81,7 +81,8 @@
+             (Channel->Ppid() == Channel->Vpid() || AddPid(Channel->Ppid())) &&
+             AddPids(Channel->Apids()) &&
+             AddPids(Channel->Dpids()) &&
+-            AddPids(Channel->Spids());
++            AddPids(Channel->Spids()) &&
++            (!Setup.SupportTeletext || AddPid(Channel->Tpid()));
+      }
+ return true;
+ }
+Index: vdr/remux.c
+===================================================================
+--- vdr.orig/remux.c	2011-12-10 22:22:04.000000000 +0100
++++ vdr/remux.c	2011-12-11 02:29:26.000000000 +0100
+@@ -219,6 +219,29 @@
+   return i;
+ }
+ 
++int cPatPmtGenerator::MakeTeletextDescriptor(uchar *Target, const tTeletextSubtitlePage *pages, int pageCount)
++{
++  int i = 0, j = 0;
++  Target[i++] = SI::TeletextDescriptorTag;
++  int l = i;
++  Target[i++] = 0x00; // length
++  for (int n = 0; n < pageCount; n++) {
++      const char* Language = pages[n].ttxtLanguage;
++      Target[i++] = *Language++;
++      Target[i++] = *Language++;
++      Target[i++] = *Language++;
++      Target[i++] = (pages[n].ttxtType << 3) + pages[n].ttxtMagazine;
++      Target[i++] = pages[n].ttxtPage;
++      j++;
++      }
++  if (j > 0) {
++     Target[l] = j * 5; // update length
++     IncEsInfoLength(i);
++     return i;
++     }
++  return 0;
++}
++
+ int cPatPmtGenerator::MakeLanguageDescriptor(uchar *Target, const char *Language)
+ {
+   int i = 0;
+@@ -306,6 +329,7 @@
+   if (Channel) {
+      int Vpid = Channel->Vpid();
+      int Ppid = Channel->Ppid();
++     int Tpid = Channel->Tpid();
+      uchar *p = buf;
+      int i = 0;
+      p[i++] = 0x02; // table id
+@@ -338,6 +362,10 @@
+          i += MakeStream(buf + i, 0x06, Channel->Spid(n));
+          i += MakeSubtitlingDescriptor(buf + i, Channel->Slang(n), Channel->SubtitlingType(n), Channel->CompositionPageId(n), Channel->AncillaryPageId(n));
+          }
++     if (Tpid) {
++        i += MakeStream(buf + i, 0x06, Tpid);
++        i += MakeTeletextDescriptor(buf + i, Channel->TeletextSubtitlePages(), Channel->TotalTeletextSubtitlePages());
++        }
+ 
+      int sl = i - SectionLength - 2 + 4; // -2 = SectionLength storage, +4 = length of CRC
+      buf[SectionLength] |= (sl >> 8) & 0x0F;
+@@ -411,6 +439,7 @@
+   pmtPid = -1;
+   vpid = vtype = 0;
+   ppid = 0;
++  tpid = 0;
+ }
+ 
+ void cPatPmtParser::ParsePat(const uchar *Data, int Length)
+@@ -496,11 +525,13 @@
+      int NumSpids = 0;
+      vpid = vtype = 0;
+      ppid = 0;
++     tpid = 0;
+      apids[0] = 0;
+      dpids[0] = 0;
+      spids[0] = 0;
+      atypes[0] = 0;
+      dtypes[0] = 0;
++     totalTtxtSubtitlePages = 0;
+      SI::PMT::Stream stream;
+      for (SI::Loop::Iterator it; Pmt.streamLoop.getNext(stream, it); ) {
+          dbgpatpmt("     stream type = %02X, pid = %d", stream.getStreamType(), stream.getPid());
+@@ -599,6 +630,28 @@
+                                     spids[NumSpids]= 0;
+                                     }
+                                  break;
++                            case SI::TeletextDescriptorTag: {
++                                 dbgpatpmt(" teletext");
++                                 tpid = stream.getPid();
++                                 SI::TeletextDescriptor *sd = (SI::TeletextDescriptor *)d;
++                                 SI::TeletextDescriptor::Teletext ttxt;
++                                 if (totalTtxtSubtitlePages < MAXTXTPAGES) {
++                                    for (SI::Loop::Iterator it; sd->teletextLoop.getNext(ttxt, it); ) {
++                                        bool isSubtitlePage = (ttxt.getTeletextType() == 0x02) || (ttxt.getTeletextType() == 0x05);
++                                        if (isSubtitlePage && ttxt.languageCode[0]) {
++                                           dbgpatpmt(" '%s:%x.%x'", ttxt.languageCode, ttxt.getTeletextMagazineNumber(), ttxt.getTeletextPageNumber());
++                                           strn0cpy(teletextSubtitlePages[totalTtxtSubtitlePages].ttxtLanguage, I18nNormalizeLanguageCode(ttxt.languageCode), MAXLANGCODE1);
++                                           teletextSubtitlePages[totalTtxtSubtitlePages].ttxtPage = ttxt.getTeletextPageNumber();
++                                           teletextSubtitlePages[totalTtxtSubtitlePages].ttxtMagazine = ttxt.getTeletextMagazineNumber();
++                                           teletextSubtitlePages[totalTtxtSubtitlePages].ttxtType = ttxt.getTeletextType();
++                                           totalTtxtSubtitlePages++;
++                                           if (totalTtxtSubtitlePages >= MAXTXTPAGES)
++                                              break;
++                                           }
++                                        }
++                                    }
++                                 }
++                                 break;
+                             case SI::ISO639LanguageDescriptorTag: {
+                                  SI::ISO639LanguageDescriptor *ld = (SI::ISO639LanguageDescriptor *)d;
+                                  dbgpatpmt(" '%s'", ld->languageCode);
+Index: vdr/remux.h
+===================================================================
+--- vdr.orig/remux.h	2011-12-10 22:22:04.000000000 +0100
++++ vdr/remux.h	2011-12-11 02:29:26.000000000 +0100
+@@ -174,6 +174,7 @@
+   int MakeStream(uchar *Target, uchar Type, int Pid);
+   int MakeAC3Descriptor(uchar *Target, uchar Type);
+   int MakeSubtitlingDescriptor(uchar *Target, const char *Language, uchar SubtitlingType, uint16_t CompositionPageId, uint16_t AncillaryPageId);
++  int MakeTeletextDescriptor(uchar *Target, const tTeletextSubtitlePage *pages, int pageCount);
+   int MakeLanguageDescriptor(uchar *Target, const char *Language);
+   int MakeCRC(uchar *Target, const uchar *Data, int Length);
+   void GeneratePmtPid(const cChannel *Channel);
+@@ -219,6 +220,7 @@
+   int vpid;
+   int ppid;
+   int vtype;
++  int tpid;
+   int apids[MAXAPIDS + 1]; // list is zero-terminated
+   int atypes[MAXAPIDS + 1]; // list is zero-terminated
+   char alangs[MAXAPIDS][MAXLANGCODE2];
+@@ -231,6 +233,8 @@
+   uint16_t compositionPageIds[MAXSPIDS];
+   uint16_t ancillaryPageIds[MAXSPIDS];
+   bool updatePrimaryDevice;
++  int totalTtxtSubtitlePages;
++  tTeletextSubtitlePage teletextSubtitlePages[MAXTXTPAGES];
+ protected:
+   int SectionLength(const uchar *Data, int Length) { return (Length >= 3) ? ((int(Data[1]) & 0x0F) << 8)| Data[2] : 0; }
+ public:
+@@ -263,6 +267,9 @@
+   int Vtype(void) const { return vtype; }
+        ///< Returns the video stream type as defined by the current PMT, or 0 if no video
+        ///< stream type has been detected, yet.
++  int Tpid(void) { return tpid; }
++       ///< Returns the teletext pid as defined by the current PMT, or 0 if no teletext
++       ///< pid has been detected, yet.
+   const int *Apids(void) const { return apids; }
+   const int *Dpids(void) const { return dpids; }
+   const int *Spids(void) const { return spids; }
+@@ -277,6 +284,8 @@
+   uchar SubtitlingType(int i) const { return (0 <= i && i < MAXSPIDS) ? subtitlingTypes[i] : uchar(0); }
+   uint16_t CompositionPageId(int i) const { return (0 <= i && i < MAXSPIDS) ? compositionPageIds[i] : uint16_t(0); }
+   uint16_t AncillaryPageId(int i) const { return (0 <= i && i < MAXSPIDS) ? ancillaryPageIds[i] : uint16_t(0); }
++  const tTeletextSubtitlePage *TeletextSubtitlePages() const { return teletextSubtitlePages; }
++  int TotalTeletextSubtitlePages() const { return totalTtxtSubtitlePages; }
+   };
+ 
+ // TS to PES converter:
+Index: vdr/vdr.5
+===================================================================
+--- vdr.orig/vdr.5	2011-12-10 22:22:04.000000000 +0100
++++ vdr/vdr.5	2011-12-11 02:29:26.000000000 +0100
+@@ -225,6 +225,12 @@
+ 
+ .B ...:201;2001=deu,2002=eng:...
+ 
++Manual teletext subtitling pages can be defined separated by a '+' sign.
++The pages (separated by commas) can contain language codes, delimited by a '='
++sign, as in
++
++.B ...:201+150=deu,151=fin;2001,2002:...
++
+ .TP
+ .B Conditional access
+ A hexadecimal integer defining how this channel can be accessed:
+Index: vdr/vdrttxtsubshooks.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ vdr/vdrttxtsubshooks.c	2011-12-11 02:29:26.000000000 +0100
+@@ -0,0 +1,63 @@
++/*
++ * vdr-ttxtsubs - A plugin for the Linux Video Disk Recorder
++ * Copyright (c) 2003 - 2008 Ragnar Sundblad <ragge@nada.kth.se>
++ *
++ * This program is free software; you can redistribute it and/or modify it
++ * under the terms of the GNU General Public License as published by the
++ * Free Software Foundation; either version 2 of the License, or (at your option)
++ * any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but
++ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
++ * details.
++ *
++ * You should have received a copy of the GNU General Public License along with
++ * this program; if not, write to the Free Software Foundation, Inc.,
++ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
++ *
++ */
++
++#include <stdlib.h>
++#include <stdio.h>
++#include <stdint.h>
++
++#include "vdrttxtsubshooks.h"
++
++// XXX Really should be a list...
++static cVDRTtxtsubsHookListener *gListener;
++
++// ------ class cVDRTtxtsubsHookProxy ------
++
++class cVDRTtxtsubsHookProxy : public cVDRTtxtsubsHookListener
++{
++ public:
++  virtual void HideOSD(void) { if(gListener) gListener->HideOSD(); };
++  virtual void ShowOSD(void) { if(gListener) gListener->ShowOSD(); };
++  virtual void PlayerTeletextData(uint8_t *p, int length, bool IsPesRecording, const struct tTeletextSubtitlePage teletextSubtitlePages[] = NULL, int pageCount = 0)
++    { if(gListener) gListener->PlayerTeletextData(p, length, IsPesRecording, teletextSubtitlePages, pageCount); };
++  virtual int ManualPageNumber(const cChannel *channel)
++    { if(gListener) return gListener->ManualPageNumber(channel); else return 0; };
++};
++
++
++// ------ class cVDRTtxtsubsHookListener ------
++
++cVDRTtxtsubsHookListener::~cVDRTtxtsubsHookListener()
++{
++  gListener = 0;
++}
++
++void cVDRTtxtsubsHookListener::HookAttach(void)
++{
++  gListener = this;
++  //printf("cVDRTtxtsubsHookListener::HookAttach\n");
++}
++
++static cVDRTtxtsubsHookProxy gProxy;
++
++cVDRTtxtsubsHookListener *cVDRTtxtsubsHookListener::Hook(void)
++{
++  return &gProxy;
++}
++
+Index: vdr/vdrttxtsubshooks.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ vdr/vdrttxtsubshooks.h	2011-12-11 02:29:26.000000000 +0100
+@@ -0,0 +1,46 @@
++/*
++ * vdr-ttxtsubs - A plugin for the Linux Video Disk Recorder
++ * Copyright (c) 2003 - 2008 Ragnar Sundblad <ragge@nada.kth.se>
++ *
++ * This program is free software; you can redistribute it and/or modify it
++ * under the terms of the GNU General Public License as published by the
++ * Free Software Foundation; either version 2 of the License, or (at your option)
++ * any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but
++ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
++ * details.
++ *
++ * You should have received a copy of the GNU General Public License along with
++ * this program; if not, write to the Free Software Foundation, Inc.,
++ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
++ *
++ */
++
++#ifndef __VDRTTXTSUBSHOOKS_H
++#define __VDRTTXTSUBSHOOKS_H
++
++#define TTXTSUBSVERSNUM 2
++
++class cDevice;
++class cChannel;
++struct tTeletextSubtitlePage;
++
++class cVDRTtxtsubsHookListener {
++ public:
++  cVDRTtxtsubsHookListener(void) {};
++  virtual ~cVDRTtxtsubsHookListener();
++
++  void HookAttach(void);
++
++  virtual void HideOSD(void) {};
++  virtual void ShowOSD(void) {};
++  virtual void PlayerTeletextData(uint8_t *p, int length, bool IsPesRecording = true, const struct tTeletextSubtitlePage teletextSubtitlePages[] = NULL, int pageCount = 0) {};
++  virtual int ManualPageNumber(const cChannel *channel) { return 0; };
++
++  // used by VDR to call hook listeners
++  static cVDRTtxtsubsHookListener *Hook(void);
++};
++
++#endif

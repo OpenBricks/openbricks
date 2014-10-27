@@ -2,10 +2,8 @@
 
 . config/options
 get_meta $1
-
+export MAKEFLAGS=-j1
 require_cxx $1
-
-#$SCRIPTS/unpack linux
 
 #ACTIVE_EXTENSIONS="liemiext"
 #VDR_PLUGINS="`echo "$ROOTFS_PACKAGES $OPK_PACKAGES" | tr ' ' '\n' | grep 'vdr-'`" || true
@@ -16,20 +14,15 @@ require_cxx $1
 #    ACTIVE_EXTENSIONS="$ACTIVE_EXTENSIONS $VDR_EXTENSIONS"
 #  fi
 #done
-
 cd $PKG_BUILD_DIR
+#cp $ROOT/$PACKAGES/$1/config/Make.config.$PKG_VERSION.bis Make.config
+cp $ROOT/$PACKAGES/$PKG_SECTION/$PKG_NAME/config/Make.config.$PKG_VERSION Make.config
 
-cat > Make.config <<EOF
-PREFIX=/usr
-PLUGINLIBDIR=/usr/lib/vdr
-VIDEODIR=/video
-CONFDIR=/etc/vdr
-LOCDIR=/usr/share/locale
-LIBS += -lintl
-DVBDIR=$SYSROOT_PREFIX/usr
-EOF
+sed -i "s|#DVBDIR   =|DVBDIR=$SYSROOT_PREFIX/usr|" Make.config
+#sed -i "s|#INCDIR       =|INCDIR=$SYSROOT_PREFIX/usr/include|" Make.config
+sed -i "s|#INCDIR       =|INCDIR=.install|" Make.config
 
-[ "$TARGET_LIBC" = "uclibc" ] && echo 'LIBS += -liconv' >> Make.config
+[ "$TARGET_LIBC" = "uclibc" ] && echo 'LIBS += -liconv' >>Make.config
 
 #for ext in $ACTIVE_EXTENSIONS; do
 #  EXTNAME=`echo $ext | tr a-z A-Z`
@@ -38,7 +31,8 @@ EOF
 #done
 #[ -n "$VDR_DEFINES" ] && echo "DEFINES += $VDR_DEFINES" >> Make.config
 
-export MAKEFLAGS=-j1
-
 make && make include-dir # latter one to build extra plugins
+
+do_strip bin lib$1.so.*
+
 make_install

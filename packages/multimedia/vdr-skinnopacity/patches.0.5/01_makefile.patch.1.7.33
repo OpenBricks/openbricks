@@ -1,0 +1,126 @@
+--- vdr-skinnopacity-0.0.5+c7fd4e9eaea25ac/Makefile.org	2012-12-29 13:29:10.000000000 +0100
++++ vdr-skinnopacity-0.0.5+c7fd4e9eaea25ac/Makefile	2012-12-31 14:35:18.438005839 +0100
+@@ -15,44 +15,51 @@
+ 
+ VERSION = $(shell grep 'static const char \*VERSION *=' $(PLUGIN).c | awk '{ print $$6 }' | sed -e 's/[";]//g')
+ 
++### The C++ compiler and options:
++
++CXX      ?= g++
++CXXFLAGS ?= -g -O3 -Wall -Werror=overloaded-virtual -Wno-parentheses
++
+ ### The directory environment:
+ 
+-# Use package data if installed...otherwise assume we're under the VDR source directory:
+-PKGCFG = $(if $(VDRDIR),$(shell pkg-config --variable=$(1) $(VDRDIR)/vdr.pc),$(shell pkg-config --variable=$(1) vdr || pkg-config --variable=$(1) ../../../vdr.pc))
+-LIBDIR = $(DESTDIR)$(call PKGCFG,libdir)
+-LOCDIR = $(DESTDIR)$(call PKGCFG,locdir)
++VDRDIR ?= ../../..
++LIBDIR ?= ../../lib
+ TMPDIR ?= /tmp
+ 
+-### The compiler options:
+-export CFLAGS   = $(call PKGCFG,cflags)
+-export CXXFLAGS = $(call PKGCFG,cxxflags)
++### Make sure that necessary options are included:
++
++-include $(VDRDIR)/Make.global
++
++### Allow user defined options to overwrite defaults:
++
++-include $(VDRDIR)/Make.config
++
++### The version number of VDR's plugin API (taken from VDR's "config.h"):
+ 
+-### The version number of VDR's plugin API:
+-APIVERSION = $(call PKGCFG,apiversion)
++APIVERSION = $(shell sed -ne '/define APIVERSION/s/^.*"\(.*\)".*$$/\1/p' $(VDRDIR)/config.h)
+ 
+ ### The name of the distribution archive:
+ 
+ ARCHIVE = $(PLUGIN)-$(VERSION)
+ PACKAGE = vdr-$(ARCHIVE)
+ 
+-### The name of the shared object file:
+-
+-SOFILE = libvdr-$(PLUGIN).so
+-
+ ### Includes and Defines (add further entries here):
+ 
+-INCLUDES +=
++INCLUDES += -I$(VDRDIR)/include
+ INCLUDES += -I/usr/include/ImageMagick
+ 
+-DEFINES += -DPLUGIN_NAME_I18N='"$(PLUGIN)"'
++DEFINES += -D_GNU_SOURCE -DPLUGIN_NAME_I18N='"$(PLUGIN)"'
+ 
++ifdef YAEPG
++DEFINES += -DUSE_YAEPG
++endif
+ ### The object files (add further files here):
+ 
+ OBJS = $(PLUGIN).o
+ 
+ ### The main target:
+ 
+-all: $(SOFILE) i18n
++all: libvdr-$(PLUGIN).so i18n
+ 
+ ### Implicit rules:
+ 
+@@ -71,38 +78,33 @@
+ ### Internationalization (I18N):
+ 
+ PODIR     = po
++LOCALEDIR = $(VDRDIR)/locale
+ I18Npo    = $(wildcard $(PODIR)/*.po)
+-I18Nmo    = $(addsuffix .mo, $(foreach file, $(I18Npo), $(basename $(file))))
+-I18Nmsgs  = $(addprefix $(LOCDIR)/, $(addsuffix /LC_MESSAGES/vdr-$(PLUGIN).mo, $(notdir $(foreach file, $(I18Npo), $(basename $(file))))))
++I18Nmsgs  = $(addprefix $(LOCALEDIR)/, $(addsuffix /LC_MESSAGES/vdr-$(PLUGIN).mo, $(notdir $(foreach file, $(I18Npo), $(basename $(file))))))
+ I18Npot   = $(PODIR)/$(PLUGIN).pot
+ 
+ %.mo: %.po
+ 	msgfmt -c -o $@ $<
+ 
+ $(I18Npot): $(wildcard *.c)
+-	xgettext -C -cTRANSLATORS --no-wrap --no-location -k -ktr -ktrNOOP --package-name=vdr-$(PLUGIN) --package-version=$(VERSION) --msgid-bugs-address='<see README>' -o $@ `ls $^`
++	xgettext -C -cTRANSLATORS --no-wrap --no-location -k -ktr -ktrNOOP --package-name=vdr-$(PLUGIN) --package-version=$(VERSION) --msgid-bugs-address='<see README>' -o $@ $^
+ 
+ %.po: $(I18Npot)
+-	msgmerge -U --no-wrap --no-location --backup=none -q -N $@ $<
++	msgmerge -U --no-wrap --no-location --backup=none -q $@ $<
+ 	@touch $@
+ 
+-$(I18Nmsgs): $(LOCDIR)/%/LC_MESSAGES/vdr-$(PLUGIN).mo: $(PODIR)/%.mo
+-	install -D -m644 $< $@
++$(I18Nmsgs): $(LOCALEDIR)/%/LC_MESSAGES/vdr-$(PLUGIN).mo: $(PODIR)/%.mo
++	@mkdir -p $(dir $@)
++	cp $< $@
+ 
+ .PHONY: i18n
+-i18n: $(I18Nmo) $(I18Npot)
+-
+-install-i18n: $(I18Nmsgs)
++i18n: $(I18Nmsgs) $(I18Npot)
+ 
+ ### Targets:
+ 
+-$(SOFILE): $(OBJS)
++libvdr-$(PLUGIN).so: $(OBJS)
+ 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -shared $(OBJS) -lMagick++ -o $@
+-
+-install-lib: $(SOFILE)
+-	install -D $^ $(LIBDIR)/$^.$(APIVERSION)
+-
+-install: install-lib install-i18n
++	@cp --remove-destination $@ $(LIBDIR)/$@.$(APIVERSION)
+ 
+ dist: $(I18Npo) clean
+ 	@-rm -rf $(TMPDIR)/$(ARCHIVE)
+@@ -113,5 +115,4 @@
+ 	@echo Distribution package created as $(PACKAGE).tgz
+ 
+ clean:
+-	@-rm -f $(PODIR)/*.mo $(PODIR)/*.pot
+-	@-rm -f $(OBJS) $(DEPFILE) *.so *.tgz core* *~
++	@-rm -f $(OBJS) $(DEPFILE) *.so *.tgz core* *~ $(PODIR)/*.mo $(PODIR)/*.pot

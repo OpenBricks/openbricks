@@ -1,0 +1,1569 @@
+diff -ruN vdr-1.7.26/config.c vdr-1.7.26.mod/config.c
+--- vdr-1.7.26/config.c	2012-03-11 13:37:10.493810607 +0100
++++ vdr-1.7.26.mod/config.c	2012-03-11 13:36:53.889728264 +0100
+@@ -477,6 +477,10 @@
+   InitialVolume = -1;
+   ChannelsWrap = 0;
+   EmergencyExit = 1;
++#ifdef USE_LIVEBUFFER
++  LiveBufferSize = 15;
++  LiveBufferMaxFileSize = 100;
++#endif /*USE_LIVEBUFFER*/
+ }
+ 
+ cSetup& cSetup::operator= (const cSetup &s)
+@@ -683,6 +687,10 @@
+   else if (!strcasecmp(Name, "CurrentDolby"))        CurrentDolby       = atoi(Value);
+   else if (!strcasecmp(Name, "InitialChannel"))      InitialChannel     = Value;
+   else if (!strcasecmp(Name, "InitialVolume"))       InitialVolume      = atoi(Value);
++#ifdef USE_LIVEBUFFER
++  else if (!strcasecmp(Name, "LiveBufferSize"))        LiveBufferSize        = atoi(Value);
++  else if (!strcasecmp(Name, "LiveBufferMaxFileSize")) LiveBufferMaxFileSize = atoi(Value);
++#endif /*USE_LIVEBUFFER*/
+   else if (!strcasecmp(Name, "DeviceBondings"))      DeviceBondings     = Value;
+   else if (!strcasecmp(Name, "ChannelsWrap"))        ChannelsWrap       = atoi(Value);
+   else if (!strcasecmp(Name, "EmergencyExit"))       EmergencyExit      = atoi(Value);
+@@ -831,6 +839,9 @@
+   Store("DeviceBondings",     DeviceBondings);
+   Store("ChannelsWrap",       ChannelsWrap);
+   Store("EmergencyExit",      EmergencyExit);
++#ifdef USE_LIVEBUFFER
++  Store("LiveBufferSize",     LiveBufferSize);
++#endif  /* LIVEBUFFER */
+ #ifdef USE_LIRCSETTINGS
+   Store("LircRepeatDelay",    LircRepeatDelay);
+   Store("LircRepeatFreq",     LircRepeatFreq);
+diff -ruN vdr-1.7.26/config.h vdr-1.7.26.mod/config.h
+--- vdr-1.7.26/config.h	2012-03-11 13:37:10.493810607 +0100
++++ vdr-1.7.26.mod/config.h	2012-03-11 13:36:53.893728301 +0100
+@@ -354,6 +354,10 @@
+   int InitialVolume;
+   int ChannelsWrap;
+   int EmergencyExit;
++#ifdef USE_LIVEBUFFER
++  int LiveBufferSize;
++  int LiveBufferMaxFileSize;
++#endif /*USE_LIVEBUFFER*/
+ #ifdef USE_LIRCSETTINGS
+   int LircRepeatDelay;
+   int LircRepeatFreq;
+diff -ruN vdr-1.7.26/device.c vdr-1.7.26.mod/device.c
+--- vdr-1.7.26/device.c	2012-03-11 13:37:10.497810623 +0100
++++ vdr-1.7.26.mod/device.c	2012-03-11 13:36:53.893728301 +0100
+@@ -18,6 +18,10 @@
+ #include "receiver.h"
+ #include "status.h"
+ #include "transfer.h"
++#ifdef USE_LIVEBUFFER
++#include "menu.h"
++#include "interface.h"
++#endif /*USE_LIVEBUFFER*/
+ 
+ // --- cLiveSubtitle ---------------------------------------------------------
+ 
+@@ -702,6 +706,14 @@
+                               return false;
+         case scrNoTransfer:   Skins.Message(mtError, tr("Can't start Transfer Mode!"));
+                               return false;
++#ifdef USE_LIVEBUFFER
++        case srcStillWritingLiveBuffer:
++           if(Interface->Confirm(tr("Still writing timeshift data to recording. Abort?")))
++              cRecordControls::CancelWritingBuffer();
++           else
++              if(cRecordControls::IsWritingBuffer()) return false;
++           break;
++#endif /*USE_LIVEBUFFER*/
+         case scrFailed:       break; // loop will retry
+         default:              esyslog("ERROR: invalid return value from SetChannel");
+         }
+@@ -761,8 +773,17 @@
+ 
+   if (NeedsTransferMode) {
+      if (Device && CanReplay()) {
+-        if (Device->SetChannel(Channel, false) == scrOk) // calling SetChannel() directly, not SwitchChannel()!
+-           cControl::Launch(new cTransferControl(Device, Channel));
++#ifdef USE_LIVEBUFFER
++        if(LiveView && !cRecordControls::CanSetLiveChannel(Channel))
++           return cRecordControls::IsWritingBuffer() ? srcStillWritingLiveBuffer : scrFailed;
++#endif /*USE_LIVEBUFFER*/
++	if (Device->SetChannel(Channel, false) == scrOk) // calling SetChannel() directly, not SwitchChannel()!
++#ifdef USE_LIVEBUFFER
++           if(LiveView)
++              cRecordControls::SetLiveChannel(Device, Channel);
++           else
++#endif /*USE_LIVEBUFFER*/
++	   cControl::Launch(new cTransferControl(Device, Channel));
+         else
+            Result = scrNoTransfer;
+         }
+diff -ruN vdr-1.7.26/device.h vdr-1.7.26.mod/device.h
+--- vdr-1.7.26/device.h	2012-03-11 13:37:10.497810623 +0100
++++ vdr-1.7.26.mod/device.h	2012-03-11 13:36:53.893728301 +0100
+@@ -36,7 +36,11 @@
+ #define VOLUMEDELTA         5 // used to increase/decrease the volume
+ #define MAXOCCUPIEDTIMEOUT 99 // max. time (in seconds) a device may be occupied
+ 
++#ifdef USE_LIVEBUFFER
++enum eSetChannelResult { scrOk, scrNotAvailable, scrNoTransfer, scrFailed, srcStillWritingLiveBuffer };
++#else
+ enum eSetChannelResult { scrOk, scrNotAvailable, scrNoTransfer, scrFailed };
++#endif /*USE_LIVEBUFFER*/
+ 
+ enum ePlayMode { pmNone,           // audio/video from decoder
+                  pmAudioVideo,     // audio/video from player
+diff -ruN vdr-1.7.26/dvbplayer.c vdr-1.7.26.mod/dvbplayer.c
+--- vdr-1.7.26/dvbplayer.c	2012-03-11 13:37:10.501810646 +0100
++++ vdr-1.7.26.mod/dvbplayer.c	2012-03-11 13:36:53.893728301 +0100
+@@ -15,6 +15,9 @@
+ #include "ringbuffer.h"
+ #include "thread.h"
+ #include "tools.h"
++#ifdef USE_LIVEBUFFER
++#include "menu.h"
++#endif /*USE_LIVEBUFFER*/
+ 
+ // --- cPtsIndex -------------------------------------------------------------
+ 
+@@ -35,6 +38,9 @@
+   void Clear(void);
+   void Put(uint32_t Pts, int Index);
+   int FindIndex(uint32_t Pts);
++#ifdef USE_LIVEBUFFER
++  void SetIndex(int Index) {lastFound = Index;};
++#endif /*USE_LIVEBUFFER*/
+   };
+ 
+ cPtsIndex::cPtsIndex(void)
+@@ -208,7 +214,12 @@
+   cMarks marks;
+ #endif /* JUMPPLAY */
+   cFileName *fileName;
++#ifdef USE_LIVEBUFFER
++  cIndex *index;
++  cIndexFile *indexFile;
++#else
+   cIndexFile *index;
++#endif /*USE_LIVEBUFFER*/
+   cUnbufferedFile *replayFile;
+   double framesPerSecond;
+   bool isPesRecording;
+@@ -275,12 +286,21 @@
+   dropFrame = NULL;
+   isyslog("replay %s", FileName);
+   fileName = new cFileName(FileName, false, false, isPesRecording);
++#ifndef USE_LIVEBUFFER
+   replayFile = fileName->Open();
+   if (!replayFile)
+      return;
++#endif /*USE_LIVEBUFFER*/
+   ringBuffer = new cRingBufferFrame(PLAYERBUFSIZE);
+   // Create the index file:
+-  index = new cIndexFile(FileName, false, isPesRecording, pauseLive);
++#ifdef USE_LIVEBUFFER
++  indexFile = NULL;
++  index = cRecordControls::GetLiveIndex(FileName);
++  if(!index)
++     index = indexFile = new cIndexFile(FileName, false, isPesRecording, pauseLive);
++#else
++   index = new cIndexFile(FileName, false, isPesRecording, pauseLive);
++#endif /*USE_LIVEBUFFER*/
+   if (!index)
+      esyslog("ERROR: can't allocate index");
+   else if (!index->Ok()) {
+@@ -289,6 +309,14 @@
+      }
+   else if (PauseLive)
+      framesPerSecond = cRecording(FileName).FramesPerSecond(); // the fps rate might have changed from the default
++#ifdef USE_LIVEBUFFER
++  readIndex = Resume();
++  if (readIndex >= 0) {
++     ptsIndex.SetIndex(readIndex);
++     isyslog("resuming replay at index %d (%s)", readIndex, *IndexToHMSF(readIndex, true, framesPerSecond));
++  } else
++     replayFile = fileName->Open();
++#endif /*USE_LIVEBUFFER*/
+ #ifdef USE_JUMPPLAY
+   marks.Load(FileName, framesPerSecond, isPesRecording);
+ #endif /* JUMPPLAY */
+@@ -299,7 +327,11 @@
+   Save();
+   Detach();
+   delete readFrame; // might not have been stored in the buffer in Action()
++#ifdef USE_LIVEBUFFER
++  delete indexFile;
++#else
+   delete index;
++#endif /*USE_LIVEBUFFER*/
+   delete fileName;
+   delete ringBuffer;
+ }
+@@ -407,9 +439,11 @@
+   int total = -1;
+ #endif /* JUMPPLAY */
+ 
++#ifndef USE_LIVEBUFFER
+   readIndex = Resume();
+   if (readIndex >= 0)
+      isyslog("resuming replay at index %d (%s)", readIndex, *IndexToHMSF(readIndex, true, framesPerSecond));
++#endif /*USE_LIVEBUFFER*/
+ 
+ #ifdef USE_JUMPPLAY
+   if (Setup.PlayJump && readIndex <= 0 && marks.First() && index) {
+@@ -477,6 +511,10 @@
+                          if (NewIndex <= 0 && readIndex > 0)
+                             NewIndex = 1; // make sure the very first frame is delivered
+                          NewIndex = index->GetNextIFrame(NewIndex, playDir == pdForward, &FileNumber, &FileOffset, &Length, TimeShiftMode);
++#ifdef USE_LIVEBUFFER
++                         if (NewIndex < 0 && TimeShiftMode) // Why should we wait for a timeout if not pdForward
++                            SwitchToPlayFrame = Index;
++#endif
+                          if (NewIndex < 0 && TimeShiftMode && playDir == pdForward)
+                             SwitchToPlayFrame = Index;
+                          Index = NewIndex;
+@@ -535,6 +573,15 @@
+ #endif /* JUMPPLAY */
+                       if (index->Get(readIndex + 1, &FileNumber, &FileOffset, &readIndependent, &Length) && NextFile(FileNumber, FileOffset))
+                          readIndex++;
++#ifdef USE_LIVEBUFFER
++                      else if(index && index->First() && (readIndex < index->First())) {
++                         int old = readIndex;
++                         readIndex = index->GetNextIFrame(index->First()+1, true, NULL, NULL, NULL, true);
++                         isyslog("Jump before start of livebuffer cortrected %d->%d First %d", old, readIndex, index->First());
++                         if(readIndex <= index->First())
++                            eof = true;
++                      }
++#endif /*USE_LIVEBUFFER*/
+                       else
+                          eof = true;
+                       }
+@@ -688,7 +735,11 @@
+              else if (Index <= 0 || SwitchToPlayFrame && Index >= SwitchToPlayFrame)
+                 SwitchToPlay = true;
+              if (SwitchToPlay) {
++#ifdef USE_LIVEBUFFER
++                if (!SwitchToPlayFrame || (playDir == pdBackward))
++#else
+                 if (!SwitchToPlayFrame)
++#endif /*USE_LIVEBUFFER*/
+                    Empty();
+                 DevicePlay();
+                 playMode = pmPlay;
+diff -ruN vdr-1.7.26/livebuffer.c vdr-1.7.26.mod/livebuffer.c
+--- vdr-1.7.26/livebuffer.c	1970-01-01 01:00:00.000000000 +0100
++++ vdr-1.7.26.mod/livebuffer.c	2012-03-11 13:36:53.893728301 +0100
+@@ -0,0 +1,403 @@
++#ifdef USE_LIVEBUFFER
++#include "livebuffer.h"
++#if VDRVERSNUM >= 10716
++
++#include <vector>
++#include "videodir.h"
++#include "recording.h"
++#include "skins.h"
++#include "player.h"
++
++#define WAIT_WRITING_COUNT 1000
++#define WAIT_WRITING_SLEEP 10000
++
++#define WAIT_TERMINATE_COUNT 300
++#define WAIT_TERMINATE_SLEEP 10000
++
++struct tLiveIndex {
++  int index;
++  uint64_t offset:40; // up to 1TB per file (not using off_t here - must definitely be exactly 64 bit!)
++  int reserved:7;     // reserved for future use
++  int independent:1;  // marks frames that can be displayed by themselves (for trick modes)
++  uint16_t number:16; // up to 64K files per recording
++  tLiveIndex(int Index, bool Independent, uint16_t Number, off_t Offset)
++  {
++    index = Index;
++    offset = Offset;
++    reserved = 0;
++    independent = Independent;
++    number = Number;
++  }
++}; // tLiveIndex
++
++class cLiveIndex : public cIndex {
++public:
++	cLiveIndex(const char *FileName): bufferFileName(FileName, false), bufferBaseName(FileName) {
++		resumePos = -1;
++		lastPos = lastGet = lastBuf = 0;
++		lastFileNumber=1;
++		dropFile = false;
++		maxSize = Setup.LiveBufferSize * 60 * DEFAULTFRAMESPERSECOND;
++		idx.reserve(maxSize+1);
++	}; // cLiveIndex
++	virtual ~cLiveIndex() {
++	}; // ~cLiveIndex
++	virtual bool Write(bool Independent, uint16_t FileNumber, off_t FileOffset) {
++		cMutexLock lock(&idx_lock);
++		idx.push_back(tLiveIndex(++lastPos, Independent, FileNumber, FileOffset));
++		while(((idx.size() > maxSize) && (lastGet ? (lastGet > First()) : true) && (lastBuf ? (lastBuf > First()) : true)) || dropFile) {
++			if(idx.front().number != lastFileNumber) {
++				isyslog("Deleting old livebuffer file #%d (%d)", lastFileNumber, dropFile);
++				system(cString::sprintf("ls -l %s/%05d.ts | grep -- '->' | sed -e's/.*-> //' | xargs rm -rf", (const char *)bufferBaseName, lastFileNumber));  // for symlink video.xx
++				unlink(cString::sprintf("%s/%05d.ts", (const char *)bufferBaseName, lastFileNumber));
++				lastFileNumber = idx.front().number;
++				dropFile=false;
++			} // if
++			idx.erase(idx.begin());
++		} // if
++		return true;
++	}; // Write
++	virtual bool Get(int Index, uint16_t *FileNumber, off_t *FileOffset, bool *Independent = NULL, int *Length = NULL) {
++		cMutexLock lock(&idx_lock);
++		std::vector<tLiveIndex>::iterator item = GetIndex(Index);
++		if(item == idx.end()) return false;
++		*FileNumber = item->number;
++		*FileOffset = item->offset;
++		if (Independent)
++			*Independent = item->independent;
++		item++;
++		if(item == idx.end()) return false;
++		if (Length) {
++			uint16_t fn = item->number;
++			off_t fo = item->offset;
++			if (fn == *FileNumber)
++				*Length = int(fo - *FileOffset);
++			else
++				*Length = -1; // this means "everything up to EOF" (the buffer's Read function will act accordingly)
++		} // if
++		lastGet = Index;
++		return true;
++	}; // Get
++	virtual int GetNextIFrame(int Index, bool Forward, uint16_t *FileNumber = NULL, off_t *FileOffset = NULL, int *Length = NULL, bool StayOffEnd = false) {
++		cMutexLock lock(&idx_lock);
++		std::vector<tLiveIndex>::iterator item = GetIndex(Index);
++		if(item == idx.end()) {
++			if(Index < First() && Forward)
++				item = idx.begin();
++			else
++				return -1;
++		}
++		if(Forward) {
++			do {
++				item++;
++				if(item == idx.end()) return -1;
++			} while(!item->independent);
++		} else {
++			do {
++				if(item == idx.begin()) return -1;
++				item--;
++			} while(!item->independent);
++		} // if
++		uint16_t fn;
++		if (!FileNumber)
++			FileNumber = &fn;
++		off_t fo;
++		if (!FileOffset)
++			FileOffset = &fo;
++		*FileNumber = item->number;
++		*FileOffset = item->offset;
++		item++;
++		if(item == idx.end()) return -1;
++		if (Length) {
++			// all recordings end with a non-independent frame, so the following should be safe:
++			uint16_t fn = item->number;
++			off_t fo = item->offset;
++			if (fn == *FileNumber) {
++				*Length = int(fo - *FileOffset);
++			} else {
++				esyslog("ERROR: 'I' frame at end of file #%d", *FileNumber);
++				*Length = -1;
++			} // if
++		} // if
++		return Index;
++	}; // GetNextIFrame
++	virtual bool SetBufferStart(int Frames) {
++		cMutexLock lock(&idx_lock);
++		abortBuf = false;
++		if(Frames <= 0) {
++			lastBuf = 0;
++			return false;
++		} // if
++		lastBuf = Last()-Frames;
++		if(lastBuf < First())
++			lastBuf = First();
++		lastBuf = GetNextIFrame(lastBuf, true);
++		return true;
++	} // SetBufferStart
++	virtual cUnbufferedFile *GetNextBuffer(int &Length, bool &Independent) {
++		if(abortBuf || !lastBuf) return NULL;
++		cMutexLock lock(&idx_lock);
++		std::vector<tLiveIndex>::iterator buff = GetIndex(lastBuf);
++		if((buff == idx.end()) || ((buff+1) == idx.end())) return NULL;
++		off_t offset = buff->offset;
++		int number   = buff->number;
++		cUnbufferedFile *ret = bufferFileName.SetOffset(number, offset);
++		Independent = buff->independent;
++		buff++;
++		lastBuf = buff->index;
++		if(number != buff->number)
++			Length = -1;
++		else
++			Length = buff->offset-offset;
++		return ret;
++	} // GetNextBuffer
++	virtual int Get(uint16_t FileNumber, off_t FileOffset) {
++		for ( std::vector<tLiveIndex>::iterator item = idx.begin(); item != idx.end(); item++)
++			if (item->number > FileNumber || ((item->number == FileNumber) && off_t(item->offset) >= FileOffset))
++				return item->index;
++		return lastPos;
++	}; // Get
++	virtual bool Ok(void)                    {return true;};
++	virtual int  First(void)                 {return idx.size() ? idx.front().index : -1;};
++	virtual int  Last(void)                  {return idx.size() ? idx.back().index  : -1;};
++	virtual void SetResume(int Index)        {resumePos = lastGet = Index;};
++	virtual int  GetResume(void)             {return resumePos;};
++	virtual bool StoreResume(int Index)      {resumePos=Index; lastGet=0; return true;};
++	virtual bool IsStillRecording(void)      {return true;};
++	virtual void Delete(void)                {};
++	virtual void DropFile(void)              {dropFile=true;};
++	virtual bool IsWritingBuffer(void)       {return lastBuf != 0;};
++	virtual void CancelWritingBuffer(void)   {abortBuf = true;};
++	virtual bool WritingBufferCanceled(void) {return abortBuf;};
++protected:
++	int firstPos;
++	int lastPos;
++	int resumePos;
++	int lastFileNumber;
++	int lastGet;
++	int lastBuf;
++	bool abortBuf;
++	bool dropFile;
++	unsigned int maxSize;
++	cFileName bufferFileName;
++	cString bufferBaseName;
++	cMutex idx_lock;
++	std::vector<tLiveIndex> idx;
++	virtual std::vector<tLiveIndex>::iterator GetIndex(int Index) {
++		if(!idx.size()) return idx.end();
++		std::vector<tLiveIndex>::iterator item = idx.begin();
++
++		unsigned int guess = Index-First(); // Try to guess the position
++		if(guess > 0) {
++			if(guess < idx.size())
++				item += guess;
++			else
++				item = idx.end()-1;
++		} // if
++		while(item->index < Index) {
++			item++;
++			if(item == idx.end())
++				return idx.end();
++		} // while
++		while(item->index > Index) {
++			if(item == idx.begin())
++				return idx.end();
++			item--;
++		} // while
++		if(item->index != Index)
++			return idx.end();
++		return item;
++	}; // GetIndex
++}; // cLiveIndex
++
++/*****************************************************************************/
++
++cString cLiveRecorder::liveFileName;
++
++cLiveRecorder::cLiveRecorder(const cChannel *Channel):cRecorder(FileName(), Channel, -1)
++              ,broken(false) {
++	handleError = false;
++	if(index) delete index;
++	index = new cLiveIndex(FileName());
++	Activate(true);
++}; // cLiveRecorder::cLiveRecorder
++
++cLiveRecorder::~cLiveRecorder() {
++	int maxWait = WAIT_TERMINATE_COUNT;
++	CancelWritingBuffer();
++	while(IsWritingBuffer() && maxWait--)
++		usleep(WAIT_TERMINATE_SLEEP);
++	Activate(false);
++	Cleanup();
++}; // cLiveRecorder::~cLiveRecorder
++
++bool cLiveRecorder::IsWritingBuffer() {
++	return index && ((cLiveIndex *)index)->IsWritingBuffer();
++} // cLiveRecorder::IsWritingBuffer
++
++void cLiveRecorder::CancelWritingBuffer() {
++	if(index) ((cLiveIndex *)index)->CancelWritingBuffer();
++} // cLiveRecorder::CancelWritingBuffer
++
++bool cLiveRecorder::NextFile(void) {
++	if (recordFile && frameDetector->IndependentFrame()) { // every file shall start with an independent frame
++		if(RunningLowOnDiskSpace() && index)
++			((cLiveIndex *)index)->DropFile();
++		if (fileSize > MEGABYTE(off_t(Setup.LiveBufferMaxFileSize)) || RunningLowOnDiskSpace()) {
++			recordFile = fileName->NextFile();
++			fileSize = 0;
++		} // if
++	} // if
++	return recordFile != NULL;
++} // cLiveRecorder::NextFile
++
++int cLiveRecorder::LastIFrame() {
++	if(!index) return 0;
++	int ret = index->GetNextIFrame(index->Last()-1, false);
++	return (ret > 0) ? ret : 0;
++}; // cLiveRecorder::LastIFrame
++
++int cLiveRecorder::LastFrame() { 
++	return index ? index->Last() : 0;
++}; // cLiveRecorder::LastFrame
++
++void cLiveRecorder::SetResume(int Index) { 
++	if(index) ((cLiveIndex *)index)->SetResume(Index);
++}; // cLiveRecorder::SetResume
++
++bool cLiveRecorder::SetBufferStart(time_t Start) {
++	if(!index) return false;
++	if(time(NULL) <= Start) return false;
++	int Frames = SecondsToFrames(time(NULL)-Start, frameDetector ? frameDetector->FramesPerSecond() : DEFAULTFRAMESPERSECOND); //test stop livebuffer 
++	return ((cLiveIndex *)index)->SetBufferStart(Frames);
++} // cLiveRecorder::SetBufferStart
++
++cIndex *cLiveRecorder::GetIndex() { 
++	return index;
++}; // cLiveRecorder::GetIndex
++
++bool cLiveRecorder::Cleanup() {
++	if(FileName()) 
++                if(-1 == system(cString::sprintf("ls -l %s/* | grep -- '->' | sed -e's/.*-> //' | xargs rm -rf", FileName()))) // for symlink video.xx
++                        return false;
++        else 
++		if(-1 == system(cString::sprintf("rm -rf %s/*", FileName())))
++			return false;
++	return true;
++}; // cLiveRecorder::Cleanup
++
++bool cLiveRecorder::Prepare() {
++	if (!MakeDirs(FileName(), true)) return false;
++	return Cleanup();
++}; // cLiveRecorder::Prepare
++
++const char *cLiveRecorder::FileName() {
++	if(!(const char *)liveFileName && BufferDirectory)
++		liveFileName = cString::sprintf("%s/LiveBuffer", BufferDirectory);
++	return liveFileName;
++}; // cLiveRecorder::FileName
++
++void cLiveRecorder::Activate(bool On) {
++	cRecorder::Activate(On);
++	if(!On) broken=true;
++} // cLiveRecorder::Activate
++
++void cLiveRecorder::Receive(uchar *Data, int Length) {
++	if(broken) {
++		isyslog("Continue live recorder on broken stream (maybe due to switching to same channel on other device)");
++		TsSetTeiOnBrokenPackets(Data, Length);
++		broken = false;
++	} // if
++	cRecorder::Receive(Data, Length);
++} // cLiveRecorder::Receive
++
++/*****************************************************************************/
++
++cBufferRecorder::cBufferRecorder(const char *FileName, const cChannel *Channel, int Priority, cIndex *LiveBufferIndex)
++                :cRecorder(FileName, Channel, Priority)
++                ,liveBufferIndex(LiveBufferIndex)
++                ,dropData(false) {
++	if(liveBufferIndex) dropData=true; // Drop new data till we have written most of the live buffer data
++} // cBufferRecorder::cBufferRecorder
++
++cBufferRecorder::~cBufferRecorder() {
++	if(liveBufferIndex) ((cLiveIndex *)liveBufferIndex)->SetBufferStart(0);
++} // cBufferRecorder::~cBufferRecorder
++
++void cBufferRecorder::Action(void) {
++	if(liveBufferIndex)
++		FillInitialData(NULL, 0);
++	dropData=false;
++	cRecorder::Action();
++	if(liveBufferIndex) ((cLiveIndex *)liveBufferIndex)->SetBufferStart(0);
++	liveBufferIndex = NULL;
++} // cBufferRecorder::Action
++
++void cBufferRecorder::Activate(bool On) {
++	if(!On && liveBufferIndex) ((cLiveIndex *)liveBufferIndex)->SetBufferStart(0);
++	cRecorder::Activate(On);
++} // cBufferRecorder::Activate
++
++void cBufferRecorder::Receive(uchar *Data, int Length) {
++	if(!dropData) cRecorder::Receive(Data, Length);
++} // cBufferRecorder::Receive
++
++void cBufferRecorder::FillInitialData(uchar *Data, int Size) {
++	if(liveBufferIndex) {
++		int64_t search_pts = Data ? TsGetPts(Data, Size) : -1;
++		int maxWait = WAIT_WRITING_COUNT;
++		uchar buffer[MAXFRAMESIZE];
++		int Length;
++		bool Independent;
++		bool found = false;
++		while(!Data || (Size >= TS_SIZE)) {
++			cUnbufferedFile *file = ((cLiveIndex *)liveBufferIndex)->GetNextBuffer(Length, Independent);
++			if(!file) {
++				if(((cLiveIndex *)liveBufferIndex)->WritingBufferCanceled()) {
++					isyslog("Writing buffer canceled by user");
++					if(fileSize) TsSetTeiOnBrokenPackets(Data, Size);
++					((cLiveIndex *)liveBufferIndex)->SetBufferStart(0);
++					liveBufferIndex = NULL;
++					return;
++				} // if
++				if(!Data || !Size) return;
++				if(!maxWait--)
++					break;
++				usleep(WAIT_WRITING_SLEEP);
++				continue;
++			} // if
++			if (!NextFile())
++				break;
++			int len = ReadFrame(file, buffer, Length, sizeof(buffer));
++			if(len < TS_SIZE) {
++				isyslog("Failed to read live buffer data");
++				break;
++			} // if
++			if(Data && Independent && (search_pts == TsGetPts(buffer, len))) {
++				found = true;
++				break;
++			} // if
++			if (index)
++				index->Write(Independent, fileName->Number(), fileSize);
++			if (recordFile->Write(buffer, len) < 0) {
++				isyslog("Failed to write live buffer data");
++				break;
++			} // if
++			fileSize += len;
++		} // while
++		if(Data) {
++			isyslog("%lld bytes from live buffer %swritten to recording", fileSize, found ? "seamless ": "");
++			if(!found && fileSize) TsSetTeiOnBrokenPackets(Data, Size);
++			((cLiveIndex *)liveBufferIndex)->SetBufferStart(0);
++			liveBufferIndex = NULL;
++		} else if(((cLiveIndex *)liveBufferIndex)->WritingBufferCanceled()) {
++			isyslog("%lld bytes from live buffer written to recording (aborted)", fileSize);
++			((cLiveIndex *)liveBufferIndex)->SetBufferStart(0);
++			liveBufferIndex = NULL;
++		} // if
++	} else if (Data && fileSize)
++		TsSetTeiOnBrokenPackets(Data, Size);
++} // cBufferRecorder::FillInitialData
++
++#endif /*VDRVERSNUM*/
++#endif /*USE_LIVEBUFFER*/
+diff -ruN vdr-1.7.26/livebuffer.h vdr-1.7.26.mod/livebuffer.h
+--- vdr-1.7.26/livebuffer.h	1970-01-01 01:00:00.000000000 +0100
++++ vdr-1.7.26.mod/livebuffer.h	2012-03-11 13:36:53.893728301 +0100
+@@ -0,0 +1,47 @@
++#ifndef LIVEBUFFER_H
++#define LIVEBUFFER_H
++
++#ifdef USE_LIVEBUFFER
++#include "config.h"
++#if VDRVERSNUM >= 10716
++
++#include "recorder.h"
++
++class cLiveRecorder : public cRecorder {
++public:
++	cLiveRecorder(const cChannel *Channel);
++	virtual bool NextFile(void);
++	virtual ~cLiveRecorder();
++	virtual bool IsWritingBuffer();
++	virtual void CancelWritingBuffer();
++	virtual int LastIFrame();
++	virtual int LastFrame();
++	virtual void SetResume(int Index);
++	virtual bool SetBufferStart(time_t Start);
++	virtual cIndex *GetIndex();
++	static bool Cleanup();
++	static bool Prepare();
++	static const char *FileName();
++protected:
++	virtual void Activate(bool On);
++	virtual void Receive(uchar *Data, int Length);
++	bool broken;
++	static cString liveFileName;
++}; // cLiveRecorder
++
++class cBufferRecorder : public cRecorder {
++public:
++	cBufferRecorder(const char *FileName, const cChannel *Channel, int Priority, cIndex *LiveBufferIndex);
++	virtual ~cBufferRecorder();
++	virtual void FillInitialData(uchar *Data, int Size);
++protected:
++	virtual void Action(void);
++	virtual void Activate(bool On);
++	virtual void Receive(uchar *Data, int Length);
++	cIndex *liveBufferIndex;
++	bool dropData;
++}; // cBufferRecorder
++
++#endif /*VDRVERSNUM*/
++#endif /*USE_LIVEBUFFER*/
++#endif /*LIVEBUFFER_H*/
+diff -ruN vdr-1.7.26/Makefile vdr-1.7.26.mod/Makefile
+--- vdr-1.7.26/Makefile	2012-03-11 13:37:10.501810646 +0100
++++ vdr-1.7.26.mod/Makefile	2012-03-11 13:36:53.893728301 +0100
+@@ -70,6 +70,11 @@
+ LIBS += $(shell pkg-config --libs fribidi)
+ endif
+ 
++ifdef LIVEBUFFER
++DEFINES += -DUSE_LIVEBUFFER
++OBJS += livebuffer.o
++endif
++
+ LIRC_DEVICE ?= /var/run/lirc/lircd
+ 
+ DEFINES += -DLIRC_DEVICE=\"$(LIRC_DEVICE)\"
+diff -ruN vdr-1.7.26/menu.c vdr-1.7.26.mod/menu.c
+--- vdr-1.7.26/menu.c	2012-03-11 13:37:10.505810662 +0100
++++ vdr-1.7.26.mod/menu.c	2012-03-11 13:36:53.897728309 +0100
+@@ -3577,7 +3577,11 @@
+ 
+ class cMenuSetupRecord : public cMenuSetupBase {
+ private:
+-  const char *pauseKeyHandlingTexts[3];
++#ifdef USE_LIVEBUFFER
++  const char *pauseKeyHandlingTexts[4];
++#else
++   const char *pauseKeyHandlingTexts[3];
++#endif /*USE_LIVEBUFFER*/
+   const char *delTimeshiftRecTexts[3];
+ #ifdef USE_DVLVIDPREFER
+   void Set(void);
+@@ -3625,6 +3629,9 @@
+   pauseKeyHandlingTexts[0] = tr("do not pause live video");
+   pauseKeyHandlingTexts[1] = tr("confirm pause live video");
+   pauseKeyHandlingTexts[2] = tr("pause live video");
++#ifdef USE_LIVEBUFFER
++  pauseKeyHandlingTexts[3] = tr("Timeshift");
++#endif /*USE_LIVEBUFFER*/ 
+   delTimeshiftRecTexts[0] = tr("no");
+   delTimeshiftRecTexts[1] = tr("confirm");
+   delTimeshiftRecTexts[2] = tr("yes");
+@@ -3633,7 +3640,12 @@
+   Add(new cMenuEditIntItem( tr("Setup.Recording$Margin at stop (min)"),      &data.MarginStop));
+   Add(new cMenuEditIntItem( tr("Setup.Recording$Default priority"),          &data.DefaultPriority, 0, MAXPRIORITY));
+   Add(new cMenuEditIntItem( tr("Setup.Recording$Default lifetime (d)"),      &data.DefaultLifetime, 0, MAXLIFETIME));
+-  Add(new cMenuEditStraItem(tr("Setup.Recording$Pause key handling"),        &data.PauseKeyHandling, 3, pauseKeyHandlingTexts));
++#ifdef USE_LIVEBUFFER
++  Add(new cMenuEditStraItem(tr("Setup.Recording$Pause key handling"),        &data.PauseKeyHandling, 4, pauseKeyHandlingTexts));
++  Add(new cMenuEditIntItem( tr("Timeshift size (min)"),                     &data.LiveBufferSize, 1, 300)); // TODO fix name and min/max values
++#else
++   Add(new cMenuEditStraItem(tr("Setup.Recording$Pause key handling"),        &data.PauseKeyHandling, 3, pauseKeyHandlingTexts));
++#endif /*USE_LIVEBUFFER*/
+   Add(new cMenuEditIntItem( tr("Setup.Recording$Pause priority"),            &data.PausePriority, 0, MAXPRIORITY));
+   Add(new cMenuEditIntItem( tr("Setup.Recording$Pause lifetime (d)"),        &data.PauseLifetime, 0, MAXLIFETIME));
+ #ifdef USE_DVLVIDPREFER
+@@ -5102,7 +5114,11 @@
+      if (ch && device->AttachReceiver(recorder)) {
+ #else
+      const cChannel *ch = timer->Channel();
++#ifdef USE_LIVEBUFFER
++     recorder = new cBufferRecorder(fileName, ch, timer->Priority(), cRecordControls::GetLiveBuffer(timer));
++#else
+      recorder = new cRecorder(fileName, ch, timer->Priority());
++#endif
+      if (device->AttachReceiver(recorder)) {
+ #endif /* ALTERNATECHANNEL */
+         Recording.WriteInfo();
+@@ -5193,6 +5209,10 @@
+ cRecordControl *cRecordControls::RecordControls[MAXRECORDCONTROLS] = { NULL };
+ int cRecordControls::state = 0;
+ 
++#ifdef USE_LIVEBUFFER
++cLiveRecorder *cRecordControls::liveRecorder = NULL;
++#endif /*USE_LIVEBUFFER*/
++
+ bool cRecordControls::Start(cTimer *Timer, bool Pause)
+ {
+   static time_t LastNoDiskSpaceMessage = 0;
+@@ -5282,8 +5302,31 @@
+       }
+ }
+ 
++
++#ifdef USE_LIVEBUFFER
++bool cRecordControls::StartLiveBuffer(eKeys Key) {
++   if(Setup.PauseKeyHandling == 3 && liveRecorder) {
++     int pos = liveRecorder->LastIFrame();
++     isyslog("Enter timeshift at %d / %d", pos, liveRecorder->LastFrame());
++     liveRecorder->SetResume(pos?pos:liveRecorder->LastFrame());
++     cReplayControl::SetRecording(cLiveRecorder::FileName(), tr("Timeshift mode"));
++     cReplayControl *rc = new cReplayControl;
++     cControl::Launch(rc);
++     cControl::Attach();
++     rc->ProcessKey(Key);
++     rc->Show(); // show progressbar at the start of livebuffer
++     return true;
++  } // if
++  return false;
++} // cRecordControls::StartLiveBuffer
++#endif /*USE_LIVEBUFFER*/
++
+ bool cRecordControls::PauseLiveVideo(void)
+ {
++#ifdef USE_LIVEBUFFER
++  if(StartLiveBuffer(kPause))
++     return true;
++#endif /*USE_LIVEBUFFER*/
+   Skins.Message(mtStatus, tr("Pausing live video..."));
+   cReplayControl::SetRecording(NULL, NULL); // make sure the new cRecordControl will set cReplayControl::LastReplayed()
+   if (Start(NULL, true)) {
+@@ -5297,6 +5340,54 @@
+   return false;
+ }
+ 
++#ifdef USE_LIVEBUFFER
++void cRecordControls::SetLiveChannel(cDevice *Device, const cChannel *Channel) {
++	if(liveRecorder) {
++		if(Channel && Device && (liveRecorder->ChannelID()==Channel->GetChannelID()))
++			Device->AttachReceiver(liveRecorder);
++		else
++			DELETENULL(liveRecorder);
++	} // if
++	if(Device && Channel) cControl::Launch(new cTransferControl(Device, Channel));
++	if(Setup.PauseKeyHandling == 3 && Channel && Device && !liveRecorder) { 
++		if (cLiveRecorder::Prepare()) {
++			liveRecorder = new cLiveRecorder(Channel);
++			if(!Device->AttachReceiver(liveRecorder))
++				DELETENULL(liveRecorder);
++		} // if
++	} // if
++} // cRecordControls::SetLiveChannel
++
++bool cRecordControls::CanSetLiveChannel(const cChannel *Channel) {
++	if(liveRecorder && Channel && (liveRecorder->ChannelID()==Channel->GetChannelID())) return true;
++	return !IsWritingBuffer();
++} // cRecordControls::CanSetLiveChannel
++
++bool cRecordControls::IsWritingBuffer() {
++	return liveRecorder ? liveRecorder->IsWritingBuffer() : false;
++} // cRecordControls::IsWritingBuffer
++
++void cRecordControls::CancelWritingBuffer() {
++	if(liveRecorder && liveRecorder->IsWritingBuffer()) {
++		liveRecorder->CancelWritingBuffer();
++		sleep(1); // allow recorder to really stop
++	} // if
++} // cRecordControls::CancelWritingBuffer
++
++cIndex *cRecordControls::GetLiveBuffer(cTimer *Timer) {
++	if(!liveRecorder || !Timer || !Timer->Channel()) return NULL;
++	if(!(liveRecorder->ChannelID() == Timer->Channel()->GetChannelID())) return NULL;
++	if(!liveRecorder->SetBufferStart(Timer->StartTime())) return NULL;
++	return liveRecorder->GetIndex();
++} // cRecordControls::GetLiveBuffer
++
++cIndex *cRecordControls::GetLiveIndex(const char *FileName) {
++	if(!FileName || strcmp(cLiveRecorder::FileName(), FileName)) return NULL;
++	return liveRecorder ? liveRecorder->GetIndex() : NULL;
++} // cRecordControls::GetLiveIndex
++
++#endif /* USE_LIVEBUFFER */
++
+ const char *cRecordControls::GetInstantId(const char *LastInstantId)
+ {
+   for (int i = 0; i < MAXRECORDCONTROLS; i++) {
+@@ -5509,21 +5600,30 @@
+ 
+ void cReplayControl::ShowMode(void)
+ {
+-  if (visible || Setup.ShowReplayMode && !cOsd::IsOpen()) {
++  if (visible || (Setup.ShowReplayMode && !cOsd::IsOpen())) {
+      bool Play, Forward;
+      int Speed;
+      if (GetReplayMode(Play, Forward, Speed) && (!visible || Play != lastPlay || Forward != lastForward || Speed != lastSpeed)) {
+         bool NormalPlay = (Play && Speed == -1);
++        bool Paused = (!Play && Speed == -1);
+ 
+         if (!visible) {
+            if (NormalPlay)
+               return; // no need to do indicate ">" unless there was a different mode displayed before
+            visible = modeOnly = true;
++
++           // if newly paused show full replay osd; ie modeOnly = false
++           if (Paused)  {
++               modeOnly = (lastPlay == Play);
++           }
++
+            displayReplay = Skins.Current()->DisplayReplay(modeOnly);
+            }
+ 
+-        if (modeOnly && !timeoutShow && NormalPlay)
++        // osd times out when replaying normally OR when paused and full osd is shown
++        if (!timeoutShow && (NormalPlay|| (!modeOnly && Paused)))
+            timeoutShow = time(NULL) + MODETIMEOUT;
++
+         displayReplay->SetMode(Play, Forward, Speed);
+         lastPlay = Play;
+         lastForward = Forward;
+@@ -5537,6 +5637,45 @@
+   int Current, Total;
+ 
+   if (GetIndex(Current, Total) && Total > 0) {
++#ifdef USE_LIVEBUFFER
++     int first=0;
++     cIndex *idx = cRecordControls::GetLiveIndex(fileName);
++     if(idx) first = idx->First(); // Normalize displayed values
++     Current -= first;
++     if(Current < 0) Current = 0;
++     Total   -= first;
++     if(Total < 0) Total = 0;
++     time_t now = time(NULL);
++     static time_t last_sched_check = 0;
++     if(displayReplay && idx && (last_sched_check != now)) {
++        last_sched_check = now; // Only check every second
++        cSchedulesLock SchedulesLock;
++        const cSchedules *Schedules = cSchedules::Schedules(SchedulesLock);
++        if (Schedules) {
++           const char *display_title = NULL;// = title;
++           const cSchedule *Schedule = Schedules->GetSchedule(Channels.GetByNumber(cDevice::CurrentChannel()));
++           if (Schedule) {
++              time_t Time = now - round(((double)Total - Current) / FramesPerSecond());
++              const cEvent *event = Schedule->GetEventAround(Time);
++              if (event) display_title = event->Title();
++           } // if
++
++           // no event title; show channel name
++           if (!display_title) {
++               cChannel *channel = Channels.GetByNumber(cDevice::CurrentChannel());
++               display_title = channel->Name();
++           }
++
++           // set title as "Timeshift mode: <event title> "
++           // OR "Timeshift mode: <channel name>"
++           // if neither is possible leave title as such
++           if (display_title)
++               displayReplay->SetTitle(cString::sprintf("%s: %s",
++                                                        tr("Timeshift mode"),
++                                                        display_title));
++        } // if
++     } // if
++#endif /*USE_LIVEBUFFER*/
+      if (!visible) {
+         displayReplay = Skins.Current()->DisplayReplay(modeOnly);
+         displayReplay->SetMarks(&marks);
+@@ -5641,6 +5780,9 @@
+ 
+ void cReplayControl::TimeSearch(void)
+ {
++#ifdef USE_LIVEBUFFER
++  if(cRecordControls::GetLiveIndex(fileName)) return;
++#endif /*USE_LIVEBUFFER*/
+   timeSearchTime = timeSearchPos = 0;
+   timeSearchHide = false;
+   if (modeOnly)
+@@ -5659,6 +5801,9 @@
+ 
+ void cReplayControl::MarkToggle(void)
+ {
++#ifdef USE_LIVEBUFFER
++  if(cRecordControls::GetLiveIndex(fileName)) return;
++#endif /*USE_LIVEBUFFER*/
+   int Current, Total;
+   if (GetIndex(Current, Total, true)) {
+      cMark *m = marks.Get(Current);
+@@ -5687,6 +5832,9 @@
+ 
+ void cReplayControl::MarkJump(bool Forward)
+ {
++#ifdef USE_LIVEBUFFER
++  if(cRecordControls::GetLiveIndex(fileName)) return;
++#endif /*USE_LIVEBUFFER*/
+   if (marks.Count()) {
+      int Current, Total;
+      if (GetIndex(Current, Total)) {
+@@ -5715,6 +5863,9 @@
+ 
+ void cReplayControl::MarkMove(bool Forward)
+ {
++#ifdef USE_LIVEBUFFER
++  if(cRecordControls::GetLiveIndex(fileName)) return;
++#endif /*USE_LIVEBUFFER*/
+   int Current, Total;
+   if (GetIndex(Current, Total)) {
+      cMark *m = marks.Get(Current);
+@@ -5739,6 +5890,9 @@
+ 
+ void cReplayControl::EditCut(void)
+ {
++#ifdef USE_LIVEBUFFER
++  if(cRecordControls::GetLiveIndex(fileName)) return;
++#endif /*USE_LIVEBUFFER*/
+   if (fileName) {
+      Hide();
+      if (!cCutter::Active()) {
+@@ -5757,6 +5911,9 @@
+ 
+ void cReplayControl::EditTest(void)
+ {
++#ifdef USE_LIVEBUFFER
++  if(cRecordControls::GetLiveIndex(fileName)) return;
++#endif /*USE_LIVEBUFFER*/
+   int Current, Total;
+   if (GetIndex(Current, Total)) {
+      cMark *m = marks.Get(Current);
+@@ -5792,7 +5949,14 @@
+   if (Key == kNone)
+      marks.Update();
+   if (visible) {
++
++      if (Key != kNone /*&& !modeOnly*/ && timeoutShow) {
++          printf("timeout reset +%d\n", MODETIMEOUT);
++          timeoutShow = time(NULL) + MODETIMEOUT;
++      }
++
+      if (timeoutShow && time(NULL) > timeoutShow) {
++         printf("timed out \n");
+         Hide();
+         ShowMode();
+         timeoutShow = 0;
+@@ -5809,12 +5973,34 @@
+      return osContinue;
+      }
+   bool DoShowMode = true;
++
++#ifdef USE_LIVEBUFFER
++  if (cRecordControls::GetLiveIndex(fileName) && (Key >= k0) && (Key <= k9))
++      return osSwitchChannel;
++#endif /*USE_LIVEBUFFER*/
+   switch (int(Key)) {
+     // Positioning:
++#ifdef USE_LIVEBUFFER
++    case kUp:      if(cRecordControls::GetLiveIndex(fileName)) {
++                      cDevice::SwitchChannel(1);
++                      return osEnd;
++                   } // if
++                   // NO break
++  case kPlay:
++      Play(); break;
++    case kDown:    if(cRecordControls::GetLiveIndex(fileName)) {
++                      cDevice::SwitchChannel(-1);
++                      return osEnd;
++                   } // if
++                   // NO break
++  case kPause:   Pause();
++      break;
++#else
+     case kPlay:
+     case kUp:      Play(); break;
+     case kPause:
+     case kDown:    Pause(); break;
++#endif /*USE_LIVEBUFFER*/
+     case kFastRew|k_Release:
+     case kLeft|k_Release:
+                    if (Setup.MultiSpeedMode) break;
+@@ -5825,11 +6011,67 @@
+                    if (Setup.MultiSpeedMode) break;
+     case kFastFwd:
+     case kRight:   Forward(); break;
+-    case kRed:     TimeSearch(); break;
+     case kGreen|k_Repeat:
+     case kGreen:   SkipSeconds(-60); break;
+     case kYellow|k_Repeat:
+     case kYellow:  SkipSeconds( 60); break;
++#ifdef USE_LIVEBUFFER
++    case kRed:     if(cRecordControls::GetLiveIndex(fileName)) {
++
++                       if (!(visible && !modeOnly)) return osUnknown;
++                       else {} // fall through to case kRecord
++                               // since Timeshift ON and replay OSD is shown
++                       } // if
++                       else { //timeshift off
++                           TimeSearch();
++                           break;
++                       } // else
++                       // No break
++    case kRecord:  if(cRecordControls::GetLiveIndex(fileName)) {
++                      int frames = 0;
++                      int Current, Total;
++                      if(GetIndex(Current, Total))
++                         frames = Total-Current;
++                      cTimer *timer = new cTimer(true, false, Channels.GetByNumber(cDevice::CurrentChannel()), frames / FramesPerSecond());
++                      Timers.Add(timer);
++                      Timers.SetModified();
++                      if (cRecordControls::Start(timer))
++                         Skins.Message(mtInfo, tr("Recording started"));
++                      else
++                         Timers.Del(timer);
++                   } // if
++                   break;
++    case kPrev|k_Repeat:
++    case kPrev:    if (lastSkipTimeout.TimedOut()) {
++                      lastSkipSeconds = REPLAYCONTROLSKIPSECONDS;
++                      lastSkipKey = kPrev;
++                   }
++                   else if (RAWKEY(lastSkipKey) != kPrev && lastSkipSeconds > (2 * REPLAYCONTROLSKIPLIMIT)) {
++                      lastSkipSeconds /= 2;
++                      lastSkipKey = kNone;
++                   }
++                   lastSkipTimeout.Set(REPLAYCONTROLSKIPTIMEOUT);
++                   SkipSeconds(-lastSkipSeconds); break;
++    case kNext|k_Repeat:
++    case kNext:    if (lastSkipTimeout.TimedOut()) {
++                      lastSkipSeconds = REPLAYCONTROLSKIPSECONDS;
++                      lastSkipKey = kNext;
++                   }
++                   else if (RAWKEY(lastSkipKey) != kNext && lastSkipSeconds > (2 * REPLAYCONTROLSKIPLIMIT)) {
++                      lastSkipSeconds /= 2;
++                      lastSkipKey = kNone;
++                   }
++                   lastSkipTimeout.Set(REPLAYCONTROLSKIPTIMEOUT);
++                   SkipSeconds(lastSkipSeconds); break;
++    case kBlue:    if(cRecordControls::GetLiveIndex(fileName))
++                       if(!(visible && !modeOnly))
++                           return osUnknown;
++                   //NO break
++    case kStop:    Hide();
++                   Stop();
++                   return osEnd;
++#else
++    case kRed:     TimeSearch(); break;
+ #ifdef USE_LIEMIKUUTIO
+     case k1|k_Repeat:
+     case k1:       SkipSeconds(-20); break;
+@@ -5862,6 +6104,8 @@
+     case kBlue:    Hide();
+                    Stop();
+                    return osEnd;
++#endif /*USE_LIVEBUFFER*/
++
+     default: {
+       DoShowMode = false;
+       switch (int(Key)) {
+@@ -5896,7 +6140,20 @@
+                            else
+                               Show();
+                            break;
+-            case kBack:    if (Setup.DelTimeshiftRec) { 
++            case kBack:
++#ifdef USE_LIVEBUFFER
++                           if (visible && !modeOnly) {
++                              Hide();
++                              DoShowMode = true;
++                              break;
++                           }
++                           if(cRecordControls::GetLiveIndex(fileName)) {
++                              Hide();
++                              Stop();
++                              return osEnd;
++                           } // if
++#endif /*USE_LIVEBUFFER*/
++                           if (Setup.DelTimeshiftRec) {
+                               cRecordControl* rc = cRecordControls::GetRecordControl(fileName);
+                               return rc && rc->InstantId() ? osEnd : osRecordings;
+                               }
+diff -ruN vdr-1.7.26/menu.h vdr-1.7.26.mod/menu.h
+--- vdr-1.7.26/menu.h	2012-03-11 13:37:10.505810662 +0100
++++ vdr-1.7.26.mod/menu.h	2012-03-11 13:36:53.897728309 +0100
+@@ -18,6 +18,9 @@
+ #include "menuitems.h"
+ #include "recorder.h"
+ #include "skins.h"
++#ifdef USE_LIVEBUFFER
++#include "livebuffer.h"
++#endif /*USE_LIVEBUFFER*/
+ #ifdef USE_SETUP
+ #include "submenu.h"
+ #endif /* SETUP */
+@@ -268,10 +271,18 @@
+ private:
+   static cRecordControl *RecordControls[];
+   static int state;
++#ifdef USE_LIVEBUFFER
++protected:
++  friend class cRecordControl;
++  static cLiveRecorder *liveRecorder;
++#endif /*USE_LIVEBUFFER*/
+ public:
+   static bool Start(cTimer *Timer = NULL, bool Pause = false);
+   static void Stop(const char *InstantId);
+   static bool PauseLiveVideo(void);
++#ifdef USE_LIVEBUFFER
++  static bool StartLiveBuffer(eKeys Key);
++#endif /*USE_LIVEBUFFER*/
+   static const char *GetInstantId(const char *LastInstantId);
+   static cRecordControl *GetRecordControl(const char *FileName);
+   static void Process(time_t t);
+@@ -280,6 +291,14 @@
+   static void Shutdown(void);
+   static void ChangeState(void) { state++; }
+   static bool StateChanged(int &State);
++#ifdef USE_LIVEBUFFER
++  static void SetLiveChannel(cDevice *Device, const cChannel *Channel);
++  static bool CanSetLiveChannel(const cChannel *Channel);
++  static bool IsWritingBuffer();
++  static void CancelWritingBuffer();
++  static cIndex *GetLiveBuffer(cTimer *Timer);
++  static cIndex *GetLiveIndex(const char *FileName);
++#endif /*USE_LIVEBUFFER*/
+   };
+ 
+ class cReplayControl : public cDvbPlayerControl {
+diff -ruN vdr-1.7.26/osdbase.h vdr-1.7.26.mod/osdbase.h
+--- vdr-1.7.26/osdbase.h	2012-03-11 13:37:10.505810662 +0100
++++ vdr-1.7.26.mod/osdbase.h	2012-03-11 13:36:53.897728309 +0100
+@@ -37,6 +37,9 @@
+                 osSwitchDvb,
+                 osBack,
+                 osEnd,
++#ifdef USE_LIVEBUFFER
++                osSwitchChannel,
++#endif /*USE_LIVEBUFFER*/
+                 os_User, // the following values can be used locally
+                 osUser1,
+                 osUser2,
+diff -ruN vdr-1.7.26/player.c vdr-1.7.26.mod/player.c
+--- vdr-1.7.26/player.c	2007-07-20 17:25:24.000000000 +0200
++++ vdr-1.7.26.mod/player.c	2012-03-11 13:36:53.897728309 +0100
+@@ -10,6 +10,11 @@
+ #include "player.h"
+ #include "i18n.h"
+ 
++#ifdef USE_LIVEBUFFER
++#include "menu.h"
++#include "transfer.h"
++#endif /*USE_LIVEBUFFER*/
++
+ // --- cPlayer ---------------------------------------------------------------
+ 
+ cPlayer::cPlayer(ePlayMode PlayMode)
+@@ -68,6 +73,12 @@
+ 
+ void cControl::Launch(cControl *Control)
+ {
++#ifdef USE_LIVEBUFFER
++  if(!dynamic_cast<cTransferControl *>(Control)) {
++     if(!dynamic_cast<cReplayControl *>(Control) || strcmp(cLiveRecorder::FileName(), cReplayControl::NowReplaying()))
++        cRecordControls::SetLiveChannel(NULL, NULL);
++  } // if
++#endif /*USE_LIVEBUFFER*/
+   cMutexLock MutexLock(&mutex);
+   cControl *c = control; // keeps control from pointing to uninitialized memory
+   control = Control;
+diff -ruN vdr-1.7.26/po/de_DE.po vdr-1.7.26.mod/po/de_DE.po
+--- vdr-1.7.26/po/de_DE.po	2012-03-11 13:37:10.509810685 +0100
++++ vdr-1.7.26.mod/po/de_DE.po	2012-03-11 13:36:53.897728309 +0100
+@@ -25,6 +25,9 @@
+ msgid "Can't start Transfer Mode!"
+ msgstr "Transfer-Mode kann nicht gestartet werden!"
+ 
++msgid "Still writing timeshift data to recording. Abort?"
++msgstr "Timeshift-Daten werden noch in Aufnahme kopiert. Abbrechen?"
++
+ msgid "off"
+ msgstr "aus"
+ 
+diff -ruN vdr-1.7.26/recorder.c vdr-1.7.26.mod/recorder.c
+--- vdr-1.7.26/recorder.c	2012-03-11 13:37:10.509810685 +0100
++++ vdr-1.7.26.mod/recorder.c	2012-03-11 13:36:53.897728309 +0100
+@@ -24,6 +24,9 @@
+ cRecorder::cRecorder(const char *FileName, const cChannel *Channel, int Priority)
+ :cReceiver(Channel, Priority)
+ ,cThread("recording")
++#ifdef USE_LIVEBUFFER
++,handleError(true)
++#endif /*USE_LIVEBUFFER*/
+ {
+   recordingName = strdup(FileName);
+ 
+@@ -144,6 +147,9 @@
+                     InfoWritten = true;
+                     }
+                  if (FirstIframeSeen || frameDetector->IndependentFrame()) {
++#ifdef USE_LIVEBUFFER
++                    if(!FirstIframeSeen) FillInitialData(b, r);
++#endif /*USE_LIVEBUFFER*/
+                     FirstIframeSeen = true; // start recording with the first I-frame
+                     if (!NextFile())
+                        break;
+@@ -169,7 +175,11 @@
+               ringBuffer->Del(Count);
+               }
+            }
++#ifdef USE_LIVEBUFFER
++        if (handleError && (time(NULL) - t > MAXBROKENTIMEOUT)) {
++#else
+         if (time(NULL) - t > MAXBROKENTIMEOUT) {
++#endif
+            esyslog("ERROR: video data stream broken");
+            ShutdownHandler.RequestEmergencyExit();
+            t = time(NULL);
+diff -ruN vdr-1.7.26/recorder.h vdr-1.7.26.mod/recorder.h
+--- vdr-1.7.26/recorder.h	2010-12-27 12:17:04.000000000 +0100
++++ vdr-1.7.26.mod/recorder.h	2012-03-11 13:36:53.897728309 +0100
+@@ -17,18 +17,33 @@
+ #include "thread.h"
+ 
+ class cRecorder : public cReceiver, cThread {
++#ifdef USE_LIVEBUFFER
++protected:
++#else
+ private:
++#endif /*USE_LIVEBUFFER*/
+   cRingBufferLinear *ringBuffer;
+   cFrameDetector *frameDetector;
+   cPatPmtGenerator patPmtGenerator;
+   cFileName *fileName;
++#ifdef USE_LIVEBUFFER
++  cIndex *index;
++  bool handleError;
++#else
+   cIndexFile *index;
++#endif /*USE_LIVEBUFFER*/
+   cUnbufferedFile *recordFile;
+   char *recordingName;
+   off_t fileSize;
+   time_t lastDiskSpaceCheck;
++#ifdef USE_LIVEBUFFER
++  virtual bool RunningLowOnDiskSpace(void);
++  virtual bool NextFile(void);
++  virtual void FillInitialData(uchar *Data, int Size) {};
++#else
+   bool RunningLowOnDiskSpace(void);
+   bool NextFile(void);
++#endif /*USE_LIVEBUFFER*/
+ protected:
+   virtual void Activate(bool On);
+   virtual void Receive(uchar *Data, int Length);
+diff -ruN vdr-1.7.26/recording.h vdr-1.7.26.mod/recording.h
+--- vdr-1.7.26/recording.h	2012-03-11 13:37:10.513810701 +0100
++++ vdr-1.7.26.mod/recording.h	2012-03-11 13:36:53.901728331 +0100
+@@ -286,7 +286,26 @@
+ struct tIndexTs;
+ class cIndexFileGenerator;
+ 
++#ifdef USE_LIVEBUFFER
++class cIndex {
++public:
++  virtual bool Ok(void) =0;
++  virtual bool Write(bool Independent, uint16_t FileNumber, off_t FileOffset) =0;
++  virtual bool Get(int Index, uint16_t *FileNumber, off_t *FileOffset, bool *Independent = NULL, int *Length = NULL) =0;
++  virtual int GetNextIFrame(int Index, bool Forward, uint16_t *FileNumber = NULL, off_t *FileOffset = NULL, int *Length = NULL, bool StayOffEnd = false) =0;
++  virtual int Get(uint16_t FileNumber, off_t FileOffset) =0;
++  virtual int First(void) {return 0;};
++  virtual int Last(void) =0;
++  virtual int GetResume(void) =0;
++  virtual bool StoreResume(int Index) =0;
++  virtual bool IsStillRecording(void) =0;
++  virtual void Delete(void) =0;
++  };
++
++class cIndexFile : public cIndex {
++#else
+ class cIndexFile {
++#endif /*USE_LIVEBUFFER*/
+ private:
+   int f;
+   cString fileName;
+diff -ruN vdr-1.7.26/timers.c vdr-1.7.26.mod/timers.c
+--- vdr-1.7.26/timers.c	2012-03-11 13:37:10.513810701 +0100
++++ vdr-1.7.26.mod/timers.c	2012-03-11 13:36:53.901728331 +0100
+@@ -25,7 +25,11 @@
+ 
+ // --- cTimer ----------------------------------------------------------------
+ 
++#ifdef USE_LIVEBUFFER
++cTimer::cTimer(bool Instant, bool Pause, cChannel *Channel, int Forerun)
++#else
+ cTimer::cTimer(bool Instant, bool Pause, cChannel *Channel)
++#endif /*USE_LIVEBUFFER*/
+ {
+   startTime = stopTime = 0;
+   lastSetEvent = 0;
+@@ -35,7 +39,11 @@
+   if (Instant)
+      SetFlags(tfActive | tfInstant);
+   channel = Channel ? Channel : Channels.GetByNumber(cDevice::CurrentChannel());
++#ifdef USE_LIVEBUFFER
++  time_t t = time(NULL) - Forerun;
++#else
+   time_t t = time(NULL);
++#endif /*USE_LIVEBUFFER*/
+   struct tm tm_r;
+   struct tm *now = localtime_r(&t, &tm_r);
+   day = SetTime(t, 0);
+diff -ruN vdr-1.7.26/timers.h vdr-1.7.26.mod/timers.h
+--- vdr-1.7.26/timers.h	2012-03-11 13:37:10.513810701 +0100
++++ vdr-1.7.26.mod/timers.h	2012-03-11 13:36:53.901728331 +0100
+@@ -46,7 +46,11 @@
+   char *aux;
+   const cEvent *event;
+ public:
++#ifdef USE_LIVEBUFFER
++  cTimer(bool Instant = false, bool Pause = false, cChannel *Channel = NULL, int Forerun = 0);
++#else
+   cTimer(bool Instant = false, bool Pause = false, cChannel *Channel = NULL);
++#endif /*USE_LIVEBUFFER*/
+   cTimer(const cEvent *Event);
+   cTimer(const cTimer &Timer);
+   virtual ~cTimer();
+diff -ruN vdr-1.7.26/vdr.c vdr-1.7.26.mod/vdr.c
+--- vdr-1.7.26/vdr.c	2012-03-11 13:37:10.521810748 +0100
++++ vdr-1.7.26.mod/vdr.c	2012-03-11 13:36:53.901728331 +0100
+@@ -215,6 +215,9 @@
+ 
+   static struct option long_options[] = {
+       { "audio",    required_argument, NULL, 'a' },
++#ifdef USE_LIVEBUFFER
++      { "buffer",   required_argument, NULL, 'b' },
++#endif /* USE_LIVEBUFFER */
+       { "config",   required_argument, NULL, 'c' },
+       { "daemon",   no_argument,       NULL, 'd' },
+       { "device",   required_argument, NULL, 'D' },
+@@ -247,10 +250,20 @@
+     };
+ 
+   int c;
++#ifdef USE_LIVEBUFFER
++  while ((c = getopt_long(argc, argv, "a:b:c:dD:e:E:g:hi:kl:L:mp:P:r:s:t:u:v:Vw:", long_options, NULL)) != -1) {
++#else
+   while ((c = getopt_long(argc, argv, "a:c:dD:e:E:g:hi:l:L:mp:P:r:s:t:u:v:Vw:", long_options, NULL)) != -1) {
++#endif /* USE_LIVEBUFFER */
+         switch (c) {
+           case 'a': AudioCommand = optarg;
+                     break;
++#ifdef USE_LIVEBUFFER
++          case 'b': BufferDirectory = optarg;
++                    if(optarg && *optarg && optarg[strlen(optarg)-1] == '/')
++                       optarg[strlen(optarg)-1] = 0;
++                    break;
++#endif /* USE_LIVEBUFFER */
+           case 'c': ConfigDirectory = optarg;
+                     break;
+           case 'd': DaemonMode = true; break;
+@@ -413,6 +426,9 @@
+      if (DisplayHelp) {
+         printf("Usage: vdr [OPTIONS]\n\n"          // for easier orientation, this is column 80|
+                "  -a CMD,   --audio=CMD    send Dolby Digital audio to stdin of command CMD\n"
++#ifdef USE_LIVEBUFFER
++               "  -b DIR,   --buffer=DIR   use DIR as LiveBuffer directory\n"
++#endif /*USE_LIVEBUFFER*/
+                "  -c DIR,   --config=DIR   read config files from DIR (default: %s)\n"
+                "  -d,       --daemon       run in daemon mode\n"
+                "  -D NUM,   --device=NUM   use only the given DVB device (NUM = 0, 1, 2...)\n"
+@@ -577,9 +593,12 @@
+ 
+   if (!PluginManager.LoadPlugins(true))
+      EXIT(2);
+-
+   // Configuration data:
+ 
++#ifdef USE_LIVEBUFFER
++  if (!BufferDirectory)
++     BufferDirectory = VideoDirectory;
++#endif /*USE_LIVEBUFFER*/
+   if (!ConfigDirectory)
+      ConfigDirectory = DEFAULTCONFDIR;
+ 
+@@ -1089,6 +1108,15 @@
+                   cDisplaySubtitleTracks::Process(key);
+                key = kNone;
+                break;
++#ifdef USE_LIVEBUFFER
++          case kFastRew:
++               if (!Interact) {
++                  DELETE_MENU;
++                  if(cRecordControls::StartLiveBuffer(key))
++                     key = kNone;
++               } // if
++               break;
++#endif /*USE_LIVEBUFFER*/
+           // Pausing live video:
+           case kPause:
+                if (!cControl::Control()) {
+@@ -1195,6 +1223,28 @@
+                             else
+                                cControl::Shutdown();
+                             break;
++#ifdef USE_LIVEBUFFER
++             case osSwitchChannel:
++                            switch (key) {
++                                // Toggle channels:
++                                case kChanPrev:
++                                case k0: {
++                                    if (PreviousChannel[PreviousChannelIndex ^ 1] == LastChannel
++                                        || (LastChannel != PreviousChannel[0] && LastChannel != PreviousChannel[1]))
++                                        PreviousChannelIndex ^= 1;
++                                    Channels.SwitchTo(PreviousChannel[PreviousChannelIndex ^= 1]);
++                                    break;
++                                }
++                                case k1 ... k9:
++                                    DELETE_MENU;
++                                    cControl::Shutdown();
++                                    Menu = new cDisplayChannel(NORMALKEY(key));
++                                    break;
++                                default:
++                                    break;
++                            } // switch
++                            break;
++#endif /*USE_LIVEBUFFER*/
+              default:       ;
+              }
+            }
+diff -ruN vdr-1.7.26/videodir.c vdr-1.7.26.mod/videodir.c
+--- vdr-1.7.26/videodir.c	2012-03-11 13:37:10.521810748 +0100
++++ vdr-1.7.26.mod/videodir.c	2012-03-11 13:36:53.901728331 +0100
+@@ -20,6 +20,9 @@
+ #include "tools.h"
+ 
+ const char *VideoDirectory = VIDEODIR;
++#ifdef USE_LIVEBUFFER
++const char *BufferDirectory = NULL;
++#endif /*USE_LIVEBUFFER*/
+ 
+ class cVideoDirectory {
+ private:
+@@ -111,17 +114,32 @@
+ cUnbufferedFile *OpenVideoFile(const char *FileName, int Flags)
+ {
+   const char *ActualFileName = FileName;
++#ifdef USE_LIVEBUFFER
++  bool SepBufferDir = false;
+ 
+   // Incoming name must be in base video directory:
++   if (strstr(FileName, VideoDirectory) != FileName) {
++     if (strstr(FileName, BufferDirectory) == FileName)
++        SepBufferDir = true;
++     else {
++#else
+   if (strstr(FileName, VideoDirectory) != FileName) {
++#endif /*USE_LIVEBUFFER*/
+      esyslog("ERROR: %s not in %s", FileName, VideoDirectory);
+      errno = ENOENT; // must set 'errno' - any ideas for a better value?
+      return NULL;
+      }
++#ifdef USE_LIVEBUFFER
++     }
++#endif /*USE_LIVEBUFFER*/
+   // Are we going to create a new file?
+   if ((Flags & O_CREAT) != 0) {
+      cVideoDirectory Dir;
++#ifdef USE_LIVEBUFFER
++     if (Dir.IsDistributed() && !SepBufferDir) {
++#else
+      if (Dir.IsDistributed()) {
++#endif /*USE_LIVEBUFFER*/
+ #ifdef USE_DVLVIDPREFER
+         if (Setup.UseVidPrefer == 0) {
+ #endif /* DVLVIDPREFER */
+diff -ruN vdr-1.7.26/videodir.h vdr-1.7.26.mod/videodir.h
+--- vdr-1.7.26/videodir.h	2012-03-11 13:37:10.521810748 +0100
++++ vdr-1.7.26.mod/videodir.h	2012-03-11 13:36:53.901728331 +0100
+@@ -14,6 +14,9 @@
+ #include "tools.h"
+ 
+ extern const char *VideoDirectory;
++#ifdef USE_LIVEBUFFER
++extern const char *BufferDirectory;
++#endif /*USE_LIVEBUFFER*/
+ 
+ cUnbufferedFile *OpenVideoFile(const char *FileName, int Flags);
+ int CloseVideoFile(cUnbufferedFile *File);

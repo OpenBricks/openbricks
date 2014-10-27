@@ -1,0 +1,130 @@
+--- vdr-1.7.36.orig/svdrp.c	2013-01-26 15:55:49.000000000 +0100
++++ vdr-1.7.36/svdrp.c	2013-01-26 15:56:02.000000000 +0100
+@@ -31,6 +31,9 @@
+ #include "cutter.h"
+ #include "device.h"
+ #include "eitscan.h"
++#ifdef USE_VASARAJANAULOJA
++#include "filetransfer.h"
++#endif /* VASARAJANAULOJA */
+ #include "keys.h"
+ #include "menu.h"
+ #include "plugin.h"
+@@ -193,6 +196,13 @@
+   "    After a CLRE command, no further EPG processing is done for 10\n"
+   "    seconds, so that data sent with subsequent PUTE commands doesn't\n"
+   "    interfere with data from the broadcasters.",
++#ifdef USE_VASARAJANAULOJA
++  "CPYR <number> <new name>\n"
++  "    Copy the recording with the given number. Before a recording can be\n"
++  "    copied, an LSTR command must have been executed in order to retrieve\n"
++  "    the recording numbers. The numbers don't change during subsequent CPYR\n"
++  "    commands.",
++#endif /* VASARAJANAULOJA */
+   "DELC <number>\n"
+   "    Delete channel.",
+   "DELR <number>\n"
+@@ -258,6 +268,13 @@
+   "    used to easily activate or deactivate a timer.",
+   "MOVC <number> <to>\n"
+   "    Move a channel to a new position.",
++#ifdef USE_VASARAJANAULOJA
++  "MOVR <number> <new name>\n"
++  "    Move the recording with the given number. Before a recording can be\n"
++  "    moved, an LSTR command must have been executed in order to retrieve\n"
++  "    the recording numbers. The numbers don't change during subsequent MOVR\n"
++  "    commands.",
++#endif /* VASARAJANAULOJA */
+   "NEWC <settings>\n"
+   "    Create a new channel. Settings must be in the same format as returned\n"
+   "    by the LSTC command.",
+@@ -612,6 +629,34 @@
+      }
+ }
+ 
++#ifdef USE_VASARAJANAULOJA
++void cSVDRP::CmdCPYR(const char *Option)
++{
++  if (*Option) {
++     char *tail;
++     int n = strtol(Option, &tail, 10);
++     cRecording *recording = Recordings.Get(n - 1);
++     if (recording && tail && tail != Option) {
++        char *oldName = strdup(recording->Name());
++        tail = skipspace(tail);
++        if (!cFileTransfer::Active()) {
++           if (cFileTransfer::Start(recording, tail, true))
++              Reply(250, "Copying recording \"%s\" to \"%s\"", oldName, tail);
++           else
++              Reply(554, "Can't start file transfer");
++           }
++        else
++           Reply(554, "File transfer already active");
++        free(oldName);
++        }
++     else
++        Reply(550, "Recording \"%d\" not found%s", n, Recordings.Count() ? "" : " (use LSTR before copying)");
++     }
++  else
++     Reply(501, "Invalid Option \"%s\"", Option);
++}
++#endif /* VASARAJANAULOJA */
++
+ void cSVDRP::CmdDELC(const char *Option)
+ {
+   if (*Option) {
+@@ -1320,6 +1365,34 @@
+      Reply(501, "Missing channel number");
+ }
+ 
++#ifdef USE_VASARAJANAULOJA
++void cSVDRP::CmdMOVR(const char *Option)
++{
++  if (*Option) {
++     char *tail;
++     int n = strtol(Option, &tail, 10);
++     cRecording *recording = Recordings.Get(n - 1);
++     if (recording && tail && tail != Option) {
++        char *oldName = strdup(recording->Name());
++        tail = skipspace(tail);
++        if (!cFileTransfer::Active()) {
++           if (cFileTransfer::Start(recording, tail))
++              Reply(250, "Moving recording \"%s\" to \"%s\"", oldName, tail);
++           else
++              Reply(554, "Can't start file transfer");
++           }
++        else
++           Reply(554, "File transfer already active");
++        free(oldName);
++        }
++     else
++        Reply(550, "Recording \"%d\" not found%s", n, Recordings.Count() ? "" : " (use LSTR before moving)");
++     }
++  else
++     Reply(501, "Invalid Option \"%s\"", Option);
++}
++#endif /* VASARAJANAULOJA */
++
+ void cSVDRP::CmdNEWC(const char *Option)
+ {
+   if (*Option) {
+@@ -1644,6 +1717,9 @@
+   s = skipspace(s);
+   if      (CMD("CHAN"))  CmdCHAN(s);
+   else if (CMD("CLRE"))  CmdCLRE(s);
++#ifdef USE_VASARAJANAULOJA
++  else if (CMD("CPYR"))  CmdCPYR(s);
++#endif /* VASARAJANAULOJA */
+   else if (CMD("DELC"))  CmdDELC(s);
+   else if (CMD("DELR"))  CmdDELR(s);
+   else if (CMD("DELT"))  CmdDELT(s);
+@@ -1659,6 +1735,9 @@
+   else if (CMD("MODC"))  CmdMODC(s);
+   else if (CMD("MODT"))  CmdMODT(s);
+   else if (CMD("MOVC"))  CmdMOVC(s);
++#ifdef USE_VASARAJANAULOJA
++  else if (CMD("MOVR"))  CmdMOVR(s);
++#endif /* VASARAJANAULOJA */
+   else if (CMD("NEWC"))  CmdNEWC(s);
+   else if (CMD("NEWT"))  CmdNEWT(s);
+   else if (CMD("NEXT"))  CmdNEXT(s);

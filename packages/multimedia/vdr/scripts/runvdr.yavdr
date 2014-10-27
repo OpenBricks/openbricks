@@ -1,0 +1,89 @@
+#!/bin/sh
+
+. /usr/lib/vdr/config-loader.sh
+/usr/bin/vdr -v /media/video -c /var/lib/vdr -L /usr/lib/vdr/plugins -r /usr/lib/vdr/vdr-recordingaction -s /usr/lib/vdr/vdr-shutdown.wrapper -E /var/cache/vdr/epg.data -u root -g /tmp --port 2001 --lirc -P femon -P "live --port=8008 --ip=127.0.0.1 --epgimages=/var/cache/vdr/epgimages" -P epgsearchonly -P "loadepg --config=/var/lib/vdr/plugins/loadepg" -P epgsearch -P "xvdr -t 10" -P "xineliboutput --local=none --primary --remote=127.0.0.1:37890" --vfat -w 0
+
+VDR_ENV="LANG=$VDR_LANG LC_ALL=$VDR_LANG"
+if [ -n "$VDR_CHARSET_OVERRIDE" ] ; then
+   VDR_ENV="$VDR_ENV VDR_CHARSET_OVERRIDE=$VDR_CHARSET_OVERRIDE"
+fi
+
+VDRCMD="$VDR_ENV /usr/bin/vdr $*"
+
+get_modulenames()
+{
+    MODULES=`lsmod | awk '/^dvb/ {gsub(/,/,"\n", $4); print $4}' | uniq | tac | grep -v "^$"`
+    [ "$MODULES" ] && MODULES="$MODULES dvb_core"
+}
+
+# TODO: check if udev handles this on newer systems!?
+set_permissions()
+{
+    if [ "$USER" -o "$GROUP" ]; then
+        for FILE in av7110_ir budget_ci_ir; do
+            if [ -e "/proc/$FILE" ]; then
+                chown $USER.$GROUP /proc/$FILE
+            fi
+        done
+    fi
+    chmod o+r /dev/input/event*
+}
+
+load_dvb_modules()
+{
+    if modprobe dvb >/dev/null 2>&1 ; then
+        get_modulenames
+    else
+        if [ "$MODULES" ]; then
+            for MODULE in $MODULES; do
+                modprobe $MODULE >/dev/null 2>&1
+            done
+        else
+            modprobe dvb_ttpci >/dev/null 2>&1
+            get_modulenames
+        fi
+        wait `pidof udev`
+    fi
+    sleep 15
+}
+
+unload_dvb_modules()
+{
+    for MODULE in $MODULES; do
+        rmmod $MODULE >/dev/null 2>&1
+        wait `pidof rmmod`
+    done
+}
+
+
+VDR_ERR=`mktemp -p /tmp vdr-err.XXXXXX`
+
+get_modulenames
+
+[ -z "$MODULES" ] && load_dvb_modules
+
+while (true) do
+
+    set_permissions
+
+    eval $VDRCMD >/dev/null 2>"$VDR_ERR"
+
+    case $? in
+        0)
+            exit
+        ;;
+        2)
+            ERROR=`cat "$VDR_ERR"`
+            logger -t runvdr "stopping after fatal fail ($ERROR)"
+            exit
+        ;;
+    esac
+
+    logger -t runvdr "restarting VDR"
+    killall -q -TERM /usr/bin/vdr
+    wait `pidof vdr`
+    unload_dvb_modules
+    sleep 2
+    load_dvb_modules
+
+done
