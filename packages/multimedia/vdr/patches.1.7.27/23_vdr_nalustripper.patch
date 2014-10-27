@@ -1,0 +1,387 @@
+diff -ruN vdr-1.7.26/device.c vdr-1.7.26.mod/device.c
+--- vdr-1.7.26/device.c	2012-03-11 13:44:13.543908428 +0100
++++ vdr-1.7.26.mod/device.c	2012-03-11 13:55:46.951346504 +0100
+@@ -24,6 +24,228 @@
+ #include "interface.h"
+ #endif /*USE_LIVEBUFFER*/
+ 
++
++// --- cTSPaddingStripper ---------------------------------------------------------
++
++class cTSPaddingStripper {
++public:
++    cTSPaddingStripper(int mypid);
++    ~cTSPaddingStripper();
++
++    uchar *ProcessTSPacket(uchar*inputpacket);
++    virtual bool ProcessPayload(uchar* payload, int size, bool payloadstart)=0;
++
++    inline int Pid() {return pid;};
++
++protected:
++    int in_conti;
++    int out_conti;
++    int pid;
++};
++
++cTSPaddingStripper::cTSPaddingStripper(int mypid)
++{
++    pid=mypid;
++    in_conti=-1;
++    out_conti=0;
++}
++
++cTSPaddingStripper::~cTSPaddingStripper()
++{
++    //goo;
++}
++
++
++uchar *cTSPaddingStripper::ProcessTSPacket(uchar*input)
++{
++    int conti=input[3]&0x0f;
++    if (conti==in_conti) out_conti--;
++    in_conti=conti;
++    unsigned char sizeadapt=0;
++    if (input[3] &0x20) {
++        sizeadapt=input[4]+1;
++    }
++    int size_payload=184-sizeadapt;
++    if (ProcessPayload(input+4+sizeadapt, size_payload,input[1]&0x40)) {
++        return NULL;
++    }
++    out_conti=(out_conti+1)%16;
++    input[3]=(input[3] &0xf0) | out_conti;
++    return input;
++}
++
++
++// --- cTSNaluPaddingStripper ---------------------------------------------------------
++
++class cTSNaluPaddingStripper: public cTSPaddingStripper {
++public:
++    cTSNaluPaddingStripper(int mypid);
++    ~cTSNaluPaddingStripper();
++
++    bool ProcessPayload(uchar* payload, int size, bool payloadstart);
++protected:
++    bool nalustrip12;
++    unsigned int pattern;
++};
++
++cTSNaluPaddingStripper::cTSNaluPaddingStripper(int mypid): cTSPaddingStripper(mypid)
++{
++    nalustrip12=false;
++    pattern=0xFFFFFFFF;
++}
++
++cTSNaluPaddingStripper::~cTSNaluPaddingStripper()
++{
++
++}
++
++
++bool cTSNaluPaddingStripper::ProcessPayload(uchar* payload, int size, bool startpayload)
++{
++    uchar *pos=payload;
++    uchar *end=pos+size;
++    uchar *new_pos=payload;
++    if (startpayload) {
++        nalustrip12=false;
++        pattern=0xFFFFFFFF;
++    }
++    
++    while (pos <end) {
++        if (nalustrip12) {
++            if (pattern==0x000001 || pattern==0x00000) {
++                nalustrip12=false;
++                pos-=3;
++            }
++        } else if (pattern==0x000001 ) {
++           
++             if (((*pos) &0x1f)==0x0c ) { //padding 
++                if (!nalustrip12) {
++                    new_pos-=3;
++                 }
++                nalustrip12=true;
++                
++             } else {
++                 if ((*pos)>=0xe0 && *pos<=0xef ) 
++                 {
++                     if (startpayload) {
++                         *new_pos=*pos;
++                         pos++; new_pos++;
++                         if (pos>=end) {return (pos!=new_pos);}
++                         *pos=0; //was new_pos
++                         pos++; new_pos++;
++                         if (pos>=end) { return (pos!=new_pos);}
++                         *pos=0; //was new_pos
++                     } else {
++                         printf("Problem in pes size should not happen!\n");
++                     }
++                 }
++             }
++        }   
++        pattern= ((pattern<< 8) | *pos)&0x00FFFFFF;
++        if (!nalustrip12) {
++            new_pos++;
++        } 
++        pos++;
++    }
++    if ((pos-new_pos)==size) return true;
++    else return false;
++}
++
++
++// --- cTSPaddingStrippers ---------------------------------------------------------
++
++cTSPaddingStrippers::cTSPaddingStrippers()
++{
++    for (int i=0;i<MAXPADDINGSTRIPPERS;i++)
++    {
++        strippers[i]=NULL;
++        strippers_used[i]=0;
++    }
++}
++
++cTSPaddingStrippers::~cTSPaddingStrippers()
++{
++    for (int i=0;i<MAXPADDINGSTRIPPERS;i++)
++    {
++        if (strippers[i]){
++            delete strippers[i];
++        }
++    }
++}
++
++void cTSPaddingStrippers::AddStripper(int pid, int type)
++{
++    Lock();
++    for (int i=0;i<MAXPADDINGSTRIPPERS;i++)
++    {
++        if (strippers[i] && pid==strippers[i]->Pid()) {
++            strippers_used[i]++;
++            dsyslog("Increased stripper usage for pid: %d, used %d",pid,strippers_used[i]);
++            Unlock();
++            return;
++        }
++    }
++
++    for (int i=0;i<MAXPADDINGSTRIPPERS;i++)
++    {
++        if (!strippers[i]){
++            switch (type) {
++            case 0x1b: {
++                dsyslog("Added stripper for pid: %d and type %x",pid,type);
++            strippers[i]=new cTSNaluPaddingStripper(pid);
++            strippers_used[i]++;
++                       } break;
++            };
++            Unlock();
++            return;
++        }
++    }
++    Unlock();
++}
++
++void cTSPaddingStrippers::DetachStripper(int pid)
++{
++    Lock();
++    for (int i=0;i<MAXPADDINGSTRIPPERS;i++)
++    {
++        if (strippers[i] && strippers[i]->Pid()==pid){
++            strippers_used[i]--;
++            dsyslog("Decreased stripper usage for pid: %d, used %d",pid,strippers_used[i]);
++            if (strippers_used[i]==0) {
++                dsyslog("Delete stripper for pid: %d",pid);
++                cTSPaddingStripper *temp=strippers[i];
++                strippers[i]=NULL;
++                delete temp;
++            }
++            Unlock();
++            return;
++        }
++    }
++    Unlock();
++}
++
++
++uchar *cTSPaddingStrippers::ProcessTSPacket(uchar*input)
++{
++    int pid=(input[1] &0x1f)<<8 | input[2];
++    if (pid == 0) return input;
++    if (pid == 0x1fff) return NULL; //padding
++    if (!(input[3] &0x10)) return input; //without payload it must be important adaption field information
++    Lock();
++    for (int i=0;i<MAXPADDINGSTRIPPERS;i++)
++    {
++        if (strippers[i] && strippers[i]->Pid()==pid)
++        {
++            uchar *toreturn=strippers[i]->ProcessTSPacket(input);
++            Unlock();
++            return toreturn;
++        }
++    } 
++    Unlock();
++    return input;
++}
++
++
+ // --- cLiveSubtitle ---------------------------------------------------------
+ 
+ class cLiveSubtitle : public cReceiver {
+@@ -107,6 +329,8 @@
+   dvbSubtitleConverter = NULL;
+   autoSelectPreferredSubtitleLanguage = true;
+ 
++
++
+   for (int i = 0; i < MAXRECEIVERS; i++)
+       receiver[i] = NULL;
+ 
+@@ -1587,7 +1811,7 @@
+            // Read data from the DVR device:
+            uchar *b = NULL;
+            if (GetTSPacket(b)) {
+-              if (b) {
++               if (b) {
+                  int Pid = TsPid(b);
+                  // Check whether the TS packets are scrambled:
+                  bool DetachReceivers = false;
+@@ -1609,6 +1833,9 @@
+                           }
+                        }
+                     }
++                 //Strip padding data from paket
++                 uchar *nb=tsstrippers.ProcessTSPacket(b);
++                 if (!nb) continue; //Skip Packet
+                  // Distribute the packet to all attached receivers:
+                  Lock();
+                  for (int i = 0; i < MAXRECEIVERS; i++) {
+@@ -1667,11 +1894,18 @@
+       if (!receiver[i]) {
+          for (int n = 0; n < Receiver->numPids; n++) {
+              if (!AddPid(Receiver->pids[n])) {
+-                for ( ; n-- > 0; )
++                 for ( ; n-- > 0; ) {
+                     DelPid(Receiver->pids[n]);
++                    if (Receiver->pidpadfilter[n])
++                        tsstrippers.DetachStripper(Receiver->pids[n]);
++                 }
+                 return false;
+-                }
++             } else {
++                 if (Receiver->pidpadfilter[n])
++                     tsstrippers.AddStripper(Receiver->pids[n],Receiver->pidpadfilter[n]);
+              }
++
++         }
+          Receiver->Activate(true);
+          Lock();
+          Receiver->device = this;
+@@ -1702,9 +1936,12 @@
+          receiver[i] = NULL;
+          Receiver->device = NULL;
+          Unlock();
+-         for (int n = 0; n < Receiver->numPids; n++)
++         for (int n = 0; n < Receiver->numPids; n++){
+              DelPid(Receiver->pids[n]);
++             if (Receiver->pidpadfilter[n])
++                 tsstrippers.DetachStripper(Receiver->pids[n]);
+          }
++     }
+       else if (receiver[i])
+          receiversLeft = true;
+       }
+diff -ruN vdr-1.7.26/device.h vdr-1.7.26.mod/device.h
+--- vdr-1.7.26/device.h	2012-03-11 13:44:13.547908419 +0100
++++ vdr-1.7.26.mod/device.h	2012-03-11 13:55:46.951346504 +0100
+@@ -32,6 +32,7 @@
+ #define MAXDEVICES         16 // the maximum number of devices in the system
+ #define MAXPIDHANDLES      64 // the maximum number of different PIDs per device
+ #define MAXRECEIVERS       16 // the maximum number of receivers per device
++#define MAXPADDINGSTRIPPERS 16
+ #define MAXVOLUME         255
+ #define VOLUMEDELTA       (MAXVOLUME/Setup.VolumeSteps) // used to increase/decrease the volume
+ #define MAXOCCUPIEDTIMEOUT 99 // max. time (in seconds) a device may be occupied
+@@ -96,6 +97,22 @@
+ class cPlayer;
+ class cReceiver;
+ class cLiveSubtitle;
++class cTSPaddingStripper;
++
++class cTSPaddingStrippers: cMutex {
++public:
++    cTSPaddingStrippers();
++    ~cTSPaddingStrippers();
++
++    uchar *ProcessTSPacket(unsigned char*inputpacket);
++
++    void AddStripper(int pid, int type);
++    void DetachStripper(int pid);
++
++protected:
++    cTSPaddingStripper *strippers[MAXPADDINGSTRIPPERS];
++    int strippers_used[MAXPADDINGSTRIPPERS];
++};
+ 
+ class cDeviceHook : public cListObject {
+ public:
+@@ -742,6 +759,7 @@
+ // Receiver facilities
+ 
+ private:
++  cTSPaddingStrippers tsstrippers;
+   mutable cMutex mutexReceiver;
+   cReceiver *receiver[MAXRECEIVERS];
+ public:
+diff -ruN vdr-1.7.26/receiver.c vdr-1.7.26.mod/receiver.c
+--- vdr-1.7.26/receiver.c	2012-02-29 12:49:36.000000000 +0100
++++ vdr-1.7.26.mod/receiver.c	2012-03-11 13:55:46.951346504 +0100
+@@ -43,12 +43,13 @@
+      }
+ }
+ 
+-bool cReceiver::AddPid(int Pid)
++bool cReceiver::AddPid(int Pid,int PadFiltertype)
+ {
+   if (Pid) {
+-     if (numPids < MAXRECEIVEPIDS)
+-        pids[numPids++] = Pid;
+-     else {
++      if (numPids < MAXRECEIVEPIDS) {
++          pidpadfilter[numPids]=PadFiltertype;
++          pids[numPids++] = Pid;
++      } else {
+         dsyslog("too many PIDs in cReceiver (Pid = %d)", Pid);
+         return false;
+         }
+@@ -77,7 +78,7 @@
+   numPids = 0;
+   if (Channel) {
+      channelID = Channel->GetChannelID();
+-     return AddPid(Channel->Vpid()) &&
++     return AddPid(Channel->Vpid(),Channel->Vtype()) &&
+             (Channel->Ppid() == Channel->Vpid() || AddPid(Channel->Ppid())) &&
+             AddPids(Channel->Apids()) &&
+             AddPids(Channel->Dpids()) &&
+diff -ruN vdr-1.7.26/receiver.h vdr-1.7.26.mod/receiver.h
+--- vdr-1.7.26/receiver.h	2012-03-01 10:50:24.000000000 +0100
++++ vdr-1.7.26.mod/receiver.h	2012-03-11 13:55:46.951346504 +0100
+@@ -23,6 +23,7 @@
+   tChannelID channelID;
+   int priority;
+   int pids[MAXRECEIVEPIDS];
++  int pidpadfilter[MAXRECEIVEPIDS];
+   int numPids;
+   bool WantsPid(int Pid);
+ protected:
+@@ -53,7 +54,7 @@
+                ///< that this cReceiver may be detached at any time in favor of a timer recording
+                ///< or live viewing (without blocking the cDevice it is attached to).
+   virtual ~cReceiver();
+-  bool AddPid(int Pid);
++  bool AddPid(int Pid,int PadFiltertype=0);
+                ///< Adds the given Pid to the list of PIDs of this receiver.
+   bool AddPids(const int *Pids);
+                ///< Adds the given zero terminated list of Pids to the list of PIDs of this

@@ -1,0 +1,42 @@
+diff -ruN vdr-1.7.26/svdrp.c vdr-1.7.26.mod/svdrp.c
+--- vdr-1.7.26/svdrp.c	2012-03-11 13:37:10.513810701 +0100
++++ vdr-1.7.26.mod/svdrp.c	2012-03-11 13:45:01.496146187 +0100
+@@ -397,6 +397,7 @@
+   length = BUFSIZ;
+   cmdLine = MALLOC(char, length);
+   lastActivity = 0;
++  executing = false;
+   isyslog("SVDRP listening on port %d", Port);
+ }
+ 
+@@ -1701,7 +1702,8 @@
+         }
+      if (NewConnection)
+         lastActivity = time(NULL);
+-     while (file.Ready(false)) {
++     if (!executing)
++        while (file.Ready(false)) {
+            unsigned char c;
+            int r = safe_read(file, &c, 1);
+            if (r > 0) {
+@@ -1712,7 +1714,9 @@
+                  // make sure the string is terminated:
+                  cmdLine[numChars] = 0;
+                  // showtime!
++                 executing = true;
+                  Execute(cmdLine);
++                 executing = false;
+                  numChars = 0;
+                  if (length > BUFSIZ) {
+                     free(cmdLine); // let's not tie up too much memory
+diff -ruN vdr-1.7.26/svdrp.h vdr-1.7.26.mod/svdrp.h
+--- vdr-1.7.26/svdrp.h	2012-03-11 13:37:10.513810701 +0100
++++ vdr-1.7.26.mod/svdrp.h	2012-03-11 13:45:01.496146187 +0100
+@@ -50,6 +50,7 @@
+   char *cmdLine;
+   time_t lastActivity;
+   static char *grabImageDir;
++  bool executing;
+   void Close(bool SendReply = false, bool Timeout = false);
+   bool Send(const char *s, int length = -1);
+   void Reply(int Code, const char *fmt, ...) __attribute__ ((format (printf, 3, 4)));

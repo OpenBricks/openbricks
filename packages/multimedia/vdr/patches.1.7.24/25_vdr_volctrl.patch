@@ -1,0 +1,187 @@
+diff -Nur vdr-1.7.23.orig/config.c vdr-1.7.23/config.c
+--- vdr-1.7.23.orig/config.c	2012-02-02 10:21:41.000000000 +0100
++++ vdr-1.7.23/config.c	2012-02-07 21:45:18.743239633 +0100
+@@ -489,6 +489,9 @@
+   InitialChannel = "";
+   DeviceBondings = "";
+   InitialVolume = -1;
++  LRVolumeControl = 0;
++  LRChannelGroups = 1;
++  LRForwardRewind = 1;
+   ChannelsWrap = 0;
+   EmergencyExit = 1;
+   JumpSeconds = 60;
+@@ -724,6 +727,9 @@
+   else if (!strcasecmp(Name, "InitialVolume"))       InitialVolume      = atoi(Value);
+   else if (!strcasecmp(Name, "VolumeSteps"))         VolumeSteps        = atoi(Value);
+   else if (!strcasecmp(Name, "VolumeLinearize"))     VolumeLinearize    = atoi(Value);
++  else if (!strcasecmp(Name, "LRVolumeControl"))     LRVolumeControl    = atoi(Value);
++  else if (!strcasecmp(Name, "LRChannelGroups"))     LRChannelGroups    = atoi(Value);
++  else if (!strcasecmp(Name, "LRForwardRewind"))     LRForwardRewind    = atoi(Value);
+ #ifdef USE_LIVEBUFFER
+   else if (!strcasecmp(Name, "LiveBufferSize"))        LiveBufferSize        = atoi(Value);
+   else if (!strcasecmp(Name, "LiveBufferMaxFileSize")) LiveBufferMaxFileSize = atoi(Value);
+@@ -890,6 +896,9 @@
+ #endif /* HARDLINKCUTTER */
+   Store("InitialChannel",     InitialChannel);
+   Store("InitialVolume",      InitialVolume);
++  Store("LRVolumeControl",    LRVolumeControl);
++  Store("LRChannelGroups",    LRChannelGroups);
++  Store("LRForwardRewind",    LRForwardRewind);
+   Store("DeviceBondings",     DeviceBondings);
+   Store("ChannelsWrap",       ChannelsWrap);
+   Store("EmergencyExit",      EmergencyExit);
+diff -Nur vdr-1.7.23.orig/config.h vdr-1.7.23/config.h
+--- vdr-1.7.23.orig/config.h	2012-02-02 10:21:41.000000000 +0100
++++ vdr-1.7.23/config.h	2012-02-07 21:38:17.527217086 +0100
+@@ -358,6 +358,9 @@
+   int VolumeLinearize;
+   int CurrentDolby;
+   int InitialVolume;
++  int LRVolumeControl;
++  int LRChannelGroups;
++  int LRForwardRewind;
+   int ChannelsWrap;
+   int EmergencyExit;
+   int JumpSeconds;
+diff -Nur vdr-1.7.23.orig/menu.c vdr-1.7.23/menu.c
+--- vdr-1.7.23.orig/menu.c	2012-02-02 10:21:41.000000000 +0100
++++ vdr-1.7.23/menu.c	2012-02-07 21:55:58.139247502 +0100
+@@ -3713,13 +3713,42 @@
+ // --- cMenuSetupMisc --------------------------------------------------------
+ 
+ class cMenuSetupMisc : public cMenuSetupBase {
++private:
++  const char *lrChannelGroupsTexts[3];
++  const char *lrForwardRewindTexts[3];
++  void Setup(void);
+ public:
+   cMenuSetupMisc(void);
++  virtual eOSState ProcessKey(eKeys Key);
+   };
+ 
+ cMenuSetupMisc::cMenuSetupMisc(void)
+ {
++  lrChannelGroupsTexts[0] = tr("no");
++  lrChannelGroupsTexts[1] = tr("Setup.Miscellaneous$only in channelinfo");
++  lrChannelGroupsTexts[2] = tr("yes");
++  lrForwardRewindTexts[0] = tr("no");
++  lrForwardRewindTexts[1] = tr("Setup.Miscellaneous$only in progress display");
++  lrForwardRewindTexts[2] = tr("yes");
+   SetSection(tr("Miscellaneous"));
++  Setup();
++}
++
++eOSState cMenuSetupMisc::ProcessKey(eKeys Key)
++{
++  int newLRVolumeControl = data.LRVolumeControl;
++  eOSState state = cMenuSetupBase::ProcessKey(Key);
++
++  if (Key != kNone && data.LRVolumeControl != newLRVolumeControl)
++     Setup();
++  return state;
++}
++
++void cMenuSetupMisc::Setup(void)
++{
++  int current = Current();
++
++  Clear();
+   Add(new cMenuEditIntItem( tr("Setup.Miscellaneous$Min. event timeout (min)"),   &data.MinEventTimeout));
+   Add(new cMenuEditIntItem( tr("Setup.Miscellaneous$Min. user inactivity (min)"), &data.MinUserInactivity));
+   Add(new cMenuEditIntItem( tr("Setup.Miscellaneous$SVDRP timeout (s)"),          &data.SVDRPTimeout));
+@@ -3729,6 +3758,11 @@
+   Add(new cMenuEditIntItem( tr("Setup.Miscellaneous$Initial volume"),             &data.InitialVolume, -1, 255, tr("Setup.Miscellaneous$as before")));
+   Add(new cMenuEditIntItem( tr("Setup.Miscellaneous$Volume steps"),               &data.VolumeSteps, 5, 255));
+   Add(new cMenuEditIntItem( tr("Setup.Miscellaneous$Volume linearize"),           &data.VolumeLinearize, -20, 20));
++  Add(new cMenuEditBoolItem(tr("Setup.Miscellaneous$Volume ctrl with left/right"),     &data.LRVolumeControl));
++  if (data.LRVolumeControl) {
++    Add(new cMenuEditStraItem(tr("Setup.Miscellaneous$Channelgroups with left/right"),   &data.LRChannelGroups, 3, lrChannelGroupsTexts));
++    Add(new cMenuEditStraItem(tr("Setup.Miscellaneous$Search fwd/back with left/right"), &data.LRForwardRewind, 3, lrForwardRewindTexts));
++  }
+   Add(new cMenuEditBoolItem(tr("Setup.Miscellaneous$Channels wrap"),              &data.ChannelsWrap));
+   Add(new cMenuEditBoolItem(tr("Setup.Miscellaneous$Emergency exit"),             &data.EmergencyExit));
+ #ifdef USE_LIRCSETTINGS
+@@ -3736,6 +3770,8 @@
+   Add(new cMenuEditIntItem( tr("Setup.Miscellaneous$Lirc repeat freq"),           &data.LircRepeatFreq, 0, 1000));
+   Add(new cMenuEditIntItem( tr("Setup.Miscellaneous$Lirc repeat timeout"),        &data.LircRepeatTimeout, 0, 5000));
+ #endif /* LIRCSETTINGS */
++  SetCurrent(Get(current));
++  Display();
+ }
+ 
+ // --- cMenuSetupPluginItem --------------------------------------------------
+@@ -4651,6 +4687,11 @@
+     case kLeft:
+     case kRight|k_Repeat:
+     case kRight:
++        if (Setup.LRVolumeControl && !Setup.LRChannelGroups) {
++          cRemote::Put(NORMALKEY(Key) == kLeft ? kVolDn : kVolUp, true);
++          break;
++           }
++        // else fall through
+     case kNext|k_Repeat:
+     case kNext:
+     case kPrev|k_Repeat:
+@@ -4810,6 +4851,15 @@
+ eOSState cDisplayVolume::ProcessKey(eKeys Key)
+ {
+   switch (int(Key)) {
++   case kLeft|k_Repeat:
++   case kLeft:
++   case kRight|k_Repeat:
++   case kRight:
++        if (Setup.LRVolumeControl) {
++          cRemote::Put(NORMALKEY(Key) == kLeft ? kVolDn : kVolUp, true);
++          break;
++          }
++        // else fall through
+     case kVolUp|k_Repeat:
+     case kVolUp:
+     case kVolDn|k_Repeat:
+@@ -5976,6 +6026,20 @@
+      return osContinue;
+      }
+   bool DoShowMode = true;
++  if (Setup.LRVolumeControl && (!Setup.LRForwardRewind || (Setup.LRForwardRewind == 1 && !visible))) {
++    switch (Key) {
++      // Left/Right volume control
++      case kLeft|k_Repeat:
++      case kLeft:
++      case kRight|k_Repeat:
++      case kRight:
++        cRemote::Put(NORMALKEY(Key) == kLeft ? kVolDn : kVolUp, true);
++        return osContinue;
++        break;
++      default:
++        break;
++    }
++  }
+ 
+ #ifdef USE_LIVEBUFFER
+   if (cRecordControls::GetLiveIndex(fileName) && (Key >= k0) && (Key <= k9))
+diff -Nur vdr-1.7.23.orig/vdr.c vdr-1.7.23/vdr.c
+--- vdr-1.7.23.orig/vdr.c	2012-02-02 10:21:41.000000000 +0100
++++ vdr-1.7.23/vdr.c	2012-02-07 21:38:17.547220726 +0100
+@@ -1295,13 +1295,18 @@
+                   Channels.SwitchTo(PreviousChannel[PreviousChannelIndex ^= 1]);
+                   break;
+                   }
+-             // Direct Channel Select:
+-             case k1 ... k9:
+-             // Left/Right rotates through channel groups:
++             // Left/Right volume control
+              case kLeft|k_Repeat:
+              case kLeft:
+              case kRight|k_Repeat:
+              case kRight:
++                  if (Setup.LRVolumeControl && Setup.LRChannelGroups < 2) {
++                    cRemote::Put(NORMALKEY(key) == kLeft ? kVolDn : kVolUp, true);
++                    break;
++                    }
++                  // else fall through
++             // Direct Channel Select:
++             case k1 ... k9:
+              // Previous/Next rotates through channel groups:
+              case kPrev|k_Repeat:
+              case kPrev:

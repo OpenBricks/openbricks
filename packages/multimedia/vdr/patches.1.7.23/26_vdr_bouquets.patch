@@ -1,0 +1,337 @@
+diff -urN vdr-1.7.22/channels.h vdr-1.7.22b/channels.h
+--- vdr-1.7.22/channels.h	2011-08-06 11:56:13.000000000 +0200
++++ vdr-1.7.22b/channels.h	2011-09-10 17:01:09.997012068 +0200
+@@ -14,6 +14,7 @@
+ #include "sources.h"
+ #include "thread.h"
+ #include "tools.h"
++#include <vector>
+ 
+ #define ISTRANSPONDER(f1, f2)  (abs((f1) - (f2)) < 4) //XXX
+ 
+@@ -90,6 +91,9 @@
+   friend class cSchedules;
+   friend class cMenuEditChannel;
+   friend class cDvbSourceParam;
++  friend class cMenuMyEditChannel;
++  friend class cMenuMyBouquets;
++  friend class cMenuEditBouquet;
+ private:
+   static cString ToText(const cChannel *Channel);
+   char *name;
+@@ -179,6 +183,7 @@
+   int Number(void) const { return number; }
+   void SetNumber(int Number) { number = Number; }
+   bool GroupSep(void) const { return groupSep; }
++  void SetGroupSep(bool GroupSep) { groupSep=GroupSep; }
+   const char *Parameters(void) const { return parameters; }
+   const cLinkChannels* LinkChannels(void) const { return linkChannels; }
+   const cChannel *RefChannel(void) const { return refChannel; }
+@@ -219,6 +224,7 @@
+ #ifdef USE_ALTERNATECHANNEL
+   bool LoadAlternativeChannels(const char *FileName);
+ #endif /* ALTERNATECHANNEL */
++  bool Reload(const char *FileName, bool AllowComments = false, bool MustExist = false);
+   void HashChannel(cChannel *Channel);
+   void UnhashChannel(cChannel *Channel);
+   int GetNextGroup(int Idx);   // Get next channel group
+diff -urN vdr-1.7.22/config.c vdr-1.7.22b/config.c
+--- vdr-1.7.22/config.c	2011-08-20 11:12:05.000000000 +0200
++++ vdr-1.7.22b/config.c	2011-09-10 17:02:32.088965761 +0200
+@@ -491,6 +491,16 @@
+   InitialVolume = -1;
+   ChannelsWrap = 0;
+   EmergencyExit = 1;
++  ExpertOptions  = 0;
++  AddNewChannels = 0;
++  UseBouquetList = 1;
++  OnlyRadioChannels = 0;
++  OnlyEncryptedChannels = 0;
++  OnlyHDChannels = 0;
++  ExpertNavi     = 0;
++  WantChListOnOk = 1;
++  ChannelUpDownKeyMode = 0; // 0 Normal, kChanUp and kChanDn jumps channel
++                            // 1 opens bouquet / channellist
+   JumpSeconds = 60;
+   JumpSecondsSlow = 10;
+ #ifdef USE_LIVEBUFFER
+@@ -613,6 +623,16 @@
+ bool cSetup::Parse(const char *Name, const char *Value)
+ {
+   if      (!strcasecmp(Name, "OSDLanguage"))       { strn0cpy(OSDLanguage, Value, sizeof(OSDLanguage)); I18nSetLocale(OSDLanguage); }
++  else if (!strcasecmp(Name, "ExpertOptions"))       ExpertOptions      = atoi(Value);
++  else if (!strcasecmp(Name, "AddNewChannels"))      AddNewChannels     = atoi(Value);
++  else if (!strcasecmp(Name, "UseBouquetList"))      UseBouquetList     = atoi(Value);
++  else if (!strcasecmp(Name, "OnlyRadioChannels"))   OnlyRadioChannels  = atoi(Value);
++  else if (!strcasecmp(Name, "OnlyEncryptedChannels"))OnlyEncryptedChannels = atoi(Value);
++  else if (!strcasecmp(Name, "OnlyHDChannels"))      OnlyHDChannels       = atoi(Value);
++  else if (!strcasecmp(Name, "ExpertNavi"))          ExpertNavi         = atoi(Value);
++  else if (!strcasecmp(Name, "WantChListOnOk"))      WantChListOnOk     = atoi(Value);
++  else if (!strcasecmp(Name, "ChannelUpDownKeyMode"))  ChannelUpDownKeyMode = atoi(Value);
++
+   else if (!strcasecmp(Name, "OSDSkin"))             Utf8Strn0Cpy(OSDSkin, Value, MaxSkinName);
+   else if (!strcasecmp(Name, "OSDTheme"))            Utf8Strn0Cpy(OSDTheme, Value, MaxThemeName);
+ #ifdef USE_WAREAGLEICON
+@@ -891,6 +911,15 @@
+   Store("DeviceBondings",     DeviceBondings);
+   Store("ChannelsWrap",       ChannelsWrap);
+   Store("EmergencyExit",      EmergencyExit);
++  Store("ExpertOptions",      ExpertOptions);
++  Store("AddNewChannels",     AddNewChannels);
++  Store("UseBouquetList",     UseBouquetList);
++  Store("OnlyRadioChannels",  OnlyRadioChannels);
++  Store("OnlyEncryptedChannels", OnlyEncryptedChannels);
++  Store("OnlyHDChannels", OnlyHDChannels);
++  Store("ExpertNavi",         ExpertNavi);
++  Store("WantChListOnOk",     WantChListOnOk);
++  Store("ChannelUpDownKeyMode", ChannelUpDownKeyMode);
+   Store("JumpSeconds",        JumpSeconds);
+   Store("JumpSecondsSlow",    JumpSecondsSlow);
+ #ifdef USE_LIVEBUFFER
+diff -urN vdr-1.7.22/config.h vdr-1.7.22b/config.h
+--- vdr-1.7.22/config.h	2011-08-20 10:51:47.000000000 +0200
++++ vdr-1.7.22b/config.h	2011-09-10 17:12:01.816961935 +0200
+@@ -13,6 +13,7 @@
+ #include <arpa/inet.h>
+ #include <stdio.h>
+ #include <stdlib.h>
++#include <string>
+ #include <string.h>
+ #include <time.h>
+ #include <unistd.h>
+@@ -359,6 +360,16 @@
+   int InitialVolume;
+   int ChannelsWrap;
+   int EmergencyExit;
++  int ExpertOptions;
++  int AddNewChannels;
++  int UseBouquetList;
++  int OnlyRadioChannels;
++  int OnlyEncryptedChannels;
++  int OnlyHDChannels;
++  int ExpertNavi;
++  int WantChListOnOk;
++  int ChannelUpDownKeyMode; // 0 Normal, jumps to next or previous channel
++                            // 1 opens bouquet / channel list
+   int JumpSeconds;
+   int JumpSecondsSlow;
+ #ifdef USE_LIVEBUFFER
+diff -urN vdr-1.7.22/debug.h vdr-1.7.22b/debug.h
+--- vdr-1.7.22/debug.h	1970-01-01 01:00:00.000000000 +0100
++++ vdr-1.7.22b/debug.h	2011-09-10 16:59:11.188980201 +0200
+@@ -0,0 +1,44 @@
++
++#ifndef DEBUG_H
++#define DEBUG_H
++#include <assert.h>
++
++#ifdef DBG
++  #undef DBG
++  #undef DERR
++  #undef DLOG
++  #undef PRINTF
++#endif
++
++
++#if defined DEBUG
++    #ifdef PLUGIN_NAME_I18N
++        #define CONTEXT PLUGIN_NAME_I18N
++    #else
++        #define CONTEXT "VDR"
++    #endif
++
++    // standard debug macro
++    #define DDD(x...) { printf("["CONTEXT": %s +%d, %s()]: ",__FILE__, __LINE__, __FUNCTION__); \
++                         printf(x); printf("\n"); }
++
++    // standard error macro (red background)
++    #define DERR(x...) { printf("\033[0;37m\033[1;41m["CONTEXT"]: "x); printf("\033[0m\n"); }
++
++    // special macro: logs to syslog AND console
++    #define DLOG(x...) { printf("["CONTEXT"]: "x); printf("\n"); dsyslog("["CONTEXT"]: "x); }
++
++    // for automatic conversion of printf's - i.e. use sed s/" printf"/" PRINTF"/
++    #define PRINTF(x...) printf("["CONTEXT"]: "x)
++#else
++    #define DDD(x...)
++    #define DERR(x...)
++    #define DLOG(x...)
++    #define PRINTF(x...)
++#endif
++
++//only here for compatibility reasons, don't use any more
++#define ERR "Error"
++#define DBG(x...)
++
++#endif /* DEBUG_H */
+diff -urN vdr-1.7.22/keys.c vdr-1.7.22b/keys.c
+--- vdr-1.7.22/keys.c	2010-04-05 12:05:58.000000000 +0200
++++ vdr-1.7.22b/keys.c	2011-09-10 17:04:06.008976614 +0200
+@@ -56,6 +56,9 @@
+                     { kRecordings,    trNOOP("Key$Recordings")  },
+                     { kSetup,         trNOOP("Key$Setup")       },
+                     { kCommands,      trNOOP("Key$Commands")    },
++                    { kGreater,       trNOOP("Key$Greater")     },
++                    { kLess,          trNOOP("Key$Less")        },
++                    { k2digit,        trNOOP("Key$2digit")      },
+                     { kUser0,         trNOOP("Key$User0")       },
+                     { kUser1,         trNOOP("Key$User1")       },
+                     { kUser2,         trNOOP("Key$User2")       },
+diff -urN vdr-1.7.22/keys.h vdr-1.7.22b/keys.h
+--- vdr-1.7.22/keys.h	2010-04-05 12:06:04.000000000 +0200
++++ vdr-1.7.22b/keys.h	2011-09-10 17:04:17.708918546 +0200
+@@ -50,6 +50,7 @@
+              kRecordings,
+              kSetup,
+              kCommands,
++	     kGreater, kLess, k2digit,
+              kUser0, kUser1, kUser2, kUser3, kUser4, kUser5, kUser6, kUser7, kUser8, kUser9,
+              kNone,
+              kKbd,
+diff -urN vdr-1.7.22/menu.c vdr-1.7.22b/menu.c
+--- vdr-1.7.22/menu.c	2011-08-27 13:05:33.000000000 +0200
++++ vdr-1.7.22b/menu.c	2011-09-10 17:15:29.656958186 +0200
+@@ -137,15 +137,6 @@
+ 
+ // --- cMenuEditSrcItem ------------------------------------------------------
+ 
+-class cMenuEditSrcItem : public cMenuEditIntItem {
+-private:
+-  const cSource *source;
+-protected:
+-  virtual void Set(void);
+-public:
+-  cMenuEditSrcItem(const char *Name, int *Value);
+-  eOSState ProcessKey(eKeys Key);
+-  };
+ 
+ cMenuEditSrcItem::cMenuEditSrcItem(const char *Name, int *Value)
+ :cMenuEditIntItem(Name, Value, 0)
+@@ -4739,6 +4730,7 @@
+             }
+          else
+             return osEnd;
++	case kInfo: return osEnd; break;
+          break;
+     default:
+          if ((Key & (k_Repeat | k_Release)) == 0) {
+diff -urN vdr-1.7.22/menu.h vdr-1.7.22b/menu.h
+--- vdr-1.7.22/menu.h	2010-03-06 17:15:59.000000000 +0100
++++ vdr-1.7.22b/menu.h	2011-09-10 17:07:21.760969487 +0200
+@@ -18,6 +18,18 @@
+ #include "menuitems.h"
+ #include "recorder.h"
+ #include "skins.h"
++
++class cMenuEditSrcItem : public cMenuEditIntItem {
++private:
++  const cSource *source;
++protected:
++  virtual void Set(void);
++public:
++  cMenuEditSrcItem(const char *Name, int *Value);
++  eOSState ProcessKey(eKeys Key);
++  };
++
++
+ #ifdef USE_LIVEBUFFER
+ #include "livebuffer.h"
+ #endif /*USE_LIVEBUFFER*/
+@@ -109,8 +121,23 @@
+   virtual const char* MenuKind() { return "MenuEvent"; }
+ #endif /* GRAPHTFT */
+   };
++struct MenuMainHook_Data_V1_0 {
++  eOSState  Function;    /*IN*/
++  cOsdMenu *pResultMenu; /*OUT*/
++};
++#define CREATE_MENU_MAIN(function,menu) {                              \
++  MenuMainHook_Data_V1_0 data;                                         \
++  memset(&data, 0, sizeof(data));                                      \
++  data.Function = function;                                            \
++  if (!cPluginManager::CallFirstService("MenuMainHook-V1.0", &data))   \
++    menu = new cMenuMain(function);                                    \
++  else                                                                 \
++    menu = data.pResultMenu;                                           \
++}
+ 
+ class cMenuMain : public cOsdMenu {
++protected:
++  cMenuMain(const char *Title):cOsdMenu(Title){}; // Allow custom constructor
+ private:
+ #ifdef USE_SETUP
+   int    nrDynamicMenuEntries;
+diff -urN vdr-1.7.22/osdbase.h vdr-1.7.22b/osdbase.h
+--- vdr-1.7.22/osdbase.h	2010-01-16 15:25:31.000000000 +0100
++++ vdr-1.7.22b/osdbase.h	2011-09-10 16:59:39.592986163 +0200
+@@ -37,6 +37,10 @@
+                 osSwitchDvb,
+                 osBack,
+                 osEnd,
++                osBouquets,
++                osActiveBouquet,
++                osFavourites,
++                osAddFavourite,
+ #ifdef USE_LIVEBUFFER
+                 osSwitchChannel,
+ #endif /*USE_LIVEBUFFER*/
+diff -urN vdr-1.7.22/vdr.c vdr-1.7.22b/vdr.c
+--- vdr-1.7.22/vdr.c	2011-08-15 14:42:39.000000000 +0200
++++ vdr-1.7.22b/vdr.c	2011-09-10 17:17:02.928956244 +0200
+@@ -1086,6 +1086,27 @@
+           case kChanUp:
+           case kChanDn|k_Repeat:
+           case kChanDn:
++               if (Setup.ChannelUpDownKeyMode == 1 && (!Menu || cDisplayChannel::IsOpen()))
++               // only if a menu is not open
++               //  and user has opted for a different key behavior
++               {
++                   if (cDisplayChannel::IsOpen() || cControl::Control())
++                   {
++                       DELETE_MENU;
++                   }
++                   if (key == kChanDn)
++                   {
++                       DirectMainFunction(osBouquets);
++                   }
++                   else
++                   {
++                       DirectMainFunction(osActiveBouquet);
++                   }
++                   key = kNone; // nobody else sees these keys
++                   break;
++               }
++               else
++
+                if (!Interact)
+                   Menu = new cDisplayChannel(NORMALKEY(key));
+                else if (cDisplayChannel::IsOpen() || cControl::Control()) {
+@@ -1129,6 +1150,7 @@
+                break;
+           // Subtitle track control:
+           case kSubtitles:
++	 case kGreater:
+                if (cControl::Control())
+                   cControl::Control()->Hide();
+                if (!cDisplaySubtitleTracks::IsOpen()) {
+@@ -1315,7 +1337,19 @@
+                   Menu = new cDisplayChannel(NORMALKEY(key));
+                   break;
+              // Viewing Control:
+-             case kOk:   LastChannel = -1; break; // forces channel display
++             case kInfo:
++             case kOk:  if ((Setup.WantChListOnOk && (key == kOk)) 
++                            || (!Setup.WantChListOnOk && (key == kInfo)) )
++                        {
++                            DirectMainFunction(osChannels);
++                        }
++                        else 
++                        {
++                            LastChannel = -1;
++                        }
++                        break;
++
++
+              // Instant resume of the last viewed recording:
+              case kPlay:
+                   if (cReplayControl::LastReplayed()) {

@@ -1,0 +1,79 @@
+--- vdr-1.7.36.orig/device.c	2013-01-26 15:55:49.000000000 +0100
++++ vdr-1.7.36/device.c	2013-01-26 15:56:02.000000000 +0100
+@@ -18,6 +18,9 @@
+ #include "receiver.h"
+ #include "status.h"
+ #include "transfer.h"
++#ifdef USE_TTXTSUBS
++#include "vdrttxtsubshooks.h"
++#endif // USE_TTXTSUBS
+ 
+ // --- cLiveSubtitle ---------------------------------------------------------
+ 
+@@ -691,6 +694,11 @@
+ 
+ bool cDevice::SwitchChannel(const cChannel *Channel, bool LiveView)
+ {
++#ifdef USE_PINPLUGIN
++  if (LiveView && cStatus::MsgChannelProtected(this, Channel) == true)
++     return scrNotAvailable;
++#endif /* PINPLUGIN */
++
+   if (LiveView) {
+      isyslog("switching to channel %d", Channel->Number());
+      cControl::Shutdown(); // prevents old channel from being shown too long if GetDevice() takes longer
+@@ -721,6 +729,9 @@
+      cChannel *channel;
+      while ((channel = Channels.GetByNumber(n, Direction)) != NULL) {
+            // try only channels which are currently available
++#ifdef USE_PINPLUGIN
++        if (cStatus::MsgChannelProtected(0, channel) == false)
++#endif /* PINPLUGIN */
+            if (GetDevice(channel, LIVEPRIORITY, true, true))
+               break;
+            n = channel->Number() + Direction;
+@@ -1306,6 +1317,14 @@
+                   }
+                break;
+           case 0xBD: { // private stream 1
++#ifdef USE_TTXTSUBS
++               // EBU Teletext data, ETSI EN 300 472
++               // if PES data header length = 24 and data_identifier = 0x10..0x1F (EBU Data)
++               if (Data[8] == 0x24 && Data[45] >= 0x10 && Data[45] < 0x20) {
++                  cVDRTtxtsubsHookListener::Hook()->PlayerTeletextData((uint8_t*)Data, Length);
++                  break;
++                  }
++#endif // USE_TTXTSUBS
+                int PayloadOffset = Data[8] + 9;
+ 
+                // Compatibility mode for old subtitles plugin:
+@@ -1465,6 +1484,9 @@
+      tsToPesVideo.Reset();
+      tsToPesAudio.Reset();
+      tsToPesSubtitle.Reset();
++#ifdef USE_TTXTSUBS
++     tsToPesTeletext.Reset();
++#endif // USE_TTXTSUBS
+      }
+   else if (Length < TS_SIZE) {
+      esyslog("ERROR: skipped %d bytes of TS fragment", Length);
+@@ -1510,6 +1532,19 @@
+                     if (!VideoOnly || HasIBPTrickSpeed())
+                        PlayTsSubtitle(Data, TS_SIZE);
+                     }
++#ifdef USE_TTXTSUBS
++                 else if (Pid == patPmtParser.Tpid()) {
++                    if (!VideoOnly || HasIBPTrickSpeed()) {
++                       int l;
++                       tsToPesTeletext.PutTs(Data, Length);
++                       if (const uchar *p = tsToPesTeletext.GetPes(l)) {
++                          if ((l > 45) && (p[0] == 0x00) && (p[1] == 0x00) && (p[2] == 0x01) && (p[3] == 0xbd) && (p[8] == 0x24) && (p[45] >= 0x10) && (p[45] < 0x20))
++                             cVDRTtxtsubsHookListener::Hook()->PlayerTeletextData((uchar *)p, l, false, patPmtParser.TeletextSubtitlePages(), patPmtParser.TotalTeletextSubtitlePages());
++                          tsToPesTeletext.Reset();
++                          }
++                       }
++                    }
++#endif // USE_TTXTSUBS
+                  }
+               }
+            else if (Pid == patPmtParser.Ppid()) {

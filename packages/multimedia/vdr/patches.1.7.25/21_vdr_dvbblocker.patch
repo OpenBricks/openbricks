@@ -1,0 +1,76 @@
+diff -ruN vdr-1.7.22.e//config.c vdr-1.7.22.f//config.c
+--- vdr-1.7.22.e//config.c	2011-12-07 00:46:49.000000000 +0100
++++ vdr-1.7.22.f//config.c	2011-12-07 00:54:03.000000000 +0100
+@@ -395,6 +395,7 @@
+   SetSystemTime = 0;
+   TimeSource = 0;
+   TimeTransponder = 0;
++  ChannelBlocker = 0;
+ #ifdef USE_NOEPG
+   noEPGMode=0;
+   noEPGList=strdup("");
+@@ -631,6 +632,7 @@
+   else if (!strcasecmp(Name, "SetSystemTime"))       SetSystemTime      = atoi(Value);
+   else if (!strcasecmp(Name, "TimeSource"))          TimeSource         = cSource::FromString(Value);
+   else if (!strcasecmp(Name, "TimeTransponder"))     TimeTransponder    = atoi(Value);
++  else if (!strcasecmp(Name, "ChannelBlocker"))      ChannelBlocker     = atoi(Value);
+   else if (!strcasecmp(Name, "MarginStart"))         MarginStart        = atoi(Value);
+   else if (!strcasecmp(Name, "MarginStop"))          MarginStop         = atoi(Value);
+   else if (!strcasecmp(Name, "AudioLanguages"))      return ParseLanguages(Value, AudioLanguages);
+@@ -795,6 +797,7 @@
+   Store("SetSystemTime",      SetSystemTime);
+   Store("TimeSource",         cSource::ToString(TimeSource));
+   Store("TimeTransponder",    TimeTransponder);
++  Store("ChannelBlocker",     ChannelBlocker);
+   Store("MarginStart",        MarginStart);
+   Store("MarginStop",         MarginStop);
+   StoreLanguages("AudioLanguages", AudioLanguages);
+diff -ruN vdr-1.7.22.e//config.h vdr-1.7.22.f//config.h
+--- vdr-1.7.22.e//config.h	2011-12-07 00:46:49.000000000 +0100
++++ vdr-1.7.22.f//config.h	2011-12-07 00:54:03.000000000 +0100
+@@ -280,6 +280,7 @@
+   int SetSystemTime;
+   int TimeSource;
+   int TimeTransponder;
++  int ChannelBlocker;
+   int MarginStart, MarginStop;
+   int AudioLanguages[I18N_MAX_LANGUAGES + 1];
+   int DisplaySubtitles;
+diff -ruN vdr-1.7.22.e//dvbdevice.c vdr-1.7.22.f//dvbdevice.c
+--- vdr-1.7.22.e//dvbdevice.c	2011-12-07 00:46:49.000000000 +0100
++++ vdr-1.7.22.f//dvbdevice.c	2011-12-07 00:54:03.000000000 +0100
+@@ -1318,6 +1318,10 @@
+ 
+ bool cDvbDevice::ProvidesSource(int Source) const
+ {
++  if (Setup.ChannelBlocker == 1) {
++      if (IsPrimaryDevice()) return false;
++      isyslog("ChannelBlocker aktive on primary Interface");
++  }
+   int type = Source & cSource::st_Mask;
+   return type == cSource::stNone
+       || type == cSource::stAtsc  && (frontendType == SYS_ATSC)
+diff -ruN vdr-1.7.22.e//menu.c vdr-1.7.22.f//menu.c
+--- vdr-1.7.22.e//menu.c	2011-12-07 00:47:27.000000000 +0100
++++ vdr-1.7.22.f//menu.c	2011-12-07 00:54:03.000000000 +0100
+@@ -3300,6 +3300,7 @@
+      Add(new cMenuEditIntItem( tr("Setup.DVB$Subtitle foreground transparency"), &data.SubtitleFgTransparency, 0, 9));
+      Add(new cMenuEditIntItem( tr("Setup.DVB$Subtitle background transparency"), &data.SubtitleBgTransparency, 0, 10));
+      }
++  Add(new cMenuEditBoolItem(tr("Setup.DVB$Channel Blocker"),             &data.ChannelBlocker));
+ 
+   SetCurrent(Get(current));
+   Display();
+diff -ruN vdr-1.7.22.e//po/de_DE.po vdr-1.7.22.f//po/de_DE.po
+--- vdr-1.7.22.e//po/de_DE.po	2011-12-07 00:57:31.958254194 +0100
++++ vdr-1.7.22.f//po/de_DE.po	2011-12-07 00:54:03.000000000 +0100
+@@ -947,6 +947,9 @@
+ msgid "Setup.DVB$Update channels"
+ msgstr "Kanäle aktualisieren"
+ 
++msgid "Setup.DVB$Channel Blocker"
++msgstr "Tuner des primären DVB blocken"
++
+ msgid "Setup.DVB$channel binding by Rid"
+ msgstr "Kanal per Rid zuordnen"
+ 

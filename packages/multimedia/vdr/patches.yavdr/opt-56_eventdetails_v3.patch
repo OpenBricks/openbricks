@@ -1,0 +1,111 @@
+Description: Patch for vdr-plugin-restfulapi
+Author: Michael Eiler <eiler.mike@gmail.com>      
+Origin: https://github.com/yavdr/vdr-plugin-restfulapi
+
+diff -urNad vdr-1.7.22-orig/epg.c vdr-1.7.22-eventdetails/epg.c
+--- vdr-1.7.22-orig/epg.c	2011-12-21 16:25:15.000000000 +0100
++++ vdr-1.7.22-eventdetails/epg.c	2011-12-21 16:45:29.636883817 +0100
+@@ -428,6 +428,21 @@
+   return buf;
+ }
+ 
++void cEvent::AddDetail(char* value)
++{
++  std::string strValue = std::string(value);
++  int delim = strValue.find_first_of(' ');
++  AddDetail(strValue.substr(0, delim), strValue.substr(delim+1));
++}
++
++void cEvent::AddDetail(std::string key, std::string value)
++{
++  tEpgDetail detail;
++  detail.key = key;
++  detail.value = value;
++  details.push_back(detail);
++}
++
+ void cEvent::Dump(FILE *f, const char *Prefix, bool InfoOnly) const
+ {
+   if (InfoOnly || startTime + duration + Setup.EPGLinger * 60 >= time(NULL)) {
+@@ -441,6 +456,12 @@
+         fprintf(f, "%sD %s\n", Prefix, description);
+         strreplace(description, '|', '\n');
+         }
++     for(int i=0;i<(int)details.size();i++) {
++        char* value = (char*)details[i].value.c_str();
++        strreplace(value, '\n', '|');
++        fprintf(f, "K %s %s\n", details[i].key.c_str(), value);
++        strreplace(value, '|', '\n');
++     }
+      if (contents[0]) {
+         fprintf(f, "%sG", Prefix);
+         for (int i = 0; Contents(i); i++)
+@@ -473,6 +494,9 @@
+     case 'D': strreplace(t, '|', '\n');
+               SetDescription(t);
+               break;
++    case 'K': strreplace(t, '|', '\n');
++              AddDetail(t);
++              break;
+     case 'G': {
+                 memset(contents, 0, sizeof(contents));
+                 for (int i = 0; i < MaxEventContents; i++) {
+@@ -537,6 +561,7 @@
+                                 }
+                              }
+                           }
++                          if (Event != NULL) { Event->ClearDetails(); }
+                        break;
+              case 'e': if (Event && !Event->Title())
+                           Event->SetTitle(tr("No title"));
+diff -urNad vdr-1.7.22-orig/epg.h vdr-1.7.22-eventdetails/epg.h
+--- vdr-1.7.22-orig/epg.h	2011-12-21 16:25:15.000000000 +0100
++++ vdr-1.7.22-eventdetails/epg.h	2011-12-21 16:45:29.636883817 +0100
+@@ -16,6 +16,8 @@
+ #include "channels.h"
+ #include "thread.h"
+ #include "tools.h"
++#include <string>
++#include <vector>
+ 
+ #define MAXEPGBUGFIXLEVEL 3
+ 
+@@ -63,6 +65,12 @@
+                                                                  // In case of an audio stream the 'type' check actually just distinguishes between "normal" and "Dolby Digital"
+   };
+ 
++#define EPG_DETAILS_PATCH
++struct tEpgDetail {
++  std::string key;
++  std::string value;
++ };
++
+ class cSchedule;
+ 
+ typedef u_int32_t tEventID;
+@@ -86,6 +94,7 @@
+   int duration;            // Duration of this event in seconds
+   time_t vps;              // Video Programming Service timestamp (VPS, aka "Programme Identification Label", PIL)
+   time_t seen;             // When this event was last seen in the data stream
++  std::vector< struct tEpgDetail > details; // additional information provided by epg source
+ public:
+   cEvent(tEventID EventID);
+   ~cEvent();
+@@ -116,6 +125,7 @@
+   cString GetTimeString(void) const;
+   cString GetEndTimeString(void) const;
+   cString GetVpsString(void) const;
++  const std::vector< struct tEpgDetail >& Details(void) const { return details; };
+   void SetEventID(tEventID EventID);
+   void SetTableID(uchar TableID);
+   void SetVersion(uchar Version);
+@@ -130,6 +140,9 @@
+   void SetDuration(int Duration);
+   void SetVps(time_t Vps);
+   void SetSeen(void);
++  void AddDetail(char* value);
++  void AddDetail(std::string key, std::string value);
++  void ClearDetails() { details.erase(details.begin(), details.end()); };
+   cString ToDescr(void) const;
+   void Dump(FILE *f, const char *Prefix = "", bool InfoOnly = false) const;
+   bool Parse(char *s);

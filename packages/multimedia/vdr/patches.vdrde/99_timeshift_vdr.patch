@@ -1,0 +1,122 @@
+--- vdr-1.7.24/dvbplayer.c.bak	2012-02-20 22:51:24.000000000 +0100
++++ vdr-1.7.24/dvbplayer.c	2012-02-20 22:55:26.000000000 +0100
+@@ -87,7 +87,6 @@
+ private:
+   cUnbufferedFile *f;
+   uchar *buffer;
+-  uchar *result;
+   int wanted;
+   int length;
+   cCondWait newSet;
+@@ -101,7 +100,7 @@
+   void Clear(void);
+   void Request(cUnbufferedFile *File, int Length);
+   int Result(uchar **Buffer);
+-  bool Reading(void) { return result; }
++  bool Reading(void) { return buffer; }
+   bool WaitForDataMs(int msToWait);
+   };
+ 
+@@ -110,7 +109,6 @@
+ {
+   f = NULL;
+   buffer = NULL;
+-  result = NULL;
+   wanted = length = 0;
+   Start();
+ }
+@@ -120,7 +118,6 @@
+   newSet.Signal();
+   Cancel(3);
+   free(buffer);
+-  free(result);
+ }
+ 
+ void cNonBlockingFileReader::Clear(void)
+@@ -129,8 +126,6 @@
+   f = NULL;
+   free(buffer);
+   buffer = NULL;
+-  free(result);
+-  result = NULL;
+   wanted = length = 0;
+   Unlock();
+ }
+@@ -142,18 +137,18 @@
+   wanted = Length;
+   buffer = MALLOC(uchar, wanted);
+   f = File;
+-  newSet.Signal();
+   Unlock();
++  newSet.Signal();
+ }
+ 
+ int cNonBlockingFileReader::Result(uchar **Buffer)
+ {
+   LOCK_THREAD;
+-  if (result && length == wanted) {
+-     *Buffer = result;
+-     result = NULL;
++  if (buffer && length == wanted) {
++     *Buffer = buffer;
++     buffer = NULL;
+      return wanted;
+-  }
++     }
+   errno = EAGAIN;
+   return -1;
+ }
+@@ -177,8 +172,6 @@
+               length = wanted = r; // this will forward the error status to the caller
+               }
+            if (length == wanted) {
+-              result = buffer;
+-              buffer = NULL;
+               cMutexLock NewDataLock(&newDataMutex);
+               newDataCond.Broadcast();
+               }
+@@ -190,9 +183,9 @@
+ 
+ bool cNonBlockingFileReader::WaitForDataMs(int msToWait)
+ {
+-  if (result && length == wanted)
+-     return true;
+   cMutexLock NewDataLock(&newDataMutex);
++  if (buffer && length == wanted)
++     return true;
+   return newDataCond.TimedWait(newDataMutex, msToWait);
+ }
+ 
+@@ -415,13 +408,13 @@
+      Goto(0, true);
+   while (Running()) {
+         if (WaitingForData)
+-           nonBlockingFileReader->WaitForDataMs(10); // this keeps the CPU load low, but reacts immediately on new data
++           nonBlockingFileReader->WaitForDataMs(3); // this keeps the CPU load low, but reacts immediately on new data
+         else if (Sleep) {
+            cPoller Poller;
+            DevicePoll(Poller, 10);
+            Sleep = false;
+            if (playMode == pmStill || playMode == pmPause)
+-              cCondWait::SleepMs(10);
++              cCondWait::SleepMs(3);
+            }
+         {
+           LOCK_THREAD;
+@@ -483,15 +476,7 @@
+                    }
+                 if (!eof) {
+                    uchar *b = NULL;
+-                   int Retries = 5;
+-                   int r;
+-                   while (true) {
+-                         r = nonBlockingFileReader->Result(&b);
+-                         if (r == -1 && errno == EAGAIN && --Retries)
+-                            nonBlockingFileReader->WaitForDataMs(10); 
+-                         else 
+-                            break;
+-                         }
++                   int r = nonBlockingFileReader->Result(&b);
+                    if (r > 0) {
+                       WaitingForData = false;
+                       uint32_t Pts = 0;

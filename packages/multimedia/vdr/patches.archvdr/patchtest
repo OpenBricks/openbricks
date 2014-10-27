@@ -1,0 +1,187 @@
+#!/bin/bash
+
+# Define some patch levels here: foo="patch1 patch2 ..."
+#
+standard="\
+    04_newplugin \
+    06_default_svdrp_port_0 \
+    11_sortrecordings \
+    12_osdbase-maxitems \
+    16_channels.conf.terr-fix \
+    81_Make_config \
+    82_valgrind \
+    99_ncursesw-include \
+    99_vdr-workaround-broken-sys-capability"
+multipatch="$standard \
+    opt-20_liemikuutio \
+    opt-21_internal-cam-devices \
+    opt-22-x_edit_marks \
+    opt-24_jumpplay \
+    opt-27_ttxtsubs \
+    opt-31-x_reelchannelscan \
+    opt-37-x_menuorg \
+    opt-38_disableDoubleEpgEntrys \
+    opt-39_noepg \
+    opt-41-x_timer-info \
+    opt-42-x_MainMenuHooks \
+    opt-43-x_recordshowfree \
+    opt-44_rotor \
+    opt-45_yaepg \
+    opt-48-x_pin \
+    opt-50_graphtft \
+    opt-50_graphtft-liemikuutio \
+    opt-91_ext-graphtft \
+    opt-51_cuttime \
+    opt-52_hard_link_cutter"
+testpatch="$standard \
+    opt-20_liemikuutio \
+    opt-21_internal-cam-devices \
+    opt-24_jumpplay \
+    opt-27_ttxtsubs \
+    opt-29_syncearly \
+    opt-31-x_reelchannelscan \
+    opt-37-x_menuorg \
+    opt-38_disableDoubleEpgEntrys \
+    opt-39_noepg \
+    opt-41-x_timer-info \
+    opt-42-x_MainMenuHooks \
+    opt-44_rotor \
+    opt-45_yaepg \
+    opt-48-x_pin \
+    opt-50_graphtft \
+    opt-51_cuttime \
+    opt-52_hard_link_cutter"
+mustfail_patch="XX_patchtest-patch-error"
+mustfail_compile="XX_patchtest-compile-error"
+
+# List the patch levels to be tested:
+#
+patchLevels=(\
+    "standard $standard"\
+    "multipatch $multipatch"\
+    "testpatch $testpatch"\
+    "mustfail_patch $mustfail_patch"\
+    "mustfail_compile $mustfail_compile")
+
+currentDir=`pwd`
+
+testPatchLevel ()
+{
+    patchLevelName=$1
+    tempDir=/tmp/vdr.$$.tmp
+    mkdir -p $tempDir
+    cp -r . $tempDir/vdr
+    cd $tempDir/vdr
+    # don't use dpatch:
+    touch patch-stamp
+    Failed="false"
+    shift
+    while [ "$1" ]
+    do
+        if [ $SOLVE = "true" ] ; then
+            rm -rf ../vdr.orig
+            cp -r . ../vdr.orig
+        fi
+        chmod a+x debian/patches/$1.dpatch
+        debian/patches/$1.dpatch -patch >/tmp/patchtest_patch.log 2>&1
+        if [ $? -ne 0 ] ; then
+            echo "FAILED $patchLevelName at $1"
+            Failed="true"
+            break
+        fi
+        shift
+    done
+
+    if [ $Failed = "false" ] ; then
+        if [ $QUICK = "true" ] ; then
+            echo "    OK $patchLevelName"
+        else
+            fakeroot debian/rules binary >/tmp/patchtest_build.log 2>&1
+            if [ $? -ne 0 ] ; then
+                Failed="true"
+                echo "FAILED $patchLevelName - Build Error"
+            else
+                echo "    OK $patchLevelName"
+            fi
+        fi
+    fi
+    if [ $Failed = "true" -a $SOLVE = "true" ] ; then
+        cd ..
+        exit 1
+    fi
+    cd $currentDir
+    rm -rf $tempDir
+}
+
+listPatchLevels ()
+{
+    len=${#patchLevels[*]}
+    i=0
+    while [ $i -lt $len ]
+    do
+        patchset=${patchLevels[$i]}
+        isPatchLevelName="true"
+        for patch in $patchset
+        do
+            if [ "$isPatchLevelName" = "true" ] ; then
+                echo "[$patch] contains these patches:"
+            else
+                echo -n "$patch, "
+            fi
+            isPatchLevelName="false"
+        done
+        let i++
+        echo
+        echo
+    done
+}
+
+
+testPatchLevels ()
+{
+    len=${#patchLevels[*]}
+    i=0
+    while [ $i -lt $len ]
+    do
+        patchset=${patchLevels[$i]}
+        testPatchLevel $patchset
+        let i++
+    done
+}
+
+echo
+echo "Patch-Level-Test"
+echo "----------------"
+echo
+
+QUICK='false'
+SOLVE='false'
+
+case $1 in
+    --help)
+        echo "Usage: debian/patches/patchtest [ --help | --quick | --solve ]"
+        echo
+        echo "With the --quick option no compilation will be performed."
+        echo "Using the --solve option will stop the test on failure and open"
+        echo "a new shell where you can solve any problems."
+        echo
+        exit 0
+    ;;
+    --quick)
+        QUICK="true"
+    ;;
+    --solve)
+        QUICK="true"
+        SOLVE="true"
+    ;;
+esac
+
+if [ -d debian/patches ] ; then
+    listPatchLevels
+    echo
+    testPatchLevels
+else
+    echo "Could not find debian/patches"
+fi
+
+echo

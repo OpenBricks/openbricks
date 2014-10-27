@@ -1,0 +1,232 @@
+diff -urN vdr-1.7.40.orig/dvbplayer.c vdr-1.7.40/dvbplayer.c
+--- vdr-1.7.40.orig/dvbplayer.c	2013-03-10 21:02:31.076166976 +0100
++++ vdr-1.7.40/dvbplayer.c	2013-03-10 21:02:38.632167105 +0100
+@@ -217,6 +217,7 @@
+   double framesPerSecond;
+   bool isPesRecording;
+   bool pauseLive;
++  bool reusedPauseLive;
+   bool eof;
+   bool firstPacket;
+   ePlayModes playMode;
+@@ -237,7 +238,7 @@
+   virtual void Activate(bool On);
+   virtual void Action(void);
+ public:
+-  cDvbPlayer(const char *FileName, bool PauseLive);
++  cDvbPlayer(const char *FileName, bool PauseLive, bool ReusedPauseLive = false);
+   virtual ~cDvbPlayer();
+   bool Active(void) { return cThread::Running(); }
+   void Pause(void);
+@@ -259,7 +260,7 @@
+ #define SPEED_MULT   12 // the speed multiplier
+ int cDvbPlayer::Speeds[] = { 0, -2, -4, -8, 1, 2, 4, 12, 0 };
+ 
+-cDvbPlayer::cDvbPlayer(const char *FileName, bool PauseLive)
++cDvbPlayer::cDvbPlayer(const char *FileName, bool PauseLive, bool ReusedPauseLive)
+ :cThread("dvbplayer")
+ {
+   nonBlockingFileReader = NULL;
+@@ -269,6 +270,7 @@
+   framesPerSecond = Recording.FramesPerSecond();
+   isPesRecording = Recording.IsPesRecording();
+   pauseLive = PauseLive;
++  reusedPauseLive = ReusedPauseLive;
+   eof = false;
+   firstPacket = true;
+   playMode = pmPlay;
+@@ -419,8 +421,17 @@
+   int LastReadIFrame = -1;
+   int SwitchToPlayFrame = 0;
+ 
+-  if (pauseLive)
+-     Goto(0, true);
++  if (reusedPauseLive) {
++    int Current, Total;
++    GetIndex(Current, Total, false);
++    readIndex = max(Total - 1, 0);
++    Goto(readIndex, true);
++    playMode = pmStill;
++    }
++  else if (pauseLive) {
++    Goto(0, true);
++  }
++  
+   while (Running()) {
+         if (WaitingForData)
+            WaitingForData = !nonBlockingFileReader->WaitForDataMs(3); // this keeps the CPU load low, but reacts immediately on new data
+@@ -864,8 +875,8 @@
+ 
+ // --- cDvbPlayerControl -----------------------------------------------------
+ 
+-cDvbPlayerControl::cDvbPlayerControl(const char *FileName, bool PauseLive)
+-:cControl(player = new cDvbPlayer(FileName, PauseLive))
++cDvbPlayerControl::cDvbPlayerControl(const char *FileName, bool PauseLive, bool ReusedPauseLive)
++:cControl(player = new cDvbPlayer(FileName, PauseLive, ReusedPauseLive))
+ {
+ }
+ 
+diff -urN vdr-1.7.40.orig/dvbplayer.h vdr-1.7.40/dvbplayer.h
+--- vdr-1.7.40.orig/dvbplayer.h	2013-03-10 21:02:31.060166976 +0100
++++ vdr-1.7.40/dvbplayer.h	2013-03-10 21:02:38.632167105 +0100
+@@ -19,7 +19,7 @@
+ private:
+   cDvbPlayer *player;
+ public:
+-  cDvbPlayerControl(const char *FileName, bool PauseLive = false);
++  cDvbPlayerControl(const char *FileName, bool PauseLive = false, bool ReusedPauseLive = false);
+        // Sets up a player for the given file.
+        // If PauseLive is true, special care is taken to make sure the index
+        // file of the recording is long enough to allow the player to display
+diff -urN vdr-1.7.40.orig/menu.c vdr-1.7.40/menu.c
+--- vdr-1.7.40.orig/menu.c	2013-03-10 21:02:31.060166976 +0100
++++ vdr-1.7.40/menu.c	2013-03-10 21:02:38.632167105 +0100
+@@ -4521,7 +4521,7 @@
+ cRecordControl *cRecordControls::RecordControls[MAXRECORDCONTROLS] = { NULL };
+ int cRecordControls::state = 0;
+ 
+-bool cRecordControls::Start(cTimer *Timer, bool Pause)
++bool cRecordControls::Start(cTimer *Timer, bool Pause, bool* reused)
+ {
+   static time_t LastNoDiskSpaceMessage = 0;
+   int FreeMB = 0;
+@@ -4540,6 +4540,13 @@
+      }
+   LastNoDiskSpaceMessage = 0;
+ 
++  if (Timer == NULL) {
++    if (TryReuseRecording(Pause)) {
++      if (reused != NULL) *reused = true;
++      return true;
++      }
++    }
++  
+   ChangeState();
+   int ch = Timer ? Timer->Channel()->Number() : cDevice::CurrentChannel();
+   cChannel *channel = Channels.GetByNumber(ch);
+@@ -4592,12 +4599,53 @@
+       }
+ }
+ 
++bool cRecordControls::TryReuseRecording(bool Pause)
++{
++  cRecordControl* runningRecording = cRecordControls::GetRecordControl(cDevice::CurrentChannel());
++  if (runningRecording != NULL && runningRecording->Timer() != NULL) {
++    cTimer *reuseTimer = runningRecording->Timer();
++    // calculate length from current time
++    time_t t = time(NULL);
++    struct tm *tmNow = localtime(&t);
++    int now = tmNow->tm_hour * 60 + tmNow->tm_min;
++    int stop = reuseTimer->Stop();
++    stop = stop / 100 * 60 + stop % 100;
++    int lengthFromNow = stop - now;
++    if (lengthFromNow < 0)
++      lengthFromNow += SECSINDAY;
++    // Only use low priority recordings or, for pause, recordings which are long enough.
++    if (runningRecording->Timer()->Priority() <= LIVEPRIORITY || (Pause && lengthFromNow >= Setup.InstantRecordTime)) {
++      // possibly raise stop time
++      if (lengthFromNow < Setup.InstantRecordTime) {
++        int stop = now + Setup.InstantRecordTime;
++        stop = (stop / 60) * 100 + (stop % 60);
++        if (stop >= 2400) stop -= 2400;
++        reuseTimer->SetStop(stop);
++        }
++      ChangeState();
++      // for pause, set replay to the recording
++      if (Pause) {
++        cReplayControl::SetRecording(runningRecording->FileName());
++        }
++      // for instant recording, raise priority and lifetime
++      else {
++        reuseTimer->SetPriority(max(Setup.DefaultPriority, reuseTimer->Priority()));
++        reuseTimer->SetLifetime(max(Setup.DefaultLifetime, reuseTimer->Lifetime()));
++        }
++      // We found a usable recording, don't create a new one.
++      return true;
++      }
++    }
++  return false;
++}
++
+ bool cRecordControls::PauseLiveVideo(void)
+ {
+   Skins.Message(mtStatus, tr("Pausing live video..."));
++  bool reused = false;
+   cReplayControl::SetRecording(NULL); // make sure the new cRecordControl will set cReplayControl::LastReplayed()
+-  if (Start(NULL, true)) {
+-     cReplayControl *rc = new cReplayControl(true);
++  if (Start(NULL, true, &reused)) {
++     cReplayControl *rc = new cReplayControl(true, reused);
+      cControl::Launch(rc);
+      cControl::Attach();
+      Skins.Message(mtStatus, NULL);
+@@ -4640,6 +4688,23 @@
+   return NULL;
+ }
+ 
++cRecordControl *cRecordControls::GetRecordControl(int channelNo)
++{
++  for (int i = 0; i < MAXRECORDCONTROLS; i++) {
++    if (RecordControls[i] != NULL) {
++      cTimer* existentTimer = RecordControls[i]->Timer();
++      if (existentTimer != NULL && existentTimer->Channel() != NULL) {
++        if (RecordControls[i]->Timer()->Channel()->Number() == channelNo) {
++          if (existentTimer->Recording()) {
++            return RecordControls[i];
++            }
++          }
++        }
++      }
++    }
++  return NULL;
++}
++
+ void cRecordControls::Process(time_t t)
+ {
+   for (int i = 0; i < MAXRECORDCONTROLS; i++) {
+@@ -4702,8 +4767,8 @@
+ cReplayControl *cReplayControl::currentReplayControl = NULL;
+ cString cReplayControl::fileName;
+ 
+-cReplayControl::cReplayControl(bool PauseLive)
+-:cDvbPlayerControl(fileName, PauseLive)
++cReplayControl::cReplayControl(bool PauseLive, bool ReusedPauseLive)
++:cDvbPlayerControl(fileName, PauseLive, ReusedPauseLive)
+ {
+   cDevice::PrimaryDevice()->SetKeepTracks(PauseLive);
+   currentReplayControl = this;
+diff -urN vdr-1.7.40.orig/menu.h vdr-1.7.40/menu.h
+--- vdr-1.7.40.orig/menu.h	2013-03-10 21:02:31.072166975 +0100
++++ vdr-1.7.40/menu.h	2013-03-10 21:02:38.628167106 +0100
+@@ -240,8 +240,11 @@
+ private:
+   static cRecordControl *RecordControls[];
+   static int state;
++  static bool TryReuseRecording(bool Pause);
++         ///< Tries to reuse an existing recording instead of creating a second one in parallel.
++         ///< Returns true if successful.
+ public:
+-  static bool Start(cTimer *Timer = NULL, bool Pause = false);
++  static bool Start(cTimer *Timer = NULL, bool Pause = false, bool* reused = NULL);
+   static void Stop(const char *InstantId);
+   static bool PauseLiveVideo(void);
+   static const char *GetInstantId(const char *LastInstantId);
+@@ -249,6 +252,9 @@
+   static cRecordControl *GetRecordControl(const cTimer *Timer);
+          ///< Returns the cRecordControl for the given Timer.
+          ///< If there is no cRecordControl for Timer, NULL is returned.
++  static cRecordControl *GetRecordControl(int channelNo);
++         ///< Returns the cRecordControl for the given channel number.
++         ///< If there is no cRecordControl, NULL is returned.
+   static void Process(time_t t);
+   static void ChannelDataModified(cChannel *Channel);
+   static bool Active(void);
+@@ -286,7 +292,7 @@
+   void EditCut(void);
+   void EditTest(void);
+ public:
+-  cReplayControl(bool PauseLive = false);
++  cReplayControl(bool PauseLive = false, bool ReusedPauseLive = false);
+   virtual ~cReplayControl();
+   void Stop(void);
+   virtual cOsdObject *GetInfo(void);

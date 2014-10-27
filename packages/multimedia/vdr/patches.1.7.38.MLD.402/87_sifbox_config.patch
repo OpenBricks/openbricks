@@ -1,0 +1,140 @@
+--- vdr-1.7.38/Make.config.mld	2013-03-02 21:31:50.782721648 +0100
++++ vdr-1.7.38/Make.config	2013-03-02 21:37:50.894727826 +0100
+@@ -10,11 +10,11 @@
+ 
+ ### The C compiler and options:
+ 
+-CC       = gcc
+-CFLAGS   = -g -O3 -Wall
++#CC       = gcc
++#CFLAGS   = -g -O3 -Wall
+ 
+-CXX      = g++
+-CXXFLAGS = -g -O3 -Wall -Werror=overloaded-virtual -Wno-parentheses
++#CXX      = g++
++#CXXFLAGS = -g -O3 -Wall -Werror=overloaded-virtual -Wno-parentheses
+ 
+ # Use 'make M32=1 ...' to build a 32-bit version of VDR on a 64-bit machine:
+ ifdef M32
+@@ -38,7 +38,8 @@
+ #MANDIR    = $(PREFIX)/share/man
+ #PCDIR     = $(PREFIX)/lib/pkgconfig
+ RESDIR    = /etc/vdr
+-DVBDIR   = $(MLDDIR)/dvb/include/uapi
++#DVBDIR   =
++
+ 
+ VIDEODIR  = /data/tv/tv0
+ #CONFDIR   = /var/lib/vdr
+@@ -47,11 +48,25 @@
+ # Overrides for preset/legacy configurations:
+ 
+ # Use 'make LCLBLD=1' to build locale and plugin files under the source directory:
++LCLBLD=1
+ ifdef LCLBLD
+-LOCDIR       = $(CWD)/locale
+-PLUGINDIR    = $(CWD)/PLUGINS
++PREFIX    = /usr
++BINDIR    = $(PREFIX)/bin
++INCDIR    = $(PREFIX)/include
++VIDEODIR     = /media/video
++CONFDIR      = /etc/vdr
++CACHEDIR     = /var/cache/vdr
++PCDIR     = $(PREFIX)/lib/pkgconfig
++RESDIR       = $(PREFIX)/share/vdr
++LOCDIR       = $(PREFIX)/share/locale
++PLUGINLIBDIR = $(PREFIX)/lib/vdr/plugins
++LIBDIR    = $(PREFIX)/lib/vdr/plugins
++#DVBDIR   =
++LIBS += -lintl
++BIDI = 1
++LIBDIR       = $(PREFIX)/lib/vdr/plugins
+ ifndef PLUGIN # don't overwrite for plugins with old makefiles
+-LIBDIR       = $(PLUGINDIR)/lib
++LIBDIR    = $(PREFIX)/lib/vdr/plugins
+ endif
+ HDRDIR       = $(CWD)/include
+ endif
+@@ -92,12 +107,12 @@
+ JUMPPLAY = 1
+ VASARAJANAULOJA = 1
+ MAINMENUHOOKS = 1
+-#MENUORG = 1
++MENUORG = 1
+ NALUDUMP = 1
+ PINPLUGIN = 1
+ PLUGINMISSING = 1
+ ROTOR = 1
+-SETUP = 1
++#SETUP = 1
+ TTXTSUBS = 1
+ VOLCTRL = 1
+ WAREAGLEICON = 1
+--- vdr-1.7.38/Makefile.mld	2013-03-02 21:31:40.510721473 +0100
++++ vdr-1.7.38/Makefile	2013-03-02 21:37:55.466727901 +0100
+@@ -29,11 +29,11 @@
+ PLUGINDIR ?= $(CWD)/PLUGINS
+ 
+ DESTDIR   ?=
+-VIDEODIR  ?= /srv/vdr/video
+-CONFDIR   ?= /var/lib/vdr
++VIDEODIR  ?= /data/tv/tv0
++CONFDIR   ?= /etc/vdr
+ CACHEDIR  ?= /var/cache/vdr
+ 
+-PREFIX    ?= /usr/local
++PREFIX    ?= /usr
+ BINDIR    ?= $(PREFIX)/bin
+ INCDIR    ?= $(PREFIX)/include
+ LIBDIR    ?= $(PREFIX)/lib/vdr
+@@ -67,29 +67,15 @@
+ SILIB    = $(LSIDIR)/libsi.a
+ 
+ OBJS = audio.o channels.o ci.o config.o cutter.o device.o diseqc.o dvbdevice.o dvbci.o\
+-       dvbplayer.o dvbspu.o dvbsubtitle.o eit.o eitscan.o epg.o filter.o font.o i18n.o interface.o keys.o\
++       dvbplayer.o dvbspu.o dvbsubtitle.o eit.o eitscan.o epg.o filetransfer.o filter.o font.o i18n.o interface.o keys.o\
+        lirc.o menu.o menuitems.o nit.o osdbase.o osd.o pat.o player.o plugin.o\
+        receiver.o recorder.o recording.o remote.o remux.o ringbuffer.o sdt.o sections.o shutdown.o\
+        skinclassic.o skinlcars.o skins.o skinsttng.o sourceparams.o sources.o spu.o status.o svdrp.o themes.o thread.o\
+        timers.o tools.o transfer.o vdr.o videodir.o
+ 
+-ifdef VASARAJANAULOJA
+-OBJS += filetransfer.o
+-endif
+-
+-ifdef SETUP
+-OBJS += tinystr.o tinyxml.o tinyxmlerror.o tinyxmlparser.o submenu.o
+-#LIBS += -ltinyxml
+-endif
+-
+-ifdef WAREAGLEICON
+ OBJS += iconpatch.o
+-endif
+ 
+-ifdef TTXTSUBS
+ OBJS += vdrttxtsubshooks.o
+-endif
+-
+ 
+ DEFINES  += $(CDEFINES)
+ INCLUDES += $(CINCLUDES)
+@@ -112,6 +98,11 @@
+ LIBS += $(shell pkg-config --libs fribidi)
+ endif
+ 
++ifdef LIVEBUFFER
++DEFINES += -DUSE_LIVEBUFFER
++OBJS += livebuffer.o
++endif
++
+ LIRC_DEVICE ?= /var/run/lirc/lircd
+ 
+ DEFINES += -DLIRC_DEVICE=\"$(LIRC_DEVICE)\"
+@@ -165,6 +156,7 @@
+ 	@echo "resdir=$(RESDIR)" >> $@
+ 	@echo "libdir=$(LIBDIR)" >> $@
+ 	@echo "locdir=$(LOCDIR)" >> $@
++	@echo "incdir=$(INCDIR)" >> $@
+ 	@echo "plgcfg=$(PLGCFG)" >> $@
+ 	@echo "apiversion=$(APIVERSION)" >> $@
+ 	@echo "cflags=$(CFLAGS) $(CDEFINES) $(CINCLUDES) $(HDRDIR)" >> $@

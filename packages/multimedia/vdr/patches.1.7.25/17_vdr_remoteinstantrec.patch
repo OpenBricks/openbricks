@@ -1,0 +1,97 @@
+--- a/config.h.orig	2007-08-04 23:22:47.000000000 +0200
++++ b/config.h	2008-06-27 20:25:47.000000000 +0200
+@@ -39,2 +39,4 @@
+ 
++#define REMOTEINSTANTVERSION 1.0
++
+ #define MAXPRIORITY 99
+--- a/menu.c.orig	2008-06-27 20:30:14.000000000 +0200
++++ b/menu.c	2008-06-27 20:31:01.000000000 +0200
+@@ -29,6 +29,8 @@
+ #include "transfer.h"
+ #include "videodir.h"
+ 
++#include "remotetimers.h"
++
+ #define MAXWAIT4EPGINFO   3 // seconds
+ #define MODETIMEOUT       3 // seconds
+ #define DISKSPACECHEK     5 // seconds between disk space checks in the main menu
+@@ -3694,6 +3723,50 @@
+ 
+ bool cRecordControls::Start(cTimer *Timer, bool Pause)
+ {
++  if (!Timer) {
++     cTimer *t = new cTimer(true, Pause);
++
++     //get event
++     cSchedulesLock SchedulesLock;
++     const cEvent *event = NULL;;
++     const cSchedules *Schedules = cSchedules::Schedules(SchedulesLock);
++     if (Schedules) {
++        const cSchedule *Schedule = Schedules->GetSchedule(t->Channel());
++        if (Schedule) {
++           event = Schedule->GetEventAround(t->StartTime() + INSTANT_REC_EPG_LOOKAHEAD);
++        }
++     }
++
++     if (cPluginManager::GetPlugin("timersync")) {
++        // sets the file name
++        cRecording recording(t, event);
++        Timers.Add(t);
++        Timers.SetModified();
++        if (!cReplayControl::LastReplayed())
++           cReplayControl::SetRecording(recording.FileName(), recording.Name());
++        return true;
++     }
++     else {
++        RemoteTimers_InstantRecording_v1_0 ir;
++        ir.timer = t;
++        ir.pause = Pause;
++        ir.event = event;
++        ir.name = NULL;
++        ir.fileName = NULL;
++ 
++        if (cPluginManager::CallFirstService("RemoteTimers::InstantRecording-v1.0", &ir)) {
++           if (!cReplayControl::LastReplayed())
++              cReplayControl::SetRecording(ir.fileName, ir.name);
++ 	  delete t;
++ 	  // empty names indicate an error
++ 	  return *ir.fileName && *ir.name;
++        }
++        // service disabled or an error occured and the user confirmed local recording
++        // fall through to local instant recording
++     }
++     delete t;
++  }
++
+   static time_t LastNoDiskSpaceMessage = 0;
+   int FreeMB = 0;
+   if (Timer) {
+--- /dev/null	2008-06-27 20:13:35.796049750 +0200
++++ a/remotetimers.h	2008-06-26 21:20:49.000000000 +0200
+@@ -0,0 +1,25 @@
++/*
++ * remotetimers.h: Public interface of the plugin's services
++ *
++ * See the README file for copyright information and how to reach the author.
++ */
++
++#ifndef _SERVICE__H
++#define _SERVICE__H
++
++#ifndef __TIMERS_H
++#include <vdr/timer.h>
++#include <vdr/epg.h>
++#endif
++
++struct RemoteTimers_InstantRecording_v1_0 {
++//in
++	const cTimer	*timer;
++	bool		pause;
++	const cEvent	*event;
++//out
++	cString		name;
++	cString		fileName;
++};
++
++#endif //_SERVICE__H

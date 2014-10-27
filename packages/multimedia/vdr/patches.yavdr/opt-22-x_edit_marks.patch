@@ -1,0 +1,69 @@
+Description: Patch adds keys '1', '3' in replay mode to move marks by +/-5secs.
+ When in replay mode key '0' sets a mark and stops there.
+ 'Green' and 'Yellow' act as 'Prev' and 'Next'.
+Author: FrankJepsen at vdrportal.de
+Origin: http://vdrportal.de/board/thread.php?postid=718583#post718583
+
+Index: vdr/menu.c
+===================================================================
+--- vdr.orig/menu.c	2011-12-11 02:29:03.000000000 +0100
++++ vdr/menu.c	2011-12-11 02:29:15.000000000 +0100
+@@ -5030,10 +5030,6 @@
+     case kGreen:   SkipSeconds(-60); break;
+     case kYellow|k_Repeat:
+     case kYellow:  SkipSeconds( 60); break;
+-    case k1|k_Repeat:
+-    case k1:       SkipSeconds(-20); break;
+-    case k3|k_Repeat:
+-    case k3:       SkipSeconds( 20); break;
+     case kPrev|k_Repeat:
+     case kPrev:    if (lastSkipTimeout.TimedOut()) {
+                       lastSkipSeconds = REPLAYCONTROLSKIPSECONDS;
+@@ -5061,10 +5057,46 @@
+                    Stop();
+                    return osEnd;
+     default: {
++      bool play, forward;
++      int speed;
++      int Current, Total;
++      cMark *m;
++
+       DoShowMode = false;
+       switch (int(Key)) {
+         // Editing:
+-        case kMarkToggle:      MarkToggle(); break;
++        case k1|k_Repeat:
++        case k1:               if (GetReplayMode(play, forward, speed) && !play && GetIndex(Current, Total) && (m = marks.Get(Current)) != NULL) {
++                                  displayFrames = true;
++                                  int p = SkipFrames(-SecondsToFrames(5, FramesPerSecond()));
++                                  cMark *m2;
++                                  if ((m2 = marks.Prev(m)) != NULL && m2->position >= p)
++                                     break;
++                                  Goto(m->position = p, true);
++                                  marks.Save();
++                                  }
++                               else
++                                  SkipSeconds(-20);
++                               break;
++        case k3|k_Repeat:
++        case k3:               if (GetReplayMode(play, forward, speed) && !play && GetIndex(Current, Total) && (m = marks.Get(Current)) != NULL) {
++                                  displayFrames = true;
++                                  int p = SkipFrames(SecondsToFrames(5, FramesPerSecond()));
++                                  cMark *m2;
++                                  if ((m2 = marks.Next(m)) != NULL && m2->position <= p)
++                                     break;
++                                  Goto(m->position = p, true);
++                                  marks.Save();
++                                  }
++                               else
++                                  SkipSeconds(20);
++                               break;
++        case kMarkToggle:      if (GetReplayMode(play, forward, speed) && play) {
++                                  displayFrames = true;
++                                  Pause();
++                                  }
++                               MarkToggle();
++                               break;
+         case kMarkJumpBack|k_Repeat:
+         case kMarkJumpBack:    MarkJump(false); break;
+         case kMarkJumpForward|k_Repeat:

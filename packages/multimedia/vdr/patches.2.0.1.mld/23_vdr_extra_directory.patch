@@ -1,0 +1,384 @@
+--- a/menu.c
++++ b/menu.c
+@@ -2546,6 +2546,19 @@
+      char *s = ExchangeChars(strdup(base), true);
+      d = AddDirectory(d, s);
+      free(s);
++     if (!DirectoryOk(*d, false, true)) {
++        cString e;
++        if (LockExtraVideoDirectories(true)) {
++           for (int i = 0; i < ExtraVideoDirectories.Size(); i++) {
++               e = AddDirectory(ExtraVideoDirectories.At(i), s);
++               if (DirectoryOk(*e, false, true)) {
++                  UnlockExtraVideoDirectories();
++                  return e;
++                  }
++               }
++           UnlockExtraVideoDirectories();
++           }
++        }
+      }
+   return d;
+ }
+--- a/recording.c
++++ b/recording.c
+@@ -725,6 +725,7 @@
+   resume = RESUME_NOT_INITIALIZED;
+   titleBuffer = NULL;
+   sortBufferName = sortBufferTime = NULL;
++  videoDir = VideoDirectory;
+   fileName = NULL;
+   name = NULL;
+   fileSizeMB = -1; // unknown
+@@ -777,7 +778,7 @@
+   info->lifetime = lifetime;
+ }
+ 
+-cRecording::cRecording(const char *FileName)
++cRecording::cRecording(const char *FileName, const char *VideoDir)
+ {
+   resume = RESUME_NOT_INITIALIZED;
+   fileSizeMB = -1; // unknown
+@@ -792,11 +793,12 @@
+   deleted = 0;
+   titleBuffer = NULL;
+   sortBufferName = sortBufferTime = NULL;
++  videoDir = VideoDir == NULL ? VideoDirectory : strdup(VideoDir);
+   FileName = fileName = strdup(FileName);
+   if (*(fileName + strlen(fileName) - 1) == '/')
+      *(fileName + strlen(fileName) - 1) = 0;
+-  if (strstr(FileName, VideoDirectory) == FileName)
+-     FileName += strlen(VideoDirectory) + 1;
++  if (strstr(FileName, videoDir) == FileName)
++     FileName += strlen(videoDir) + 1;
+   const char *p = strrchr(FileName, '/');
+ 
+   name = NULL;
+@@ -903,6 +905,8 @@
+ 
+ cRecording::~cRecording()
+ {
++  if (videoDir != VideoDirectory)
++     free((char*)videoDir);
+   free(titleBuffer);
+   free(sortBufferName);
+   free(sortBufferTime);
+@@ -944,7 +948,7 @@
+ {
+   char **sb = (RecordingsSortMode == rsmName) ? &sortBufferName : &sortBufferTime;
+   if (!*sb) {
+-     char *s = strdup(FileName() + strlen(VideoDirectory));
++     char *s = strdup(FileName() + strlen(videoDir));
+      if (RecordingsSortMode != rsmName || Setup.AlwaysSortFoldersFirst)
+         s = StripEpisodeName(s, RecordingsSortMode != rsmName);
+      strreplace(s, '/', '0'); // some locales ignore '/' when sorting
+@@ -985,11 +989,11 @@
+      const char *fmt = isPesRecording ? NAMEFORMATPES : NAMEFORMATTS;
+      int ch = isPesRecording ? priority : channel;
+      int ri = isPesRecording ? lifetime : instanceId;
+-     char *Name = LimitNameLengths(strdup(name), DirectoryPathMax - strlen(VideoDirectory) - 1 - 42, DirectoryNameMax); // 42 = length of an actual recording directory name (generated with DATAFORMATTS) plus some reserve
++     char *Name = LimitNameLengths(strdup(name), DirectoryPathMax - strlen(videoDir) - 1 - 42, DirectoryNameMax); // 42 = length of an actual recording directory name (generated with DATAFORMATTS) plus some reserve
+      if (strcmp(Name, name) != 0)
+         dsyslog("recording file name '%s' truncated to '%s'", name, Name);
+      Name = ExchangeChars(Name, true);
+-     fileName = strdup(cString::sprintf(fmt, VideoDirectory, Name, t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour, t->tm_min, ch, ri));
++     fileName = strdup(cString::sprintf(fmt, videoDir, Name, t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour, t->tm_min, ch, ri));
+      free(Name);
+      }
+   return fileName;
+@@ -1267,9 +1271,14 @@
+   ChangeState();
+   Unlock();
+   ScanVideoDir(VideoDirectory, Foreground);
++  if (LockExtraVideoDirectories()) {
++     for (int i = 0; i < ExtraVideoDirectories.Size(); i++)
++         ScanVideoDir(ExtraVideoDirectories.At(i), Foreground, 0, ExtraVideoDirectories.At(i));
++     UnlockExtraVideoDirectories();
++     }
+ }
+ 
+-void cRecordings::ScanVideoDir(const char *DirName, bool Foreground, int LinkLevel)
++void cRecordings::ScanVideoDir(const char *DirName, bool Foreground, int LinkLevel, const char *BaseVideoDir)
+ {
+   cReadDir d(DirName);
+   struct dirent *e;
+@@ -1289,7 +1298,7 @@
+               }
+            if (S_ISDIR(st.st_mode)) {
+               if (endswith(buffer, deleted ? DELEXT : RECEXT)) {
+-                 cRecording *r = new cRecording(buffer);
++                 cRecording *r = new cRecording(buffer, BaseVideoDir);
+                  if (r->Name()) {
+                     r->NumFrames(); // initializes the numFrames member
+                     r->FileSizeMB(); // initializes the fileSizeMB member
+@@ -1304,7 +1313,7 @@
+                     delete r;
+                  }
+               else
+-                 ScanVideoDir(buffer, Foreground, LinkLevel + Link);
++                 ScanVideoDir(buffer, Foreground, LinkLevel + Link, BaseVideoDir);
+               }
+            }
+         }
+--- a/recording.h
++++ b/recording.h
+@@ -106,9 +106,10 @@
+   int priority;
+   int lifetime;
+   time_t deleted;
++  const char *videoDir;
+ public:
+   cRecording(cTimer *Timer, const cEvent *Event);
+-  cRecording(const char *FileName);
++  cRecording(const char *FileName, const char *VideoDir = NULL);
+   virtual ~cRecording();
+   time_t Start(void) const { return start; }
+   int Priority(void) const { return priority; }
+@@ -166,7 +167,7 @@
+   int state;
+   const char *UpdateFileName(void);
+   void Refresh(bool Foreground = false);
+-  void ScanVideoDir(const char *DirName, bool Foreground = false, int LinkLevel = 0);
++  void ScanVideoDir(const char *DirName, bool Foreground = false, int LinkLevel = 0, const char *BaseVideoDir = NULL);
+ protected:
+   void Action(void);
+ public:
+--- a/svdrp.c
++++ b/svdrp.c
+@@ -334,6 +334,14 @@
+   "    be turned up or down, respectively. The option 'mute' will toggle the\n"
+   "    audio muting. If no option is given, the current audio volume level will\n"
+   "    be returned.",
++  "AXVD directory\n"
++  "    add directory to extra video directory list",
++  "CXVD\n"
++  "    clear extra video directory list",
++  "DXVD directory\n"
++  "    delete directory from extra video directory list",
++  "LXVD\n"
++  "    list extra video directories",
+   "QUIT\n"
+   "    Exit vdr (SVDRP).\n"
+   "    You can also hit Ctrl-D to exit.",
+@@ -1683,6 +1691,62 @@
+      Reply(250, "Audio volume is %d", cDevice::CurrentVolume());
+ }
+ 
++void cSVDRP::CmdAXVD(const char *Option)
++{
++  if (*Option) {
++     if (!LockExtraVideoDirectories(false)) {
++        Reply(550, "Unable to lock extra video directory list");
++        return;
++        }
++     AddExtraVideoDirectory(Option);
++     UnlockExtraVideoDirectories();
++     Reply(250, "added '%s' to extra video directory list", Option);
++     return;
++     }
++  Reply(501, "Missing directory name");
++}
++
++void cSVDRP::CmdCXVD(const char *Option)
++{
++  if (!LockExtraVideoDirectories(false)) {
++     Reply(550, "Unable to lock extra video directory list");
++     return;
++     }
++  ExtraVideoDirectories.Clear();
++  UnlockExtraVideoDirectories();
++  Reply(250, "cleared extra video directory list");
++}
++
++void cSVDRP::CmdDXVD(const char *Option)
++{
++  if (*Option) {
++     if (!LockExtraVideoDirectories(false)) {
++        Reply(550, "Unable to lock extra video directory list");
++        return;
++        }
++     DelExtraVideoDirectory(Option);
++     UnlockExtraVideoDirectories();
++     Reply(250, "removed '%s' from extra video directory list", Option);
++     return;
++     }
++  Reply(501, "Missing directory name");
++}
++
++void cSVDRP::CmdLXVD(const char *Option)
++{
++  if (!LockExtraVideoDirectories(false)) {
++     Reply(550, "Unable to lock extra video directory list");
++     return;
++     }
++  if (ExtraVideoDirectories.Size() == 0)
++     Reply(550, "no extra video directories in list");
++  else {
++     for (int i = 0; i < ExtraVideoDirectories.Size(); i++)
++         Reply(i < ExtraVideoDirectories.Size() - 1 ? -250 : 250, "%s", ExtraVideoDirectories.At(i));
++     }
++  UnlockExtraVideoDirectories();
++}
++
+ #define CMD(c) (strcasecmp(Cmd, c) == 0)
+ 
+ void cSVDRP::Execute(char *Cmd)
+@@ -1736,6 +1800,10 @@
+   else if (CMD("UPDR"))  CmdUPDR(s);
+   else if (CMD("UPDT"))  CmdUPDT(s);
+   else if (CMD("VOLU"))  CmdVOLU(s);
++  else if (CMD("AXVD"))  CmdAXVD(s);
++  else if (CMD("CXVD"))  CmdCXVD(s);
++  else if (CMD("DXVD"))  CmdDXVD(s);
++  else if (CMD("LXVD"))  CmdLXVD(s);
+   else if (CMD("QUIT"))  Close(true);
+   else                   Reply(500, "Command unrecognized: \"%s\"", Cmd);
+ }
+--- a/svdrp.h
++++ b/svdrp.h
+@@ -85,6 +85,10 @@
+   void CmdUPDT(const char *Option);
+   void CmdUPDR(const char *Option);
+   void CmdVOLU(const char *Option);
++  void CmdAXVD(const char *Option);
++  void CmdCXVD(const char *Option);
++  void CmdDXVD(const char *Option);
++  void CmdLXVD(const char *Option);
+   void Execute(char *Cmd);
+ public:
+   cSVDRP(int Port);
+--- a/tools.c
++++ b/tools.c
+@@ -375,12 +375,15 @@
+   return Free;
+ }
+ 
+-bool DirectoryOk(const char *DirName, bool LogErrors)
++bool DirectoryOk(const char *DirName, bool LogErrors, bool JustReadOnly)
+ {
++  int mode = R_OK;
++  if (!JustReadOnly)
++     mode |= W_OK | X_OK;
+   struct stat ds;
+   if (stat(DirName, &ds) == 0) {
+      if (S_ISDIR(ds.st_mode)) {
+-        if (access(DirName, R_OK | W_OK | X_OK) == 0)
++        if (access(DirName, mode) == 0)
+            return true;
+         else if (LogErrors)
+            esyslog("ERROR: can't access %s", DirName);
+--- a/tools.h
++++ b/tools.h
+@@ -228,7 +228,7 @@
+ cString AddDirectory(const char *DirName, const char *FileName);
+ bool EntriesOnSameFileSystem(const char *File1, const char *File2);
+ int FreeDiskSpaceMB(const char *Directory, int *UsedMB = NULL);
+-bool DirectoryOk(const char *DirName, bool LogErrors = false);
++bool DirectoryOk(const char *DirName, bool LogErrors = false, bool JustReadOnly = false);
+ bool MakeDirs(const char *FileName, bool IsDirectory = false);
+ bool RemoveFileOrDir(const char *FileName, bool FollowSymlinks = false);
+ bool RemoveEmptyDirectories(const char *DirName, bool RemoveThis = false, const char *IgnoreFiles[] = NULL);
+--- a/vdr.c
++++ b/vdr.c
+@@ -200,6 +200,7 @@
+   int SVDRPport = DEFAULTSVDRPPORT;
+   const char *AudioCommand = NULL;
+   const char *VideoDirectory = DEFAULTVIDEODIR;
++  const char *ExtraVideoDirectory = NULL;
+   const char *ConfigDirectory = NULL;
+   const char *CacheDirectory = NULL;
+   const char *ResourceDirectory = NULL;
+@@ -259,6 +260,7 @@
+       { "version",  no_argument,       NULL, 'V' },
+       { "vfat",     no_argument,       NULL, 'v' | 0x100 },
+       { "video",    required_argument, NULL, 'v' },
++      { "extravideo", required_argument, NULL, 'v' | 0x200 },
+       { "watchdog", required_argument, NULL, 'w' },
+       { NULL,       no_argument,       NULL,  0  }
+     };
+@@ -446,6 +448,12 @@
+                     while (optarg && *optarg && optarg[strlen(optarg) - 1] == '/')
+                           optarg[strlen(optarg) - 1] = 0;
+                     break;
++          case 'v' | 0x200:
++                    ExtraVideoDirectory = optarg;
++                    while (optarg && *optarg && optarg[strlen(optarg) - 1] == '/')
++                          optarg[strlen(optarg) - 1] = 0;
++                    AddExtraVideoDirectory(ExtraVideoDirectory);
++                    break;
+           case 'w': if (isnumber(optarg)) {
+                        int t = atoi(optarg);
+                        if (t >= 0) {
+@@ -540,6 +548,8 @@
+                "                           root\n"
+                "            --userdump     allow coredumps if -u is given (debugging)\n"
+                "  -v DIR,   --video=DIR    use DIR as video directory (default: %s)\n"
++               "            --extravideo=DIR use DIR as an additional readonly video directory\n"
++               "                           can be used multiple times\n"
+                "  -V,       --version      print version information and exit\n"
+                "            --vfat         for backwards compatibility (same as\n"
+                "                           --dirnames=250,40,1\n"
+--- a/videodir.c
++++ b/videodir.c
+@@ -19,6 +19,43 @@
+ #include "recording.h"
+ #include "tools.h"
+ 
++cStringList ExtraVideoDirectories;
++bool        ExtraVideoDirectoriesIsLocked = false;
++cMutex      ExtraVideoDirectoriesMutex;
++
++bool LockExtraVideoDirectories(bool Wait)
++{
++  if (!Wait && ExtraVideoDirectoriesIsLocked)
++     return false;
++  ExtraVideoDirectoriesMutex.Lock();
++  ExtraVideoDirectoriesIsLocked = true;
++  return true;
++}
++
++void UnlockExtraVideoDirectories(void)
++{
++  ExtraVideoDirectoriesIsLocked = false;
++  ExtraVideoDirectoriesMutex.Unlock();
++}
++
++void AddExtraVideoDirectory(const char *Directory)
++{
++  if ((Directory != NULL) && (ExtraVideoDirectories.Find(Directory) < 0))
++     ExtraVideoDirectories.Append(strdup(Directory));
++}
++
++void DelExtraVideoDirectory(const char *Directory)
++{
++  if (Directory != NULL) {
++     int index = ExtraVideoDirectories.Find(Directory);
++     if (index < 0)
++        return;
++     char *dir = ExtraVideoDirectories.At(index);
++     ExtraVideoDirectories.Remove(index);
++     free(dir);
++     }
++}
++
+ const char *VideoDirectory = VIDEODIR;
+ 
+ void SetVideoDirectory(const char *Directory)
+--- a/videodir.h
++++ b/videodir.h
+@@ -13,6 +13,15 @@
+ #include <stdlib.h>
+ #include "tools.h"
+ 
++#define EXTRA_VIDEO_DIRECTORIES_PATCH 1
++
++extern cStringList ExtraVideoDirectories;
++
++bool LockExtraVideoDirectories(bool Wait = true);
++void UnlockExtraVideoDirectories(void);
++void AddExtraVideoDirectory(const char *Directory);
++void DelExtraVideoDirectory(const char *Directory);
++
+ extern const char *VideoDirectory;
+ 
+ void SetVideoDirectory(const char *Directory);

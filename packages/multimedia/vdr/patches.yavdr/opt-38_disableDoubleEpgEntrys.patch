@@ -1,0 +1,342 @@
+Description: This patch suppresses double EPG entries.
+Author: Emanuel Wontorra <hoerzu2vdr@wontorra.net>
+Origin: http://vdrportal.de/board/thread.php?postid=317214#post317214
+
+Index: vdr/config.c
+===================================================================
+--- vdr.orig/config.c	2011-12-11 02:29:26.000000000 +0100
++++ vdr/config.c	2011-12-11 02:29:35.000000000 +0100
+@@ -402,6 +402,10 @@
+   SubtitleFgTransparency = 0;
+   SubtitleBgTransparency = 0;
+   EPGLanguages[0] = -1;
++  DoubleEpgTimeDelta = 15;
++  DoubleEpgAction = 0;
++  MixEpgAction = 0;
++  DisableVPS = 0;
+   EPGScanTimeout = 5;
+   EPGBugfixLevel = 3;
+   EPGLinger = 0;
+@@ -600,6 +604,10 @@
+   else if (!strcasecmp(Name, "SubtitleFgTransparency")) SubtitleFgTransparency = atoi(Value);
+   else if (!strcasecmp(Name, "SubtitleBgTransparency")) SubtitleBgTransparency = atoi(Value);
+   else if (!strcasecmp(Name, "EPGLanguages"))        return ParseLanguages(Value, EPGLanguages);
++  else if (!strcasecmp(Name, "DoubleEpgTimeDelta"))  DoubleEpgTimeDelta = atoi(Value);
++  else if (!strcasecmp(Name, "DoubleEpgAction"))     DoubleEpgAction    = atoi(Value);
++  else if (!strcasecmp(Name, "MixEpgAction"))        MixEpgAction       = atoi(Value);
++  else if (!strcasecmp(Name, "DisableVPS"))          DisableVPS         = atoi(Value);
+   else if (!strcasecmp(Name, "EPGScanTimeout"))      EPGScanTimeout     = atoi(Value);
+   else if (!strcasecmp(Name, "EPGBugfixLevel"))      EPGBugfixLevel     = atoi(Value);
+   else if (!strcasecmp(Name, "EPGLinger"))           EPGLinger          = atoi(Value);
+@@ -701,6 +709,10 @@
+   Store("SubtitleFgTransparency", SubtitleFgTransparency);
+   Store("SubtitleBgTransparency", SubtitleBgTransparency);
+   StoreLanguages("EPGLanguages", EPGLanguages);
++  Store("DoubleEpgTimeDelta", DoubleEpgTimeDelta);
++  Store("DoubleEpgAction",    DoubleEpgAction);
++  Store("MixEpgAction",       MixEpgAction);
++  Store("DisableVPS",         DisableVPS);
+   Store("EPGScanTimeout",     EPGScanTimeout);
+   Store("EPGBugfixLevel",     EPGBugfixLevel);
+   Store("EPGLinger",          EPGLinger);
+Index: vdr/config.h
+===================================================================
+--- vdr.orig/config.h	2011-12-11 02:29:26.000000000 +0100
++++ vdr/config.h	2011-12-11 02:29:35.000000000 +0100
+@@ -263,6 +263,10 @@
+   int SubtitleOffset;
+   int SubtitleFgTransparency, SubtitleBgTransparency;
+   int EPGLanguages[I18N_MAX_LANGUAGES + 1];
++  int DoubleEpgTimeDelta;
++  int DoubleEpgAction;
++  int MixEpgAction;
++  int DisableVPS;
+   int EPGScanTimeout;
+   int EPGBugfixLevel;
+   int EPGLinger;
+Index: vdr/eit.c
+===================================================================
+--- vdr.orig/eit.c	2011-12-10 22:22:04.000000000 +0100
++++ vdr/eit.c	2011-12-11 02:29:35.000000000 +0100
+@@ -83,7 +83,83 @@
+          uchar TableID = pEvent->TableID();
+          if (TableID == 0x00) {
+             if (pEvent->Version() == getVersionNumber())
+-               continue;
++          {
++          	if(Setup.MixEpgAction == 0)
++          		continue;
++          		
++          	//printf("in");
++          	//printf("%s", pEvent->GetTimeString());
++          	// to use the info of the original epg, update the extern one,
++          	// if it has less info
++          	SI::Descriptor *d;
++          	SI::ExtendedEventDescriptors *ExtendedEventDescriptors = NULL;
++          	//SI::ExtendedEventDescriptor *eed = NULL;
++          	SI::ShortEventDescriptor *ShortEventDescriptor = NULL;
++          	//SI::ShortEventDescriptor *sed = NULL;
++          	//SI::TimeShiftedEventDescriptor *tsed = NULL;
++          	//cLinkChannels *LinkChannels = NULL;
++          	for (SI::Loop::Iterator it2; (d = SiEitEvent.eventDescriptors.getNext(it2));)
++          	{
++          		if(d->getDescriptorTag() == SI::ShortEventDescriptorTag)
++          		{
++          			int LanguagePreferenceShort = -1;
++          			SI::ShortEventDescriptor *sed = (SI::ShortEventDescriptor *)d;
++          			if (I18nIsPreferredLanguage(Setup.EPGLanguages, sed->languageCode, LanguagePreferenceShort) || !ShortEventDescriptor)
++          			{
++          				delete ShortEventDescriptor;
++          				ShortEventDescriptor = sed;
++          				d = NULL; // so that it is not deleted
++          			}
++          		}
++          		else if(d->getDescriptorTag() == SI::ExtendedEventDescriptorTag)
++          		{
++          			int LanguagePreferenceExt = -1;
++          			bool UseExtendedEventDescriptor = false;
++          			SI::ExtendedEventDescriptor *eed = (SI::ExtendedEventDescriptor *)d;
++          			if (I18nIsPreferredLanguage(Setup.EPGLanguages, eed->languageCode, LanguagePreferenceExt) || !ExtendedEventDescriptors) 
++          			{
++          				delete ExtendedEventDescriptors;
++          				ExtendedEventDescriptors = new SI::ExtendedEventDescriptors;
++          				UseExtendedEventDescriptor = true;
++          			}
++          			if (UseExtendedEventDescriptor) 
++          			{
++          				ExtendedEventDescriptors->Add(eed);
++          				d = NULL; // so that it is not deleted
++          			}
++          			if (eed->getDescriptorNumber() == eed->getLastDescriptorNumber())
++          				UseExtendedEventDescriptor = false;
++          		}         		                 
++          		delete d;
++          	}
++          	if(pEvent)
++          	{
++          		
++             		if(ShortEventDescriptor)
++ 	             	{
++ 	             		char buffer[256];    		
++ 	             		if(ShortEventDescriptor->text.getText(buffer, sizeof(buffer)) && pEvent->ShortText() && (strlen(ShortEventDescriptor->text.getText(buffer, sizeof(buffer))) > strlen(pEvent->ShortText())))
++ 	             		{
++ 	             			pEvent->SetShortText(ShortEventDescriptor->text.getText(buffer, sizeof(buffer)));
++ 	             			pEvent->FixEpgBugs();
++ 				}
++ 			}
++ 			if(ExtendedEventDescriptors)
++ 			{
++ 				char buffer[ExtendedEventDescriptors->getMaximumTextLength(": ") + 1];
++ 				//pEvent->SetDescription(ExtendedEventDescriptors->getText(buffer, sizeof(buffer), ": "));
++             
++ 				if(ExtendedEventDescriptors->getText(buffer, sizeof(buffer), ": ") && pEvent->Description() && (strlen(ExtendedEventDescriptors->getText(buffer, sizeof(buffer), ": ")) > strlen(pEvent->Description())))
++ 				{
++ 		  			pEvent->SetDescription(ExtendedEventDescriptors->getText(buffer, sizeof(buffer), ": "));
++ 		  			pEvent->FixEpgBugs();
++ 		  		}
++ 		  	}
++ 		}
++ 	  	delete ExtendedEventDescriptors;
++ 	  	delete ShortEventDescriptor;
++          	continue;
++          }
+             HasExternalData = ExternalData = true;
+             }
+          // If the new event has a higher table ID, let's skip it.
+@@ -108,7 +184,7 @@
+       if (newEvent)
+          pSchedule->AddEvent(newEvent);
+       if (Tid == 0x4E) { // we trust only the present/following info on the actual TS
+-         if (SiEitEvent.getRunningStatus() >= SI::RunningStatusNotRunning)
++         if (Setup.DisableVPS == 0 && SiEitEvent.getRunningStatus() >= SI::RunningStatusNotRunning)
+             pSchedule->SetRunningStatus(pEvent, SiEitEvent.getRunningStatus(), channel);
+          }
+       if (OnlyRunningStatus)
+@@ -297,6 +373,80 @@
+       if (LinkChannels)
+          channel->SetLinkChannels(LinkChannels);
+       Modified = true;
++       
++      //to avoid double epg-entrys from ext and int epg sources :EW
++      if (pEvent && pEvent->TableID() != 0x00)
++      {
++      	cEvent *pPreviousEvent = (cEvent *)pSchedule->GetPreviousEvent(pEvent);
++      	
++      	if (pPreviousEvent)
++       	{
++       		if(Setup.DoubleEpgAction == 0)
++       		{
++       			pPreviousEvent->SetStartTime(pEvent->StartTime());
++       			pPreviousEvent->SetDuration(pEvent->Duration());
++       			
++       			if(Setup.DisableVPS == 0)
++       			{
++       				if(channel)
++       					pPreviousEvent->SetRunningStatus(pEvent->RunningStatus(), channel);
++       				else
++       					pPreviousEvent->SetRunningStatus(pEvent->RunningStatus());
++       			}
++       			
++       			// to use the info of the original epg, update the extern one,
++       			// if it has less info
++       			char buffer_short_intern[256];
++       			char buffer_short_extern[256];
++       			int len_short_intern = 0;
++       			int len_short_extern = 0;
++       			
++       			if (pEvent->ShortText())
++       				len_short_intern = snprintf (buffer_short_intern, sizeof(buffer_short_intern), "%s", pEvent->ShortText());
++       				
++       			if (pPreviousEvent->ShortText())
++       				len_short_extern = snprintf (buffer_short_extern, sizeof(buffer_short_extern), "%s",pPreviousEvent->ShortText());
++ 			
++       			if(len_short_intern > 0)
++       			{
++       				if(len_short_extern < 1)
++       					pPreviousEvent->SetShortText(buffer_short_intern);
++       				else if (len_short_intern > len_short_extern)
++       						pPreviousEvent->SetShortText(buffer_short_intern);
++       			}
++       			
++       			if(pEvent->Description())
++       			{
++       				char buffer_title_intern[4096];
++       				char buffer_title_extern[4096];
++       				int len_title_intern = 0;
++       				int len_title_extern = 0;
++       				
++       				if (pEvent->Description())
++       					len_title_intern = snprintf (buffer_title_intern, sizeof(buffer_title_intern), "%s", pEvent->Description());
++       					
++       				if (pPreviousEvent->Description())
++       					len_title_extern = snprintf (buffer_title_extern, sizeof(buffer_title_extern), "%s", pPreviousEvent->Description());
++       				
++       				if(len_title_intern > 0)
++ 	      			{
++ 	      				if(len_title_extern < 1)
++ 	      					pPreviousEvent->SetDescription(buffer_title_intern);
++ 	      				else if (len_title_intern > len_title_extern)
++ 	      					pPreviousEvent->SetDescription(buffer_title_intern);
++ 	      			}
++ 	      		}
++ 	      		
++ 	      		if(pPreviousEvent->Vps() == 0 && pEvent->Vps() != 0)
++ 	      			pPreviousEvent->SetVps(pEvent->Vps());
++ 	      			
++ 	      		pSchedule->DelEvent(pEvent);
++ 	      		pPreviousEvent->FixEpgBugs();
++       		}
++       		else
++       			pSchedule->DelEvent(pPreviousEvent);
++       	}
++       }
+       }
+   if (Tid == 0x4E) {
+      if (Empty && getSectionNumber() == 0)
+Index: vdr/epg.c
+===================================================================
+--- vdr.orig/epg.c	2011-12-10 22:22:04.000000000 +0100
++++ vdr/epg.c	2011-12-11 02:29:35.000000000 +0100
+@@ -939,6 +939,29 @@
+   return pe;
+ }
+ 
++const cEvent *cSchedule::GetPreviousEvent(cEvent *Event) const
++{
++	
++	if(!Event || Event->Duration() == 0 || Event->StartTime() == 0)
++		return NULL;
++	// Returns either the event info to the previous/following event to the given EventID or, if that one can't be found NULL :EW
++	cEvent *pt = NULL;
++	int epgTimeDelta = Setup.DoubleEpgTimeDelta * 60 + 1;
++	for (pt = events.First(); pt; pt = events.Next(pt))
++		if(pt && pt->TableID() == 0x00)
++			if ((Event->StartTime() - pt->StartTime()) > -  epgTimeDelta && (Event->StartTime() - pt->StartTime()) < epgTimeDelta)
++			{
++				if((pt->Duration() + (pt->Duration()/ 5) + 1) > Event->Duration() && (pt->Duration() - (pt->Duration()/ 5) - 1) < Event->Duration())
++					return pt;
++				else if (pt->Title() && Event->Title() && (strcmp(pt->Title(), ".") != 0 && strcmp(Event->Title(), ".") != 0))
++				{
++					if (strstr(pt->Title(), Event->Title()) != NULL || strstr(Event->Title(), pt->Title()) != NULL)
++						return pt;
++				}
++			}
++	return NULL;
++}
++
+ void cSchedule::SetRunningStatus(cEvent *Event, int RunningStatus, cChannel *Channel)
+ {
+   hasRunning = false;
+Index: vdr/epg.h
+===================================================================
+--- vdr.orig/epg.h	2011-12-10 22:22:04.000000000 +0100
++++ vdr/epg.h	2011-12-11 02:29:35.000000000 +0100
+@@ -163,6 +163,7 @@
+   void DropOutdated(time_t SegmentStart, time_t SegmentEnd, uchar TableID, uchar Version);
+   void Cleanup(time_t Time);
+   void Cleanup(void);
++  const cEvent *GetPreviousEvent(cEvent *Event) const; //:EW
+   cEvent *AddEvent(cEvent *Event);
+   void DelEvent(cEvent *Event);
+   void HashEvent(cEvent *Event);
+Index: vdr/menu.c
+===================================================================
+--- vdr.orig/menu.c	2011-12-11 02:29:31.000000000 +0100
++++ vdr/menu.c	2011-12-11 02:29:35.000000000 +0100
+@@ -2866,6 +2866,10 @@
+   for (int i = 0; i < numLanguages; i++)
+       // TRANSLATORS: note the singular!
+       Add(new cMenuEditStraItem(tr("Setup.EPG$Preferred language"),    &data.EPGLanguages[i], I18nLanguages()->Size(), &I18nLanguages()->At(0)));
++  Add(new cMenuEditIntItem(tr("Setup.EPG$Period for double EPG search(min)"), &data.DoubleEpgTimeDelta));
++  Add(new cMenuEditBoolItem(tr("Setup.EPG$extern double Epg entry"),   &data.DoubleEpgAction, "adjust", "delete"));
++  Add(new cMenuEditBoolItem(tr("Setup.EPG$Mix intern and extern EPG"), &data.MixEpgAction));
++  Add(new cMenuEditBoolItem(tr("Setup.EPG$Disable running VPS event"), &data.DisableVPS));
+ 
+   SetCurrent(Get(current));
+   Display();
+Index: vdr/po/de_DE.po
+===================================================================
+--- vdr.orig/po/de_DE.po	2011-12-11 02:29:26.000000000 +0100
++++ vdr/po/de_DE.po	2011-12-11 02:29:35.000000000 +0100
+@@ -849,6 +849,18 @@
+ msgid "Button$Scan"
+ msgstr "Scan"
+ 
++msgid "Setup.EPG$Period for double EPG search(min)"
++msgstr "Zeitspanne für dop. EPG-Suche(min)"
++
++msgid "Setup.EPG$extern double Epg entry"
++msgstr "Doppelten externen EPG-Eintrag"
++
++msgid "Setup.EPG$Mix intern and extern EPG"
++msgstr "Internen und externen EPG mischen"
++
++msgid "Setup.EPG$Disable running VPS event"
++msgstr "Erk. des lauf. VPS-Events abschalten"
++
+ msgid "Setup.EPG$EPG scan timeout (h)"
+ msgstr "Zeit bis zur EPG-Aktualisierung (h)"
+ 
+Index: vdr/po/fr_FR.po
+===================================================================
+--- vdr.orig/po/fr_FR.po	2011-12-11 02:29:26.000000000 +0100
++++ vdr/po/fr_FR.po	2011-12-11 02:29:35.000000000 +0100
+@@ -855,6 +855,18 @@
+ msgid "Button$Scan"
+ msgstr "Scan"
+ 
++msgid "Setup.EPG$Period for double EPG search(min)"
++msgstr "Intervalle de recherche du double EPG(min)"
++
++msgid "Setup.EPG$extern double Epg entry"
++msgstr "Entrée EPG externe en double"
++
++msgid "Setup.EPG$Mix intern and extern EPG"
++msgstr "Mixer EPG interne et externe"
++
++msgid "Setup.EPG$Disable running VPS event"
++msgstr "Désactiver événement VPS"
++
+ msgid "Setup.EPG$EPG scan timeout (h)"
+ msgstr "Inactivité avant rech. EPG (h)"
+ 

@@ -1,0 +1,135 @@
+Description: <short summary of the patch>
+ TODO: Put a short summary on the line above and replace this paragraph
+ with a longer explanation of this change. Complete the meta-information
+ with other relevant fields (see below for details). To make it easier, the
+ information below has been extracted from the changelog. Adjust it or drop
+ it.
+ .
+ vdr (1.7.27-5yavdr0~precise) precise; urgency=medium
+ .
+   * Fix bug with wareagle patch and vim 1.7.27 (thx oldmanuk)
+Author: Marco Scholl <develop@marco-scholl.de>
+
+---
+The information above should follow the Patch Tagging Guidelines, please
+checkout http://dep.debian.net/deps/dep3/ to learn about the format. Here
+are templates for supplementary fields that you might want to add:
+
+Origin: <vendor|upstream|other>, <url of original patch>
+Bug: <url in upstream bugtracker>
+Bug-Debian: http://bugs.debian.org/<bugnumber>
+Bug-Ubuntu: https://launchpad.net/bugs/<bugnumber>
+Forwarded: <no|not-needed|url proving that it has been forwarded>
+Reviewed-By: <name and email of someone who approved the patch>
+Last-Update: <YYYY-MM-DD>
+
+--- a/menu.c
++++ b/menu.c
+@@ -1028,6 +1028,7 @@
+ class cMenuTimerItem : public cOsdItem {
+ private:
+   cTimer *timer;
++  void DoSet(void);
+   char diskStatus;
+ public:
+   cMenuTimerItem(cTimer *Timer);
+@@ -1042,7 +1043,7 @@
+ {
+   timer = Timer;
+   diskStatus = ' ';
+-  Set();
++  DoSet();
+ }
+ 
+ int cMenuTimerItem::Compare(const cListObject &ListObject) const
+@@ -1052,6 +1053,18 @@
+ 
+ void cMenuTimerItem::Set(void)
+ {
++  // check for deleted timer
++  for (cTimer *t = Timers.First(); ; t = Timers.Next(t)) {
++     if (t == timer)
++       break;  // timer still there
++     if (t == NULL)
++       return; // no matching timer found
++     }
++  DoSet();
++}
++
++void cMenuTimerItem::DoSet(void)
++{
+   cString day, name("");
+   if (timer->WeekDays())
+      day = timer->PrintDay(0, timer->WeekDays(), false);
+@@ -1150,8 +1163,7 @@
+ class cMenuTimers : public cOsdMenu {
+ private:
+   int helpKeys;
+-  eOSState Edit(void);
+-  eOSState New(void);
++  eOSState Edit(bool New = false);
+   eOSState Delete(void);
+   eOSState OnOff(void);
+   eOSState Info(void);
+@@ -1229,19 +1241,30 @@
+   return osContinue;
+ }
+ 
+-eOSState cMenuTimers::Edit(void)
++eOSState cMenuTimers::Edit(bool New)
+ {
+-  if (HasSubMenu() || Count() == 0)
++  if (HasSubMenu() || (Count() == 0 && !New))
+      return osContinue;
+-  isyslog("editing timer %s", *CurrentTimer()->ToDescr());
+-  return AddSubMenu(new cMenuEditTimer(CurrentTimer()));
+-}
++  if (!New)
++     isyslog("editing timer %s", *CurrentTimer()->ToDescr());
+ 
+-eOSState cMenuTimers::New(void)
+-{
+-  if (HasSubMenu())
+-     return osContinue;
+-  return AddSubMenu(new cMenuEditTimer(new cTimer, true));
++  // Data structure for service "Epgsearch-exttimeredit-v1.0"
++  struct Epgsearch_exttimeredit_v1_0
++  {
++    // in
++    cTimer* timer;          // pointer to the timer to edit
++    bool bNew;              // flag that indicates, if this is a new timer or an existing one
++    const cEvent* event;    // pointer to the event corresponding to this timer (may be NULL)
++    // out
++    cOsdMenu* pTimerMenu;   // pointer to the menu of results
++  } exttimeredit;
++  exttimeredit.timer = New ? (new cTimer) : CurrentTimer();
++  exttimeredit.bNew = New;
++  exttimeredit.event = exttimeredit.timer->Event();
++  if (cPluginManager::CallFirstService("Epgsearch-exttimeredit-v1.0", &exttimeredit))
++    return AddSubMenu(exttimeredit.pTimerMenu);
++
++  return AddSubMenu(new cMenuEditTimer(exttimeredit.timer, New));
+ }
+ 
+ eOSState cMenuTimers::Delete(void)
+@@ -1349,7 +1372,7 @@
+        case kOk:     return Edit();
+        case kRed:    actualiseDiskStatus = true;
+                      state = OnOff(); break; // must go through SetHelpKeys()!
+-       case kGreen:  return New();
++       case kGreen:  return Edit(true);
+        case kYellow: actualiseDiskStatus = true;
+                      state = Delete(); break;
+        case kInfo:
+@@ -1365,6 +1388,11 @@
+      actualiseDiskStatus = true;
+      Display();
+      }
++  if (!HasSubMenu() && Timers.Count()<Count()) {
++     // timer was deleted
++     cOsdMenu::Del(Current());
++     Display();
++     }
+   if (Key != kNone)
+      SetHelpKeys();
+   return state;

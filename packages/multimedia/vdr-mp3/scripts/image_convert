@@ -1,0 +1,88 @@
+#!/bin/bash
+#
+# requires: ...topnm, pnmscale, pnmcomp, ppmntsc, ppmtoy4m, mpeg2enc
+#
+
+# video format. pal or ntsc
+FORMAT=pal
+
+# target image width/height (taking into account visible screen area)
+if [ "$FORMAT" = "ntsc" ]; then
+  TW=600
+  TH=420
+else
+  TW=632
+  TH=512
+fi
+
+TMP=/tmp/image_convert.$$.pnm
+IMG=$1
+MPG=$2
+
+DIR=`dirname "$MPG"`
+if [ ! -d "$DIR" ]; then
+  mkdir -p "$DIR"
+fi
+#
+# get the file type and set the according converter to PNM
+#
+FILE_TYPE=`file -i -L -b "$IMG" 2>/dev/null | cut -f2 -d/`
+case "$FILE_TYPE" in
+  jpg | jpeg)
+  TO_PNM=jpegtopnm
+  ;;
+  tiff)
+  TO_PNM=tifftopnm
+  ;;
+  bmp | x-bmp)
+  TO_PNM=bmptoppm
+  ;;
+  png | x-png)
+  TO_PNM=pngtopnm
+  ;;
+  Netpbm | pnm | x-portable-pixmap)
+  TO_PNM=cat
+  ;;
+  gif)
+  TO_PNM=giftopnm
+  ;;
+  *)
+  echo "filetype '$FILE_TYPE' is not supported"
+  exit 1
+  ;;
+esac
+#
+# 'chroma subsampling mode' mjpegtools >= 1.8.0
+#
+SUBSAMPLINGMODE=""
+if ppmtoy4m -h | egrep -q "'420mpeg2'"; then
+    SUBSAMPLINGMODE="-S 420mpeg2"
+fi
+#
+# extract the image size & compute scale value
+#
+LANG=C # get the decimal point right
+$TO_PNM "$IMG" >$TMP 2>/dev/null
+S=`pnmfile $TMP | awk '{ printf "%d %d ",$4,$6 }'`
+S=`echo $S $TW $TH | awk '{ sw=$3/$1; sh=$4/$2; s=(sw<sh)?sw:sh; printf "%.4f\n",(s>1)?1.0:s; }'`
+#
+# now run the conversion
+#
+if [ "$FORMAT" = "ntsc" ]; then
+  pnmscale $S $TMP | \
+    pnmpad -black -width 704 -height 480 | \
+    ppmntsc | \
+    ppmtoy4m -v 0 -n 1 -r -F 30000:1001 $SUBSAMPLINGMODE | \
+    mpeg2enc -f 7 -T 90 -F 4 -nn -a 2 -v 0 -o "$MPG"
+else
+  pnmscale $S $TMP | \
+    pnmpad -black -width 704 -height 576 | \
+    ppmntsc --pal | \
+    ppmtoy4m -v 0 -n 1 -r -F 25:1 $SUBSAMPLINGMODE | \
+    mpeg2enc -f 7 -T 90 -F 3 -np -a 2 -v 0 -o "$MPG"
+fi
+#
+# cleanup
+#
+rm $TMP
+

@@ -1,0 +1,71 @@
+--- vdr-2.0.3-orig/menu.c	2013-04-27 12:32:28.000000000 +0200
++++ vdr-2.0.3/menu.c	2013-09-22 18:22:19.440344000 +0200
+@@ -51,6 +51,18 @@
+ #define CHNUMWIDTH  (numdigits(Channels.MaxNumber()) + 1)
+ #define CHNAMWIDTH  (min(MAXCHNAMWIDTH, Channels.MaxShortChannelNameLength() + 1))
+ 
++struct Hddarchive_archiveid_v1_0
++{
++   const cRecording *recording;
++   bool isarchive;
++   const char *archiveid;
++};
++
++struct Hddarchive_play_v1_0
++{
++   cMenuRecordingItem *item;
++};
++
+ // --- cMenuEditCaItem -------------------------------------------------------
+ 
+ class cMenuEditCaItem : public cMenuEditIntItem {
+@@ -2348,6 +2360,13 @@
+      if (ri->IsDirectory())
+         Open();
+      else {
++        cPlugin *hddarchivePlugin = cPluginManager::GetPlugin("hddarchive");
++        Hddarchive_play_v1_0 data;
++        data.item = ri;
++        if (hddarchivePlugin) {
++           hddarchivePlugin->Service("Hddarchive-play_v1.0", &data);
++           return osEnd;
++           }
+         cReplayControl::SetRecording(ri->Recording()->FileName());
+         return osReplay;
+         }
+@@ -2374,6 +2393,17 @@
+   if (HasSubMenu() || Count() == 0)
+      return osContinue;
+   cMenuRecordingItem *ri = (cMenuRecordingItem *)Get(Current());
++  cPlugin *hddarchivePlugin = cPluginManager::GetPlugin("hddarchive");
++  Hddarchive_archiveid_v1_0 data;
++  data.recording = ri->Recording();
++  data.isarchive = false;
++  if (hddarchivePlugin) {
++     hddarchivePlugin->Service("Hddarchive-archiveid_v1.0", &data);
++     if (data.isarchive) {
++        Skins.Message(mtError, tr("Cannot delete archived recording!"));
++        return osContinue;
++        }
++     }
+   if (ri && !ri->IsDirectory()) {
+      if (Interface->Confirm(tr("Delete recording?"))) {
+         cRecordControl *rc = cRecordControls::GetRecordControl(ri->Recording()->FileName());
+@@ -4832,7 +4862,16 @@
+   if (*fileName) {
+      Hide();
+      if (!cCutter::Active()) {
+-        if (!marks.Count())
++        cPlugin *hddarchivePlugin = cPluginManager::GetPlugin("hddarchive");
++        Hddarchive_archiveid_v1_0 data;
++        data.recording = GetRecording();
++        data.isarchive = false;
++        if (hddarchivePlugin) {
++           hddarchivePlugin->Service("Hddarchive-archiveid_v1.0", &data);
++           }
++        if (data.isarchive)
++           Skins.Message(mtError, tr("Cannot edit archived recording!"));
++        else if (!marks.Count())
+            Skins.Message(mtError, tr("No editing marks defined!"));
+         else if (!marks.GetNumSequences())
+            Skins.Message(mtError, tr("No editing sequences defined!"));

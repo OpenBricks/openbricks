@@ -1,0 +1,130 @@
+--- vdr-1.7.28.debianorig/epg.h	2012-06-02 16:07:51.000000000 +0200
++++ vdr-1.7.28/epg.h	2012-07-30 18:02:51.000000000 +0200
+@@ -192,11 +192,11 @@ class cSchedules : public cList<cSchedul
+ private:
+   cRwLock rwlock;
+   static cSchedules schedules;
+-  static char *epgDataFileName;
+   static time_t lastCleanup;
+   static time_t lastDump;
+   static time_t modified;
+ public:
++  static char *epgDataFileName;
+   static void SetEpgDataFileName(const char *FileName);
+   static const cSchedules *Schedules(cSchedulesLock &SchedulesLock);
+          ///< Caller must provide a cSchedulesLock which has to survive the entire
+@@ -214,6 +214,13 @@ public:
+   const cSchedule *GetSchedule(const cChannel *Channel, bool AddIfMissing = false) const;
+   };
+ 
++class cEpgDataCleaner : public cThread {
++protected:
++  virtual void Action(void);
++public:
++  cEpgDataCleaner(void);
++  };
++
+ class cEpgDataReader : public cThread {
+ public:
+   cEpgDataReader(void);
+--- vdr-1.7.28.debianorig/epg.c	2012-06-02 16:08:12.000000000 +0200
++++ vdr-1.7.28/epg.c	2012-07-30 18:12:01.000000000 +0200
+@@ -1122,6 +1122,8 @@ cSchedulesLock::~cSchedulesLock()
+      cSchedules::schedules.rwlock.Unlock();
+ }
+ 
++static cEpgDataCleaner EpgDataCleaner;
++
+ // --- cSchedules ------------------------------------------------------------
+ 
+ cSchedules cSchedules::schedules;
+@@ -1154,26 +1156,10 @@ void cSchedules::Cleanup(bool Force)
+   time_t now = time(NULL);
+   struct tm tm_r;
+   struct tm *ptm = localtime_r(&now, &tm_r);
+-  if (now - lastCleanup > 3600) {
+-     isyslog("cleaning up schedules data");
+-     cSchedulesLock SchedulesLock(true, 1000);
+-     cSchedules *s = (cSchedules *)Schedules(SchedulesLock);
+-     if (s) {
+-        for (cSchedule *p = s->First(); p; p = s->Next(p))
+-            p->Cleanup(now);
+-        }
++  if ((now - lastCleanup > 3600) || (epgDataFileName && now - lastDump > 600)) {
++     if (!EpgDataCleaner.Active())
++       EpgDataCleaner.Start();
+      lastCleanup = now;
+-     if (ptm->tm_hour == 5)
+-        ReportEpgBugFixStats(true);
+-     }
+-  if (epgDataFileName && now - lastDump > 600) {
+-     cSafeFile f(epgDataFileName);
+-     if (f.Open()) {
+-        Dump(f);
+-        f.Close();
+-        }
+-     else
+-        LOG_ERROR;
+      lastDump = now;
+      }
+ }
+@@ -1297,6 +1283,43 @@ void cEpgDataReader::Action(void)
+   cSchedules::Read();
+ }
+ 
++// --- cEpgDataCleaner --------------------------------------------------------
++
++cEpgDataCleaner::cEpgDataCleaner(void)
++:cThread("epg data cleanup / dump")
++{
++}
++
++void cEpgDataCleaner::Action(void)
++{
++  SetPriority(19);
++  SetIOPriority(7);
++  {
++    isyslog("cleaning up schedules data");
++    cSchedulesLock SchedulesLock(true, 1000);
++    cSchedules *s = (cSchedules *)cSchedules::Schedules(SchedulesLock);
++    if (s) {
++      time_t now = time(NULL);
++      for (cSchedule *p = s->First(); p; p = s->Next(p))
++        p->Cleanup(now);
++    }
++  }
++  if (cSchedules::epgDataFileName) {
++    cSafeFile f(cSchedules::epgDataFileName);
++    if (f.Open()) {
++      cSchedulesLock SchedulesLock;
++      cSchedules *s = (cSchedules *)cSchedules::Schedules(SchedulesLock);
++      if (s) {
++        for (cSchedule *p = s->First(); p; p = s->Next(p))
++          p->Dump(f, "", dmAll, 0);
++      }
++      f.Close();
++    }
++    else
++      LOG_ERROR;
++  }
++}
++
+ // --- cEpgHandler -----------------------------------------------------------
+ 
+ cEpgHandler::cEpgHandler(void)
+--- vdr-1.7.28.debianorig/recording.c	2012-07-30 11:41:32.000000000 +0200
++++ vdr-1.7.28/recording.c	2012-07-30 13:38:21.000000000 +0200
+@@ -119,13 +119,7 @@ void RemoveDeletedRecordings(void)
+   static time_t LastRemoveCheck = 0;
+   if (time(NULL) - LastRemoveCheck > REMOVECHECKDELTA) {
+      if (!RemoveDeletedRecordingsThread.Active()) {
+-        cThreadLock DeletedRecordingsLock(&DeletedRecordings);
+-        for (cRecording *r = DeletedRecordings.First(); r; r = DeletedRecordings.Next(r)) {
+-            if (r->Deleted() && time(NULL) - r->Deleted() > DELETEDLIFETIME) {
+                RemoveDeletedRecordingsThread.Start();
+-               break;
+-               }
+-            }
+         }
+      LastRemoveCheck = time(NULL);
+      }

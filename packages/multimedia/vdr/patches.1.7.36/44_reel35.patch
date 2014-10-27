@@ -1,0 +1,635 @@
+diff -urN vdr-1.7.36.org/channels.h vdr-1.7.36/channels.h
+--- vdr-1.7.36.org/channels.h	2013-01-21 11:48:19.524875666 +0100
++++ vdr-1.7.36/channels.h	2013-01-21 11:48:32.992875265 +0100
+@@ -14,6 +14,7 @@
+ #include "sources.h"
+ #include "thread.h"
+ #include "tools.h"
++#include <vector>
+ 
+ #define ISTRANSPONDER(f1, f2)  (abs((f1) - (f2)) < 4) //XXX
+ 
+@@ -104,6 +105,9 @@
+   friend class cSchedules;
+   friend class cMenuEditChannel;
+   friend class cDvbSourceParam;
++  friend class cMenuMyEditChannel;
++  friend class cMenuMyBouquets;
++  friend class cMenuEditBouquet;
+ private:
+   static cString ToText(const cChannel *Channel);
+   char *name;
+@@ -204,6 +208,7 @@
+   int Number(void) const { return number; }
+   void SetNumber(int Number) { number = Number; }
+   bool GroupSep(void) const { return groupSep; }
++  void SetGroupSep(bool GroupSep) { groupSep=GroupSep; }
+   const char *Parameters(void) const { return parameters; }
+   const cLinkChannels* LinkChannels(void) const { return linkChannels; }
+   const cChannel *RefChannel(void) const { return refChannel; }
+@@ -246,6 +251,7 @@
+ public:
+   cChannels(void);
+   bool Load(const char *FileName, bool AllowComments = false, bool MustExist = false);
++  bool Reload(const char *FileName, bool AllowComments = false, bool MustExist = false);
+ #ifdef USE_ALTERNATECHANNEL
+   bool LoadAlternativeChannels(const char *FileName);
+ #endif /* ALTERNATECHANNEL */
+diff -urN vdr-1.7.36.org/config.c vdr-1.7.36/config.c
+--- vdr-1.7.36.org/config.c	2013-01-21 11:48:19.524875666 +0100
++++ vdr-1.7.36/config.c	2013-01-21 11:48:32.992875265 +0100
+@@ -500,6 +500,16 @@
+   ChannelsWrap = 0;
+   ShowChannelNamesWithSource = 0;
+   EmergencyExit = 1;
++  ExpertOptions  = 0;
++  AddNewChannels = 0;
++  UseBouquetList = 1;
++  OnlyRadioChannels = 0;
++  OnlyEncryptedChannels = 0;
++  OnlyHDChannels = 0;
++  ExpertNavi     = 0;
++  WantChListOnOk = 1;
++  ChannelUpDownKeyMode = 0; // 0 Normal, kChanUp and kChanDn jumps channel
++                            // 1 opens bouquet / channellist
+ #ifdef USE_JUMPINGSECONDS
+   JumpSeconds = 60;
+   JumpSecondsSlow = 10;
+@@ -625,6 +635,15 @@
+ bool cSetup::Parse(const char *Name, const char *Value)
+ {
+   if      (!strcasecmp(Name, "OSDLanguage"))       { strn0cpy(OSDLanguage, Value, sizeof(OSDLanguage)); I18nSetLocale(OSDLanguage); }
++  else if (!strcasecmp(Name, "ExpertOptions"))       ExpertOptions      = atoi(Value);
++  else if (!strcasecmp(Name, "AddNewChannels"))      AddNewChannels     = atoi(Value);
++  else if (!strcasecmp(Name, "UseBouquetList"))      UseBouquetList     = atoi(Value);
++  else if (!strcasecmp(Name, "OnlyRadioChannels"))   OnlyRadioChannels  = atoi(Value);
++  else if (!strcasecmp(Name, "OnlyEncryptedChannels"))OnlyEncryptedChannels = atoi(Value);
++  else if (!strcasecmp(Name, "OnlyHDChannels"))      OnlyHDChannels       = atoi(Value);
++  else if (!strcasecmp(Name, "ExpertNavi"))          ExpertNavi         = atoi(Value);
++  else if (!strcasecmp(Name, "WantChListOnOk"))      WantChListOnOk     = atoi(Value);
++  else if (!strcasecmp(Name, "ChannelUpDownKeyMode"))  ChannelUpDownKeyMode = atoi(Value);
+   else if (!strcasecmp(Name, "OSDSkin"))             Utf8Strn0Cpy(OSDSkin, Value, MaxSkinName);
+   else if (!strcasecmp(Name, "OSDTheme"))            Utf8Strn0Cpy(OSDTheme, Value, MaxThemeName);
+ #ifdef USE_WAREAGLEICON
+diff -urN vdr-1.7.36.org/config.h vdr-1.7.36/config.h
+--- vdr-1.7.36.org/config.h	2013-01-21 11:48:19.528875666 +0100
++++ vdr-1.7.36/config.h	2013-01-21 11:48:32.992875265 +0100
+@@ -14,6 +14,7 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
++#include <string>
+ #include <time.h>
+ #include <unistd.h>
+ #include "i18n.h"
+@@ -386,6 +387,17 @@
+   int ChannelsWrap;
+   int ShowChannelNamesWithSource;
+   int EmergencyExit;
++  int ExpertOptions;
++  int AddNewChannels;
++  int UseBouquetList;
++  int OnlyRadioChannels;
++  int OnlyEncryptedChannels;
++  int OnlyHDChannels;
++  int ExpertNavi;
++  int WantChListOnOk;
++  int ChannelUpDownKeyMode; // 0 Normal, jumps to next or previous channel
++                            // 1 opens bouquet / channel list
++  bool UseZonedChannelList;
+ #ifdef USE_JUMPINGSECONDS
+   int JumpSeconds;
+   int JumpSecondsSlow;
+diff -urN vdr-1.7.36.org/debug.h vdr-1.7.36/debug.h
+--- vdr-1.7.36.org/debug.h	1970-01-01 01:00:00.000000000 +0100
++++ vdr-1.7.36/debug.h	2013-01-21 11:48:32.996875264 +0100
+@@ -0,0 +1,44 @@
+++
+++#ifndef DEBUG_H
+++#define DEBUG_H
+++#include <assert.h>
+++
+++#ifdef DBG
+++  #undef DBG
+++  #undef DERR
+++  #undef DLOG
+++  #undef PRINTF
+++#endif
+++
+++
+++#if defined DEBUG
+++    #ifdef PLUGIN_NAME_I18N
+++        #define CONTEXT PLUGIN_NAME_I18N
+++    #else
+++        #define CONTEXT "VDR"
+++    #endif
+++
+++    // standard debug macro
+++    #define DDD(x...) { printf("["CONTEXT": %s +%d, %s()]: ",__FILE__, __LINE__, __FUNCTION__); \
+++                         printf(x); printf("\n"); }
+++
+++    // standard error macro (red background)
+++    #define DERR(x...) { printf("\033[0;37m\033[1;41m["CONTEXT"]: "x); printf("\033[0m\n"); }
+++
+++    // special macro: logs to syslog AND console
+++    #define DLOG(x...) { printf("["CONTEXT"]: "x); printf("\n"); dsyslog("["CONTEXT"]: "x); }
+++
+++    // for automatic conversion of printf's - i.e. use sed s/" printf"/" PRINTF"/
+++    #define PRINTF(x...) printf("["CONTEXT"]: "x)
+++#else
+++    #define DDD(x...)
+++    #define DERR(x...)
+++    #define DLOG(x...)
+++    #define PRINTF(x...)
+++#endif
+++
+++//only here for compatibility reasons, don't use any more
+++#define ERR "Error"
+++#define DBG(x...)
+++
+++#endif /* DEBUG_H */
+diff -urN vdr-1.7.36.org/keys.c vdr-1.7.36/keys.c
+--- vdr-1.7.36.org/keys.c	2013-01-21 11:48:19.536875666 +0100
++++ vdr-1.7.36/keys.c	2013-01-21 11:48:32.996875264 +0100
+@@ -57,6 +57,9 @@
+                     { kRecordings,    trNOOP("Key$Recordings")  },
+                     { kSetup,         trNOOP("Key$Setup")       },
+                     { kCommands,      trNOOP("Key$Commands")    },
++                    { kGreater,       trNOOP("Key$Greater")     },
++                    { kLess,          trNOOP("Key$Less")        },
++                    { k2digit,        trNOOP("Key$2digit")      },
+                     { kUser0,         trNOOP("Key$User0")       },
+                     { kUser1,         trNOOP("Key$User1")       },
+                     { kUser2,         trNOOP("Key$User2")       },
+diff -urN vdr-1.7.36.org/keys.h vdr-1.7.36/keys.h
+--- vdr-1.7.36.org/keys.h	2013-01-21 11:48:19.528875666 +0100
++++ vdr-1.7.36/keys.h	2013-01-21 11:48:32.996875264 +0100
+@@ -51,6 +51,7 @@
+              kRecordings,
+              kSetup,
+              kCommands,
++             kGreater, kLess, k2digit,
+              kUser0, kUser1, kUser2, kUser3, kUser4, kUser5, kUser6, kUser7, kUser8, kUser9,
+              kNone,
+              kKbd,
+diff -urN vdr-1.7.36.org/Make.common vdr-1.7.36/Make.common
+--- vdr-1.7.36.org/Make.common	1970-01-01 01:00:00.000000000 +0100
++++ vdr-1.7.36/Make.common	2013-01-21 11:48:32.996875264 +0100
+@@ -0,0 +1,156 @@
++
++
++### The version number of this plugin (taken from the main source file):
++
++VERSION = $(shell grep 'static const char \*VERSION *=' $(PLUGIN).c | awk '{ print $$6 }' | sed -e 's/[";]//g')
++
++
++### The version number of VDR (taken from VDR's "config.h"):
++
++APIVERSION = $(shell grep 'define APIVERSION ' $(VDRDIR)/config.h | awk '{ print $$3 }' | sed -e 's/"//g')
++APIVERSNUM = $(shell grep 'define APIVERSNUM ' $(VDRDIR)/config.h | awk '{ print $$3 }' | sed -e 's/"//g' )
++
++VDRLOCALE = $(shell grep '^LOCALEDIR' $(VDRDIR)/Makefile)
++
++
++### The name of the distribution archive:
++
++ARCHIVE = $(PLUGIN)-$(VERSION)
++PACKAGE = vdr-$(ARCHIVE)
++
++
++### Includes and Defines (add further entries here):
++
++INCLUDES += -I$(VDRDIR)/include -I$(DVBDIR)/include
++DEFINES  += -D_GNU_SOURCE -D_LARGEFILE_SOURCE
++DEFINES  += -D_FILE_OFFSET_BITS=64 -D_LARGEFILE64_SOURCE -DAPIVERSNUM=$(APIVERSNUM)
++
++#ifdef DEBUG
++#  DEFINES += -DDEBUG
++#  CXXFLAGS += -g
++#endif
++
++#ifdef RBLITE
++#  DEFINES += -DRBLITE
++#endif
++
++#ifdef RBMINI
++#  DEFINES += -DRBMINI
++#endif
++
++#ifdef REELVDR
++#  DEFINES += -DREELVDR
++#endif
++
++### Targets:
++
++plug: libvdr-$(PLUGIN).so
++
++all: libvdr-$(PLUGIN).so i18n
++
++### Implicit rules:
++
++%.o: %.c
++	$(CXX) $(CXXFLAGS) -c $(DEFINES) -DPLUGIN_NAME='"$(PLUGIN)"' -DPLUGIN_NAME_I18N='"$(PLUGIN)"' $(INCLUDES) -o $@ $<
++
++# Dependencies:
++
++MAKEDEP = $(CXX) -MM -MG
++DEPFILE = .dependencies
++$(DEPFILE): Makefile
++	@$(MAKEDEP) $(DEFINES) $(INCLUDES) $(OBJS:%.o=%.c)   > $@
++
++-include $(DEPFILE)
++
++
++### Internationalization (I18N):
++ifneq ($(strip $(VDRLOCALE)),)
++### do gettext based i18n stuff
++
++PODIR     = po
++LOCALEDIR = $(VDRDIR)/locale
++I18Npo    = $(wildcard $(PODIR)/*.po)
++I18Nmsgs  = $(addprefix $(LOCALEDIR)/, $(addsuffix /LC_MESSAGES/vdr-$(PLUGIN).mo, \
++		$(notdir $(foreach file, $(I18Npo), $(basename $(file))))))
++I18Npot   = $(PODIR)/$(PLUGIN).pot
++
++#%.mo: %.po
++#	msgfmt -c -o $@ $<
++
++.PHONY: $(I18Npot)-rule
++$(I18Npot): $(wildcard *.c $(PLUGIN).h $(EXTRA_I18N))
++	@echo "making: $@"
++	@#echo $(I18Nmsgs)
++	xgettext -C -cTRANSLATORS --no-wrap --no-location -k -ktr -ktrNOOP --from-code=utf-8 --msgid-bugs-address='<reelbox-devel@mailings.reelbox.org>' $^ -o $(I18Npot)
++
++%.po:
++#%.po: $(I18Npot)
++	@echo "making: $@"
++	msgmerge -U --no-wrap --no-location --backup=none -q $@ $<
++	@touch $@
++
++$(I18Nmsgs): $(LOCALEDIR)/%/LC_MESSAGES/vdr-$(PLUGIN).mo: $(PODIR)/%.po
++	@echo "making: $@"
++	@mkdir -p $(dir $@)
++	msgfmt -c -o $@ $<
++
++.PHONY: i18n
++i18n: $(I18Npot) i18n-pofiles $(I18Nmsgs)
++
++i18n-pofiles: $(I18Npot)
++	@echo "making: $@"
++	@for i in $(I18Npo) ; do \
++		echo msgmerge -U --no-wrap --no-location --backup=none -q $$i $(I18Npot) ;\
++		msgmerge -U -N --no-wrap --no-location --backup=none -q $$i $(I18Npot) ;\
++	done
++
++i18n-dist: $(I18Nmsgs)
++
++#i18n-dist:
++#	@echo "making: $@"
++#	for i in `ls po/*.po` ; do \
++#		odir=`echo $$i | cut -b4-8` ;\
++#		msgfmt -c -o $(LOCALEDIR)/$$odir/LC_MESSAGES/vdr-$(PLUGIN).mo $$i ;\
++#	done
++
++else ### do i18n.c based i18n stuff
++
++i18n:
++	@### nothing to do
++
++#i18n compatibility generator:
++i18n.c: i18n-template.c po2i18n.pl $(I18Npo)
++	./po2i18n.pl < i18n-template.c > i18n.c
++
++endif
++
++
++libvdr-$(PLUGIN).so: $(OBJS)
++	$(CXX) $(CXXFLAGS) -shared $(OBJS) $(LDFLAGS) $(LIBS) -o $@
++	@cp $@ $(LIBDIR)/$@.$(APIVERSION)
++
++dist: distclean
++	@rm -rf $(TMPDIR)/$(ARCHIVE)
++	@mkdir $(TMPDIR)/$(ARCHIVE)
++	@cp -a * $(TMPDIR)/$(ARCHIVE)
++	@rm -f $(TMPDIR)/$(ARCHIVE)/$(PLUGIN).kdevelop
++	@rm -f $(TMPDIR)/$(ARCHIVE)/$(PLUGIN).kdevelop.filelist
++	@rm -f $(TMPDIR)/$(ARCHIVE)/$(PLUGIN).kdevelop.pcs
++	@rm -f $(TMPDIR)/$(ARCHIVE)/$(PLUGIN).kdevses
++	@rm -rf $(TMPDIR)/$(ARCHIVE)/CVS
++	@rm -rf $(TMPDIR)/$(ARCHIVE)/Examples/CVS
++	@rm -rf $(TMPDIR)/$(ARCHIVE)/Patch/CVS
++	@ln -s $(ARCHIVE) $(TMPDIR)/$(PLUGIN)
++	@tar czf $(PACKAGE).tgz -C $(TMPDIR) $(ARCHIVE) $(PLUGIN)
++	@rm -rf $(TMPDIR)/$(ARCHIVE) $(TMPDIR)/$(PLUGIN)
++	@echo Distribution package created as $(PACKAGE).tgz
++
++clean:
++	@-rm -f $(PODIR)/*.mo
++	@-rm -f $(OBJS) $(MAIN) $(DEPFILE) *.so *.tgz core* *~
++	@-rm -f $(LIBDIR)/libvdr-$(PLUGIN).so.$(APIVERSION)
++
++distclean: clean
++	@-rm -f $(PODIR)/*.pot
++
++MAKECOMMON_IS_SOURCED = 1
+diff -urN vdr-1.7.36.org/Make.config vdr-1.7.36/Make.config
+--- vdr-1.7.36.org/Make.config	2013-01-21 11:48:19.528875666 +0100
++++ vdr-1.7.36/Make.config	2013-01-21 11:49:19.572873876 +0100
+@@ -10,11 +10,11 @@
+ 
+ ### The C compiler and options:
+ 
+-CC       = gcc
+-CFLAGS   = -g -O3 -Wall
++#CC       = gcc
++#CFLAGS   = -g -O3 -Wall
+ 
+-CXX      = g++
+-CXXFLAGS = -g -O3 -Wall -Werror=overloaded-virtual -Wno-parentheses
++#CXX      = g++
++#CXXFLAGS = -g -O3 -Wall -Werror=overloaded-virtual -Wno-parentheses
+ 
+ ifdef PLUGIN
+ CFLAGS   += -fPIC
+@@ -23,27 +23,30 @@
+ 
+ ### The directory environment:
+ 
+-MLDDIR   = $(abspath $(shell path=$$(pwd)/../../..; if [ -e $$path/vdr/src ]; then echo $$path; else echo $$path/../../..; fi))
+-PREFIX   = $(DESTDIR)/usr/local
+-DVBDIR   = $(MLDDIR)/dvb
+-MANDIR   = $(PREFIX)/man
+-BINDIR   = $(PREFIX)/bin
++#MLDDIR   = $(abspath $(shell path=$$(pwd)/../../..; if [ -e $$path/vdr/src ]; then echo $$path; else echo $$path/../../..; fi))
++PREFIX   = /usr
++#DVBDIR   =
++#MANDIR   = $(PREFIX)/man
++#BINDIR   = $(PREFIX)/bin
++LIBDIR  = ./
++LIBS += -lintl
++
+ 
+ # By default locale and plugin files are built under the source directory:
+ LOCDIR       = /usr/share/locale
+ #PLUGINDIR   = ./PLUGINS
+-PLUGINLIBDIR = /usr/lib/vdr
++PLUGINLIBDIR = /usr/lib/vdr/plugins
+ # By default VDR requires only one single directory to operate:
+-VIDEODIR = /data/tv/tv0
++VIDEODIR = /media/video
+ # Activate the following line to build VDR according to the FHS ("File system Hierarchy Standard"):
+-#USEFHS = 1
++USEFHS = 1
+ ifdef USEFHS
+-VIDEODIR     = /srv/vdr/video
+-CONFDIR 	 = /etc/vdr
++VIDEODIR     = /media/video
++CONFDIR      = /etc/vdr
+ CACHEDIR     = /var/cache/vdr
+-RESDIR       = $(PREFIX)/share/vdr
+-LOCDIR       = $(PREFIX)/share/locale
+-PLUGINLIBDIR = $(PREFIX)/lib/vdr
++RESDIR       = /usr/share/vdr
++LOCDIR       = /usr/share/locale
++PLUGINLIBDIR = /usr/lib/vdr/plugins
+ endif
+ 
+ ## Define if you want vdr to not run as root
+@@ -72,12 +75,12 @@
+ LIEMIKUUTIO = 1
+ LIRCSETTINGS = 1
+ MAINMENUHOOKS = 1
+-#MENUORG = 1
++MENUORG = 1
+ NALUDUMP = 1
+ PINPLUGIN = 1
+ PLUGINMISSING = 1
+ ROTOR = 1
+-SETUP = 1
++#SETUP = 1
+ TIMERINFO = 1
+ TTXTSUBS = 1
+ VOLCTRL = 1
+diff -urN vdr-1.7.36.org/menu.c vdr-1.7.36/menu.c
+--- vdr-1.7.36.org/menu.c	2013-01-21 11:48:19.524875666 +0100
++++ vdr-1.7.36/menu.c	2013-01-21 11:48:37.748875123 +0100
+@@ -105,16 +105,6 @@
+ 
+ // --- cMenuEditSrcItem ------------------------------------------------------
+ 
+-class cMenuEditSrcItem : public cMenuEditIntItem {
+-private:
+-  const cSource *source;
+-protected:
+-  virtual void Set(void);
+-public:
+-  cMenuEditSrcItem(const char *Name, int *Value);
+-  eOSState ProcessKey(eKeys Key);
+-  };
+-
+ cMenuEditSrcItem::cMenuEditSrcItem(const char *Name, int *Value)
+ :cMenuEditIntItem(Name, Value, 0)
+ {
+@@ -4673,6 +4663,7 @@
+          else
+             return osEnd;
+          break;
++    case kInfo: return osEnd; break;
+     default:
+          if ((Key & (k_Repeat | k_Release)) == 0) {
+             cRemote::Put(Key);
+diff -urN vdr-1.7.36.org/menu.h vdr-1.7.36/menu.h
+--- vdr-1.7.36.org/menu.h	2013-01-21 11:48:19.528875666 +0100
++++ vdr-1.7.36/menu.h	2013-01-21 11:48:38.544875099 +0100
+@@ -18,6 +18,18 @@
+ #include "menuitems.h"
+ #include "recorder.h"
+ #include "skins.h"
++
++class cMenuEditSrcItem : public cMenuEditIntItem {
++private:
++  const cSource *source;
++protected:
++  virtual void Set(void);
++public:
++  cMenuEditSrcItem(const char *Name, int *Value);
++  eOSState ProcessKey(eKeys Key);
++  };
++
++
+ #ifdef USE_SETUP
+ #include "submenu.h"
+ #endif /* SETUP */
+@@ -108,7 +120,23 @@
+ #endif /* GRAPHTFT */
+   };
+ 
++struct MenuMainHook_Data_V1_0 {
++  eOSState  Function;    /*IN*/
++  cOsdMenu *pResultMenu; /*OUT*/
++};
++#define CREATE_MENU_MAIN(function,menu) {                              \
++  MenuMainHook_Data_V1_0 data;                                         \
++  memset(&data, 0, sizeof(data));                                      \
++  data.Function = function;                                            \
++  if (!cPluginManager::CallFirstService("MenuMainHook-V1.0", &data))   \
++    menu = new cMenuMain(function);                                    \
++  else                                                                 \
++    menu = data.pResultMenu;                                           \
++}
++
+ class cMenuMain : public cOsdMenu {
++protected:
++  cMenuMain(const char *Title):cOsdMenu(Title){}; // Allow custom constructor
+ private:
+ #ifdef USE_SETUP
+   int    nrDynamicMenuEntries;
+diff -urN vdr-1.7.36.org/osdbase.h vdr-1.7.36/osdbase.h
+--- vdr-1.7.36.org/osdbase.h	2013-01-21 11:48:19.528875666 +0100
++++ vdr-1.7.36/osdbase.h	2013-01-21 11:48:39.024875085 +0100
+@@ -40,6 +40,10 @@
+                 osSwitchDvb,
+                 osBack,
+                 osEnd,
++                osBouquets,
++                osActiveBouquet,
++                osFavourites,
++                osAddFavourite,
+                 os_User, // the following values can be used locally
+                 osUser1,
+                 osUser2,
+diff -urN vdr-1.7.36.org/po/it_IT.po vdr-1.7.36/po/it_IT.po
+--- vdr-1.7.36.org/po/it_IT.po	2013-01-21 11:48:19.532875666 +0100
++++ vdr-1.7.36/po/it_IT.po	2013-01-21 11:48:39.024875085 +0100
+@@ -25,6 +25,9 @@
+ 
+ msgid "*** Invalid Channel ***"
+ msgstr "*** Canale NON valido ***"
++ 
++msgid "File already exists - overwrite?"
++msgstr ""
+ 
+ msgid "Channel not available!"
+ msgstr "Canale non disponibile!"
+@@ -489,6 +492,15 @@
+ msgid "Key$Commands"
+ msgstr "Comandi"
+ 
++msgid "Key$Greater"
++msgstr ""
++
++msgid "Key$Less"
++msgstr ""
++
++msgid "Key$2digit"
++msgstr ""
++
+ msgid "Key$User0"
+ msgstr "Utente0"
+ 
+@@ -738,6 +750,9 @@
+ 
+ msgid "Button$Rewind"
+ msgstr "Riavvolgi"
++ 
++msgid "Edit recording"
++msgstr ""
+ 
+ msgid "Recordings"
+ msgstr "Registrazioni"
+@@ -1192,6 +1207,10 @@
+ msgid " Cancel editing"
+ msgstr " Annulla modifiche"
+ 
++#. TRANSLATORS: note the leading blank!
++msgid " Cancel file transfer"
++msgstr ""
++
+ msgid "Stop recording?"
+ msgstr "Fermare la registrazione?"
+ 
+@@ -1280,6 +1299,9 @@
+ msgid "Editing - shut down anyway?"
+ msgstr "Modifica in corso - spegnere comunque?"
+ 
++msgid "Transfering file - shut down anyway?"
++msgstr ""
++
+ msgid "Recording - shut down anyway?"
+ msgstr "Registrazione in corso - spegnere comunque?"
+ 
+@@ -1384,6 +1406,12 @@
+ msgid "Editing process finished"
+ msgstr "Processo di modifica terminato"
+ 
++msgid "File transfer failed!"
++msgstr ""
++
++msgid "File transfer finished"
++msgstr ""
++
+ msgid "Press any key to cancel restart"
+ msgstr "Premi un tasto per annullare il riavvio"
+ 
+diff -urN vdr-1.7.36.org/vdr.c vdr-1.7.36/vdr.c
+--- vdr-1.7.36.org/vdr.c	2013-01-21 11:48:19.536875666 +0100
++++ vdr-1.7.36/vdr.c	2013-01-21 11:48:39.440875071 +0100
+@@ -1069,6 +1069,28 @@
+           case kChanUp:
+           case kChanDn|k_Repeat:
+           case kChanDn:
++
++               if (Setup.ChannelUpDownKeyMode == 1 && (!Menu || cDisplayChannel::IsOpen()))
++               // only if a menu is not open
++               //  and user has opted for a different key behavior
++               {
++                   if (cDisplayChannel::IsOpen() || cControl::Control())
++                   {
++                       DELETE_MENU;
++                   }
++                   if (key == kChanDn)
++                   {
++                       DirectMainFunction(osBouquets);
++                   }
++                   else
++                   {
++                       DirectMainFunction(osActiveBouquet);
++                   }
++                   key = kNone; // nobody else sees these keys
++                   break;
++               }
++               else
++
+                if (!Interact)
+                   Menu = new cDisplayChannel(NORMALKEY(key));
+                else if (cDisplayChannel::IsOpen() || cControl::Control()) {
+@@ -1112,6 +1134,7 @@
+                break;
+           // Subtitle track control:
+           case kSubtitles:
++         case kGreater:
+                if (cControl::Control())
+                   cControl::Control()->Hide();
+                if (!cDisplaySubtitleTracks::IsOpen()) {
+@@ -1279,7 +1302,20 @@
+                   Menu = new cDisplayChannel(NORMALKEY(key));
+                   break;
+              // Viewing Control:
+-             case kOk:   LastChannel = -1; break; // forces channel display
++
++             case kInfo:
++             case kOk:  if ((Setup.WantChListOnOk && (key == kOk)) 
++                            || (!Setup.WantChListOnOk && (key == kInfo)) )
++                        {
++                            DirectMainFunction(osChannels);
++                        }
++                        else 
++                        {
++                            LastChannel = -1;
++                        }
++                        break;
++
++
+              // Instant resume of the last viewed recording:
+              case kPlay:
+                   if (cReplayControl::LastReplayed()) {

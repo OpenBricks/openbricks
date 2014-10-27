@@ -1,0 +1,153 @@
+Index: vdr-1.7.27/channels.c
+===================================================================
+--- vdr-1.7.27.orig/channels.c	2012-06-18 13:10:37.636562494 +0200
++++ vdr-1.7.27/channels.c	2012-06-18 13:10:37.648562494 +0200
+@@ -112,10 +112,34 @@
+   provider = strcpyrealloc(provider, Channel.provider);
+   portalName = strcpyrealloc(portalName, Channel.portalName);
+   memcpy(&__BeginData__, &Channel.__BeginData__, (char *)&Channel.__EndData__ - (char *)&Channel.__BeginData__);
++  nameSource = NULL; // these will be recalculated automatically
++  shortNameSource = NULL;
+   parameters = Channel.parameters;
+   return *this;
+ }
+ 
++const char *cChannel::Name(void) const
++{
++  if (Setup.ShowChannelNamesWithSource) {
++     if (isempty(nameSource))
++        nameSource = cString::sprintf("%s (%c)", name, cSource::ToChar(source));
++     return nameSource;
++     }
++  return name;
++}
++
++const char *cChannel::ShortName(bool OrName) const
++{
++  if (OrName && isempty(shortName))
++     return Name();
++  if (Setup.ShowChannelNamesWithSource) {
++     if (isempty(shortNameSource))
++        shortNameSource = cString::sprintf("%s (%c)", shortName, cSource::ToChar(source));
++     return shortNameSource;
++     }
++  return shortName;
++}
++
+ int cChannel::Transponder(int Frequency, char Polarization)
+ {
+   // some satellites have transponders at the same frequency, just with different polarization:
+@@ -233,10 +257,14 @@
+            modification |= CHANNELMOD_NAME;
+            Channels.SetModified();
+            }
+-        if (nn)
++        if (nn) {
+            name = strcpyrealloc(name, Name);
+-        if (ns)
++           nameSource = NULL;
++           }
++        if (ns) {
+            shortName = strcpyrealloc(shortName, ShortName);
++           shortNameSource = NULL;
++           }
+         if (np)
+            provider = strcpyrealloc(provider, Provider);
+         }
+@@ -774,6 +802,8 @@
+         free(tpidbuf);
+         free(caidbuf);
+         free(namebuf);
++        nameSource = NULL;
++        shortNameSource = NULL;
+         if (!GetChannelID().Valid()) {
+            esyslog("ERROR: channel data results in invalid ID!");
+            return false;
+Index: vdr-1.7.27/channels.h
+===================================================================
+--- vdr-1.7.27.orig/channels.h	2012-06-18 13:10:37.416562489 +0200
++++ vdr-1.7.27/channels.h	2012-06-18 13:10:37.648562494 +0200
+@@ -137,6 +137,8 @@
+   int number;    // Sequence number assigned on load
+   bool groupSep;
+   int __EndData__;
++  mutable cString nameSource;
++  mutable cString shortNameSource;
+   cString parameters;
+   int modification;
+   mutable const cSchedule *schedule;
+@@ -151,8 +153,8 @@
+   cString ToText(void) const;
+   bool Parse(const char *s);
+   bool Save(FILE *f);
+-  const char *Name(void) const { return name; }
+-  const char *ShortName(bool OrName = false) const { return (OrName && isempty(shortName)) ? name : shortName; }
++  const char *Name(void) const;
++  const char *ShortName(bool OrName = false) const;
+   const char *Provider(void) const { return provider; }
+   const char *PortalName(void) const { return portalName; }
+   int Frequency(void) const { return frequency; } ///< Returns the actual frequency, as given in 'channels.conf'
+Index: vdr-1.7.27/config.c
+===================================================================
+--- vdr-1.7.27.orig/config.c	2012-06-18 13:10:37.600562493 +0200
++++ vdr-1.7.27/config.c	2012-06-18 14:44:32.080696192 +0200
+@@ -469,6 +469,7 @@
+   DeviceBondings = "";
+   InitialVolume = -1;
+   ChannelsWrap = 0;
++  ShowChannelNamesWithSource = 0;
+   EmergencyExit = 1;
+ }
+ 
+@@ -671,6 +672,7 @@
+   else if (!strcasecmp(Name, "InitialVolume"))       InitialVolume      = atoi(Value);
+   else if (!strcasecmp(Name, "DeviceBondings"))      DeviceBondings     = Value;
+   else if (!strcasecmp(Name, "ChannelsWrap"))        ChannelsWrap       = atoi(Value);
++  else if (!strcasecmp(Name, "ShowChannelNamesWithSource")) ShowChannelNamesWithSource = atoi(Value);
+   else if (!strcasecmp(Name, "EmergencyExit"))       EmergencyExit      = atoi(Value);
+   else
+      return false;
+@@ -776,6 +778,7 @@
+   Store("InitialVolume",      InitialVolume);
+   Store("DeviceBondings",     DeviceBondings);
+   Store("ChannelsWrap",       ChannelsWrap);
++  Store("ShowChannelNamesWithSource", ShowChannelNamesWithSource);
+   Store("EmergencyExit",      EmergencyExit);
+ 
+   Sort();
+Index: vdr-1.7.27/config.h
+===================================================================
+--- vdr-1.7.27.orig/config.h	2012-06-18 13:10:37.600562493 +0200
++++ vdr-1.7.27/config.h	2012-06-18 13:10:37.648562494 +0200
+@@ -330,6 +330,7 @@
+   int CurrentDolby;
+   int InitialVolume;
+   int ChannelsWrap;
++  int ShowChannelNamesWithSource;
+   int EmergencyExit;
+   int __EndData__;
+   cString InitialChannel;
+Index: vdr-1.7.27/menu.c
+===================================================================
+--- vdr-1.7.27.orig/menu.c	2012-06-18 13:10:37.612562493 +0200
++++ vdr-1.7.27/menu.c	2012-06-18 13:10:37.652562494 +0200
+@@ -3560,6 +3560,7 @@
+   Add(new cMenuEditChanItem(tr("Setup.Miscellaneous$Initial channel"),            &data.InitialChannel, tr("Setup.Miscellaneous$as before")));
+   Add(new cMenuEditIntItem( tr("Setup.Miscellaneous$Initial volume"),             &data.InitialVolume, -1, 255, tr("Setup.Miscellaneous$as before")));
+   Add(new cMenuEditBoolItem(tr("Setup.Miscellaneous$Channels wrap"),              &data.ChannelsWrap));
++  Add(new cMenuEditBoolItem(tr("Setup.Miscellaneous$Show channel names with source"), &data.ShowChannelNamesWithSource));
+   Add(new cMenuEditBoolItem(tr("Setup.Miscellaneous$Emergency exit"),             &data.EmergencyExit));
+ }
+ 
+Index: vdr-1.7.27/sources.h
+===================================================================
+--- vdr-1.7.27.orig/sources.h	2012-06-18 13:00:38.148548269 +0200
++++ vdr-1.7.27/sources.h	2012-06-18 13:10:37.652562494 +0200
+@@ -33,6 +33,7 @@
+   int Code(void) const { return code; }
+   const char *Description(void) const { return description; }
+   bool Parse(const char *s);
++  static char ToChar(int Code) { return (Code & st_Mask) >> 24; }
+   static cString ToString(int Code);
+   static int FromString(const char *s);
+   static int FromData(eSourceType SourceType, int Position = 0, bool East = false);

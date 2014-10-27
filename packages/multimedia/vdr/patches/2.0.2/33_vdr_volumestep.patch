@@ -1,0 +1,104 @@
+diff -ruN 1.7.41_33/config.c 1.7.41_34/config.c
+--- 1.7.41_33/config.c	2013-03-18 23:13:22.000000000 +0100
++++ 1.7.41_34/config.c	2013-03-18 23:18:14.000000000 +0100
+@@ -476,6 +476,8 @@
+   PauseLastMark = 0;
+   CurrentChannel = -1;
+   CurrentVolume = MAXVOLUME;
++  VolumeSteps = 51;
++  VolumeLinearize = 0;
+   CurrentDolby = 0;
+   InitialChannel = "";
+   DeviceBondings = "";
+@@ -692,6 +694,8 @@
+   else if (!strcasecmp(Name, "CurrentVolume"))       CurrentVolume      = atoi(Value);
+   else if (!strcasecmp(Name, "CurrentDolby"))        CurrentDolby       = atoi(Value);
+   else if (!strcasecmp(Name, "InitialChannel"))      InitialChannel     = Value;
++  else if (!strcasecmp(Name, "VolumeSteps"))         VolumeSteps        = atoi(Value);
++  else if (!strcasecmp(Name, "VolumeLinearize"))     VolumeLinearize    = atoi(Value);
+   else if (!strcasecmp(Name, "InitialVolume"))       InitialVolume      = atoi(Value);
+   else if (!strcasecmp(Name, "DeviceBondings"))      DeviceBondings     = Value;
+   else if (!strcasecmp(Name, "ChannelsWrap"))        ChannelsWrap       = atoi(Value);
+@@ -810,6 +814,8 @@
+   Store("CurrentVolume",      CurrentVolume);
+   Store("CurrentDolby",       CurrentDolby);
+   Store("InitialChannel",     InitialChannel);
++  Store("VolumeSteps",        VolumeSteps);
++  Store("VolumeLinearize",    VolumeLinearize);
+   Store("InitialVolume",      InitialVolume);
+   Store("DeviceBondings",     DeviceBondings);
+   Store("ChannelsWrap",       ChannelsWrap);
+diff -ruN 1.7.41_33/config.h 1.7.41_34/config.h
+--- 1.7.41_33/config.h	2013-03-18 23:13:22.000000000 +0100
++++ 1.7.41_34/config.h	2013-03-18 23:18:14.000000000 +0100
+@@ -345,6 +345,8 @@
+   int PauseLastMark;
+   int CurrentChannel;
+   int CurrentVolume;
++  int VolumeSteps;
++  int VolumeLinearize;
+   int CurrentDolby;
+   int InitialVolume;
+   int ChannelsWrap;
+diff -ruN 1.7.41_33/device.c 1.7.41_34/device.c
+--- 1.7.41_33/device.c	2013-03-18 23:13:22.000000000 +0100
++++ 1.7.41_34/device.c	2013-03-18 23:18:14.000000000 +0100
+@@ -11,6 +11,7 @@
+ #include <errno.h>
+ #include <sys/ioctl.h>
+ #include <sys/mman.h>
++#include <math.h>
+ #include "audio.h"
+ #include "channels.h"
+ #include "i18n.h"
+@@ -983,8 +984,9 @@
+ void cDevice::SetVolume(int Volume, bool Absolute)
+ {
+   int OldVolume = volume;
+-  volume = constrain(Absolute ? Volume : volume + Volume, 0, MAXVOLUME);
+-  SetVolumeDevice(volume);
++  float VolumeDelta = (float)MAXVOLUME/Setup.VolumeSteps;
++  volume = min(max((int)(floor((Absolute ? Volume : volume + Volume)/VolumeDelta+0.5)*VolumeDelta), 0), MAXVOLUME);
++  SetVolumeDevice((int)(pow((float)volume/MAXVOLUME, log((Setup.VolumeLinearize+20)/40.0)/log(0.5))*MAXVOLUME));
+   Absolute |= mute;
+   cStatus::MsgSetVolume(Absolute ? volume : volume - OldVolume, Absolute);
+   if (volume > 0) {
+diff -ruN 1.7.41_33/device.h 1.7.41_34/device.h
+--- 1.7.41_33/device.h	2013-03-18 23:13:22.000000000 +0100
++++ 1.7.41_34/device.h	2013-03-18 23:18:14.000000000 +0100
+@@ -31,7 +31,7 @@
+ #define MAXPIDHANDLES      64 // the maximum number of different PIDs per device
+ #define MAXRECEIVERS       16 // the maximum number of receivers per device
+ #define MAXVOLUME         255
+-#define VOLUMEDELTA         5 // used to increase/decrease the volume
++#define VOLUMEDELTA       (MAXVOLUME/Setup.VolumeSteps) // used to increase/decrease the volume
+ #define MAXOCCUPIEDTIMEOUT 99 // max. time (in seconds) a device may be occupied
+ 
+ enum eSetChannelResult { scrOk, scrNotAvailable, scrNoTransfer, scrFailed };
+--- 1/menu.c.orig 2013-04-28 21:06:25.166914458 +0200
++++ 2/menu.c      2013-04-28 21:06:29.834914622 +0200
+@@ -3458,6 +3458,8 @@
+   Add(new cMenuEditIntItem( tr("Setup.Miscellaneous$Remote control repeat delta (ms)"), &data.RcRepeatDelta, 0));
+   Add(new cMenuEditChanItem(tr("Setup.Miscellaneous$Initial channel"),            &data.InitialChannel, tr("Setup.Miscellaneous$as before")));
+   Add(new cMenuEditIntItem( tr("Setup.Miscellaneous$Initial volume"),             &data.InitialVolume, -1, 255, tr("Setup.Miscellaneous$as before")));
++  Add(new cMenuEditIntItem( tr("Setup.Miscellaneous$Volume steps"),               &data.VolumeSteps, 5, 255));
++  Add(new cMenuEditIntItem( tr("Setup.Miscellaneous$Volume linearize"),           &data.VolumeLinearize, -20, 20));
+   Add(new cMenuEditBoolItem(tr("Setup.Miscellaneous$Channels wrap"),              &data.ChannelsWrap));
+   Add(new cMenuEditBoolItem(tr("Setup.Miscellaneous$Show channel names with source"), &data.ShowChannelNamesWithSource));
+   Add(new cMenuEditBoolItem(tr("Setup.Miscellaneous$Emergency exit"),             &data.EmergencyExit));
+diff -ruN 1.7.41_33/po/de_DE.po 1.7.41_34/po/de_DE.po
+--- 1.7.41_33/po/de_DE.po	2013-03-18 23:13:22.000000000 +0100
++++ 1.7.41_34/po/de_DE.po	2013-03-18 23:18:14.000000000 +0100
+@@ -1149,6 +1149,12 @@
+ msgid "Setup.Miscellaneous$SVDRP timeout (s)"
+ msgstr "SVDRP trennen bei Inaktivität (s)"
+ 
++msgid "Setup.Miscellaneous$Volume steps"
++msgstr "Anzahl Lautstärke Schritte"
++
++msgid "Setup.Miscellaneous$Volume linearize"
++msgstr "Lautstärke Kurve korrigieren"
++
+ msgid "Setup.Miscellaneous$Zap timeout (s)"
+ msgstr "Mindestzeit für Kanalhistorie (s)"
+ 

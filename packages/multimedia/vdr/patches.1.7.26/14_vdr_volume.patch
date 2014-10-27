@@ -1,0 +1,80 @@
+diff -ruN vdr-1.7.26/config.c vdr-1.7.26.mod/config.c
+--- vdr-1.7.26/config.c	2012-03-11 13:38:52.078314452 +0100
++++ vdr-1.7.26.mod/config.c	2012-03-11 13:42:56.171524739 +0100
+@@ -471,6 +471,8 @@
+ #endif /* JUMPPLAY */
+   CurrentChannel = -1;
+   CurrentVolume = MAXVOLUME;
++  VolumeSteps = 51;
++  VolumeLinearize = 0;
+   CurrentDolby = 0;
+   InitialChannel = "";
+   DeviceBondings = "";
+@@ -687,6 +689,8 @@
+   else if (!strcasecmp(Name, "CurrentDolby"))        CurrentDolby       = atoi(Value);
+   else if (!strcasecmp(Name, "InitialChannel"))      InitialChannel     = Value;
+   else if (!strcasecmp(Name, "InitialVolume"))       InitialVolume      = atoi(Value);
++  else if (!strcasecmp(Name, "VolumeSteps"))         VolumeSteps        = atoi(Value);
++  else if (!strcasecmp(Name, "VolumeLinearize"))     VolumeLinearize    = atoi(Value);
+ #ifdef USE_LIVEBUFFER
+   else if (!strcasecmp(Name, "LiveBufferSize"))        LiveBufferSize        = atoi(Value);
+   else if (!strcasecmp(Name, "LiveBufferMaxFileSize")) LiveBufferMaxFileSize = atoi(Value);
+diff -ruN vdr-1.7.26/config.h vdr-1.7.26.mod/config.h
+--- vdr-1.7.26/config.h	2012-03-11 13:38:52.082314396 +0100
++++ vdr-1.7.26.mod/config.h	2012-03-11 13:42:56.171524739 +0100
+@@ -350,6 +350,8 @@
+   int PauseLastMark;
+ #endif /* JUMPPLAY */
+   int CurrentVolume;
++  int VolumeSteps;
++  int VolumeLinearize;
+   int CurrentDolby;
+   int InitialVolume;
+   int ChannelsWrap;
+diff -ruN vdr-1.7.26/device.c vdr-1.7.26.mod/device.c
+--- vdr-1.7.26/device.c	2012-03-11 13:38:52.082314396 +0100
++++ vdr-1.7.26.mod/device.c	2012-03-11 13:42:56.171524739 +0100
+@@ -11,6 +11,7 @@
+ #include <errno.h>
+ #include <sys/ioctl.h>
+ #include <sys/mman.h>
++#include <math.h>
+ #include "audio.h"
+ #include "channels.h"
+ #include "i18n.h"
+@@ -932,8 +933,9 @@
+ void cDevice::SetVolume(int Volume, bool Absolute)
+ {
+   int OldVolume = volume;
+-  volume = constrain(Absolute ? Volume : volume + Volume, 0, MAXVOLUME);
+-  SetVolumeDevice(volume);
++  float VolumeDelta = (float)MAXVOLUME/Setup.VolumeSteps;
++  volume = min(max((int)(floor((Absolute ? Volume : volume + Volume)/VolumeDelta+0.5)*VolumeDelta), 0), MAXVOLUME);
++  SetVolumeDevice((int)(pow((float)volume/MAXVOLUME, log((Setup.VolumeLinearize+20)/40.0)/log(0.5))*MAXVOLUME));
+   Absolute |= mute;
+   cStatus::MsgSetVolume(Absolute ? volume : volume - OldVolume, Absolute);
+   if (volume > 0) {
+diff -ruN vdr-1.7.26/device.h vdr-1.7.26.mod/device.h
+--- vdr-1.7.26/device.h	2012-03-11 13:38:52.082314396 +0100
++++ vdr-1.7.26.mod/device.h	2012-03-11 13:42:56.171524739 +0100
+@@ -33,7 +33,7 @@
+ #define MAXPIDHANDLES      64 // the maximum number of different PIDs per device
+ #define MAXRECEIVERS       16 // the maximum number of receivers per device
+ #define MAXVOLUME         255
+-#define VOLUMEDELTA         5 // used to increase/decrease the volume
++#define VOLUMEDELTA       (MAXVOLUME/Setup.VolumeSteps) // used to increase/decrease the volume
+ #define MAXOCCUPIEDTIMEOUT 99 // max. time (in seconds) a device may be occupied
+ 
+ #ifdef USE_LIVEBUFFER
+diff -ruN vdr-1.7.26/menu.c vdr-1.7.26.mod/menu.c
+--- vdr-1.7.26/menu.c	2012-03-11 13:42:45.239470510 +0100
++++ vdr-1.7.26.mod/menu.c	2012-03-11 13:42:56.175524754 +0100
+@@ -3726,6 +3726,8 @@
+   Add(new cMenuEditIntItem( tr("Setup.Miscellaneous$Channel entry timeout (ms)"), &data.ChannelEntryTimeout, 0));
+   Add(new cMenuEditChanItem(tr("Setup.Miscellaneous$Initial channel"),            &data.InitialChannel, tr("Setup.Miscellaneous$as before")));
+   Add(new cMenuEditIntItem( tr("Setup.Miscellaneous$Initial volume"),             &data.InitialVolume, -1, 255, tr("Setup.Miscellaneous$as before")));
++  Add(new cMenuEditIntItem( tr("Setup.Miscellaneous$Volume steps"),               &data.VolumeSteps, 5, 255));
++  Add(new cMenuEditIntItem( tr("Setup.Miscellaneous$Volume linearize"),           &data.VolumeLinearize, -20, 20));
+   Add(new cMenuEditBoolItem(tr("Setup.Miscellaneous$Channels wrap"),              &data.ChannelsWrap));
+   Add(new cMenuEditBoolItem(tr("Setup.Miscellaneous$Emergency exit"),             &data.EmergencyExit));
+ #ifdef USE_LIRCSETTINGS
