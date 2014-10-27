@@ -1,0 +1,45 @@
+#!/bin/sh
+
+. config/options
+
+get_meta $1
+cd $PKG_BUILD_DIR
+
+export MAKEFLAGS=-j1
+
+setup_toolchain host
+
+mkdir -p objdir-host && cd objdir-host
+cp -r ../src .
+do_configure host \
+	--with-lua-headers=$SYSROOT_PREFIX \
+	--with-lua=$TOOLCHAIN/bin \
+	--enable-bashshell \
+        --enable-bash-extensions \
+
+make
+make_install toolchain
+
+cp src/lua2c $ROOT/$TOOLCHAIN/bin
+cd ..
+
+mkdir -p objdir-target && cd objdir-target
+cp -r ../src .
+
+do_configure \
+	--prefix=/ \
+	--with-lua-headers=$SYSROOT_PREFIX \
+	--with-lua=$SYSROOT_PREFIX \
+	--enable-bashshell \
+	--enable-bash-extensions \
+	--enable-luashell \
+	--enable-luacshell \
+	--prefix=/
+
+
+sed -i "s|if ! ./lua2c|if ! $ROOT/$TOOLCHAIN/bin/lua2c|" src/Makefile
+make
+do_strip src/lua2c src/haserl 
+make_install
+cp src/lua2c .install/bin
+

@@ -19,7 +19,9 @@ if pkg_uses $1 devtools ; then
 fi
 mkdir -p $INSTALL/usr/bin
 # symlinks to udevadm
-ln -sf /usr/bin/udevadm $INSTALL/usr/bin/udevinfo
+ln -sf /bin/udevadm $INSTALL/usr/bin/udevadm
+#ln -sf /usr/bin/udevadm $INSTALL/usr/bin/udevinfo
+ln -sf /bin/udevadm $INSTALL/usr/bin/udevinfo
 do_install usr/share/dbus-1
 do_install usr/share/polkit-1
 do_install usr/lib/systemd
@@ -29,8 +31,12 @@ mkdir -p $INSTALL/usr/lib/sysctl.d
 mkdir -p $INSTALL/usr/lib/tmpfiles.d
 
 mkdir -p $INSTALL/etc/udev/rules.d
-cp $ROOT/$PACKAGES/$PKG_SECTION/$1/config/* $INSTALL/etc/udev/rules.d
-
+mkdir -p $INSTALL/etc/systemd
+mkdir -p $INSTALL/usr/sbin
+cp $ROOT/$PACKAGES/$PKG_SECTION/$1/config/system.conf $INSTALL/etc/systemd
+cp $ROOT/$PACKAGES/$PKG_SECTION/$1/config/20-custom.rules $INSTALL/etc/udev/rules.d
+cp $ROOT/$PACKAGES/$PKG_SECTION/$1/config/wakeonlan.sh $INSTALL/usr/sbin
+#cp $ROOT/$PACKAGES/$PKG_SECTION/$1/config/* $INSTALL/etc/udev/rules.d
 # add symlinks for legacy SystemV utils
 mkdir -p $INSTALL/sbin
 ln -s ../bin/systemctl $INSTALL/sbin/halt
@@ -41,31 +47,41 @@ ln -s ../bin/systemctl $INSTALL/sbin/reboot
 ln -s ../lib/systemd/systemd $INSTALL/sbin/init
 
 # add more gettys
-for TTY in 2 3; do
-  ln -s /lib/systemd/system/getty/getty@service \
-    $INSTALL/etc/systemd/system/getty.target.wants/getty@tty$TTY.service
+for TTY in 2 3 4 5 6; do
+  ln -s /lib/systemd/system/getty/getty@service $INSTALL/etc/systemd/system/getty.target.wants/getty@tty$TTY.service
 done
+
+# rimuove la tty1 per vedere se evita lo schermo nero in live
+rm $INSTALL/etc/systemd/system/getty.target.wants/getty@tty1.service
 
 [ -n "$MEDIA_CENTER_FRONTEND" ] && \
   DEFAULT_SYSTEMD_TARGET=$MEDIA_CENTER_FRONTEND
 
 if [ -n "$DEFAULT_SYSTEMD_TARGET" ]; then
   mkdir -p $INSTALL/etc/systemd/system
-  ln -s /lib/systemd/system/${DEFAULT_SYSTEMD_TARGET}.target \
-    $INSTALL/etc/systemd/system/default.target
+  #ln -s /lib/systemd/system/${DEFAULT_SYSTEMD_TARGET}.target \
+  #ln -s /lib/systemd/system/multi-user.target.wants \
+  #  $INSTALL/etc/systemd/system/default.target
 fi
 
 # reduce verbosity a bit
 sed -i -e "s/#LogLevel=info/LogLevel=notice/" $INSTALL/etc/systemd/system.conf
 
+mkdir -p $INSTALL/etc/systemd/
+cp $ROOT/$PACKAGES/$PKG_SECTION/$1/config/journald.conf $INSTALL/etc/systemd/
+
 # we don't use display-manager ...
 ln -s /dev/null $INSTALL/etc/systemd/system/display-manager.service
 
-# don't try to start X when not needed
-[ $USE_xorg ] || ln -s /dev/null $INSTALL/etc/systemd/system/xorg.service
+# on RaspberryPi we don't use X
+if [ "$TARGET_MACHINE" = raspberrypi ]; then
+  ln -s /dev/null $INSTALL/etc/systemd/system/xorg.service
+fi
 
-# disable "Predictable Network Interface Names"
-ln -s /dev/null $INSTALL/etc/udev/rules.d/80-net-name-slot.rules
+# on A10 devices we don't use X either
+if [ "$TARGET_PLATFORM" = a10 ]; then
+  ln -s /dev/null $INSTALL/etc/systemd/system/xorg.service
+fi
 
 # we enable RTC synchronisation for CuBox and CuBox-i only
 # could also be done for RaspberryPi with ABIORTC module
@@ -73,4 +89,25 @@ if [ "$TARGET_MACHINE" != cubox ] && [ "$TARGET_MACHINE" != cuboxi ] ; then
   ln -s /dev/null $INSTALL/etc/systemd/system/hwclock-sync.service
 fi
 
+# disable Journal on these machines/platforms
+if [ "$TARGET_MACHINE" = cubox ] || \
+   [ "$TARGET_MACHINE" = raspberrypi ] || \
+   [ "$TARGET_PLATFORM" = a10 ] || \
+   [ "$TARGET_MACHINE" = tbs2910 ]; then
+  mkdir -p $INSTALL/etc/systemd/system
+  ln -s /dev/null $INSTALL/etc/systemd/system/systemd-journald.service
+  ln -s /dev/null $INSTALL/etc/systemd/system/syslog.socket
+fi
+
+# disable "Predictable Network Interface Names"
+ln -s /dev/null $INSTALL/etc/udev/rules.d/80-net-name-slot.rules
+
+# Abilitare il servizio wake on lan
+mkdir -p $INSTALL/lib/systemd/system/network.target.wants
+cp $ROOT/$PACKAGES/$PKG_SECTION/$1/config/wake-on-lan.service $INSTALL/lib/systemd/system/
+ln -s ../wake-on-lan.service $INSTALL/lib/systemd/system/network.target.wants
+
+# Da system 210 in avanti
+ln -s /bin/systemctl $INSTALL/usr/bin/systemctl
+####
 exit 0

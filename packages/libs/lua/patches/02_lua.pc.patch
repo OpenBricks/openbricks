@@ -1,0 +1,354 @@
+diff -urN lua-5.2.1/etc/all.c lua-5.1.4/etc/all.c
+--- lua-5.2.1/etc/all.c	1970-01-01 01:00:00.000000000 +0100
++++ lua-5.1.4/etc/all.c	2005-03-31 02:41:11.000000000 +0200
+@@ -0,0 +1,38 @@
++/*
++* all.c -- Lua core, libraries and interpreter in a single file
++*/
++
++#define luaall_c
++
++#include "lapi.c"
++#include "lcode.c"
++#include "ldebug.c"
++#include "ldo.c"
++#include "ldump.c"
++#include "lfunc.c"
++#include "lgc.c"
++#include "llex.c"
++#include "lmem.c"
++#include "lobject.c"
++#include "lopcodes.c"
++#include "lparser.c"
++#include "lstate.c"
++#include "lstring.c"
++#include "ltable.c"
++#include "ltm.c"
++#include "lundump.c"
++#include "lvm.c"
++#include "lzio.c"
++
++#include "lauxlib.c"
++#include "lbaselib.c"
++#include "ldblib.c"
++#include "liolib.c"
++#include "linit.c"
++#include "lmathlib.c"
++#include "loadlib.c"
++#include "loslib.c"
++#include "lstrlib.c"
++#include "ltablib.c"
++
++#include "lua.c"
+diff -urN lua-5.2.1/etc/lua.hpp lua-5.1.4/etc/lua.hpp
+--- lua-5.2.1/etc/lua.hpp	1970-01-01 01:00:00.000000000 +0100
++++ lua-5.1.4/etc/lua.hpp	2004-12-23 01:53:04.000000000 +0100
+@@ -0,0 +1,9 @@
++// lua.hpp
++// Lua header files for C++
++// <<extern "C">> not supplied automatically because Lua also compiles as C++
++
++extern "C" {
++#include "lua.h"
++#include "lualib.h"
++#include "lauxlib.h"
++}
+I file binari lua-5.2.1/etc/lua.ico e lua-5.1.4/etc/lua.ico sono diversi
+diff -urN lua-5.2.1/etc/lua.pc lua-5.1.4/etc/lua.pc
+--- lua-5.2.1/etc/lua.pc	1970-01-01 01:00:00.000000000 +0100
++++ lua-5.1.4/etc/lua.pc	2008-08-08 14:46:11.000000000 +0200
+@@ -0,0 +1,31 @@
++# lua.pc -- pkg-config data for Lua
++
++# vars from install Makefile
++
++# grep '^V=' ../Makefile
++V= 5.1
++# grep '^R=' ../Makefile
++R= 5.1.4
++
++# grep '^INSTALL_.*=' ../Makefile | sed 's/INSTALL_TOP/prefix/'
++prefix= /usr/local
++INSTALL_BIN= ${prefix}/bin
++INSTALL_INC= ${prefix}/include
++INSTALL_LIB= ${prefix}/lib
++INSTALL_MAN= ${prefix}/man/man1
++INSTALL_LMOD= ${prefix}/share/lua/${V}
++INSTALL_CMOD= ${prefix}/lib/lua/${V}
++
++# canonical vars
++exec_prefix=${prefix}
++libdir=${exec_prefix}/lib
++includedir=${prefix}/include
++
++Name: Lua
++Description: An Extensible Extension Language
++Version: ${R}
++Requires: 
++Libs: -L${libdir} -llua -lm
++Cflags: -I${includedir}
++
++# (end of lua.pc)
+diff -urN lua-5.2.1/etc/luavs.bat lua-5.1.4/etc/luavs.bat
+--- lua-5.2.1/etc/luavs.bat	1970-01-01 01:00:00.000000000 +0100
++++ lua-5.1.4/etc/luavs.bat	2008-01-20 18:40:10.000000000 +0100
+@@ -0,0 +1,28 @@
++@rem Script to build Lua under "Visual Studio .NET Command Prompt".
++@rem Do not run from this directory; run it from the toplevel: etc\luavs.bat .
++@rem It creates lua51.dll, lua51.lib, lua.exe, and luac.exe in src.
++@rem (contributed by David Manura and Mike Pall)
++
++@setlocal
++@set MYCOMPILE=cl /nologo /MD /O2 /W3 /c /D_CRT_SECURE_NO_DEPRECATE
++@set MYLINK=link /nologo
++@set MYMT=mt /nologo
++
++cd src
++%MYCOMPILE% /DLUA_BUILD_AS_DLL l*.c
++del lua.obj luac.obj
++%MYLINK% /DLL /out:lua51.dll l*.obj
++if exist lua51.dll.manifest^
++  %MYMT% -manifest lua51.dll.manifest -outputresource:lua51.dll;2
++%MYCOMPILE% /DLUA_BUILD_AS_DLL lua.c
++%MYLINK% /out:lua.exe lua.obj lua51.lib
++if exist lua.exe.manifest^
++  %MYMT% -manifest lua.exe.manifest -outputresource:lua.exe
++%MYCOMPILE% l*.c print.c
++del lua.obj linit.obj lbaselib.obj ldblib.obj liolib.obj lmathlib.obj^
++    loslib.obj ltablib.obj lstrlib.obj loadlib.obj
++%MYLINK% /out:luac.exe *.obj
++if exist luac.exe.manifest^
++  %MYMT% -manifest luac.exe.manifest -outputresource:luac.exe
++del *.obj *.manifest
++cd ..
+diff -urN lua-5.2.1/etc/Makefile lua-5.1.4/etc/Makefile
+--- lua-5.2.1/etc/Makefile	1970-01-01 01:00:00.000000000 +0100
++++ lua-5.1.4/etc/Makefile	2006-02-07 20:09:30.000000000 +0100
+@@ -0,0 +1,44 @@
++# makefile for Lua etc
++
++TOP= ..
++LIB= $(TOP)/src
++INC= $(TOP)/src
++BIN= $(TOP)/src
++SRC= $(TOP)/src
++TST= $(TOP)/test
++
++CC= gcc
++CFLAGS= -O2 -Wall -I$(INC) $(MYCFLAGS)
++MYCFLAGS= 
++MYLDFLAGS= -Wl,-E
++MYLIBS= -lm
++#MYLIBS= -lm -Wl,-E -ldl -lreadline -lhistory -lncurses
++RM= rm -f
++
++default:
++	@echo 'Please choose a target: min noparser one strict clean'
++
++min:	min.c
++	$(CC) $(CFLAGS) $@.c -L$(LIB) -llua $(MYLIBS)
++	echo 'print"Hello there!"' | ./a.out
++
++noparser: noparser.o
++	$(CC) noparser.o $(SRC)/lua.o -L$(LIB) -llua $(MYLIBS)
++	$(BIN)/luac $(TST)/hello.lua
++	-./a.out luac.out
++	-./a.out -e'a=1'
++
++one:
++	$(CC) $(CFLAGS) all.c $(MYLIBS)
++	./a.out $(TST)/hello.lua
++
++strict:
++	-$(BIN)/lua -e 'print(a);b=2'
++	-$(BIN)/lua -lstrict -e 'print(a)'
++	-$(BIN)/lua -e 'function f() b=2 end f()'
++	-$(BIN)/lua -lstrict -e 'function f() b=2 end f()'
++
++clean:
++	$(RM) a.out core core.* *.o luac.out
++
++.PHONY:	default min noparser one strict clean
+diff -urN lua-5.2.1/etc/min.c lua-5.1.4/etc/min.c
+--- lua-5.2.1/etc/min.c	1970-01-01 01:00:00.000000000 +0100
++++ lua-5.1.4/etc/min.c	2008-01-18 01:09:34.000000000 +0100
+@@ -0,0 +1,39 @@
++/*
++* min.c -- a minimal Lua interpreter
++* loads stdin only with minimal error handling.
++* no interaction, and no standard library, only a "print" function.
++*/
++
++#include <stdio.h>
++
++#include "lua.h"
++#include "lauxlib.h"
++
++static int print(lua_State *L)
++{
++ int n=lua_gettop(L);
++ int i;
++ for (i=1; i<=n; i++)
++ {
++  if (i>1) printf("\t");
++  if (lua_isstring(L,i))
++   printf("%s",lua_tostring(L,i));
++  else if (lua_isnil(L,i))
++   printf("%s","nil");
++  else if (lua_isboolean(L,i))
++   printf("%s",lua_toboolean(L,i) ? "true" : "false");
++  else
++   printf("%s:%p",luaL_typename(L,i),lua_topointer(L,i));
++ }
++ printf("\n");
++ return 0;
++}
++
++int main(void)
++{
++ lua_State *L=lua_open();
++ lua_register(L,"print",print);
++ if (luaL_dofile(L,NULL)!=0) fprintf(stderr,"%s\n",lua_tostring(L,-1));
++ lua_close(L);
++ return 0;
++}
+diff -urN lua-5.2.1/etc/noparser.c lua-5.1.4/etc/noparser.c
+--- lua-5.2.1/etc/noparser.c	1970-01-01 01:00:00.000000000 +0100
++++ lua-5.1.4/etc/noparser.c	2005-09-02 03:34:40.000000000 +0200
+@@ -0,0 +1,50 @@
++/*
++* The code below can be used to make a Lua core that does not contain the
++* parsing modules (lcode, llex, lparser), which represent 35% of the total core.
++* You'll only be able to load binary files and strings, precompiled with luac.
++* (Of course, you'll have to build luac with the original parsing modules!)
++*
++* To use this module, simply compile it ("make noparser" does that) and list
++* its object file before the Lua libraries. The linker should then not load
++* the parsing modules. To try it, do "make luab".
++*
++* If you also want to avoid the dump module (ldump.o), define NODUMP.
++* #define NODUMP
++*/
++
++#define LUA_CORE
++
++#include "llex.h"
++#include "lparser.h"
++#include "lzio.h"
++
++LUAI_FUNC void luaX_init (lua_State *L) {
++  UNUSED(L);
++}
++
++LUAI_FUNC Proto *luaY_parser (lua_State *L, ZIO *z, Mbuffer *buff, const char *name) {
++  UNUSED(z);
++  UNUSED(buff);
++  UNUSED(name);
++  lua_pushliteral(L,"parser not loaded");
++  lua_error(L);
++  return NULL;
++}
++
++#ifdef NODUMP
++#include "lundump.h"
++
++LUAI_FUNC int luaU_dump (lua_State* L, const Proto* f, lua_Writer w, void* data, int strip) {
++  UNUSED(f);
++  UNUSED(w);
++  UNUSED(data);
++  UNUSED(strip);
++#if 1
++  UNUSED(L);
++  return 0;
++#else
++  lua_pushliteral(L,"dumper not loaded");
++  lua_error(L);
++#endif
++}
++#endif
+diff -urN lua-5.2.1/etc/README lua-5.1.4/etc/README
+--- lua-5.2.1/etc/README	1970-01-01 01:00:00.000000000 +0100
++++ lua-5.1.4/etc/README	2007-03-28 16:30:20.000000000 +0200
+@@ -0,0 +1,37 @@
++This directory contains some useful files and code.
++Unlike the code in ../src, everything here is in the public domain.
++
++If any of the makes fail, you're probably not using the same libraries
++used to build Lua. Set MYLIBS in Makefile accordingly.
++
++all.c
++	Full Lua interpreter in a single file.
++	Do "make one" for a demo.
++
++lua.hpp
++	Lua header files for C++ using 'extern "C"'.
++
++lua.ico
++	A Lua icon for Windows (and web sites: save as favicon.ico).
++	Drawn by hand by Markus Gritsch <gritsch@iue.tuwien.ac.at>.
++
++lua.pc
++	pkg-config data for Lua
++
++luavs.bat
++	Script to build Lua under "Visual Studio .NET Command Prompt".
++	Run it from the toplevel as etc\luavs.bat.
++
++min.c
++	A minimal Lua interpreter.
++	Good for learning and for starting your own.
++	Do "make min" for a demo.
++
++noparser.c
++	Linking with noparser.o avoids loading the parsing modules in lualib.a.
++	Do "make noparser" for a demo.
++
++strict.lua
++	Traps uses of undeclared global variables.
++	Do "make strict" for a demo.
++
+diff -urN lua-5.2.1/etc/strict.lua lua-5.1.4/etc/strict.lua
+--- lua-5.2.1/etc/strict.lua	1970-01-01 01:00:00.000000000 +0100
++++ lua-5.1.4/etc/strict.lua	2008-01-18 18:03:53.000000000 +0100
+@@ -0,0 +1,41 @@
++--
++-- strict.lua
++-- checks uses of undeclared global variables
++-- All global variables must be 'declared' through a regular assignment
++-- (even assigning nil will do) in a main chunk before being used
++-- anywhere or assigned to inside a function.
++--
++
++local getinfo, error, rawset, rawget = debug.getinfo, error, rawset, rawget
++
++local mt = getmetatable(_G)
++if mt == nil then
++  mt = {}
++  setmetatable(_G, mt)
++end
++
++mt.__declared = {}
++
++local function what ()
++  local d = getinfo(3, "S")
++  return d and d.what or "C"
++end
++
++mt.__newindex = function (t, n, v)
++  if not mt.__declared[n] then
++    local w = what()
++    if w ~= "main" and w ~= "C" then
++      error("assign to undeclared variable '"..n.."'", 2)
++    end
++    mt.__declared[n] = true
++  end
++  rawset(t, n, v)
++end
++  
++mt.__index = function (t, n)
++  if not mt.__declared[n] and what() ~= "C" then
++    error("variable '"..n.."' is not declared", 2)
++  end
++  return rawget(t, n)
++end
++

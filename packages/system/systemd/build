@@ -2,8 +2,21 @@
 
 . config/options
 get_meta $1
+# dont build parallel
+MAKEFLAGS=-j1
+
 
 cd $PKG_BUILD_DIR
+do_autoreconf -vi
+# strip out usage from linker plugin
+LDFLAGS=`echo $LDFLAGS | sed -e "s|-fuse-linker-plugin||g"`
+
+# strip out LTO optimization from *FLAGS
+CFLAGS=`echo $CFLAGS | sed -e "s|-flto||g"`
+CXXFLAGS=`echo $CXXFLAGS | sed -e "s|-flto||g"`
+LDFLAGS=`echo $LDFLAGS | sed -e "s|-flto||g"`
+
+export CPP=${TARGET_PREFIX}cpp
 
 export ac_cv_func_malloc_0_nonnull=yes
 export ac_cv_path_KMOD="/usr/bin/kmod"
@@ -11,6 +24,7 @@ GCC_NO_LTO=1 GCC_NO_GOLD=1 \
 do_configure \
             --disable-gtk-doc-html \
             --enable-gudev \
+	    --enable-keymap \
             --enable-introspection=no \
             --disable-selinux \
             --disable-ima \
@@ -28,14 +42,17 @@ do_configure \
             --disable-vconsole \
             --disable-xz \
             --disable-quotacheck \
-            --enable-readahead \
+            --disable-readahead \
             --disable-manpages \
             --disable-qrencode \
             --disable-microhttpd \
             --without-python \
+	    --with-distro=other \
             --with-dbussessionservicedir=/usr/share/dbus-1/services \
             --with-dbussystemservicedir=/usr/share/dbus-1/system-services \
             --with-dbusinterfacedir=/usr/share/dbus-1/interfaces \
+	    --with-pci-ids-path=/usr/share/misc/pci.ids \
+            --with-usb-ids-path=/usr/share/misc/usb.ids \
             --with-firmware-path=/firmware \
             --with-sysvinit-path= \
             --with-sysvrcnd-path= \
@@ -71,3 +88,7 @@ done
 ln -sf ../../../lib/libudev.so.1 .install/usr/lib/libudev.so
 sed -i -e 's/, *GROUP=\"[^\"]*\"//g' .install/lib/udev/rules.d/*
 
+#Necessario per System 197 per la gestione delle periferiche di rete
+#ln -s /dev/null $INSTALL/etc/udev/rules.d/80-net-name-slot.rules
+rm -rf .install/lib/udev/rules.d/80-net-name-slot.rules
+rm -rf .install/lib/udev/rules.d/75-net-description.rules

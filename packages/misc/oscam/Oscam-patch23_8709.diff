@@ -1,0 +1,547 @@
+Index: reader-videoguard-common.c
+===================================================================
+--- reader-videoguard-common.c	(revisione 8709)
++++ reader-videoguard-common.c	(copia locale)
+@@ -711,6 +711,30 @@
+ 	}
+ }
+ 
++static uint32_t vg_emm_check(struct s_reader *reader, EMM_PACKET *ep, int32_t offs)
++{
++   struct caid_emmg_s
++   {
++      uint16_t caid;
++      uint8_t  version;
++   } caids[] =
++   {
++      { 0x0919, 0x02 },
++      { 0x093B, 0x03 },
++      { 0x09CD, 0x04 }
++   };
++   uint32_t idx;
++   if (ep->type == GLOBAL)
++   {
++      for (idx = 0; idx < sizeof(caids) / sizeof(caids[0]); ++idx)
++      {
++         if (reader->caid == caids[idx].caid)
++            return (ep->emm[offs+4] == caids[idx].version) ? OK : SKIPPED;
++      }
++   }
++   return OK;
++}
++
+ int32_t videoguard_do_emm(struct s_reader * reader, EMM_PACKET *ep, unsigned char CLA,
+ 	void (*read_tiers)(struct s_reader *),
+ 	int32_t (*docmd)(struct s_reader *, const unsigned char *ins, const unsigned char *txbuff, unsigned char *rxbuff, unsigned char *cta_res))
+@@ -787,12 +811,15 @@
+          {
+             if (ep->type == GLOBAL || vdrsc_fix || position == ua_position)
+             {
+-               ins42[4] = ep->emm[offs];
+-               int32_t l = (*docmd)(reader, ins42, &ep->emm[offs+1], NULL, cta_res);
+-               rc = (l > 0 && status_ok(cta_res)) ? OK : ERROR;
+-               rdr_debug_mask(reader, D_EMM, "request return code : %02X%02X", cta_res[0], cta_res[1]);
+-               if (status_ok(cta_res) && (cta_res[1] & 0x01))
+-                  (*read_tiers)(reader);
++               if ((rc = vg_emm_check(reader, ep, offs)) == OK)
++               {
++                  ins42[4] = ep->emm[offs];
++                  int32_t l = (*docmd)(reader, ins42, &ep->emm[offs+1], NULL, cta_res);
++                  rc = (l > 0 && status_ok(cta_res)) ? OK : ERROR;
++                  rdr_debug_mask(reader, D_EMM, "request return code : %02X%02X", cta_res[0], cta_res[1]);
++                  if (status_ok(cta_res) && (cta_res[1] & 0x01))
++                     (*read_tiers)(reader);
++               }
+             }
+             offs += ep->emm[offs] + 1;
+             if (offs < ep->emmlen && ep->emm[offs] == 0x00) ++offs;
+Index: reader-videoguard12.c
+===================================================================
+--- reader-videoguard12.c	(revisione 8709)
++++ reader-videoguard12.c	(copia locale)
+@@ -78,7 +78,7 @@
+     rev_date_calc_tm(&cta_res[4],&timeinfo,csystem_data->card_baseyear);
+     cs_add_entitlement(reader, reader->caid, b2ll(4, reader->prid[0]), tier_id, 0, 0, mktime(&timeinfo), 4);
+     char tiername[83];
+-    rdr_log(reader, "tier: %04x, expiry date: %04d/%02d/%02d-%02d:%02d:%02d %s",tier_id,timeinfo.tm_year+1900,timeinfo.tm_mon+1,timeinfo.tm_mday,timeinfo.tm_hour,timeinfo.tm_min,timeinfo.tm_sec,get_tiername(tier_id, reader->caid, tiername));
++    rdr_log(reader, "tier: %04x, expiry date: %02d/%02d/%04d-%02d:%02d:%02d %s",tier_id,timeinfo.tm_mday,timeinfo.tm_mon+1,timeinfo.tm_year+1900,timeinfo.tm_hour,timeinfo.tm_min,timeinfo.tm_sec,get_tiername(tier_id, reader->caid, tiername));
+   }
+ }
+ 
+Index: globals.h
+===================================================================
+--- globals.h	(revisione 8709)
++++ globals.h	(copia locale)
+@@ -13,6 +13,10 @@
+ #include <ctype.h>
+ #include <sys/types.h>
+ #include <sys/stat.h>
++#ifdef SHOW_MEM
++#include <sys/sysinfo.h>
++#include <stdint.h>
++#endif
+ #include <sys/wait.h>
+ #include <unistd.h>
+ #include <sys/mman.h>
+Index: config.h
+===================================================================
+--- config.h	(revisione 8709)
++++ config.h	(copia locale)
+@@ -1,11 +1,45 @@
+ #ifndef CONFIG_H_
+ #define CONFIG_H_
++// EasyScript
++#define DO_ONLINECHECK 1
++#define FB7270 1
++//#define FB7170 1
++//#define FB7390 1
++//#define ASUSWL_K26 1
++//#define SHOW_MEM 1
++//#define WITH_WEBLOGO 1
++//#define ANTI_DISCONNECT_CLIENT 1
++//#define BUILD_STATIC 1
++//#define SHOW_HOPS 1
++//#define HAVE_LIBUSB 1
++//#define HAVE_PCSC 1
++#define WITH_LIBCRYPTO_SO 1
++//#define WITH_COOLAPI 1
++//#define DDWRT346 1
++#define SHOW_DREAMBOX_BUILD 1
++#define SHOW_SH4_DVBAPI_BUILD 1
++#define SHOW_COOLSTREAM_BUILD 1
++#define SHOW_FRITZBOX_BUILD 1
++#define SHOW_DDWRT_BUILD 1
++#define SHOW_ASUSWL_BUILD 1
++#define SHOW_WDTV_BUILD 1
++#define SHOW_PC_BUILD 1
++#define SHOW_AZBOX_BUILD 1
++#define SHOW_NSLU2UNSLUNG_BUILD 1
++#define SHOW_PPC_DREAMBOX_BUILD 1
++#define SHOW_PPC_DREAMBOX_OLD_BUILD 1
++#define SHOW_FONERA_BUILD 1
++//#define SHOW_ARMCORTEXA89_BUILD 1
++#define SHOW_DOCKSTAR_BUILD 1
++#define SHOW_TPLINK_BUILD 1
++// EasyScript end
+ 
++
+ #define WEBIF 1
+ #define TOUCH 1
+-//#define WITH_SSL 1
++#define WITH_SSL 1
+ #if defined(__linux__)
+-#define HAVE_DVBAPI 1
++//#define HAVE_DVBAPI 1
+ #endif
+ #define IRDETO_GUESSING 1
+ #define CS_ANTICASC 1
+@@ -24,7 +58,7 @@
+ #define MODULE_NEWCAMD 1
+ #define MODULE_CCCAM 1
+ #define MODULE_CCCSHARE 1
+-#define MODULE_GBOX 1
++//#define MODULE_GBOX 1
+ #define MODULE_RADEGAST 1
+ #define MODULE_SERIAL 1
+ #define MODULE_CONSTCW 1
+@@ -63,6 +97,10 @@
+ #define CARDREADER_SMART 1
+ #endif
+ 
++#ifndef SHOW_MEM
++#define SHOW_MEM 1
++#endif
++
+ // CARDREADER_INTERNAL_{AZBOX,COOLAPI,SCI} are internal variables
+ // do not touch them
+ #if   defined(CARDREADER_INTERNAL) && defined(WITH_AZBOX)
+Index: webif/include/footer.html
+===================================================================
+--- webif/include/footer.html	(revisione 8709)
++++ webif/include/footer.html	(copia locale)
+@@ -1,8 +1,9 @@
+ 	<BR><HR><BR>
+ 	<DIV CLASS="footer">
+ 		<H4 CLASS="footline1">OSCAM Webinterface developed by Streamboard Team - ##CURDATE## ##CURTIME## | Access from ##CURIP##</H4>
+-		<H4 CLASS="footline2">Start: ##STARTDATE## - ##STARTTIME## | UpTime: ##UPTIME## | Process ID: ##PROCESSID##</H4>
+-		<H4 CLASS="styleauthor">WebIf Style by </H4>
++		<H4 CLASS=\"footline1\">Memory Information : ##MEM_INFO##</H4>
++               <H4 CLASS="footline2">Start: ##STARTDATE## - ##STARTTIME## | UpTime: ##UPTIME## | Process ID: ##PROCESSID##</H4>
++		<H4 CLASS="styleauthor">'Viger_uno' Mod - WebIf Style by </H4>
+ 	</DIV>
+ </BODY>
+ </HTML>
+Index: webif/include/header.html
+===================================================================
+--- webif/include/header.html	(revisione 8709)
++++ webif/include/header.html	(copia locale)
+@@ -1,6 +1,6 @@
+ <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd"><HTML>
+ <HEAD>
+-	<TITLE>OSCAM ##CS_VERSION## build r##CS_SVN_VERSION##</TITLE>
++	<TITLE>OSCam 1.20 'Modded' r##CS_SVN_VERSION##</TITLE>
+ 	<meta http-equiv="Content-Type" content="text/html; charset=##HTTP_CHARSET##">
+ 	<meta name="robots" content="noindex,nofollow">
+ 	<link rel="stylesheet" type="text/css" href="site.css">
+@@ -9,4 +9,4 @@
+ ##REFRESH##
+ </HEAD>
+ <BODY>
+-	<DIV CLASS="header"><H2 CLASS="headline1">OSCAM ##CS_VERSION## build r##CS_SVN_VERSION##</H2></DIV>
++	<DIV CLASS="header"><H2 CLASS="headline1">OSCam 1.20 'Modded' r##CS_SVN_VERSION##</H2></DIV>
+Index: module-webif.c
+===================================================================
+--- module-webif.c	(revisione 8709)
++++ module-webif.c	(copia locale)
+@@ -5,6 +5,10 @@
+ // OSCam HTTP server module
+ //
+ 
++#ifdef SHOW_MEM
++#include <sys/sysinfo.h>
++#include <stdint.h>
++#endif
+ #include "module-anticasc.h"
+ #include "module-cacheex.h"
+ #include "module-cccam.h"
+@@ -2866,13 +2870,13 @@
+ 						localtime_r(&item->end, &end_t);
+ 
+ 						if(!apicall)
+-							strftime(tbuffer, 30, "%Y-%m-%d", &start_t);
++							strftime(tbuffer, 30, "%d-%m-%Y", &start_t);
+ 						else
+ 							strftime(tbuffer, 30, "%Y-%m-%dT%H:%M:%S%z", &start_t);
+ 						tpl_addVar(vars, TPLADD, "ENTSTARTDATE", tbuffer);
+ 
+ 						if(!apicall)
+-							strftime(tbuffer, 30, "%Y-%m-%d", &end_t);
++							strftime(tbuffer, 30, "%d-%m-%Y", &end_t);
+ 						else
+ 							strftime(tbuffer, 30, "%Y-%m-%dT%H:%M:%S%z", &end_t);
+ 						tpl_addVar(vars, TPLADD, "ENTENDDATE", tbuffer);
+@@ -3297,9 +3301,9 @@
+ 									if (active_ent) tpl_addVar(vars, TPLAPPEND, "TMPSPAN", "<BR><BR>");
+ 									active_ent++;
+ 									localtime_r(&ent->end, &end_t);
+-									tpl_printf(vars, TPLAPPEND, "TMPSPAN", "%04X:%06X<BR>exp:%04d/%02d/%02d",
++									tpl_printf(vars, TPLAPPEND, "TMPSPAN", "%04X:%06X<BR>exp:%02d/%02d/%04d",
+ 									    ent->caid, ent->provid,
+-									    end_t.tm_year + 1900, end_t.tm_mon + 1, end_t.tm_mday);
++									    end_t.tm_mday, end_t.tm_mon + 1, end_t.tm_year + 1900);
+ 								}
+ 							}
+ 
+@@ -5019,7 +5023,19 @@
+ 
+ 			localtime_r(&t, &lt);
+ 
+-			tpl_addVar(vars, TPLADD, "CS_VERSION", CS_VERSION);
++#ifdef SHOW_MEM
++		//meminfo.mod
++		struct sysinfo sys_info;
++		if(sysinfo(&sys_info) != 0)
++			perror("sysinfo");
++			{
++			tpl_printf(vars, TPLADD, "MEM_INFO","Total Ram: %lluMB	Free: %lluMB	Used: %lluMB\n",
++			sys_info.totalram *(uint64_t)sys_info.mem_unit / (1024*1024),
++			sys_info.freeram *(uint64_t)sys_info.mem_unit/ (1024*1024),
++			(sys_info.totalram *(uint64_t)sys_info.mem_unit-sys_info.freeram *(uint64_t)sys_info.mem_unit)/ (1024*1024));
++			}
++#endif
++		tpl_addVar(vars, TPLADD, "CS_VERSION", CS_VERSION);
+ 			tpl_addVar(vars, TPLADD, "CS_SVN_VERSION", CS_SVN_VERSION);
+ 			tpl_addVar(vars, TPLADD, "HTTP_CHARSET", cs_http_use_utf8?"UTF-8":"ISO-8859-1");
+ 			if(cfg.http_refresh > 0 && (pgidx == 3 || pgidx == -1)) {
+Index: oscam-log.c
+===================================================================
+--- oscam-log.c	(revisione 8709)
++++ oscam-log.c	(copia locale)
+@@ -242,7 +242,7 @@
+ 	time(&log_ts);
+ 	localtime_r(&log_ts, &lt);
+ 
+-	pos = snprintf(txt, LOG_BUF_SIZE,  "[LOG000]%4d/%02d/%02d %02d:%02d:%02d ", lt.tm_year+1900, lt.tm_mon+1, lt.tm_mday, lt.tm_hour, lt.tm_min, lt.tm_sec);
++	pos = snprintf(txt, LOG_BUF_SIZE,  "[LOG000]%2d/%02d/%04d %02d:%02d:%02d ", lt.tm_mday, lt.tm_mon+1, lt.tm_year+1900, lt.tm_hour, lt.tm_min, lt.tm_sec);
+ 
+ 	switch (m) {
+ 	case 1: // Add thread id and reader type
+Index: Makefile
+===================================================================
+--- Makefile	(revisione 8709)
++++ Makefile	(copia locale)
+@@ -364,14 +364,11 @@
+ clean:
+ 	@-for FILE in $(BUILD_DIR)/*; do \
+ 		echo "RM	$$FILE"; \
+-		rm -rf $$FILE; \
+ 	done
+-	@-rm -rf $(BUILD_DIR) lib
+ 
+ distclean: clean
+ 	@-for FILE in $(BINDIR)/list_smargo-* $(BINDIR)/oscam-$(VER)*; do \
+ 		echo "RM	$$FILE"; \
+-		rm -rf $$FILE; \
+ 	done
+ 	@-$(MAKE) --no-print-directory --quiet -C webif clean
+ 
+Index: reader-videoguard1.c
+===================================================================
+--- reader-videoguard1.c	(revisione 8709)
++++ reader-videoguard1.c	(copia locale)
+@@ -80,7 +80,7 @@
+     rev_date_calc_tm(&cta_res[4],&timeinfo,csystem_data->card_baseyear);
+     char tiername[83];
+     cs_add_entitlement(reader, reader->caid, b2ll(4, reader->prid[0]), tier_id, 0, 0, mktime(&timeinfo), 4);
+-    rdr_log(reader, "tier: %04x, expiry date: %04d/%02d/%02d-%02d:%02d:%02d %s",tier_id,timeinfo.tm_year+1900,timeinfo.tm_mon+1,timeinfo.tm_mday,timeinfo.tm_hour,timeinfo.tm_min,timeinfo.tm_sec,get_tiername(tier_id, reader->caid, tiername));
++    rdr_log(reader, "tier: %04x, expiry date: %02d/%02d/%04d-%02d:%02d:%02d %s",tier_id,timeinfo.tm_mday,timeinfo.tm_mon+1,timeinfo.tm_year+1900,timeinfo.tm_hour,timeinfo.tm_min,timeinfo.tm_sec,get_tiername(tier_id, reader->caid, tiername));
+   }
+ }
+ 
+Index: reader-irdeto.c
+===================================================================
+--- reader-irdeto.c	(revisione 8709)
++++ reader-irdeto.c	(copia locale)
+@@ -200,7 +200,7 @@
+     if (buf) {
+ 	struct tm t;
+ 	cs_gmtime_r(&ut, &t);
+-	snprintf(buf, l, "%04d/%02d/%02d", t.tm_year+1900, t.tm_mon+1, t.tm_mday);
++	snprintf(buf, l, "%02d/%02d/%04d", t.tm_mday, t.tm_mon+1, t.tm_year+1900);
+     }
+     return(ut);
+ }
+Index: reader-nagra.c
+===================================================================
+--- reader-nagra.c	(revisione 8709)
++++ reader-nagra.c	(copia locale)
+@@ -44,7 +44,7 @@
+     {
+ 	struct tm t;
+ 	cs_gmtime_r(&ut, &t);
+-	snprintf(buf, l, "%04d/%02d/%02d", t.tm_year+1900, t.tm_mon+1, t.tm_mday);
++	snprintf(buf, l, "%02d/%02d/%04d", t.tm_mday, t.tm_mon+1, t.tm_year+1900);
+     }
+   return ut;
+ }
+@@ -69,7 +69,7 @@
+ 	if (csystem_data->is_tiger)
+ 		snprintf(result, 11, "%02d/%02d/%04d", tms.tm_mday, tms.tm_mon + 1, tms.tm_year + 1900);
+ 	else
+-		snprintf(result, 17, "%04d/%02d/%02d %02d:%02d", tms.tm_year + 1900, tms.tm_mon + 1, tms.tm_mday, tms.tm_hour, tms.tm_min);
++		snprintf(result, 17, "%02d/%02d/%04d %02d:%02d", tms.tm_mday, tms.tm_mon + 1, tms.tm_year + 1900, tms.tm_hour, tms.tm_min);
+ 	return result;
+ }
+ 
+@@ -304,7 +304,31 @@
+ 	if(!do_cmd(reader, 0xd2,0x5a,0x52,0x03, d2_data,cta_res,&cta_lr))
+ 	{
+ 		rdr_debug_mask(reader, D_READER, "CMD$D2 failed");
+-		return ERROR;
++		rdr_debug_mask(reader, D_READER, "Trying ncmed...");
++		memset(rnd, 0xBB, 88);
++		memcpy(rnd, sk,8);
++		ReverseMem(rnd, 88);
++		rnd[0]=0x6b;
++
++		ctx3 = BN_CTX_new();
++#ifdef WITH_LIBCRYPTO
++		BN_CTX_start(ctx3);
++#endif
++		BN_bin2bn(d1_rsa_modulo, 88, bnN3);
++		BN_bin2bn(vFixed+4, 1, bnE3);
++		BN_bin2bn(rnd, 88, bnCT3);
++		BN_mod_exp(bnPT3, bnCT3, bnE3, bnN3, ctx3);
++		memset(d2_data, 0, 88);
++		BN_bn2bin(bnPT3, d2_data + (88-BN_num_bytes(bnPT3)));
++		BN_CTX_end(ctx3);
++		BN_CTX_free (ctx3);
++		ReverseMem(d2_data, 88);
++
++		if(!do_cmd(reader, 0xd2,0x5a,0x52,0x03, d2_data,cta_res,&cta_lr))
++		{
++			rdr_debug_mask(reader, D_READER, "CMD$D2 failed");
++			return ERROR;
++		}
+ 	}
+ 	if (cta_res[2] == 0x00)
+ 	{
+@@ -768,9 +792,9 @@
+ 
+    sscanf(date, "%02d/%02d/%04d", &d, &m, &y);
+    memset(&timeinfo, 0, sizeof(struct tm));
++   timeinfo.tm_mday = d;
++   timeinfo.tm_mon = m - 1;
+    timeinfo.tm_year = y - 1900;
+-   timeinfo.tm_mon = m - 1;
+-   timeinfo.tm_mday = d;
+ 
+    return mktime(&timeinfo);
+ }
+Index: reader-videoguard2.c
+===================================================================
+--- reader-videoguard2.c	(revisione 8709)
++++ reader-videoguard2.c	(copia locale)
+@@ -284,7 +284,7 @@
+       if(!stopemptytier){
+         rdr_debug_mask(reader, D_READER, "tier: %04x, tier-number: 0x%02x",tier_id,i);
+       }
+-      rdr_log(reader, "tier: %04x, expiry date: %04d/%02d/%02d-%02d:%02d:%02d %s",tier_id,timeinfo.tm_year+1900,timeinfo.tm_mon+1,timeinfo.tm_mday,timeinfo.tm_hour,timeinfo.tm_min,timeinfo.tm_sec,get_tiername(tier_id, reader->caid, tiername));
++      rdr_log(reader, "tier: %04x, expiry date: %02d/%02d/%04d-%02d:%02d:%02d %s",tier_id,timeinfo.tm_mday,timeinfo.tm_mon+1,timeinfo.tm_year+1900,timeinfo.tm_hour,timeinfo.tm_min,timeinfo.tm_sec,get_tiername(tier_id, reader->caid, tiername));
+     }
+   }
+ }
+@@ -712,6 +712,99 @@
+   ins40[4]=new_len;
+   int32_t l;
+ 
++        if(reader->caid == 0x9CD){   /* By Viger_uno  Patch 23 */
++	 if (tbuff[1] != 0x7D){ 
++				rdr_log(reader,  "----------> SKIP INS40 NANO DIVERSO DA *7D* <----------");
++				return ERROR;
++				}
++	 if (tbuff[2] != 0x09){
++				rdr_log(reader,  "----------> SKIP INS40 NANO DIVERSO DA *09* <----------");
++				return ERROR;
++				}
++	 if (tbuff[3] != 0x44){
++				rdr_log(reader,  "----------> SKIP INS40 NANO DIVERSO DA *44* <----------");
++				return ERROR;
++				}
++	 if (tbuff[12] != 0x90){
++				rdr_log(reader,  "----------> SKIP INS40 NANO DIVERSO DA *90* <----------");
++				return ERROR;
++				}
++	 if (tbuff[13] != 0x8A && tbuff[13] != 0x8E){
++				rdr_log(reader,  "----------> SKIP INS40 NANO DIVERSO DA *8A 8E* <----------");
++				return ERROR;
++				}
++	 if (tbuff[14] != 0xC0){
++				rdr_log(reader,  "----------> SKIP INS40 NANO DIVERSO DA *C0* <----------");
++				return ERROR;
++				}
++	 if (tbuff[15] != 0x02){
++				rdr_log(reader,  "----------> SKIP INS40 NANO DIVERSO DA *02* <----------");
++				return ERROR;
++				}
++ }
++
++        if(reader->caid == 0x93B){
++	 if (tbuff[1] != 0x7E){ 
++				rdr_log(reader,  "----------> SKIP INS40 NANO DIVERSO DA *7E* <----------");
++				return ERROR;
++				}
++	 if (tbuff[2] != 0x0A){
++				rdr_log(reader,  "----------> SKIP INS40 NANO DIVERSO DA *0A* <----------");
++				return ERROR;
++				}
++	 if (tbuff[11] != 0x00 && tbuff[12] != 0x00){
++				rdr_log(reader,  "----------> SKIP INS40 NANO DIVERSO DA *00 00* <----------");
++				return ERROR;
++				}
++	 if (tbuff[13] != 0x90){
++				rdr_log(reader,  "----------> SKIP INS40 NANO DIVERSO DA *90* <----------");
++				return ERROR;
++				}
++	 if (tbuff[14] != 0x89 && tbuff[14] != 0x8D){
++				rdr_log(reader,  "----------> SKIP INS40 NANO DIVERSO DA *89 8D* <----------");
++				return ERROR;
++				}
++	 if (tbuff[15] != 0xC0){
++				rdr_log(reader,  "----------> SKIP INS40 NANO DIVERSO DA *C0* <----------");
++				return ERROR;
++				}
++	 if (tbuff[16] != 0x02){
++				rdr_log(reader,  "----------> SKIP INS40 NANO DIVERSO DA *02* <----------");
++				return ERROR;
++				}
++ }
++
++        if(reader->caid == 0x919){
++	 if (tbuff[1] != 0x7F){ 
++				rdr_log(reader,  "----------> SKIP INS40 NANO DIVERSO DA *7F* <----------");
++				return ERROR;
++				}
++	 if (tbuff[2] != 0x0A){
++				rdr_log(reader,  "----------> SKIP INS40 NANO DIVERSO DA *0A* <----------");
++				return ERROR;
++				}
++	 if (tbuff[11] != 0x00 && tbuff[12] != 0x00){
++				rdr_log(reader,  "----------> SKIP INS40 NANO DIVERSO DA *00 00* <----------");
++				return ERROR;
++				}
++	 if (tbuff[13] != 0x90){
++				rdr_log(reader,  "----------> SKIP INS40 NANO DIVERSO DA *90* <----------");
++				return ERROR;
++				}
++	 if (tbuff[14] != 0x89 && tbuff[14] != 0x8D){
++				rdr_log(reader,  "----------> SKIP INS40 NANO DIVERSO DA *89 8D* <----------");
++				return ERROR;
++				}
++	 if (tbuff[15] != 0xC0){
++				rdr_log(reader,  "----------> SKIP INS40 NANO DIVERSO DA *C0* <----------");
++				return ERROR;
++				}
++	 if (tbuff[16] != 0x02){
++				rdr_log(reader,  "----------> SKIP INS40 NANO DIVERSO DA *02* <----------");
++				return ERROR;
++				}
++ }
++
+   l = do_cmd(reader,ins40,tbuff,NULL,cta_res);
+   if(l<0 || !status_ok(cta_res)) {
+     rdr_log(reader, "classD0 ins40: (%d) status not ok %02x %02x",l,cta_res[0],cta_res[1]);
+Index: module-webif-lib.h
+===================================================================
+--- module-webif-lib.h	(revisione 8709)
++++ module-webif-lib.h	(copia locale)
+@@ -16,7 +16,7 @@
+ /* The RFC1123 time format which is used in http headers. */
+ #define RFC1123FMT "%a, %d %b %Y %H:%M:%S GMT"
+ /* The realm for http digest authentication. Gets displayed to browser. */
+-#define AUTHREALM "Forbidden"
++#define AUTHREALM "Oscam Web Info"
+ /* How long a nonce is valid in seconds after a first request with this nonce has been received. If the nonce isn't valid anymore, the browser gets a "stale=true" message and must resubmit with the current nonce. */
+ #define AUTHNONCEVALIDSECS 15
+ /* When a nonce gets expired after it has been first given to the client. */
+Index: reader-viaccess.c
+===================================================================
+--- reader-viaccess.c	(revisione 8709)
++++ reader-viaccess.c	(copia locale)
+@@ -96,26 +96,26 @@
+ 				parse_via_date(b-4, &vd, 1);
+ 				cls=(l-(j+1))*8+i;
+ 				if (p)
+-					rdr_log(reader, "%sclass: %02X, expiry date: %04d/%02d/%02d - %04d/%02d/%02d", p, cls,
+-					vd.year_s+1980, vd.month_s, vd.day_s,
+-					vd.year_e+1980, vd.month_e, vd.day_e);
++					rdr_log(reader, "%sclass: %02X, expiry date: %02d/%02d/%04d - %02d/%02d/%04d", p, cls,
++					vd.day_s, vd.month_s, vd.year_s+1980,
++					vd.day_e, vd.month_e, vd.year_e+1980);
+ 				else {
+-					rdr_log(reader, "class: %02X, expiry date: %04d/%02d/%02d - %04d/%02d/%02d", cls,
+-					vd.year_s+1980, vd.month_s, vd.day_s,
+-					vd.year_e+1980, vd.month_e, vd.day_e);
++					rdr_log(reader, "class: %02X, expiry date: %02d/%02d/%04d - %02d/%02d/%04d", cls,
++					vd.day_s, vd.month_s, vd.year_s+1980,
++					vd.day_e, vd.month_e, vd.year_e+1980);
+ 
+ 					time_t start_t, end_t;
+ 					struct tm tm;
+ 					//convert time:
+ 					memset(&tm, 0, sizeof(tm));
++					tm.tm_mday = vd.day_s;
++					tm.tm_mon = vd.month_s-1;  // january is 0 in tm_mon
+ 					tm.tm_year = vd.year_s+80; //via year starts in 1980, tm_year starts in 1900
+-					tm.tm_mon = vd.month_s-1;  // january is 0 in tm_mon
+-					tm.tm_mday = vd.day_s;
+ 					start_t = cs_timegm(&tm);
+ 
++					tm.tm_mday = vd.day_e;
++					tm.tm_mon = vd.month_e-1;  // january is 0 in tm_mon
+ 					tm.tm_year = vd.year_e+80; //via year starts in 1980, tm_year starts in 1900
+-					tm.tm_mon = vd.month_e-1;  // january is 0 in tm_mon
+-					tm.tm_mday = vd.day_e;
+ 					end_t = cs_timegm(&tm);
+ 
+ 					cs_add_entitlement(reader, reader->caid, provid, cls, cls, start_t, end_t, 5);

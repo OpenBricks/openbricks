@@ -1,0 +1,29 @@
+#!/bin/sh
+# SNAKE OS - 2010-04-17
+# Called by mdev on USB Printer insertion and removal
+# Input variables: $MDEV $ACTION
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+
+MDEV=$1
+ACTION=$2
+
+PRINTERNUM=$(echo $MDEV | cut -d 'p' -f 2)
+
+get_config(){
+	echo -n $(sed -n "s/^\(${1}\)=\(.*\)$/\2/p" /etc/default/config)
+}
+
+CFG_BIDI=$(get_config printer_bidi)
+
+if [ ${CFG_BIDI} = 1 ] ; then
+	BIDI="-b"
+fi
+
+if [ "$ACTION" = "remove" ] ; then
+	pkill -9 -f "-f /dev/$MDEV $PRINTERNUM" 2> /dev/null
+else
+	PID=$(pgrep -f "/dev/$MDEV")
+	if [ ${PID:-empty} = "empty" ] ; then
+		p910nd ${BIDI} -f /dev/$MDEV $PRINTERNUM &
+	fi
+fi

@@ -1,0 +1,455 @@
+diff -urN glcdprocdriver-0.0.6/ChangeLog glcdprocdriver-0.0.6.ok/ChangeLog
+--- glcdprocdriver-0.0.6/ChangeLog	2012-10-24 01:30:17.000000000 +0200
++++ glcdprocdriver-0.0.6.ok/ChangeLog	2010-04-16 01:56:17.000000000 +0200
+@@ -3,23 +3,6 @@
+      + Something added
+      * Something changed / fixed
+ 
+-Version 0.1.1 (WIP)
+- * some more debug logging in driver initialization;
+- + added GLCDPROC_VER_MAJOR / _MINOR / _MICRO in glcddriver.h as the only place
+-   where the version is maintained, which can be evaluated both in the code and
+-   the Makefile.
+-
+-Version 0.1.0 (released 2012-10-20)
+- * this version does no longer build with graphlcd-base <= 0.1.9, but with
+-   the current "touchcol" branch of graphlcd-base hosted at
+-   http://projects.vdr-developer.org/projects/graphlcd;
+- + adopted "touchcol" patch;
+- * some Makefile tuning for generating versioned .so files and symlinks;
+- * moved hosting of the project from http://www.muresan.de/graphlcd/lcdproc/
+-   to GitHub: http://lucianm.github.com/GLCDprocDriver/
+- * renamed README to README.md and adapted its contents to also be displayed
+-   at the "GitHub page" mentioned;
+- * updated URLs.
+ 
+ Version 0.0.6: (released 2010-04-16)
+  + adopted gcc44 patch from the gentoo maintainers (thanks Robert Buchholz < rbu AT gentoo.org >)
+@@ -51,4 +34,3 @@
+ 
+ Version 0.0.1: (released 2005-05-13)
+  + Initial release
+-
+diff -urN glcdprocdriver-0.0.6/glcddriver.c glcdprocdriver-0.0.6.ok/glcddriver.c
+--- glcdprocdriver-0.0.6/glcddriver.c	2012-10-24 01:30:17.000000000 +0200
++++ glcdprocdriver-0.0.6.ok/glcddriver.c	2010-04-13 15:11:46.000000000 +0200
+@@ -154,10 +154,6 @@
+ 	m_bShowThinBorder = bShowThinBorder;
+ 	m_bShowDebugFrame = bShowDebugFrame;
+ 
+-	syslog(	LOG_DEBUG,
+-		"Initializing '%s-%d.%d.%.d%s' for the 'glcdlib' meta driver...\n",
+-		GLCDPROC_MODULENAME, GLCDPROC_VER_MAJOR, GLCDPROC_VER_MINOR, GLCDPROC_VER_MICRO, GLCDPROC_VER_SUPPL );
+-
+ 	if (GLCD::Config.Load("/etc/graphlcd.conf") == false)
+ 	{
+ 		syslog(LOG_ERR, "ERROR loading default graphlcd config file '/etc/graphlcd.conf'!\n");
+@@ -233,11 +229,10 @@
+ 	m_pBitmap = new GLCD::cBitmap(m_pDrv->Width(), m_pDrv->Height());
+ 
+ 	CalculateDimensions();
+-	syslog(LOG_DEBUG, "cglcdDriver::Init: Text Cols x Rows adjusted to %d x %d\n", m_nTextWidth, m_nTextHeight);
+ 
+ 	m_nOffsetX = (m_pDrv->Width() - TextWidth() * m_pFont->TotalWidth())/2;
+ 	m_nOffsetY = (m_pDrv->Height() - TextHeight() * m_pFont->TotalHeight())/2;
+-	syslog(LOG_DEBUG, "cglcdDriver::Init: m_nOffsetX = %d; m_nOffsetY = %d\n", m_nOffsetX, m_nOffsetY);
++	//syslog(LOG_DEBUG, "cglcdDriver::Init(..): m_nOffsetX = %d; m_nOffsetY = %d\n", m_nOffsetX, m_nOffsetY);
+ 
+ 	if (abs(nPixShiftX) > m_nOffsetX)
+ 	{
+@@ -309,7 +304,7 @@
+ 				0,
+ 				m_pDrv->Width(),
+ 				m_pDrv->Height(),
+-				GLCD::cColor::White,
++				GLCD::clrBlack,
+ 				true);
+ 		}
+ 
+@@ -323,16 +318,16 @@
+ 				int i;
+ 				// left vertical border
+ 				for (i = 0; i < m_nOffsetX + m_nPixShiftX; i++)
+-					m_pBitmap->DrawLine(i, 0, i, m_pDrv->Height(), Inversion(GLCD::cColor::White));
++					m_pBitmap->DrawLine(i, 0, i, m_pDrv->Height(), Inversion(GLCD::clrBlack));
+ 				// right vertical border
+ 				for (i = m_pDrv->Width() - m_nOffsetX + m_nPixShiftX; i < m_pDrv->Width(); i++)
+-					m_pBitmap->DrawLine(i, 0, i, m_pDrv->Height(), Inversion(GLCD::cColor::White));
++					m_pBitmap->DrawLine(i, 0, i, m_pDrv->Height(), Inversion(GLCD::clrBlack));
+ 				// upper horizontal border
+ 				for (i = 0; i < m_nOffsetY + m_nPixShiftY; i++)
+-					m_pBitmap->DrawLine(m_nOffsetX + m_nPixShiftX, i, m_pDrv->Width() - m_nOffsetX + m_nPixShiftX - 1, i, Inversion(GLCD::cColor::White));
++					m_pBitmap->DrawLine(m_nOffsetX + m_nPixShiftX, i, m_pDrv->Width() - m_nOffsetX + m_nPixShiftX - 1, i, Inversion(GLCD::clrBlack));
+ 				// lower horizontal border
+ 				for (i = m_pDrv->Height() - m_nOffsetY + m_nPixShiftY; i < m_pDrv->Height(); i++)
+-					m_pBitmap->DrawLine(m_nOffsetX + m_nPixShiftX, i, m_pDrv->Width() - m_nOffsetX + m_nPixShiftX - 1, i, Inversion(GLCD::cColor::White));
++					m_pBitmap->DrawLine(m_nOffsetX + m_nPixShiftX, i, m_pDrv->Width() - m_nOffsetX + m_nPixShiftX - 1, i, Inversion(GLCD::clrBlack));
+ 			}
+ 
+ 		}
+@@ -344,7 +339,7 @@
+ 				m_nOffsetY + m_nPixShiftY,
+ 				m_pDrv->Width() - m_nOffsetX + m_nPixShiftX - 1,
+ 				m_pDrv->Height() - m_nOffsetY + m_nPixShiftY - 1,
+-				Inversion(GLCD::cColor::White),
++				Inversion(GLCD::clrBlack),
+ 				false);
+ 		}
+ 	}
+@@ -359,9 +354,8 @@
+ 			m_pBitmap->Width() - 1,
+ 			data,
+ 			m_pFont,
+-			Inversion(GLCD::cColor::White),
+-			Inversion(GLCD::cColor::Black),
+-			1
++			Inversion(GLCD::clrBlack),
++			0
+ 			);
+ }
+ 
+@@ -374,10 +368,9 @@
+ 			m_pBitmap->Width() - 1,
+ 			text,
+ 			m_pFont,
+-			Inversion(GLCD::cColor::White),
+-			Inversion(GLCD::cColor::Black),
++			Inversion(GLCD::clrBlack),
+ 			false,
+-			1
++			0
+ 			);
+ }
+ 
+@@ -385,7 +378,7 @@
+ {
+ 	if (m_pDrv && m_pBitmap)
+ 	{
+-		m_pDrv->SetScreen(m_pBitmap->Data(), m_pBitmap->Width(), m_pBitmap->Height()); //, m_pBitmap->LineSize());
++		m_pDrv->SetScreen(m_pBitmap->Data(), m_pBitmap->Width(), m_pBitmap->Height(), m_pBitmap->LineSize());
+ 		m_pDrv->Refresh(refreshAll);
+ 	}
+ }
+@@ -415,7 +408,7 @@
+ 			m_nOffsetX + m_nPixShiftX + x*m_pFont->TotalWidth(),
+ 			m_nOffsetY + m_nPixShiftY + y*m_pFont->TotalHeight(),
+ 			*m_arrIcons[nLocalIdx]->m_pIconBitmap,
+-			Inversion(GLCD::cColor::White));
++			Inversion(GLCD::clrBlack));
+ 		return 0;
+ 	}
+ 	else
+@@ -483,7 +476,7 @@
+ 
+ 	GLCD::cBitmap * pIcon = m_arrIcons[IconIdxLocal(ICON_BLOCK_FILLED)]->m_pIconBitmap;
+ 	int nBlockLeftBottom = bLeftBottomBorder ? 2 : 1;
+-	pIcon->DrawRectangle( 0, 0, pIcon->Width() - nBlockLeftBottom, pIcon->Height() - nBlockLeftBottom, GLCD::cColor::White, true);
++	pIcon->DrawRectangle( 0, 0, pIcon->Width() - nBlockLeftBottom, pIcon->Height() - nBlockLeftBottom, GLCD::clrBlack, true);
+ 
+ 	IconScaleDown(	icon_heart_open, 73, 54,
+ 				m_arrIcons[IconIdxLocal(ICON_HEART_OPEN)]->m_pIconBitmap, bLeftBottomBorder);
+@@ -566,24 +559,23 @@
+ 	m_bInvert = bInvert;
+ }
+ 
+-uint32_t cglcdDriver::Inversion(const uint32_t color) const
++GLCD::eColor cglcdDriver::Inversion(const GLCD::eColor color) const
+ {
++	GLCD::eColor newColor;
+ 	if (m_bInvert)
+ 	{
+ 		// invert colours
+-		if (color == GLCD::cColor::Black)
+-		{
+-			return GLCD::cColor::White;
+-		} else
+-		{
+-			return GLCD::cColor::Black;
+-		} 
++		if (color == GLCD::clrBlack)
++			newColor = GLCD::clrWhite;
++		else
++			newColor = GLCD::clrBlack;
+ 	}
+ 	else
+ 	{
+ 		// no inversion
+-		return color;
++		newColor = color;
+ 	}
++	return newColor;
+ }
+ 
+ void cglcdDriver::SetCustomChar(int pos, char *pixeldata)
+@@ -599,7 +591,7 @@
+ 			{
+ 				if (pixeldata[(y * pCustomChar->Width()) + x] != 0)
+ 				{
+-					pCustomChar->DrawPixel(x, y, GLCD::cColor::White);
++					pCustomChar->DrawPixel(x, y, GLCD::clrBlack);
+ 				}
+ 			}
+ 		}
+@@ -653,15 +645,15 @@
+ 				{
+ 					if (bnFont.GetCharacter(tmp[0])->GetPixel(x,y))
+ 					{
+-						pNumChar->DrawPixel(2*x, 2*y, GLCD::cColor::White);
+-						pNumChar->DrawPixel(2*x + 1, 2*y, GLCD::cColor::White);
+-						pNumChar->DrawPixel(2*x, 2*y + 1, GLCD::cColor::White);
+-						pNumChar->DrawPixel(2*x + 1, 2*y + 1, GLCD::cColor::White);
++						pNumChar->DrawPixel(2*x, 2*y, GLCD::clrBlack);
++						pNumChar->DrawPixel(2*x + 1, 2*y, GLCD::clrBlack);
++						pNumChar->DrawPixel(2*x, 2*y + 1, GLCD::clrBlack);
++						pNumChar->DrawPixel(2*x + 1, 2*y + 1, GLCD::clrBlack);
+ 					}
+ 				}
+ 			}
+ 		}
+-		pBigNum->DrawBitmap(0, 0, *pNumChar, GLCD::cColor::White);
++		pBigNum->DrawBitmap(0, 0, *pNumChar, GLCD::clrBlack);
+ 		m_arrBigNums[i] = pBigNum;
+ 	}
+ 	if (!bUseFT)
+@@ -679,7 +671,7 @@
+ 			m_nOffsetX + m_nPixShiftX + x*m_pFont->TotalWidth(),
+ 			m_nOffsetY + m_nPixShiftY + y*m_pFont->TotalHeight(),
+ 			*m_arrBigNums[num],
+-			Inversion(GLCD::cColor::White)
++			Inversion(GLCD::clrBlack)
+ 			);
+ 	}
+ }
+@@ -704,7 +696,7 @@
+ 					m_nOffsetY + m_nPixShiftY + y*m_pFont->TotalHeight(),
+ 					m_nOffsetX + m_nPixShiftX + (x + pos)*m_pFont->TotalWidth() + pixels - 2,
+ 					m_nOffsetY + m_nPixShiftY + (y + 1)*m_pFont->TotalHeight() - 2,
+-					Inversion(GLCD::cColor::White),
++					Inversion(GLCD::clrBlack),
+ 					true);
+ 				break;
+ 			}
+@@ -732,7 +724,7 @@
+ 					m_nOffsetY + m_nPixShiftY + (y - pos + 1)*m_pFont->TotalHeight() - pixels,
+ 					m_nOffsetX + m_nPixShiftX + (x + 1)*m_pFont->TotalWidth() - 2,
+ 					m_nOffsetY + m_nPixShiftY + (y - pos + 1)*m_pFont->TotalHeight() - 2,
+-					Inversion(GLCD::cColor::White),
++					Inversion(GLCD::clrBlack),
+ 					true);
+ 				break;
+ 			}
+@@ -783,7 +775,7 @@
+ 			if (tmp[y][x] >= 0.5)
+ 			//if (tmp[y][x] != 0.0)
+ 			{
+-				pIcon->DrawPixel(x, y, GLCD::cColor::White);
++				pIcon->DrawPixel(x, y, GLCD::clrBlack);
+ 			}
+ 		}
+ 	}
+diff -urN glcdprocdriver-0.0.6/glcddriver.h glcdprocdriver-0.0.6.ok/glcddriver.h
+--- glcdprocdriver-0.0.6/glcddriver.h	2012-10-24 01:30:17.000000000 +0200
++++ glcdprocdriver-0.0.6.ok/glcddriver.h	2010-04-16 01:52:50.000000000 +0200
+@@ -15,18 +15,6 @@
+ 
+ #define TOTAL_ICONS 22
+ 
+-#define GLCDPROC_VER_MAJOR 0
+-#define GLCDPROC_VER_MINOR 1
+-#define GLCDPROC_VER_MICRO 1
+-
+-/*
+-    Make this an empty string for releases, or 'pre', 'alfa', 'beta', 'rc' or similar
+-    prefixed by '_' or '-' and maybe followed by a number like "_pre1" for non-releases !!!
+- */
+-#define GLCDPROC_VER_SUPPL "_pre1"
+-
+-#define GLCDPROC_MODULENAME "glcdprocdriver"
+-
+ class cglcdDriver
+ {
+ /*
+@@ -125,7 +113,7 @@
+ 									GLCD::cBitmap * pIcon,
+ 									bool bLeftBottomBorder = false);
+ 	void CalculateDimensions();
+-	uint32_t Inversion(const uint32_t color) const;
++	GLCD::eColor Inversion(const GLCD::eColor color) const;
+ 	void BigNumsInitialize(const std::string FontFile, bool bUseFT);
+ private:
+ };
+diff -urN glcdprocdriver-0.0.6/INSTALL glcdprocdriver-0.0.6.ok/INSTALL
+--- glcdprocdriver-0.0.6/INSTALL	2012-10-24 01:30:17.000000000 +0200
++++ glcdprocdriver-0.0.6.ok/INSTALL	2009-05-28 11:46:14.000000000 +0200
+@@ -1,15 +1,7 @@
+-- Get & install the latest graphlcd-base library from
+-http://projects.vdr-developer.org/projects/graphlcd
+-you should consider enabling FreeType support by uncommenting
+-HAVE_FREETYPE2 in Make.config
++- Get & install the latest graphlcd-base library from http://graphlcd.berlios.de
++(usage of FreeType2 would be advisable, see the graphlcd-base docs, alternative
++get also the graphlcd-media package to have some raster fonts);
+ - In the glcdprocdriver source directory:
+     - Run 'make' and 'make install'.
+ - Run 'ldconfig'.
+-- proceed with building LCDproc >= 0.5.x with the "glcdlib" driver enabled;
+-
+-
+-On Gentoo, just use the provided ebuilds from the overlay or mainline portage
+-if they are already available. It is advisable to enable the USE flag "truetype".
+-Just emerge lcdproc with the USE flag "graphlcd" enabled, this will enable building
+-the "glcdlib" driver which then will pull GLCDprocDriver and graphlcd-base as
+-dependencies first.
++- proceed with LCDproc-0.5.x.
+diff -urN glcdprocdriver-0.0.6/Makefile glcdprocdriver-0.0.6.ok/Makefile
+--- glcdprocdriver-0.0.6/Makefile	2012-10-24 01:30:17.000000000 +0200
++++ glcdprocdriver-0.0.6.ok/Makefile	2010-04-16 01:57:26.000000000 +0200
+@@ -5,20 +5,16 @@
+ -include Make.config
+ 
+ 
+-MODULE = $(shell grep '\#define GLCDPROC_MODULENAME' glcddriver.h | cut -d' ' -f3)
+-VERMAJOR = $(shell grep '\#define GLCDPROC_VER_MAJOR' glcddriver.h | cut -d' ' -f3)
+-VERMINOR = $(shell grep '\#define GLCDPROC_VER_MINOR' glcddriver.h | cut -d' ' -f3)
+-VERMICRO = $(shell grep '\#define GLCDPROC_VER_MICRO' glcddriver.h | cut -d' ' -f3)
+-VERSUPPL = $(shell grep '\#define GLCDPROC_VER_SUPPL' glcddriver.h | cut -d' ' -f3)
+-VERSION = $(VERMAJOR).$(VERMINOR).$(VERMICRO)
+-ARCHIVE = $(MODULE)-$(VERSION)$(VERSUPPL)
++PROJECT = glcdprocdriver
++VERSION = 0.0.6
++ARCHIVE = $(PROJECT)-$(VERSION)
+ PACKAGE = $(ARCHIVE)
+ TMPDIR = /tmp
+ 
+ LIBS=-lglcddrivers -lglcdgraphics
+ 
+-BASENAME = libglcdprocdriver.so
+-LIBNAME  = $(BASENAME).$(VERSION)
++LIBNAME = libglcdprocdriver.so
++SONAME  = $(LIBNAME).1
+ 
+ OBJS = glcdprocdriver.o glcddriver.o
+ 
+@@ -33,33 +29,29 @@
+ 	$(CXX) -c -fPIC $(CXXFLAGS) $< -o $@
+ 
+ $(LIBNAME): $(OBJS)
+-	$(CXX) $(LDFLAGS) -shared $(OBJS) $(LIBS) -Wl,-soname="$(BASENAME).$(VERMAJOR)" -o $@
++	$(CXX) $(LDFLAGS) -shared $(OBJS) $(LIBS) -Wl,-soname="$(SONAME)" -o $@
+ 
+ install: all
+ 	install -d $(LIBDIR)
+ 	install -m 644 $(LIBNAME) $(LIBDIR)/
+-	ln -sf $(LIBNAME) $(LIBDIR)/$(BASENAME)
+-	ln -sf $(LIBNAME) $(LIBDIR)/$(BASENAME).$(VERMAJOR)
+ 	install -d $(INCDIR)/glcdproclib
+ 	install -m 644 $(HEADERS) $(INCDIR)/glcdproclib/
+ 	@echo \**** Run \"$(LDCONFIG)\" yourself if you ran \"make install\" by hand!!
+ 
+ uninstall:
+-	rm -f $(LIBDIR)/$(BASENAME).$(VERMAJOR)
+-	rm -f $(LIBDIR)/$(BASENAME)
+ 	rm -f $(LIBDIR)/$(LIBNAME)
+ 	(for i in $(HEADERS); do rm -f $(INCDIR)/glcdproclib/$$i; done)
+ 	rmdir $(INCDIR)/glcdproclib
+ 	@echo \**** Run \"$(LDCONFIG)\" yourself if you ran \"make uninstall\" by hand!!
+ 
+ clean:
+-	rm -f $(OBJS) $(DEPFILE) *.so *.so.* *.a *~
++	rm -f $(OBJS) $(DEPFILE) *.so *.a *~
+ 
+ dist: clean
+ 	@-rm -rf $(TMPDIR)/$(ARCHIVE)
+ 	@mkdir $(TMPDIR)/$(ARCHIVE)
+ 	@cp -a * $(TMPDIR)/$(ARCHIVE)
+-	@tar cjf ../$(PACKAGE).tar.bz2 -C $(TMPDIR) $(ARCHIVE) --exclude=.git*
++	@tar cjf ../$(PACKAGE).tar.bz2 -C $(TMPDIR) $(ARCHIVE)
+ 	@-rm -rf $(TMPDIR)/$(ARCHIVE)
+ 	@echo Distribution package created as ../$(PACKAGE).tar.bz2
+ 
+diff -urN glcdprocdriver-0.0.6/README glcdprocdriver-0.0.6.ok/README
+--- glcdprocdriver-0.0.6/README	1970-01-01 01:00:00.000000000 +0100
++++ glcdprocdriver-0.0.6.ok/README	2005-05-13 11:56:56.000000000 +0200
+@@ -0,0 +1,18 @@
++== Introduction ==============================================================
++GLCDprocDriver is the glue between the graphlcd-base library (from the GraphLCD
++project at http://graphlcd.berlios.de), which is written in C++, and LCDproc's
++meta-driver "glcdlib", which extends supported displays in LCDproc by those
++supported through graphlcd-base (but just in text mode, of course).
++
++It is implemented in C++, but provides the necessary wrapper C calls for use by
++glcdlib.
++
++It is NOT intended to provide general C wrapping for the whole graphlcd-base,
++library, as it really only implements the actual meta-driver for LCDproc.
++
++== Installation ==============================================================
++Refer to the INSTALL file in the archive.
++
++
++
++Lucian Muresan
+diff -urN glcdprocdriver-0.0.6/README.md glcdprocdriver-0.0.6.ok/README.md
+--- glcdprocdriver-0.0.6/README.md	2012-10-24 01:30:17.000000000 +0200
++++ glcdprocdriver-0.0.6.ok/README.md	1970-01-01 01:00:00.000000000 +0100
+@@ -1,60 +0,0 @@
+-GLCDprocDriver
+-==============
+-
+-GraphLCD adapter layer for the LCDproc "glcdlib" driver
+-
+-Homepage: http://lucianm.github.com/GLCDprocDriver/
+-
+-
+-Introduction
+-------------
+-
+-GLCDprocDriver is the glue between the graphlcd-base library from the
+-[GraphLCD project](http://projects.vdr-developer.org/projects/show/graphlcd),
+-which is written in C++, and [LCDproc's](http://www.lcdproc.org) meta-driver
+-"glcdlib", which extends supported displays in LCDproc by those supported
+-through graphlcd-base (but just in text mode, of course).
+-
+-It is implemented in C++, but provides the necessary wrapper C calls for use by glcdlib.
+-
+-It is NOT intended to provide general C wrapping for the whole graphlcd-base,
+-library, as it really only implements the actual meta-driver for LCDproc.
+-
+-The image above shows a 21x5 lcdproc client rendered on the graphlcd-base's "image" driver
+-(FYI, this one creates PBM images in /tmp), which was configured at 256x128 pixel in
+-/etc/graphlcd.conf.
+-
+-
+-Download
+---------
+-
+-https://github.com/lucianm/GLCDprocDriver/downloads
+-
+-Please mind the version descriptions with regard to graphlcd-base compatibility.
+-
+-If you really want to try out GLCDprocDriver >= 0.1.0 you have to use
+-graphlcd-base greater than 0.1.9 or the ["touchcol" branch from their Git
+-repository](http://projects.vdr-developer.org/projects/graphlcd-base/repository/show?rev=touchcol)
+-
+-
+-Gentoo ebuilds, unless already available via portage:
+------------------------------------------------------
+-
+-You may add [this layman overlay](https://github.com/lucianm/gen2ovl-googoo2).
+-
+-
+-Installation
+-------------
+-
+-Please refer to the [INSTALL](https://github.com/lucianm/GLCDprocDriver/raw/master/INSTALL)
+-file in the source archive.
+-
+-
+-
+-History
+--------
+-
+-Please consult the [ChangeLog](https://github.com/lucianm/GLCDprocDriver/raw/master/ChangeLog)
+-file in the source archive.
+-
+-&copy; 2005 - 2012 Lucian Muresan

@@ -1,0 +1,57 @@
+#!/bin/sh
+
+prefix=/usr
+exec_prefix=${prefix}
+datarootdir=${prefix}/share
+export VDPAU_NVIDIA_NO_OVERLAY=1
+
+if [ -x ${exec_prefix}/bin/showiframe ]; then
+	if [ -f /etc/enigma2/backdrop.mvi ]; then
+		${exec_prefix}/bin/showiframe /etc/enigma2/backdrop.mvi
+	elif [ -f /etc/enigma2/bootlogo.mvi ]; then
+		${exec_prefix}/bin/showiframe /etc/enigma2/bootlogo.mvi
+	elif [ -f ${datarootdir}/bootlogo.mvi ]; then
+		${exec_prefix}/bin/showiframe ${datarootdir}/bootlogo.mvi
+	fi
+fi
+
+ps augxw | grep irxevent | grep -v grep >/dev/null || irxevent -d /etc/lirc/lircrc.enigma2pc
+ps augxw | grep irexec | grep -v grep >/dev/null || irexec -d /etc/lirc/lircrc.enigma2pc
+
+# hook to execute scripts always before enigma2 start
+if [ -x ${exec_prefix}/bin/enigma2_pre_start.sh ]; then
+	${exec_prefix}/bin/enigma2_pre_start.sh
+fi
+
+if [ -d /root ]; then
+	cd /root
+fi
+
+LIBS=${exec_prefix}/lib/libopen.so.0.0.0
+
+#check for receiver specific passthrough helper lib
+if [ -e ${exec_prefix}/lib/libpassthrough.so ]; then
+	LIBS="$LIBS ${exec_prefix}/lib/libpassthrough.so"
+fi
+
+x=$(xrandr | grep "\*" | awk '{print $1}' | cut -dx -f1)
+y=$(xrandr | grep "\*" | awk '{print $1}' | cut -dx -f2)
+
+[ x$x != "x" -a x$y != "x" ] && \
+sed -i -e "s/^config.pc.initial_window_width=.*/config.pc.initial_window_width=$x/g" \
+	-e "s/^config.pc.initial_window_height=.*/config.pc.initial_window_height=$y/g" /etc/enigma2/settings
+
+if [ -f /sys/class/drm/card0/device/vendor ]; then
+  VENDOR=$(cat /sys/class/drm/card0/device/vendor)
+  if [ $VENDOR = "0x10de" -o $VENDOR = "0x1002" ]; then
+    sed -i 's/^video.driver:.*/video.driver:vdpau/g' /usr/share/enigma2/xine.conf
+  elif [ $VENDOR = "0x8086" ]; then
+    sed -i 's/^video.driver:.*/video.driver:vaapi/g' /usr/share/enigma2/xine.conf
+  else
+    sed -i 's/^video.driver:.*/video.driver:xshm/g' /usr/share/enigma2/xine.conf
+  fi
+fi
+
+chvt 4
+sync
+LD_PRELOAD=$LIBS ${exec_prefix}/bin/enigma2

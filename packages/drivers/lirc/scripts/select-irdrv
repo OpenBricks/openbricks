@@ -1,0 +1,25 @@
+#!/bin/sh
+
+DIALOGTMP=/tmp/dialogtmp.$$
+RESULTTMP=/tmp/resulttmp.$$
+
+[ ! -d /sys/class/rc ] && exit
+ls /sys/class/rc/* >/dev/null 2>&1 || exit
+
+echo "dialog --backtitle \"IR configuration\" --title \"Select IR Device\" --clear --radiolist \"In this machine found the following infrared receiver devices. Please select a default device as Lirc support.\" 13 70 3 \\" > $DIALOGTMP
+item=on
+for i in /sys/class/rc/*; do
+  drv=$(grep DRV_NAME $i/uevent |sed 's/DRV_NAME=//g')
+  name=$(cat $i/input*/name)
+  echo "\"$drv\"" "\"$name\" $item \\" >> $DIALOGTMP
+  item=off
+done
+echo "2> $RESULTTMP" >> $DIALOGTMP
+. $DIALOGTMP
+
+drv=$(cat $RESULTTMP)
+sed -i "s/^DRV_NAME=.*/DRV_NAME=\"$drv\"/g" /etc/lirc/hardware.conf
+
+for i in $DIALOGTMP $RESULTTMP; do
+  [ -f $i ] && rm $i
+done

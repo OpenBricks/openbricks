@@ -1,0 +1,108 @@
+--- /root/openbricks/build/build.i386.eglibc/serdisplib-1.97.8/tools/Makefile.in	2008-07-30 23:05:37.000000000 +0200
++++ tools/Makefile.in	2010-10-02 21:14:22.000000000 +0200
+@@ -1,5 +1,5 @@
+ # Makefile for project 'serdisplib', sub-directory tools/
+-# (C) 2003-2008 by Wolfgang Astleitner
++# (C) 2003-2010 by Wolfgang Astleitner
+ 
+ VERSION=@PACKAGE_VERSION@
+ 
+@@ -24,7 +24,8 @@
+ INSTALL_DATA = @INSTALL_DATA@
+ 
+ #CFLAGS=@CFLAGS@ -ansi -Wall -Wno-implicit -fPIC -I../include -I..
+-CFLAGS=@CFLAGS@ -Wall -Wno-implicit -fPIC -I../include -I..
++#CFLAGS=@CFLAGS@ -Wall -Wno-implicit -fPIC -I../include -I..
++CFLAGS=-I../include -I.. @CFLAGS@ -Wall -fPIC
+ LDFLAGS=@LDFLAGS@
+ #LIBS=@LIBS@
+ # start w/ empty libs-list
+@@ -33,7 +34,7 @@
+ BINDIR=@bindir@
+ 
+ 
+-OBJECTS= image.o
++OBJECTS=
+ 
+ PROGRAMS=
+ 
+@@ -51,10 +52,10 @@
+  LIB_SERDISP=$(LIB_DIR)/$(LIB_STATIC)
+ endif
+ 
+-# link programs to shared libs only if libserdisp is linked statically
+-ifeq "@has_libusb@" "true"
+-  ifneq "@use_sharedlib@" "true"
+-    LIBS+=@LIBUSB_LIBS@
++# link programs to libdl if required by OS and libserdisp is linked statically
++ifeq "@needs_libdl@" "true"
++  ifeq "@use_sharedlib@" "false"
++    EXTRA_LIBS_STATIC=@EXTRA_LIBS_STATIC@
+   endif
+ endif
+ 
+@@ -62,9 +63,10 @@
+ # only compile multidisplay when libgd is available
+ ifeq "@has_libgd_headers@" "true"
+   ifeq "@has_libgd_lib@" "true"
+-    OBJECTS+= multidisplay.o
+     PROGRAMS += multidisplay
+-    LIBS += -lgd
++    EXTRA_LIBS += -lgd
++    OBJ_MULTIDISPLAY = image.o multidisplay.o
++    OBJECTS += $(OBJ_MULTIDISPLAY)
+ 
+     # special case sun solaris
+     ifeq "@has_libgd_opt_sfw_headers@" "true"
+@@ -73,6 +75,29 @@
+   endif
+ endif
+ 
++ifeq "@WITH_DRIVER_L4M@" "true"
++  PROGRAMS += l4m132c_tool
++  OBJ_L4M132C_TOOL = l4m132c_tool.o common.o
++  OBJECTS += $(OBJ_L4M132C_TOOL)
++endif
++
++ifeq "@WITH_DRIVER_ACOOLSDCM@" "true"
++  PROGRAMS += sdcmegtron_tool
++  OBJ_SDCMEGTRON_TOOL = sdcmegtron_tool.o common.o
++  OBJECTS += $(OBJ_SDCMEGTRON_TOOL)
++endif
++
++ifeq "@WITH_DRIVER_DDUSBT@" "true"
++  PROGRAMS += l4m320t_tool
++  ifeq "@has_libgd_headers@" "true"
++    ifeq "@has_libgd_lib@" "true"
++      EXTRA_LIBS_STATIC += -lgd
++    endif
++  endif
++  OBJ_L4M320T_TOOL = l4m320t_tool.o common.o
++  OBJECTS += $(OBJ_L4M320T_TOOL)
++endif
++
+ #CFLAGS=-ansi -Wall -Wno-implicit -O2
+ #CFLAGS=-g -ansi -Wall -Wno-implicit -fPIC -O2 -I../serdisplib -I..
+ 
+@@ -87,10 +112,19 @@
+ 	$(CC) $(CFLAGS) $(DEFINES)  -c $(INCLUDES) $<
+ 
+ multidisplay: $(LIB_DIR)/$(LIB_STATIC) $(OBJECTS)
+-	$(CC) -o multidisplay $(OBJECTS) $(LIB_SERDISP) $(TARGET_LDFLAGS) $(LIBS)
++	$(CC) -o multidisplay $(OBJ_MULTIDISPLAY) $(LIB_SERDISP) $(LDFLAGS) $(EXTRA_LIBS_STATIC) $(EXTRA_LIBS)
++
++l4m132c_tool: $(LIB_DIR)/$(LIB_STATIC) $(OBJECTS)
++	$(CC) -o l4m132c_tool $(OBJ_L4M132C_TOOL) $(LIB_SERDISP) $(LDFLAGS) $(EXTRA_LIBS_STATIC)
++
++sdcmegtron_tool: $(LIB_DIR)/$(LIB_STATIC) $(OBJECTS)
++	$(CC) -o sdcmegtron_tool $(OBJ_SDCMEGTRON_TOOL) $(LIB_SERDISP) $(LDFLAGS) $(EXTRA_LIBS_STATIC)
++
++l4m320t_tool: $(LIB_DIR)/$(LIB_STATIC) $(OBJECTS)
++	$(CC) -o l4m320t_tool $(OBJ_L4M320T_TOOL) $(LIB_SERDISP) $(LDFLAGS) $(EXTRA_LIBS_STATIC)
+ 
+ clean:
+-	/bin/rm -f $(OBJECTS)
++	/bin/rm -f *.o
+ 	/bin/rm -f *core* $(PROGRAMS)
+ 
+ distclean: clean
