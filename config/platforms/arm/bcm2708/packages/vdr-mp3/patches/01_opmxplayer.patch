@@ -1,0 +1,248 @@
+diff -urN vdr-mp3-0.10.2/mplayer.c vdr-mp3-0.10.2.omx/mplayer.c
+--- vdr-mp3-0.10.2/mplayer.c	2010-12-12 12:15:17.000000000 +0100
++++ vdr-mp3-0.10.2.omx/mplayer.c	2014-03-21 14:57:30.902110728 +0100
+@@ -361,19 +361,23 @@
+       case kFastRew|k_Repeat:
+       case kFastRew:
+       case kLeft|k_Repeat:
+-      case kLeft:    player->SkipSeconds(-10); break;
++      //case kLeft:    player->SkipSeconds(-10); break;
++      case kLeft:    player->KeyCmd("5"); break;
+ 
+       case kFastFwd|k_Repeat:
+       case kFastFwd:
+       case kRight|k_Repeat:
+-      case kRight:   player->SkipSeconds(10); break;
++      //case kRight:   player->SkipSeconds(10); break;
++      case kRight:   player->KeyCmd("6"); break;
+ 
+       case kRed:     Jump(); break;
+ 
+       case kGreen|k_Repeat:
+-      case kGreen:   player->SkipSeconds(-60); break;
++      //case kGreen:   player->SkipSeconds(-60); break;
++      case kGreen:   player->KeyCmd("5"); break;
+       case kYellow|k_Repeat:
+-      case kYellow:  player->SkipSeconds(60); break;
++      //case kYellow:  player->SkipSeconds(60); break;
++      case kYellow:  player->KeyCmd("6"); break;
+ 
+       case kNext:    player->SkipTrack(1,MPlayerSetup.PrevNextKeyMode!=0); break;
+       case kPrev:    player->SkipTrack(-1,MPlayerSetup.PrevNextKeyMode!=0); break;
+@@ -387,17 +391,25 @@
+       default:
+         DoShowMode = false;
+         switch(Key) {
+-          case kOk: if(visible && !modeOnly) { Hide(); DoShowMode=true; }
++/*          case kOk: if(visible && !modeOnly) { Hide(); DoShowMode=true; }
+                     else ShowTimed();
+-                    break;
++                    break;*/
++	    case kOk: 
++                     player->KeyCmd("z");
++                     break;
+           case kAudio:
+-                    player->KeyCmd("switch_audio");
++//                    player->KeyCmd("switch_audio");
++	            player->KeyCmd("k");
+                     break;
+-          case k0:
++//          case k0:
+           case k1:
+-          case k2:
++                    player->KeyCmd("3");
++                    break;
++//          case k2:
+           case k3:
+-          case k4:
++                    player->KeyCmd("4");
++                    break;
++/*          case k4:
+           case k5:
+           case k6:
+           case k7:
+@@ -406,7 +418,7 @@
+                     const char *cmd=MPlayerSetup.KeyCmd[Key-k0];
+                     if(cmd[0]) player->KeyCmd(cmd);
+                     }
+-                    break;
++                    break;*/
+           default:  break;
+           }
+         break;
+diff -urN vdr-mp3-0.10.2/player-mplayer.c vdr-mp3-0.10.2.omx/player-mplayer.c
+--- vdr-mp3-0.10.2/player-mplayer.c	2010-12-12 12:15:17.000000000 +0100
++++ vdr-mp3-0.10.2.omx/player-mplayer.c	2014-03-21 14:57:59.690111222 +0100
+@@ -320,13 +320,15 @@
+     run=false;
+     if(Active()) {
+       if(slave) {
+-        Play(); // MPlayer ignores "quit" while paused
+-        MPlayerControl("quit");
++//        Play(); // MPlayer ignores "quit" while paused
++        MPlayerControl("q");
+         cTimeMs until(3000); // wait some time until MPlayer is gone
+         d(printf("mplayer: waiting for child exit"))
+         while(Active()) {
+           if(until.TimedOut()) {
+             kill(pid,SIGKILL); // kill it anyways
++            system("killall -9 omxplayer");
++            system("killall -9 omxplayer.bin");
+             d(printf(" SIGKILL"))
+             break;
+             }
+@@ -337,6 +339,8 @@
+         }
+       else {
+         kill(pid,SIGTERM);
++        system("killall -9 omxplayer");
++        system("killall -9 omxplayer.bin");
+         d(printf("mplayer: waiting for child exit (non-slave)\n"))
+         }
+       waitpid(pid,0,0);
+@@ -412,6 +416,7 @@
+     fcntl(outpipe[0],F_SETFL,O_NONBLOCK);
+     run=slave=true;
+     mpVolume=100; // MPlayer startup defaults
++    mpPrevVolume=100;
+     mpMute=false;
+     Start();
+     }
+@@ -444,11 +449,11 @@
+     if(playMode==pmPlay && playBack) {
+       int t=time(0);
+       if(t>=nextTime) {
+-        MPlayerControl("get_time_length");
++//        MPlayerControl("get_time_length");
+         nextTime=t+(total>0 ? TIME_INT : POS_INT);
+         }
+       if(t>=nextPos) {
+-        if(!slavePatch) MPlayerControl("get_percent_pos");
++//        if(!slavePatch) MPlayerControl("get_percent_pos");
+         nextPos=t+POS_INT;
+         }
+       }
+@@ -478,14 +483,14 @@
+               playBack=true;
+               nextTime=nextPos=0;
+               d(printf("PLAYBACK STARTED\n"))
+-              if(resPos>=0.0) {
++/*              if(resPos>=0.0) {
+                 if(!currentName ||
+                    !strcmp(currentName,file->FullPath()) ||
+                    !strcmp(currentName,file->Path()))
+                   MPlayerControl("seek %.1f 1",resPos);
+                 else
+                   d(printf("mplayer: no resume, seems to be playlist\n"))
+-                }
++                }*/
+               }
+             }
+           else if(strncmp(buff,"Playing ",8)==0 ||
+@@ -563,14 +568,19 @@
+   bool mute;
+   Lock();
+   if(status->GetVolume(volume,mute) || force) {
+-    if(mute) {
+-      if(!mpMute) { MPlayerControl("mute"); mpMute=true; }
+-      }
+-    else {
+-      if(mpMute) { MPlayerControl("mute"); mpMute=false; }
++//    if(mute) {
++//      if(!mpMute) { MPlayerControl("mute"); mpMute=true; }
++//      }
++//    else {
++//      if(mpMute) { MPlayerControl("mute"); mpMute=false; }
+       if(volume!=mpVolume) {
+-        MPlayerControl("volume %d 1",volume);
++//        MPlayerControl("volume %d 1",volume);
+         mpVolume=volume;
++        if(mpVolume > mpPrevVolume)
++          MPlayerControl("y");
++        else
++          MPlayerControl("x");
++        mpPrevVolume=mpVolume;
+         }
+       }
+     d(printf("mplayer: volume=%d mpVolume=%d mpMute=%d\n",volume,mpVolume,mpMute))
+@@ -602,13 +612,6 @@
+             d(printf("mplayer: pipe write(1) failed: %s\n",strerror(errno)))
+             brokenPipe=true;
+             }
+-          else {
+-            r=write(inpipe[1],"\n",1);
+-            if(r<0) {
+-              d(printf("mplayer: pipe write(2) failed: %s\n",strerror(errno)))
+-              brokenPipe=true;
+-              }
+-            }
+           }
+         }
+       else if(r==0) d(printf("mplayer: poll timed out in MPlayerControl (hugh?)\n"))
+@@ -628,7 +631,7 @@
+     if(playMode==pmPaused) Play();
+     else if(playMode==pmPlay) {
+       playMode=pmPaused;
+-      MPlayerControl("pause");
++      MPlayerControl("p");
+       }
+     }
+ }
+@@ -638,31 +641,31 @@
+   if(slave) {
+     if(playMode==pmPaused) {
+       playMode=pmPlay;
+-      MPlayerControl("pause");
++      MPlayerControl("p");
+       }
+     }
+ }
+ 
+ void cMPlayerPlayer::Goto(int Index, bool percent, bool still)
+ {
+-  if(slave) {
+-    if(playMode==pmPaused) Play();
+-    if(percent) MPlayerControl("seek %d 1",Index);
+-    else        MPlayerControl("seek %+d 0",Index-(index/SecondsToFrames(1)));
+-    if(still) Pause();
+-    saveIndex=-1;
+-    }
++//  if(slave) {
++//    if(playMode==pmPaused) Play();
++//    if(percent) MPlayerControl("seek %d 1",Index);
++//    else        MPlayerControl("seek %+d 0",Index-(index/SecondsToFrames(1)));
++//    if(still) Pause();
++//    saveIndex=-1;
++//    }
+ }
+ 
+ void cMPlayerPlayer::SkipSeconds(int secs)
+ {
+-  if(slave) {
+-    bool p=false;
+-    if(playMode==pmPaused) { Play(); p=true; }
+-    MPlayerControl("seek %+d 0",secs);
+-    if(p) Pause();
+-    saveIndex=-1;
+-    }
++//  if(slave) {
++//    bool p=false;
++//    if(playMode==pmPaused) { Play(); p=true; }
++//    MPlayerControl("seek %+d 0",secs);
++//    if(p) Pause();
++//    saveIndex=-1;
++//    }
+ }
+ 
+ void cMPlayerPlayer::SkipTrack(int dir, bool chapter)
+diff -urN vdr-mp3-0.10.2/player-mplayer.h vdr-mp3-0.10.2.omx/player-mplayer.h
+--- vdr-mp3-0.10.2/player-mplayer.h	2010-12-12 12:15:17.000000000 +0100
++++ vdr-mp3-0.10.2.omx/player-mplayer.h	2014-03-21 14:57:59.694111221 +0100
+@@ -61,6 +61,7 @@
+   int index, total, saveIndex;
+   int nextTime, nextPos;
+   int mpVolume;
++  int mpPrevVolume;
+   bool mpMute;
+   char *currentName;
+   //

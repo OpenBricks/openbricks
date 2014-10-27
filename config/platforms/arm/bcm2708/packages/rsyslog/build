@@ -1,0 +1,45 @@
+#!/bin/sh
+
+. config/options
+
+#export LD_LIBRARY_PATH="$SYSROOT_PREFIX/lib:$SYSROOT_PREFIX/usr/local/lib:$SYSROOT_PREFIX/usr/lib:$LD_LIBRARY_PATH"
+#export CFLAGS="$CFLAGS -I$SYSROOT_PREFIX/usr/local/include"
+#export ac_default_prefix="$SYSROOT_PREFIX/usr/local/lib"
+#export CFLAGS="$CFLAGS -I$LIB_PREFIX/include/mysql"
+#export CFLAGS="$CFLAGS -I$SYSROOT_PREFIX/usr/local/include/mysql"
+##export MYSQL_CFLAGS="-I$SYSROOT_PREFIX/usr/local"
+##export CPPFLAGS="$CPPFLAGS -I$SYSROOT_PREFIX/usr/local"
+
+cd $BUILD/$1*
+#[ "$TARGET_CPU" = "generic" ] && MARCH="i686" 
+#[ "$TARGET_CPU" <> "generic" ] && MARCH=$TARGET_CPU 
+do_autoreconf -fvi
+
+do_configure target \
+	--libdir=/usr/lib \
+	--sbindir=/sbin \
+	--enable-mysql \
+	MYSQL_CFLAGS="-ISYSROOT_PREFIX/usr/local/include" \
+	--enable-mmnormalize \
+	--with-gnu-ld \
+	--enable-gnutls \
+	--enable-static \
+	--enable-extended-tests \
+	--enable-valgrind \
+	--enable-memcheck \
+	--enable-diagtools \
+	--enable-mysql \
+	--enable-omprog \
+	
+
+
+#	--disable-libgcrypt
+
+sed -i "s|#include <mysql.h>|#include <$SYSROOT_PREFIX/usr/local/include/mysql/mysql.h>|" plugins/ommysql/ommysql.c
+
+make
+make_install
+rm .install/lib/systemd/system/rsyslog.service
+mkdir -p .install/etc
+cp $PLATFORM_PACKAGES/$1/config/rsyslog.conf .install/etc
+#cp $ROOT/$PACKAGES/$1/config/rsyslog.conf .install/etc
