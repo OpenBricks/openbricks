@@ -1,0 +1,77 @@
+diff -upr linux/drivers/media/tuners/mxl5007t.c linux.new/drivers/media/tuners/mxl5007t.c
+--- linux/drivers/media/tuners/mxl5007t.c	2012-08-14 05:45:22.000000000 +0200
++++ linux.new/drivers/media/tuners/mxl5007t.c	2013-01-10 19:23:09.247556275 +0100
+@@ -374,7 +374,6 @@ static struct reg_pair_t *mxl5007t_calc_
+ 	mxl5007t_set_if_freq_bits(state, cfg->if_freq_hz, cfg->invert_if);
+ 	mxl5007t_set_xtal_freq_bits(state, cfg->xtal_freq_hz);
+ 
+-	set_reg_bits(state->tab_init, 0x04, 0x01, cfg->loop_thru_enable);
+ 	set_reg_bits(state->tab_init, 0x03, 0x08, cfg->clk_out_enable << 3);
+ 	set_reg_bits(state->tab_init, 0x03, 0x07, cfg->clk_out_amp);
+ 
+@@ -531,9 +530,12 @@ static int mxl5007t_tuner_init(struct mx
+ 	struct reg_pair_t *init_regs;
+ 	int ret;
+ 
+-	ret = mxl5007t_soft_reset(state);
+-	if (mxl_fail(ret))
++	if (!state->config->no_reset) {
++		ret = mxl5007t_soft_reset(state);
++		if (mxl_fail(ret))
+ 		goto fail;
++	}
++
+ 
+ 	/* calculate initialization reg array */
+ 	init_regs = mxl5007t_calc_init_regs(state, mode);
+@@ -887,7 +889,12 @@ struct dvb_frontend *mxl5007t_attach(str
+ 		if (fe->ops.i2c_gate_ctrl)
+ 			fe->ops.i2c_gate_ctrl(fe, 1);
+ 
+-		ret = mxl5007t_get_chip_id(state);
++		if (!state->config->no_probe)
++			ret = mxl5007t_get_chip_id(state);
++
++		ret = mxl5007t_write_reg(state, 0x04,
++			state->config->loop_thru_enable);
++
+ 
+ 		if (fe->ops.i2c_gate_ctrl)
+ 			fe->ops.i2c_gate_ctrl(fe, 0);
+diff -upr linux/drivers/media/tuners/mxl5007t.h linux.new/drivers/media/tuners/mxl5007t.h
+--- linux/drivers/media/tuners/mxl5007t.h	2012-08-14 05:45:22.000000000 +0200
++++ linux.new/drivers/media/tuners/mxl5007t.h	2013-01-10 19:19:11.204379581 +0100
+@@ -73,8 +73,10 @@ struct mxl5007t_config {
+ 	enum mxl5007t_xtal_freq xtal_freq_hz;
+ 	enum mxl5007t_if_freq if_freq_hz;
+ 	unsigned int invert_if:1;
+-	unsigned int loop_thru_enable:1;
++	unsigned int loop_thru_enable:3;
+ 	unsigned int clk_out_enable:1;
++	unsigned int no_probe:1;
++	unsigned int no_reset:1;
+ };
+ 
+ #if defined(CONFIG_MEDIA_TUNER_MXL5007T) || (defined(CONFIG_MEDIA_TUNER_MXL5007T_MODULE) && defined(MODULE))
+diff -upr linux/drivers/media/usb/dvb-usb-v2/af9035.c linux.new/drivers/media/usb/dvb-usb-v2/af9035.c
+--- linux/drivers/media/usb/dvb-usb-v2/af9035.c	2013-01-07 05:45:57.000000000 +0100
++++ linux.new/drivers/media/usb/dvb-usb-v2/af9035.c	2013-01-12 00:30:57.557310465 +0100
+@@ -886,13 +886,17 @@ static struct mxl5007t_config af9035_mxl
+ 		.loop_thru_enable = 0,
+ 		.clk_out_enable = 0,
+ 		.clk_out_amp = MxL_CLKOUT_AMP_0_94V,
++		.no_probe = 1,
++		.no_reset = 1,
+ 	}, {
+ 		.xtal_freq_hz = MxL_XTAL_24_MHZ,
+ 		.if_freq_hz = MxL_IF_4_57_MHZ,
+ 		.invert_if = 0,
+-		.loop_thru_enable = 1,
++		.loop_thru_enable = 3,
+ 		.clk_out_enable = 1,
+ 		.clk_out_amp = MxL_CLKOUT_AMP_0_94V,
++		.no_probe = 1,
++		.no_reset = 1,
+ 	}
+ };
+ 

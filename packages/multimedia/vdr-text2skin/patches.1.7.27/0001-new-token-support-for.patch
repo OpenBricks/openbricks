@@ -1,0 +1,120 @@
+From f267fccb8bd923e9d11efb447bb1179e6dbef43d Mon Sep 17 00:00:00 2001
+From: NemoN <thomas.oeding@gmx.de>
+Date: Mon, 7 Nov 2011 14:02:44 +0100
+Subject: [PATCH] new token support for: - UsedDiskSpace - TotalDiskSpace -
+ VideoSizeWidth - VideoSizeHeight
+
+---
+ Docs/Reference.txt |    4 ++++
+ display.c          |   26 +++++++++++++++++++++++++-
+ render.c           |   12 ++++++++++++
+ xml/string.c       |    2 +-
+ xml/string.h       |    4 ++++
+ 5 files changed, 46 insertions(+), 2 deletions(-)
+
+diff --git a/Docs/Reference.txt b/Docs/Reference.txt
+index d0bc1ad..48816f6 100644
+--- a/Docs/Reference.txt
++++ b/Docs/Reference.txt
+@@ -610,6 +610,10 @@ Defines an item for the list.
+ | FreeDiskSpace          |                           | Remaining free disk space in MB
+ |                        |                           |  Attribute: return as formatted time.
+ -----------------------------------------------------------------------------
++| UsedDiskSpace          |                           | Used disk space in MB
++-----------------------------------------------------------------------------
++| TotalDiskSpace         |                           | Total disk space in MB
++-----------------------------------------------------------------------------
+ | CanScrollUp            |                           | True, if scrollable text can be scrolled up
+ -----------------------------------------------------------------------------
+ | CanScrollDown          |                           | True, if scrollable text can be scrolled down
+diff --git a/display.c b/display.c
+index 577f2a6..93086e5 100644
+--- a/display.c
++++ b/display.c
+@@ -243,7 +243,31 @@ cxType cText2SkinDisplayChannel::GetTokenData(const txToken &Token)
+ 			return (cxType)false;
+ 		}
+ 		return false;
+-		
++
++	case tVideoSizeWidth:    {
++#if VDRVERSNUM >= 10707
++			int width, height;
++			double aspect;
++			cDevice *dev = cDevice::PrimaryDevice();
++			dev->GetVideoSize(width, height, aspect);
++			return (cxType)width;
++#else
++			return 0;
++#endif
++		}
++
++	case tVideoSizeHeight:    {
++#if VDRVERSNUM >= 10707
++			int width, height;
++			double aspect;
++			cDevice *dev = cDevice::PrimaryDevice();
++			dev->GetVideoSize(width, height, aspect);
++			return (cxType)height;
++#else
++			return 0;
++#endif
++		}
++
+ 	case tHasTeletext:
+ 	case tChannelHasTeletext:
+ 		return mChannel != NULL && mChannel->Tpid() != 0;
+diff --git a/render.c b/render.c
+index 49e5fdc..20b6976 100644
+--- a/render.c
++++ b/render.c
+@@ -821,6 +821,18 @@ cxType cText2SkinRender::GetTokenData(const txToken &Token)
+ 			       : (cxType)FreeMB;
+ 		}
+ 
++	case tUsedDiskSpace: {
++			int FreeMB, UsedMB;
++			VideoDiskSpace(&FreeMB, &UsedMB);
++			return (cxType)UsedMB;
++		}
++
++	case tTotalDiskSpace: {
++			int FreeMB, UsedMB;
++			VideoDiskSpace(&FreeMB, &UsedMB);
++			return (cxType)FreeMB+UsedMB;
++		}
++
+ 	case tDateTime:      return TimeType(time(NULL), Token.Attrib.Text);
+ 
+ 	case tCanScrollUp:
+diff --git a/xml/string.c b/xml/string.c
+index 230a8f3..dda65bb 100644
+--- a/xml/string.c
++++ b/xml/string.c
+@@ -4,7 +4,7 @@
+ #include "render.h"
+ 
+ static const char *Tokens[__COUNT_TOKEN__] = {
+-	"DateTime", "FreeDiskSpace", "AudioTrack", "AudioChannel",
++	"DateTime", "FreeDiskSpace", "UsedDiskSpace", "TotalDiskSpace", "VideoSizeWidth", "VideoSizeHeight", "AudioTrack", "AudioChannel",
+ 
+ 	// Channel Display
+ 	"ChannelNumber", "ChannelName", "ChannelShortName", "ChannelBouquet", "ChannelPortal", 
+diff --git a/xml/string.h b/xml/string.h
+index 3fd6361..2bc1388 100644
+--- a/xml/string.h
++++ b/xml/string.h
+@@ -10,6 +10,10 @@
+ enum exToken {
+ 	tDateTime,
+ 	tFreeDiskSpace,
++	tUsedDiskSpace,
++	tTotalDiskSpace,
++	tVideoSizeWidth,
++	tVideoSizeHeight,
+ 	tAudioTrack,
+ 	tAudioChannel,
+ 
+-- 
+1.7.4.4
+

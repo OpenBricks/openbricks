@@ -1,0 +1,105 @@
+--- vdr-loadepg-0.2.5/loadepg.c.org	2013-01-21 18:55:00.000000000 +0100
++++ vdr-loadepg-0.2.5/loadepg.c	2014-03-03 21:02:45.663049528 +0100
+@@ -2270,8 +2270,9 @@
+   int p;
+   unsigned short int ChannelId;
+   unsigned short int MjdTime;
+-  int Len1;
+-  int Len2;
++  unsigned short int DescriptorTag;
++  int DescriptorLength;
++  int SummaryLength;
+   
+   if(Length < 20)
+   {
+@@ -2295,53 +2296,47 @@
+       if(MjdTime > 0)
+       {
+         p = 10;
+-        loop1:;
+-        sSummary *S = (lSummaries + nSummaries);
+-        S->ChannelId = ChannelId;
+-        S->MjdTime = MjdTime;
+-        S->EventId = (Data[p] << 8) | Data[p+1];
+-        Len1 = ((Data[p+2] & 0x0f) << 8) | Data[p+3];
+-        if(Data[p+4] != 0xb9)
++        while(p < Length)
+         {
+-          if(DEBUG)
++          sSummary *S = (lSummaries + nSummaries);
++          S->ChannelId = ChannelId;
++          S->MjdTime = MjdTime;
++          S->EventId = (Data[p] << 8) | Data[p+1];
++          SummaryLength = ((Data[p+2] & 0x0f) << 8) | Data[p+3];
++          p += 4;
++          while(SummaryLength > 0)
+           {
+-            esyslog("LoadEPG: Data error signature for summary");
++            DescriptorTag = Data[p];
++            DescriptorLength = Data[p+1];
++            p += 2;
++            switch(DescriptorTag)
++            {
++              case 0xb9:
++                S->pData = pS;
++                S->lenData = DescriptorLength;
++                if((pS + DescriptorLength) >= MAX_BUFFER_SIZE_SUMMARIES)
++                {
++                  esyslog("LoadEPG: Error, buffer overflow, summaries size more than %i bytes", MAX_BUFFER_SIZE_SUMMARIES);
++                  IsError = true;
++                  return;
++                }
++                memcpy(&bSummaries[pS], &Data[p], DescriptorLength);
++                pS += (DescriptorLength + 1);
++                nSummaries ++;
++                if(nSummaries >= MAX_SUMMARIES)
++                {
++                  esyslog("LoadEPG: Error, summaries found more than %i", MAX_SUMMARIES);
++                  IsError = true;
++                  return;
++                }
++                break;
++              default:
++                break;
++            }
++            SummaryLength -= (DescriptorLength + 2);
++            p += DescriptorLength;
+           }
+-          goto endloop1;
+         }
+-        if(Len1 > Length)
+-        {
+-          if(DEBUG)
+-          {
+-            esyslog("LoadEPG: Data error length for summary");
+-          }
+-          goto endloop1;
+-        }
+-        p += 4;
+-        Len2 = Data[p+1];
+-        S->pData = pS;
+-        S->lenData = Len2;
+-        if((pS + Len2 + 2) > MAX_BUFFER_SIZE_SUMMARIES)
+-        {
+-          esyslog("LoadEPG: Error, buffer overflow, summaries size more than %i bytes", MAX_BUFFER_SIZE_SUMMARIES);
+-          IsError = true;
+-          return;
+-        }
+-        memcpy(&bSummaries[pS], &Data[p+2], Len2);
+-        pS += (Len2 + 1);
+-        p += Len1;
+-        nSummaries ++;
+-        if(nSummaries >= MAX_SUMMARIES)
+-        {
+-          esyslog("LoadEPG: Error, summaries found more than %i", MAX_SUMMARIES);
+-          IsError = true;
+-          return;
+-        }
+-        if(p < Length)
+-        {
+-          goto loop1;
+-        }
+-        endloop1:;
+       }
+     }
+   }

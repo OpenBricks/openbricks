@@ -1,0 +1,76 @@
+#!/bin/sh
+# SNAKE OS - 2009-08-21
+# Called by mdev on USB device insertion and removal
+# Input variables: $MDEV $ACTION
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin
+
+MDEV=$1
+PART=${MDEV#sd?*}
+MINOR=${PART:-0}
+ACTION=${2:-add}
+
+if [ ! $((${MINOR}%16)) -eq 0 ] ; then
+
+    if [ "$ACTION" = "add" ] ; then
+
+        if [ -f /etc/default/diskname ] ; then
+                DISKID=$(blkid | grep "^/dev/$MDEV" | sed 's/[ "]//g' | tr '=' '_' | cut -d : -f 2)
+                MPOINT=$(grep "^${DISKID}:" /etc/default/diskname | cut -d : -f 2)
+        fi
+        MPOINT=${MPOINT:-$MDEV}
+
+	    if [ $(grep "^/dev/$MDEV" /proc/mounts | wc -l) -eq 0 ] ; then
+	        mkdir -p /usb/$MPOINT
+	        mount /dev/$MDEV /usb/$MPOINT -o exec,dev,noatime,suid,rw > /dev/null 2>&1
+	        ntfs-3g /dev/$MDEV /usb/$MPOINT -o noatime,recover,permissions > /dev/null 2>&1
+
+	        sleep 1
+
+	        # Detect if SWAP in use and attempt to autostart it
+	                /etc/init.d/swapsvc autostart > /dev/null 2>&1
+
+	        sleep 1
+
+		if [ "$MPOINT" = $(grep "opkg_disk=" /etc/default/config | cut -d '=' -f 2) ]; then
+		    /etc/init.d/opkg link $MPOINT
+		fi
+
+		if [ -d /opt/etc/automount.d ]; then
+		    for service in /opt/etc/automount.d/*; do
+			sh $service $MPOINT add
+		    done
+		fi
+	    fi
+
+    else
+        MPOINT=$(grep "^/dev/$MDEV" /proc/mounts | cut -d ' ' -f 2 | cut -d '/' -f 3)
+
+	if [ -d /opt/etc/automount.d ]; then
+	    for service in /opt/etc/automount.d/*; do
+		sh $service $MPOINT remove
+	    done
+	fi
+
+        if [ "$MPOINT" = $(grep "opkg_disk=" /etc/default/config | cut -d '=' -f 2) ]; then
+            /etc/init.d/opkg unlink
+        fi
+
+        # Detect if SWAP is in use and attempt to stop it
+        SWAP_MOUNTED=$(sed -n 's,^\(/usb/\)\(sd[a-z][0-9]\).*$,\2,p' /proc/swaps)
+        if [ "$SWAP_MOUNTED" = "$MPOINT" ] ; then
+                /etc/init.d/swapsvc stop > /dev/null 2>&1
+        fi
+
+        umount -f /dev/$MDEV > /dev/null 2>&1
+        sleep 1
+        umount -lf /dev/$MDEV > /dev/null 2>&1
+        sleep 1
+        for FOLDER in $(ls /usb -1) ; do
+
+            if [ $(sed -n 's,^\(/dev/\)\(sd[a-z][0-9]\).*$,\2,p' /proc/mounts | grep "^${FOLDER}$" | wc -l) -eq 0 ] ; then
+               rmdir /usb/${FOLDER}
+            fi
+        done
+    fi
+fi
+

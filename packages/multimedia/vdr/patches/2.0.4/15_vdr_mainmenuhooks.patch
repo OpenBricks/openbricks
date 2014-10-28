@@ -1,0 +1,109 @@
+diff -urN vdr-2.0.4.org/config.h vdr-2.0.4/config.h
+--- vdr-2.0.4.org/config.h	2013-10-25 09:34:55.068670805 +0200
++++ vdr-2.0.4/config.h	2013-10-25 09:35:09.684671056 +0200
+@@ -38,6 +38,10 @@
+ 
+ #define JUMPPLAYVERSNUM 110
+ 
++// The MainMenuHook Patch's version number:
++#define MAINMENUHOOKSVERSION "1.0.1"
++#define MAINMENUHOOKSVERSNUM 10001  // Version * 10000 + Major * 100 + Minor
++
+ #define MAXPRIORITY       99
+ #define MINPRIORITY       (-MAXPRIORITY)
+ #define LIVEPRIORITY      0                  // priority used when selecting a device for live viewing
+diff -urN vdr-2.0.4.org/menu.c vdr-2.0.4/menu.c
+--- vdr-2.0.4.org/menu.c	2013-10-25 09:34:54.848670802 +0200
++++ vdr-2.0.4/menu.c	2013-10-25 09:38:29.272674482 +0200
+@@ -3554,15 +3554,31 @@
+ 
+   // Initial submenus:
+ 
++  cOsdObject *menu = NULL;
+   switch (State) {
+-    case osSchedule:   AddSubMenu(new cMenuSchedule); break;
+-    case osChannels:   AddSubMenu(new cMenuChannels); break;
+-    case osTimers:     AddSubMenu(new cMenuTimers); break;
+-    case osRecordings: AddSubMenu(new cMenuRecordings(NULL, 0, OpenSubMenus)); break;
+-    case osSetup:      AddSubMenu(new cMenuSetup); break;
+-    case osCommands:   AddSubMenu(new cMenuCommands(tr("Commands"), &Commands)); break;
++    case osSchedule:
++        if (!cPluginManager::CallFirstService("MainMenuHooksPatch-v1.0::osSchedule", &menu))
++            menu = new cMenuSchedule;
++        break;
++    case osChannels:
++        if (!cPluginManager::CallFirstService("MainMenuHooksPatch-v1.0::osChannels", &menu))
++            menu = new cMenuChannels;
++        break;
++    case osTimers:
++        if (!cPluginManager::CallFirstService("MainMenuHooksPatch-v1.0::osTimers", &menu))
++            menu = new cMenuTimers;
++        break;
++    case osRecordings:
++        if (!cPluginManager::CallFirstService("MainMenuHooksPatch-v1.0::osRecordings", &menu))
++            menu = new cMenuRecordings(NULL, 0, true);
++        break;
++    case osSetup:      menu = new cMenuSetup; break;
++    case osCommands:   menu = new cMenuCommands(tr("Commands"), &Commands); break;
+     default: break;
+     }
++  if (menu)
++     if (menu->IsMenu())
++        AddSubMenu((cOsdMenu *) menu);
+ }
+ 
+ cOsdObject *cMenuMain::PluginOsdObject(void)
+@@ -3683,13 +3699,34 @@
+   eOSState state = cOsdMenu::ProcessKey(Key);
+   HadSubMenu |= HasSubMenu();
+ 
++  cOsdObject *menu = NULL;
+   switch (state) {
+-    case osSchedule:   return AddSubMenu(new cMenuSchedule);
+-    case osChannels:   return AddSubMenu(new cMenuChannels);
+-    case osTimers:     return AddSubMenu(new cMenuTimers);
+-    case osRecordings: return AddSubMenu(new cMenuRecordings);
+-    case osSetup:      return AddSubMenu(new cMenuSetup);
+-    case osCommands:   return AddSubMenu(new cMenuCommands(tr("Commands"), &Commands));
++    case osSchedule:
++        if (!cPluginManager::CallFirstService("MainMenuHooksPatch-v1.0::osSchedule", &menu))
++            menu = new cMenuSchedule;
++        else
++            state = osContinue;
++        break;
++    case osChannels:
++        if (!cPluginManager::CallFirstService("MainMenuHooksPatch-v1.0::osChannels", &menu))
++            menu = new cMenuChannels;
++        else
++            state = osContinue;
++        break;
++    case osTimers:
++        if (!cPluginManager::CallFirstService("MainMenuHooksPatch-v1.0::osTimers", &menu))
++            menu = new cMenuTimers;
++        else
++            state = osContinue;
++        break;
++    case osRecordings:
++        if (!cPluginManager::CallFirstService("MainMenuHooksPatch-v1.0::osRecordings", &menu))
++            menu = new cMenuRecordings;
++        else
++            state = osContinue;
++        break;
++    case osSetup:      menu = new cMenuSetup; break;
++    case osCommands:   menu = new cMenuCommands(tr("Commands"), &Commands); break;
+     case osStopRecord: if (Interface->Confirm(tr("Stop recording?"))) {
+                           cOsdItem *item = Get(Current());
+                           if (item) {
+@@ -3747,6 +3784,12 @@
+                default:      break;
+                }
+     }
++  if (menu) {
++     if (menu->IsMenu())
++        return AddSubMenu((cOsdMenu *) menu);
++     pluginOsdObject = menu;
++     return osPlugin;
++  }
+   if (!HasSubMenu() && Update(HadSubMenu))
+      Display();
+   if (Key != kNone) {

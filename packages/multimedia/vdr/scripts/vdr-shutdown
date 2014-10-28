@@ -1,0 +1,55 @@
+#!/bin/sh
+#
+# VDR Shutdown Script  - Tobias Grimm <tg@e-tobi.net>
+# -------------------
+#
+# see README.Debian
+#
+
+. /usr/lib/vdr/config-loader.sh
+
+SHUTDOWN_HOOKS_DIR=/usr/share/vdr/shutdown-hooks/
+
+log="logger -t vdr-shutdown"
+svdrpsend="/usr/lib/vdr/svdrpsend.pl"
+
+osdmsg()
+{
+    # OSD message must be deferred, to let VDR display it AFTER the
+    # shutdown script has been executed
+    sleep 2
+    $svdrpsend MESG "$1"
+}
+
+shutdownhooks=`find $SHUTDOWN_HOOKS_DIR -maxdepth 1 -xtype f | sort`
+
+for shutdownhook in $shutdownhooks; do
+    TRY_AGAIN=0
+
+    if [ -x $shutdownhook ]; then
+        $log "executing $shutdownhook"
+        result_data=`$shutdownhook "$@"`
+    else
+        $log "executing $shutdownhook as shell script"
+        result_data=`/bin/sh $shutdownhook "$@"`
+    fi
+    result=$?
+    eval $result_data
+    if [ $result -ne 0 ] ; then
+        $log "Shutdown aborted by $shutdownhook with exitcode $result"
+        osdmsg "Shutdown abgebrochen / Shutdown aborted!" &
+        [ -z "$ABORT_MESSAGE" ] || osdmsg "$ABORT_MESSAGE" &
+        exit $result
+    fi
+
+    if [ $TRY_AGAIN -gt 0 ]
+    then
+        $log "$shutdownhook requests to try again in $TRY_AGAIN minutes"
+        nohup sh -c "( sleep $(( $TRY_AGAIN * 60 )) && $svdrpsend \"HITK Power\" )" >/dev/null 2>&1 &
+        osdmsg "Shutdown aborted. Retry in $TRY_AGAIN minutes." &
+        exit 0
+    fi
+done
+
+eval $SHUTDOWNCMD &
+

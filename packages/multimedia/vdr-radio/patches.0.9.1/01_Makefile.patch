@@ -1,0 +1,144 @@
+--- vdr-radio-0.9.1/Makefile	2013-02-10 09:41:06.000000000 +0100
++++ vdr-radio-0.9.1/Makefile.radio	2013-02-11 21:59:35.748851977 +0100
+@@ -6,110 +6,85 @@
+ # The official name of this plugin.
+ # This name will be used in the '-P...' option of VDR to load the plugin.
+ # By default the main source file also carries this name.
+-
++#
+ PLUGIN = radio
+ 
+ ### The version number of this plugin (taken from the main source file):
+-
+ VERSION = $(shell grep 'static const char \*VERSION *=' $(PLUGIN).c | awk '{ print $$6 }' | sed -e 's/[";]//g')
+ 
+-### The directory environment:
+-
+-# Use package data if installed...otherwise assume we're under the VDR source directory:
+-PKGCFG = $(if $(VDRDIR),$(shell pkg-config --variable=$(1) $(VDRDIR)/vdr.pc),$(shell pkg-config --variable=$(1) vdr || pkg-config --variable=$(1) ../../../vdr.pc))
+-LIBDIR = $(call PKGCFG,libdir)
+-LOCDIR = $(call PKGCFG,locdir)
+-PLGCFG = $(call PKGCFG,plgcfg)
+-#
+-TMPDIR ?= /tmp
+-
+-### The compiler options:
+-
+-export CFLAGS   = $(call PKGCFG,cflags)
+-export CXXFLAGS = $(call PKGCFG,cxxflags)
+-
+-### The version number of VDR's plugin API:
++### The C++ compiler and options:
++CXX      ?= g++
++CXXFLAGS ?= -fPIC -O2 -Wall -Werror=overloaded-virtual -g
+ 
+-APIVERSION = $(call PKGCFG,apiversion)
++### The directory environment:
++#DVBDIR = ../../../../DVB
++VDRDIR = ../../..
++LIBDIR = ../../lib
++TMPDIR = /tmp
+ 
+ ### Allow user defined options to overwrite defaults:
++-include $(VDRDIR)/Make.config
+ 
+--include $(PLGCFG)
++### The version number of VDR (taken from VDR's "config.h"):
++APIVERSION = $(shell grep 'define APIVERSION ' $(VDRDIR)/config.h | awk '{ print $$3 }' | sed -e 's/"//g')
+ 
+ ### The name of the distribution archive:
+-
+ ARCHIVE = $(PLUGIN)-$(VERSION)
+ PACKAGE = vdr-$(ARCHIVE)
+ 
+-### The name of the shared object file:
+-
+-SOFILE = libvdr-$(PLUGIN).so
+-
+ ### Includes and Defines (add further entries here):
+-
+-INCLUDES +=
+-
+-DEFINES += -DPLUGIN_NAME_I18N='"$(PLUGIN)"'
++INCLUDES += -I$(VDRDIR)/include -I$(DVBDIR)/include
++DEFINES += -D_GNU_SOURCE -DPLUGIN_NAME_I18N='"$(PLUGIN)"'
++DEFINES += -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE
+ 
+ ### The object files (add further files here):
+-
+ OBJS = $(PLUGIN).o radioaudio.o radioskin.o radiotools.o radioepg.o inforx.o
+ 
+-### The main target:
+-
+-all: $(SOFILE) i18n
+ 
+ ### Implicit rules:
+-
+ %.o: %.c
+-	$(CXX) $(CXXFLAGS) -c $(DEFINES) $(INCLUDES) -o $@ $<
+-
+-### Dependencies:
++	$(CXX) $(CXXFLAGS) -c $(DEFINES) $(INCLUDES) $<
+ 
++# Dependencies:
+ MAKEDEP = $(CXX) -MM -MG
+ DEPFILE = .dependencies
+ $(DEPFILE): Makefile
+-	@$(MAKEDEP) $(CXXFLAGS) $(DEFINES) $(INCLUDES) $(OBJS:%.o=%.c) > $@
++	@$(MAKEDEP) $(DEFINES) $(INCLUDES) $(OBJS:%.o=%.c) > $@
+ 
+ -include $(DEPFILE)
+ 
+ ### Internationalization (I18N):
+-
+ PODIR     = po
++LOCALEDIR = $(VDRDIR)/locale
+ I18Npo    = $(wildcard $(PODIR)/*.po)
+-I18Nmo    = $(addsuffix .mo, $(foreach file, $(I18Npo), $(basename $(file))))
+-I18Nmsgs  = $(addprefix $(DESTDIR)$(LOCDIR)/, $(addsuffix /LC_MESSAGES/vdr-$(PLUGIN).mo, $(notdir $(foreach file, $(I18Npo), $(basename $(file))))))
++I18Nmsgs  = $(addprefix $(LOCALEDIR)/, $(addsuffix /LC_MESSAGES/vdr-$(PLUGIN).mo, $(notdir $(foreach file, $(I18Npo), $(basename $(file))))))
+ I18Npot   = $(PODIR)/$(PLUGIN).pot
+ 
+ %.mo: %.po
+ 	msgfmt -c -o $@ $<
+ 
+ $(I18Npot): $(wildcard *.c)
+-	xgettext -C -cTRANSLATORS --no-wrap --no-location -k -ktr -ktrNOOP --package-name=vdr-$(PLUGIN) --package-version=$(VERSION) --msgid-bugs-address='<see README>' -o $@ `ls $^`
++	xgettext -C -cTRANSLATORS --no-wrap --no-location -k -ktr -ktrNOOP --msgid-bugs-address='<nobody@nowhere.org>' -o $@ $^
+ 
+ %.po: $(I18Npot)
+-	msgmerge -U --no-wrap --no-location --backup=none -q -N $@ $<
++	msgmerge -U --no-wrap --no-location --backup=none -q $@ $<
+ 	@touch $@
+ 
+-$(I18Nmsgs): $(DESTDIR)$(LOCDIR)/%/LC_MESSAGES/vdr-$(PLUGIN).mo: $(PODIR)/%.mo
+-	install -D -m644 $< $@
++$(I18Nmsgs): $(LOCALEDIR)/%/LC_MESSAGES/vdr-$(PLUGIN).mo: $(PODIR)/%.mo
++	@mkdir -p $(dir $@)
++	cp $< $@
+ 
+ .PHONY: i18n
+-i18n: $(I18Nmo) $(I18Npot)
+-
+-install-i18n: $(I18Nmsgs)
++i18n: $(I18Nmsgs)
+ 
+ ### Targets:
++all: libvdr-$(PLUGIN).so i18n
+ 
+-$(SOFILE): $(OBJS)
+-	$(CXX) $(CXXFLAGS) $(LDFLAGS) -shared $(OBJS) -o $@
+-
+-install-lib: $(SOFILE)
+-	install -D $^ $(DESTDIR)$(LIBDIR)/$^.$(APIVERSION)
+-
+-install: install-lib install-i18n
++libvdr-$(PLUGIN).so: $(OBJS)
++	$(CXX) $(CXXFLAGS) -shared $(OBJS) -o $@
++	@cp $@ $(LIBDIR)/$@.$(APIVERSION)
+ 
+-dist: $(I18Npo) clean
++dist: clean 
+ 	@-rm -rf $(TMPDIR)/$(ARCHIVE)
+ 	@mkdir $(TMPDIR)/$(ARCHIVE)
+ 	@cp -a * $(TMPDIR)/$(ARCHIVE)

@@ -1,0 +1,105 @@
+--- /root/openbricks/build/build.i386.eglibc/serdisplib-1.97.8/src/Makefile.in	2008-07-30 23:05:37.000000000 +0200
++++ src/Makefile.in	2011-03-20 15:21:52.000000000 +0100
+@@ -1,5 +1,5 @@
+ # Makefile for project 'serdisplib', sub-directory src/
+-# (C) 2003-2008 by Wolfgang Astleitner
++# (C) 2003-2011 by Wolfgang Astleitner
+ 
+ VERSION=@PACKAGE_VERSION@
+ 
+@@ -15,6 +15,11 @@
+  SONAME_FLAG=
+ endif
+ 
++ifeq "@cypress_paranoia@" "false"
++# disable paranoia mode for cypress based display modules
++ DEFINES+=-DSDCONN_ENABLE_CYPRESS_LIBUSB
++endif
++
+ SHELL = /bin/sh
+ VPATH = @srcdir@
+ 
+@@ -36,15 +41,17 @@
+ INSTALL_DATA = @INSTALL_DATA@
+ 
+ # libusb/usb.h don't go together with -ansi
+-CFLAGS=@CFLAGS@ -Wall -Wno-implicit -fPIC -I../include -I..
++#CFLAGS=@CFLAGS@ -Wall -Wno-implicit -fPIC -I../include -I..
++CFLAGS=-I../include -I.. @CFLAGS@ -Wall -fPIC
+ LDFLAGS=@LDFLAGS@
+ LIBS=@LIBS@
++
+ #CFLAGS=@CFLAGS@ -ansi -Wall -Wno-implicit -fPIC -I../include -I..
+ #CFLAGS=-ansi -Wall -Wno-implicit -O2
+ #CFLAGS=-g -ansi -Wall -Wno-implicit -fPIC -O2 -I. -I../include
+ 
+ 
+-LIB_OBJECTS=serdisp_control.o serdisp_connect.o \
++LIB_OBJECTS=serdisp_fctptr.o serdisp_control.o serdisp_connect.o serdisp_gpevents.o serdisp_proccmd.o \
+ 			serdisp_colour.o serdisp_tools.o serdisp_messages.o
+ 
+ LIB_HEADERFILES=serdisp.h serdisp_control.h serdisp_connect.h serdisp_messages.h \
+@@ -72,10 +79,15 @@
+ 
+ ifeq "@has_libusb@" "true"
+   LIB_OBJECTS+= serdisp_connect_usb.o
+-  EXTRA_LIBS+=@LIBUSB_LIBS@
+-  ifneq "@use_sharedlib@" "true"
+-   EXTRA_LIBS_STATIC+=$(EXTRA_LIBS)
+-  endif
++#  EXTRA_LIBS=@LIBUSB_LIBS@
++endif
++
++
++ifeq "@needs_libdl@" "true"
++ EXTRA_LIBS+=-ldl
++ ifeq "@use_sharedlib@" "false"
++   EXTRA_LIBS_STATIC=@EXTRA_LIBS_STATIC@
++ endif
+ endif
+ 
+ 
+@@ -118,10 +130,31 @@
+ ifeq "@WITH_DRIVER_STV8105@" "true"
+   LIB_OBJECTS+= serdisp_specific_stv8105.o
+ endif
+-ifeq "@WITH_DRIVER_ALPHACOOL@" "true"
+-  LIB_OBJECTS+= serdisp_specific_alphacool.o
++ifeq "@WITH_DRIVER_ACOOLSDCM@" "true"
++  LIB_OBJECTS+= serdisp_specific_acoolsdcm.o
++endif
++ifeq "@WITH_DRIVER_DIRECTGFX@" "true"
++  LIB_OBJECTS+= serdisp_specific_directgfx.o
++endif
++ifeq "@WITH_DRIVER_RS232@" "true"
++  LIB_OBJECTS+= serdisp_specific_rs232.o
++endif
++ifeq "@WITH_DRIVER_LC7981@" "true"
++  LIB_OBJECTS+= serdisp_specific_lc7981.o
++endif
++ifeq "@WITH_DRIVER_DDUSBT@" "true"
++  LIB_OBJECTS+= serdisp_specific_ddusbt.o
++endif
++ifeq "@WITH_DRIVER_DISPLAYLINK@" "true"
++  LIB_OBJECTS+= serdisp_specific_displaylink.o
++endif
++ifeq "@WITH_DRIVER_FRAMEBUFFER@" "true"
++  LIB_OBJECTS+= serdisp_specific_framebuffer.o
++endif
++ifeq "@WITH_DRIVER_REMOTE@" "true"
++  LIB_OBJECTS+= serdisp_connect_srv.o serdisp_srvtools.o
++  LIB_OBJECTS+= serdisp_specific_remote.o
+ endif
+-
+ 
+ 
+ .SUFFIXES : .c .o
+@@ -153,7 +186,7 @@
+ 	cd $(LIB_DIR) && $(LN_S) -f lib$(LIB_NAME).so.$(VERSION_MAJOR) lib$(LIB_NAME).so
+ 
+ testserdisp: $(LIB_DIR)/$(LIB_STATIC) $(OBJECTS)
+-	$(CC) -o testserdisp $(OBJECTS) $(LIB_SERDISP) $(TARGET_LDFLAGS) $(EXTRA_LIBS_STATIC)
++	$(CC) -o testserdisp $(OBJECTS) $(LIB_SERDISP) $(LDFLAGS) $(EXTRA_LIBS_STATIC)
+ 
+ clean:
+ 	/bin/rm -f $(OBJECTS) $(LIB_OBJECTS) $(LIB_DIR)/*.a $(LIB_DIR)/*.so*

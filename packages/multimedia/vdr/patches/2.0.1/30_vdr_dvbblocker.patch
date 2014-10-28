@@ -1,0 +1,77 @@
+diff -ruN 1.7.41_28/config.c 1.7.41_30/config.c
+--- 1.7.41_28/config.c	2013-03-18 23:03:34.000000000 +0100
++++ 1.7.41_30/config.c	2013-03-18 23:06:14.000000000 +0100
+@@ -392,6 +392,7 @@
+   DiSEqC = 0;
+   SetSystemTime = 0;
+   TimeSource = 0;
++  ChannelBlocker = 0;
+   TimeTransponder = 0;
+   StandardCompliance = STANDARD_DVB;
+   MarginStart = 2;
+@@ -606,6 +607,7 @@
+   else if (!strcasecmp(Name, "SetSystemTime"))       SetSystemTime      = atoi(Value);
+   else if (!strcasecmp(Name, "TimeSource"))          TimeSource         = cSource::FromString(Value);
+   else if (!strcasecmp(Name, "TimeTransponder"))     TimeTransponder    = atoi(Value);
++  else if (!strcasecmp(Name, "ChannelBlocker"))      ChannelBlocker     = atoi(Value);
+   else if (!strcasecmp(Name, "StandardCompliance"))  StandardCompliance = atoi(Value);
+   else if (!strcasecmp(Name, "MarginStart"))         MarginStart        = atoi(Value);
+   else if (!strcasecmp(Name, "MarginStop"))          MarginStop         = atoi(Value);
+@@ -723,6 +725,7 @@
+   Store("SetSystemTime",      SetSystemTime);
+   Store("TimeSource",         cSource::ToString(TimeSource));
+   Store("TimeTransponder",    TimeTransponder);
++  Store("ChannelBlocker",     ChannelBlocker);
+   Store("StandardCompliance", StandardCompliance);
+   Store("MarginStart",        MarginStart);
+   Store("MarginStop",         MarginStop);
+diff -ruN 1.7.41_28/config.h 1.7.41_30/config.h
+--- 1.7.41_28/config.h	2013-03-18 23:03:34.000000000 +0100
++++ 1.7.41_30/config.h	2013-03-18 23:06:14.000000000 +0100
+@@ -278,6 +278,7 @@
+   int SetSystemTime;
+   int TimeSource;
+   int TimeTransponder;
++  int ChannelBlocker;
+   int StandardCompliance;
+   int MarginStart, MarginStop;
+   int JumpSeconds, JumpSecondsSlow, JumpSecondsRepeat;
+diff -ruN 1.7.41_28/dvbdevice.c 1.7.41_30/dvbdevice.c
+--- 1.7.41_28/dvbdevice.c	2013-03-18 23:03:34.000000000 +0100
++++ 1.7.41_30/dvbdevice.c	2013-03-18 23:06:14.000000000 +0100
+@@ -1463,6 +1463,10 @@
+ 
+ bool cDvbDevice::ProvidesSource(int Source) const
+ {
++  if (Setup.ChannelBlocker == 1) {
++      if (IsPrimaryDevice()) return false;
++      //isyslog("ChannelBlocker aktive on primary Interface");
++  }
+   int type = Source & cSource::st_Mask;
+   return type == cSource::stNone
+       || type == cSource::stAtsc  && ProvidesDeliverySystem(SYS_ATSC)
+diff -ruN 1.7.41_28/menu.c 1.7.41_30/menu.c
+--- 1.7.41_28/menu.c	2013-03-18 23:03:34.000000000 +0100
++++ 1.7.41_30/menu.c	2013-03-18 23:06:14.000000000 +0100
+@@ -3216,6 +3216,8 @@
+          }
+      }
+ 
++  Add(new cMenuEditBoolItem(tr("Setup.DVB$Channel Blocker"), &data.ChannelBlocker));
++
+   SetCurrent(Get(current));
+   Display();
+ }
+diff -ruN 1.7.41_28/po/de_DE.po 1.7.41_30/po/de_DE.po
+--- 1.7.41_28/po/de_DE.po	2013-03-18 23:03:34.000000000 +0100
++++ 1.7.41_30/po/de_DE.po	2013-03-18 23:06:14.000000000 +0100
+@@ -902,6 +902,9 @@
+ msgid "Setup.EPG$Preferred language"
+ msgstr "Bevorzugte Sprache"
+ 
++msgid "Setup.DVB$Channel Blocker"
++msgstr "Tuner des primären DVB blocken"
++
+ msgid "pan&scan"
+ msgstr "pan&scan"
+ 

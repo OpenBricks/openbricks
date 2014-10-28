@@ -1,0 +1,66 @@
+diff -Naurb xineliboutput-1.0.90.git.1355089073/device.c xineliboutput-1.0.90.git.1355089073.scalesupport/device.c
+--- xineliboutput-1.0.90.git.1355089073/device.c	2012-12-10 18:37:18.793445433 +0100
++++ xineliboutput-1.0.90.git.1355089073.scalesupport/device.c	2013-07-08 20:33:21.007020995 +0200
+@@ -42,6 +42,7 @@
+ #include "frontend_svr.h"
+ 
+ #include "device.h"
++#include "xine_osd_command.h"
+ 
+ #define STILLPICTURE_REPEAT_COUNT 3
+ #define LOCAL_INIT_TIMEOUT        20  // seconds
+@@ -1846,3 +1847,16 @@
+   }
+ }
+ 
++cRect cXinelibDevice::CanScaleVideo(const cRect &Rect, int Alignment) {
++    return Rect;
++}
++
++void cXinelibDevice::ScaleVideo(const cRect &Rect) {
++    osd_command_t osdcmd = {0};
++    osdcmd.cmd = OSD_VideoWindow;
++    osdcmd.x = Rect.X();
++    osdcmd.y = Rect.Y();
++    osdcmd.w = Rect.Width();
++    osdcmd.h = Rect.Height();
++    OsdCmd((void*) &osdcmd);
++}
+\ Kein Zeilenumbruch am Dateiende.
+diff -Naurb xineliboutput-1.0.90.git.1355089073/device.h xineliboutput-1.0.90.git.1355089073.scalesupport/device.h
+--- xineliboutput-1.0.90.git.1355089073/device.h	2012-12-10 18:37:18.794445445 +0100
++++ xineliboutput-1.0.90.git.1355089073.scalesupport/device.h	2013-07-08 23:49:24.895062426 +0200
+@@ -284,6 +284,9 @@
+     void Pip_Config (int Index, int X, int Y, int W, int H);
+     int  Pip_Play   (int Index, uint8_t *Data, int Length);
+     void Pip_Close  (int Index);
++
++    cRect CanScaleVideo(const cRect &Rect, int Alignment);
++    void ScaleVideo(const cRect &Rect);
+ };
+ 
+ #endif // __XINELIB_DEVICE_H
+diff -Naurb xineliboutput-1.0.90.git.1355089073/xine_sxfe_frontend.c xineliboutput-1.0.90.git.1355089073.scalesupport/xine_sxfe_frontend.c
+--- xineliboutput-1.0.90.git.1355089073/xine_sxfe_frontend.c	2012-12-10 18:37:18.825445843 +0100
++++ xineliboutput-1.0.90.git.1355089073.scalesupport/xine_sxfe_frontend.c	2013-07-08 23:54:18.404063460 +0200
+@@ -629,6 +629,20 @@
+   int w = cmd->w;
+   int h = cmd->h;
+ 
++  if ((w == 0) || (h == 0)) {
++    pthread_mutex_lock(&this->video_win_mutex);
++    if (this->video_win_active) {
++      this->video_win_changed = 1;
++      this->video_win_active = 0;
++    }
++    this->video_win_x = x;
++    this->video_win_y = y;
++    this->video_win_w = w;
++    this->video_win_h = h;
++    pthread_mutex_unlock(&this->video_win_mutex);
++    return;
++  }
++
+   x = (int)ceil((double)(x>0 ? x-1 : 0) * scale_x);
+   y = (int)ceil((double)(y>0 ? y-1 : 0) * scale_y);
+   w = (int)floor((double)(w+2) * scale_x);

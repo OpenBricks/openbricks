@@ -1,0 +1,55 @@
+#!/bin/bash
+
+# switch applications from vdr menu
+
+for ARG in $@ ; do
+   KEY="${ARG/=*}"
+   VALUE="${ARG/*=}"
+
+   case $KEY in
+        standalone)
+                 STANDALONE=$VALUE
+                 ;;
+        window)
+                WINDOW=$VALUE
+                ;;
+        app)
+                 APP=$VALUE
+                 ;;
+        display)
+                XDISPLAY=$VALUE
+                ;;
+        *)
+                 echo "unknown argument: $KEY"
+                 ;;
+    esac
+done
+
+# finished parsing arguments
+
+STOP="systemctl stop --force"
+
+# minimum required arguments
+if [ -z $STANDALONE ] || [ -z $APP ]; then
+        echo "minimum required argument (standalone, app) not given, exit now ..."
+        exit 0
+fi
+
+if [ ! -z $XDISPLAY ]; then
+   OPTIONS="DISPLAY=:$XDISPLAY"
+   export DISPLAY=:$XDISPLAY
+else
+   OPTIONS="DISPLAY=:1`dbget vdr.tempdisplay`"
+   export DISPLAY=:1`dbget vdr.tempdisplay`
+fi
+
+if [ "$APP" = "listasky" ]; then
+    eval $APP STANDALONE=yes
+else
+  if [ "x$STANDALONE" = "xyes" ]; then
+      $STOP vdr-sxfe.service
+      systemctl start $APP.service STANDALONE=yes
+  else
+      systemctl start $APP.service OPTIONS=$OPTIONS
+  fi
+fi

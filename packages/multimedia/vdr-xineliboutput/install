@@ -2,31 +2,47 @@
 
 . config/options
 
-cd $BUILD/$1*
+get_meta $1
+
+#cd $BUILD/$1*
+cd $PKG_BUILD_DIR
 
 do_install usr/bin
 do_install usr/lib/xine
 
-mkdir -p $INSTALL/usr/lib/vdr
+if [ "$TARGET_MACHINE" = raspberrypi ]; then
+  VDRFRONTEND="vdrfrontend.sh.raspberry"
+  XINECONFIG="config_xineliboutput.raspberry"
+else
+  VDRFRONTEND="vdrfrontend.sh"
+  XINECONFIG="config_xineliboutput"
+fi
+mkdir -p $INSTALL/usr/bin
+cp $ROOT/$PACKAGES/$PKG_SECTION/$1/scripts/$VDRFRONTEND $INSTALL/usr/bin/vdrfrontend.sh
+
+mkdir -p $INSTALL/usr/share/vdr/xineliboutput
+cp $ROOT/$PACKAGES/$PKG_SECTION/$1/config/nosignal_sifbox_720x576.mpg $INSTALL/usr/share/vdr/xineliboutput
+
+mkdir -p $INSTALL/usr/lib/vdr/plugins
 cp -P libvdr-xineliboutput.so* libxineliboutput*.so* \
-  $INSTALL/usr/lib/vdr
+  $INSTALL/usr/lib/vdr/plugins
 
 for loc in $INCLUDED_LOCALES; do
   LOCALE=`echo $loc|cut -f1 -d.`
   if [ -d locale/$LOCALE ]; then
     mkdir -p $INSTALL/usr/share/locale/$LOCALE
-    cp -PR locale/$LOCALE/* $INSTALL/usr/share/locale/$LOCALE/
+    cp -a locale/$LOCALE/* $INSTALL/usr/share/locale/$LOCALE/
   fi
 done
 
 mkdir -p $INSTALL/etc/vdr/plugins/xineliboutput
 cp -P examples/allowed_hosts.conf $INSTALL/etc/vdr/plugins/xineliboutput
-[ "$SERVICES" = yes ] && echo '0.0.0.0/0' >>$INSTALL/etc/vdr/plugins/xineliboutput/allowed_hosts.conf
+[ "$SERVICES" = yes ] && echo '127.0.0.1' >>$INSTALL/etc/vdr/plugins/xineliboutput/allowed_hosts.conf
 
 NAME=`echo $1 | sed s/vdr-//`
 mkdir -p $INSTALL/etc/vdr/plugins.d
 echo "PLUGIN=${NAME}" > $INSTALL/etc/vdr/plugins.d/50_$NAME
-echo "OPTIONS=\"--local=none --remote=37890\"" >> $INSTALL/etc/vdr/plugins.d/50_$NAME
+echo "OPTIONS=\"--local=none --remote=127.0.0.1:37890 --primary\"" >> $INSTALL/etc/vdr/plugins.d/50_$NAME
 echo "ENABLED=yes" >> $INSTALL/etc/vdr/plugins.d/50_$NAME
 
 if pkg_uses $1 bluray; then
@@ -34,4 +50,16 @@ if pkg_uses $1 bluray; then
   do_install usr/lib/xine
 fi
 
+mkdir -p $INSTALL/etc/vdr-sxfe
+cp $ROOT/$PACKAGES/$PKG_SECTION/$1/config/$XINECONFIG $INSTALL/etc/vdr-sxfe/config_xineliboutput
+#mkdir -p $INSTALL/etc/systemd/system/multi-user-target-wants
+#cd $INSTALL/etc/systemd/system/multi-user-target-wants
+mkdir -p $INSTALL/etc/systemd/system/multi-user.target.wants
+cd $INSTALL/etc/systemd/system/multi-user.target.wants
+ln -s /lib/systemd/system/vdr-sxfe.service vdr-sxfe.service
+#mkdir -p $INSTALL/lib/systemd/system/VDR.target.wants
+##mkdir -p $INSTALL/lib/systemd/system/multi-user.target.wants
+#cd $INSTALL/lib/systemd/system/VDR.target.wants
+#ln -s /lib/systemd/system/vdr-sxfe.service $INSTALL/lib/systemd/system/VDR.target.wants/vdr-sxfe.service
+##ln -s /lib/systemd/system/vdr-sxfe.service $INSTALL/lib/systemd/system/multi-user.target.wants/vdr-sxfe.service || true 
 exit 0

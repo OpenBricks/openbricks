@@ -1,0 +1,26 @@
+#!/bin/sh
+
+. config/options
+
+get_meta $1
+cd $PKG_BUILD_DIR
+KERNEL_VER=$(kernel_version)
+LDFLAGS=""
+wget http://www.linuxtv.org/downloads/firmware/dvb-firmwares.tar.bz2 -O dvb-firmwares.tar.bz2.tmp
+cd v4l/firmware/; tar xvfj ../../dvb-firmwares.tar.bz2.tmp
+cd ../..
+sed -i  -e "/^LATEST_TAR/s/-LATEST/-$MEDIA_BUILD_VERSION/g" linux/Makefile
+
+make VER=$KERNEL_VER SRCDIR=$(kernel_path) -C linux/ download
+make VER=$KERNEL_VER SRCDIR=$(kernel_path) -C linux/ untar
+make VER=$KERNEL_VER SRCDIR=$(kernel_path) allyesconfig
+make VER=$KERNEL_VER SRCDIR=$(kernel_path)
+
+strip_kmods "$moddir"
+
+mkdir -p .install/lib/modules/$KERNEL_VER/updates/media_build
+find v4l/ -name \*.ko -exec strip --strip-debug {} \;
+find v4l/ -name \*.ko -exec cp {} .install/lib/modules/$KERNEL_VER/updates/media_build \;
+
+mkdir -p .install/firmware/
+cp v4l/firmware/*.fw .install/firmware/

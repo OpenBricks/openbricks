@@ -1,0 +1,56 @@
+
+#!/bin/sh
+
+. config/options
+
+get_meta vdr
+VDR_VERSION=$PKG_VERSION
+
+get_meta linux
+verlte 3.6.11 $PKG_VERSION && INSDVB="yes" || INSDVB="no"
+if [ $INSDVB = "no" ]; then
+   DVB_DIR="$SYSROOT_PREFIX/usr/include"
+else
+   DVB_DIR="../linux"
+fi
+
+get_meta $1
+VDR_DIR=`basename $BUILD/vdr-$VDR_VERSION`
+
+CFLAGS="$CFLAGS -fPIC"
+CXXFLAGS="$CXXFLAGS -fPIC"
+LDFLAGS="$LDFLAGS -fPIC"
+MAKEFLAGS=-j1
+
+cd $PKG_BUILD_DIR
+
+if [ "$TARGET_ARCH" = x86_64 ]; then
+  sed -i "s|PARALLEL   ?= PARALLEL_32_INT|PARALLEL   ?= PARALLEL_128_SSE|" Makefile
+  sed -i "s|CSAFLAGS   ?= -Wall -fPIC -g -O3 -fomit-frame-pointer -fexpensive-optimizations -funroll-loops|CSAFLAGS   ?= -fPIC -O3 -fexpensive-optimizations -funroll-loops -mmmx -msse -msse2 -msse3|" Makefile
+fi
+
+make all \
+  MCLISC_DIR="../vdr-mcli-188" \
+  VDRDIR="$ROOT/$BUILD/vdr-${VDR_VERSION}" \
+  DVBDIR=$DVB_DIR \
+  LIBDIR="." \
+  LOCALEDIR="./locale" \
+
+#cp libvdr-reelsoftcam.so lib$1.so.${VDR_VERSION}
+#do_strip bin lib$1.so.*
+get_meta vdr
+verlte 1.7.36 $PKG_VERSION && VDRINS="no" || VDRINS="yes"
+VDRINS=no
+if [ $VDRINS = "yes" ]; then
+  make_install
+  rm -rf .install-debuginfo || true
+else
+  do_strip bin lib*.so.*
+fi
+
+ENABLED_PLUGINS="cardclient conax constcw cryptoworks irdeto nagra nds sc-conax sc-cryptoworks sc-irdeto sc-nagra sc-seca sc-viaccess sc-videoguard2 seca shl viaccess"
+
+for plugin in $ENABLED_PLUGINS; do
+  do_strip systems/$plugin/libsc-*.so.*
+done
+

@@ -1,41 +1,86 @@
 #!/bin/sh
 
 . config/options
-
 get_meta $1
-cd $PKG_BUILD_DIR
 
+cd $PKG_BUILD_DIR
+export SERVICES="yes"
+VDR_DIR=`basename $BUILD/vdr-1*`
+
+mkdir -p .install/usr/lib/pkgconfig/
+cp vdr.pc .install/usr/lib/pkgconfig/
 do_install usr/bin/vdr
-do_install usr/bin/svdrpsend
-cp $ROOT/$PACKAGES/$PKG_SECTION/$1/scripts/* $INSTALL/usr/bin
+do_install usr/lib
+mkdir -p $INSTALL/usr/sbin
+mkdir -p $INSTALL/usr/share/fonts/truetype
+mkdir -p $INSTALL/usr/bin
+cp -r $ROOT/$PACKAGES/$PKG_SECTION/$PKG_NAME/fonts $INSTALL/usr/share/
+#cp $ROOT/$PACKAGES/$1/scripts/runvdr $INSTALL/usr/sbin
+if [ "$TARGET_MACHINE" = raspberrypi ]; then
+   cp $ROOT/$PACKAGES/$PKG_SECTION/$PKG_NAME/scripts/runvdr.rasp $INSTALL/usr/sbin/runvdr
+   cp $ROOT/$PACKAGES/$PKG_SECTION/$PKG_NAME/scripts/vdrshutdown.rasp $INSTALL/usr/bin/vdrshutdown 
+   sed -i "s|/bin/systemctl restart mixer.service||" $INSTALL/usr/sbin/runvdr
+   SPLASH_FILE="$ROOT/$CONFIG/flavours/$FLAVOUR/black.png"
+   mkdir -p $INSTALL/usr/share/plymouth/
+   cp $SPLASH_FILE $INSTALL/usr/share/plymouth/
+else
+   cp $ROOT/$PACKAGES/$PKG_SECTION/$PKG_NAME/scripts/runvdr $INSTALL/usr/sbin/runvdr
+   cp $ROOT/$PACKAGES/$PKG_SECTION/$PKG_NAME/scripts/vdrshutdown $INSTALL/usr/bin/vdrshutdown
+fi
+
+if [ "$PKG_VERSION" = "2.1.2" ]; then
+   sed -i "s|#eval vdr -g /tmp -L /usr/lib/vdr/plugins --log=3|eval vdr -g /tmp -L /usr/lib/vdr/plugins --log=3|" $INSTALL/usr/sbin/runvdr
+   sed -i "s|eval vdr -g /tmp -L /usr/lib/vdr/plugins --buffer=/media/video|#eval vdr -g /tmp -L /usr/lib/vdr/plugins --buffer=/media/video|" $INSTALL/usr/sbin/runvdr
+fi
+#cp $ROOT/$PACKAGES/$1/scripts/vdrshutdown $INSTALL/usr/bin
+cp svdrpsend $INSTALL/usr/bin/svdrpsend
 
 mkdir -p $INSTALL/usr/lib/vdr
+mkdir -p $INSTALL/usr/bin
+mkdir -p $INSTALL/usr/lib/vdr/plugins
+mkdir -p $INSTALL/media/video
+mkdir -p $INSTALL/usr/share/libxine1-xvdr
+mkdir -p $INSTALL/firmware
+mkdir -p $INSTALL/var/cache/vdr/epgimages/
+
+cp $ROOT/$PACKAGES/$PKG_SECTION/$PKG_NAME/config/nosignal.mpg $INSTALL/usr/share/libxine1-xvdr
+cp $ROOT/$PACKAGES/$PKG_SECTION/$PKG_NAME/firmware/* $INSTALL/firmware
+#cp $ROOT/$PACKAGES/$PKG_SECTION/$PKG_NAME/scripts/svdrpsend.pl $INSTALL/usr/lib/vdr/
+cp svdrpsend $INSTALL/usr/bin
 
 do_install usr/share/locale
 
-rm .install/etc/vdr/channels.conf
-touch .install/etc/vdr/channels.conf
 do_install etc/vdr
+do_install var
+#[ "$SERVICES" = yes ] && echo '0.0.0.0/0' >> $INSTALL/etc/vdr/svdrphosts.conf
+##[ "$SERVICES" = yes ] && sed -i "s|0.0.0.0/0|#0.0.0.0/0|" $INSTALL/etc/vdr/svdrphosts.conf
+##[ "$SERVICES" = yes ] && sed -i "s|#127.0.0.1|127.0.0.1|" $INSTALL/etc/vdr/svdrphosts.conf
 
-[ "$SERVICES" = yes ] && echo '0.0.0.0/0' >> $INSTALL/etc/vdr/svdrphosts.conf
 mkdir -p $INSTALL/etc/vdr/plugins
-
 mkdir -p $INSTALL/etc/vdr/plugins.d
 
-for i in dvbsddevice epgtableid0 pictures dvbhddevice rcu status; do
-  do_install usr/lib/vdr/libvdr-$i.so.$PKG_VERSION
-  echo "PLUGIN=${i}" > $INSTALL/etc/vdr/plugins.d/50_$i
-  echo "ENABLED=no" >> $INSTALL/etc/vdr/plugins.d/50_$i
-done
+cp $ROOT/$PACKAGES/$PKG_SECTION/$PKG_NAME/config/wakeup $INSTALL/etc
+cp $ROOT/$PACKAGES/$PKG_SECTION/$PKG_NAME/config/channels.conf $INSTALL/etc/vdr/channels.conf
+if [ "$TARGET_MACHINE" = raspberrypi ]; then
+   cp $ROOT/$PACKAGES/$PKG_SECTION/$PKG_NAME/config/setup.conf.rasp $INSTALL/etc/vdr/setup.conf
+else
+   cp $ROOT/$PACKAGES/$PKG_SECTION/$PKG_NAME/config/setup.conf $INSTALL/etc/vdr
+fi
+cp $ROOT/$PACKAGES/$PKG_SECTION/$PKG_NAME/config/remote.conf $INSTALL/etc/vdr
+cp $ROOT/$PACKAGES/$PKG_SECTION/$PKG_NAME/config/keymacros.conf $INSTALL/etc/vdr
+cp $ROOT/$PACKAGES/$PKG_SECTION/$PKG_NAME/config/scr.conf $INSTALL/etc/vdr
+cp $ROOT/$PACKAGES/$PKG_SECTION/$PKG_NAME/config/diseqc.conf $INSTALL/etc/vdr
+mkdir -p $INSTALL/etc/default
+cp $ROOT/$PACKAGES/$PKG_SECTION/$PKG_NAME/config/vdr $INSTALL/etc/default
+cd $INSTALL/etc/vdr
+ln -s ../default/vdr vdr.default
 
-cp $ROOT/$PACKAGES/$PKG_SECTION/$1/config/wakeup $INSTALL/etc
-cp $ROOT/$PACKAGES/$PKG_SECTION/$1/config/sources.conf $INSTALL/etc/vdr
-cp $ROOT/$PACKAGES/$PKG_SECTION/$1/config/channels.conf $INSTALL/etc/vdr
-cp $ROOT/$PACKAGES/$PKG_SECTION/$1/config/diseqc.conf $INSTALL/etc/vdr
-cp $ROOT/$PACKAGES/$PKG_SECTION/$1/config/setup.conf $INSTALL/etc/vdr
-cp $ROOT/$PACKAGES/$PKG_SECTION/$1/config/remote.conf $INSTALL/etc/vdr
-cp $ROOT/$PACKAGES/$PKG_SECTION/$1/config/commands.conf $INSTALL/etc/vdr
+#mkdir -p $INSTALL/etc/systemd/system/multi-user-target-wants
+#cd $INSTALL/etc/systemd/system/multi-user-target-wants
+#mkdir -p $INSTALL/etc/systemd/system/multi-user.target.wants
+#cd $INSTALL/etc/systemd/system/multi-user.target.wants
+#ln -s /lib/systemd/system/vdr.service vdr.service
+#mkdir -p $INSTALL/lib/systemd/system/VDR.target.wants
+#cd $INSTALL/lib/systemd/system/VDR.target.wants
+#ln -s /lib/systemd/system/vdr.service vdr.service
 
-cp $ROOT/$PACKAGES/$PKG_SECTION/$1/config/channels.xml $INSTALL/etc/vdr/plugins
-
-mkdir $INSTALL/video

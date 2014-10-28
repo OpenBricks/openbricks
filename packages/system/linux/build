@@ -1,13 +1,27 @@
 #!/bin/sh
 
 . config/options
+if [ "$TARGET_MACHINE" = raspberrypi ]; then
+   export MAKEFLAGS=-j1
+fi
 
 unset LDFLAGS
+get_meta $1
 
-#MAKEFLAGS=-j1
+cd $BUILD
+if [ "$TARGET_MACHINE" = "cubieboard" ]; then
+   [ -d "linux" ] || ln -s linux-sunxi-3.4 linux
+else
+   [ -d "linux" ] || ln -s $1-3* linux
+fi
 
 cd $(kernel_path)
 
+
+#FIRMWARE RTL
+cp -r $ROOT/$PACKAGES/$PKG_SECTION/$1/firmware/* firmware/
+#cp -r $ROOT/$PACKAGES/$1/firmware/dvb-fe-ds* firmware/
+#FINE FIRMWARE
 case $TARGET_ARCH in
   i386|x86_64)  IMAGE=bzImage  ;;
   mips|powerpc) IMAGE=vmlinux  ;;
@@ -17,33 +31,55 @@ case $TARGET_ARCH in
     [ -n "$MACHINE_UBOOT_CONFIG" -a -z "$MACHINE_UBOOT_ZIMAGE" ] && IMAGE=uImage || IMAGE=zImage
     ;;
 esac
-make $IMAGE
-make modules
 
+make $IMAGE
+#make modules
+make CONFIG_DEBUG_SECTION_MISMATCH=y modules
 if [ -n "$MACHINE_DTS" ] ; then
   for i in $MACHINE_DTS ; do
     make $i.dtb
   done
 fi
 
+
+#make CONFIG_DEBUG_SECTION_MISMATCH=y modules
 install_dir="`pwd`/.install"
 debug_dir="`pwd`/.install-debuginfo/usr/lib/debug"
 rm -rf $install_dir $debug_dir
-mkdir -p $install_dir/lib/firmware $debug_dir
+mkdir -p $install_dir $debug_dir
 
 make modules_install \
   INSTALL_MOD_PATH=.install \
   DEPMOD=$ROOT/$TOOLCHAIN/bin/depmod \
+  kmod_dir="$install_dir/lib/modules/$(kernel_version)"
 
+#PROVA CPUPOWER
+if [ ! "$TARGET_MACHINE" = "iiitbs2910" ]; then
+( cd tools/power/cpupower
+
+  # dont use some optimizations because of build problems
+  LDFLAGS=`echo $LDFLAGS | sed -e "s|-Wl,--as-needed||"`
+  export CFLAGS="$CFLAGS -I$SYSROOT_PREFIX/usr/include"
+  export LDFLAGS="$LDFLAGS -L$SYSROOT_PREFIX/lib -L$SYSROOT_PREFIX/usr/lib -L$SYSROOT_PREFIX/usr/local/lib -lpci -lintl"
+  make CROSS="$TARGET_PREFIX" \
+       V=1 \
+       DEBUG=false \
+       NLS=false \
+)
+fi
+# FINE
 kmod_dir="$install_dir/lib/modules/$(kernel_version)"
-echo $(kernel_version) > $install_dir/lib/modules/latest
+#echo $(kernel_version) > $install_dir/lib/modules/latest
 
 if [ -d .install/lib/firmware ]; then
   mv .install/lib/firmware .install/firmware
 else
   mkdir -p .install/firmware
 fi
-rm -f $kmod_dir/build $kmod_dir/source $kmod_dir/modules.*
+#mona66
+#rm -f $kmod_dir/build $kmod_dir/source $kmod_dir/modules.*
+
+rm -Rf $kmod_dir/build $kmod_dir/source ##$kmod_dir/modules.*
 strip_kmods "$kmod_dir" "$debug_dir"
 
 mkdir -p .install/boot
@@ -57,6 +93,7 @@ case $TARGET_ARCH in
     if [ "$TARGET_PLATFORM" = bcm2708 ]; then
       # add raspberry pi magic
       cat first32k.bin arch/$TARGET_ARCH/boot/Image > .install/boot/kernel.img
+#      cat arch/$TARGET_ARCH/boot/Image > .install/boot/kernel.img
     else
       cp arch/$TARGET_ARCH/boot/$IMAGE .install/boot
     fi

@@ -2,19 +2,38 @@
 
 . config/options
 
-mkdir -p $INSTALL/usr/lib/vdr
-cp -a $BUILD/$1*/lib$1*.so.* $INSTALL/usr/lib/vdr
+get_meta vdr
+verlte 1.7.36 $PKG_VERSION && VDRINS="no" || VDRINS="yes"
 
-for loc in $INCLUDED_LOCALES; do
+get_meta $1
+
+cd $PKG_BUILD_DIR
+#mkdir -p $INSTALL/usr/lib/vdr/plugins
+#cp -a $BUILD/${PKG_NAME}-${PKG_VERSION}/lib$1*.so.* $INSTALL/usr/lib/vdr/plugins
+
+if [ $VDRINS = "no" ]; then
+  mkdir -p $INSTALL/usr/lib/vdr/plugins
+  cp -a lib$1*.so.* $INSTALL/usr/lib/vdr/plugins
+  for loc in $INCLUDED_LOCALES; do
   LOCALE=`echo $loc|cut -f1 -d.`
-  if [ -d $BUILD/$1*/locale/$LOCALE ]; then
-    mkdir -p $INSTALL/usr/share/locale/$LOCALE
-    cp -a $BUILD/$1*/locale/$LOCALE/* $INSTALL/usr/share/locale/$LOCALE/
-  fi
-done
+    if [ -d locale/$LOCALE ]; then
+      mkdir -p $INSTALL/usr/share/locale/$LOCALE
+      cp -a locale/$LOCALE/* $INSTALL/usr/share/locale/$LOCALE/
+    fi
+  done
+else
+  do_install usr
+fi
 
 NAME=`echo $1 | sed s/vdr-//`
 mkdir -p $INSTALL/etc/vdr/plugins.d
 echo "PLUGIN=${NAME}" > $INSTALL/etc/vdr/plugins.d/50_$NAME
-mkdir -p $INSTALL/etc/vdr/plugins/iptv
-cp -a $BUILD/$1*/iptv/* $INSTALL/etc/vdr/plugins/iptv
+echo "ENABLED=yes" >> $INSTALL/etc/vdr/plugins.d/50_$NAME
+mkdir -p $INSTALL/etc/vdr/plugins/iptv/vlcinput
+#cp -a $BUILD/$1*/iptv/* $INSTALL/etc/vdr/plugins/iptv
+cp -a iptv/* $INSTALL/etc/vdr/plugins/iptv
+cp -a $ROOT/$PACKAGES/$PKG_SECTION/$1/scripts/vlcstream.sh $INSTALL/etc/vdr/plugins/iptv
+cp -a $ROOT/$PACKAGES/$PKG_SECTION/$1/config/* $INSTALL/etc/vdr/plugins/iptv/vlcinput
+cp -a $ROOT/$PACKAGES/$PKG_SECTION/$1/scripts/vlc2iptv $INSTALL/etc/vdr/plugins/iptv
+cp -a $ROOT/$PACKAGES/$PKG_SECTION/$1/scripts/webcam.sh $INSTALL/etc/vdr/plugins/iptv
+

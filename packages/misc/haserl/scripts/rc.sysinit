@@ -1,0 +1,124 @@
+#!/bin/sh
+PATH=/bin:/sbin:/usr/bin:/usr/sbin
+export PATH
+
+mount -t tmpfs -o size=2m tmpfs /var
+mount -t tmpfs -o size=2m tmpfs /tmp
+mount -t tmpfs -o size=1m tmpfs /usb
+chmod o-w /usb
+mount -n -t proc none proc/
+mount -t tmpfs -o size=1m mdev /dev
+mkdir /dev/pts
+mount -t devpts devpts /dev/pts
+mount -t sysfs sysfs /sys
+echo /sbin/mdev > /proc/sys/kernel/hotplug
+/sbin/mdev -s
+mknod /dev/nasleds c 254 0
+/sbin/modprobe resetbutton
+
+printf "\xB0" > /dev/nasleds &
+
+mkdir -p /var/config
+mount -t ext2 /dev/mtdblock1 /var/config -o ro
+mount -t tmpfs -o size=1M tmpfs /etc
+cd /etc
+if [ -f /var/config/config.tar.gz ] ; then
+   tar xzf /var/config/config.tar.gz
+else
+   tar xzf /usr/share/snake/default.tar.gz
+fi
+cd /
+umount /var/config
+
+/sbin/modprobe vfat
+
+/sbin/mdev -s
+
+HOSTNAME=`grep "hostname=" /etc/default/config | cut -d = -f 2`
+DEF_MAC=`grep "mac_address=" /etc/default/config | cut -d = -f 2`
+DEF_IP=`grep "ip_address=" /etc/default/config | cut -d = -f 2`
+DEF_MASK=`grep "netmask=" /etc/default/config | cut -d = -f 2`
+DEF_GW=`grep "gateway=" /etc/default/config | cut -d = -f 2`
+USE_DHCP_ADD=`grep "dhcp_address=" /etc/default/config | cut -d = -f 2`
+USE_DHCP_DNS=`grep "dhcp_dns=" /etc/default/config | cut -d = -f 2`
+DEF_DNS1=`grep "nameserver1=" /etc/default/config | cut -d = -f 2`
+DEF_DNS2=`grep "nameserver2=" /etc/default/config | cut -d = -f 2`
+DEF_DNSDOM=`grep "dnsdomain=" /etc/default/config | cut -d = -f 2`
+
+
+if [ -z "$DEF_MAC" ] ; then
+    OUI="ac:de:48:"
+    NIC=$(dd if=/dev/urandom bs=3 count=1  2> /dev/null | hexdump -C | head -n 1 | awk -F' ' '{ print $2":"$3":"$4}')
+    DEF_MAC=${OUI}${NIC}
+    sed -ri "s,mac_address=.*,mac_address=${DEF_MAC},g" /etc/default/config
+fi
+
+echo "Starting Network"
+    hostname $HOSTNAME
+    /sbin/ifconfig lo 127.0.0.1
+    /sbin/ifconfig eth0 hw ether $DEF_MAC
+    /sbin/ifconfig eth0 up
+    /bin/sleep 3
+    if [ $USE_DHCP_ADD -eq 1 ] ; then
+        /sbin/udhcpc -b -q -t 5 -H $HOSTNAME
+    else
+        /sbin/ifconfig eth0 $DEF_IP netmask $DEF_MASK
+        route add default gw $DEF_GW dev eth0
+        echo "$DEF_IP $HOSTNAME" > /etc/hosts
+	    echo "nameserver $DEF_DNS1" > /etc/resolv.conf
+	    echo "nameserver $DEF_DNS2" >> /etc/resolv.conf
+    	echo "search $DEF_DNSDOM" >> /etc/resolv.conf
+        if [ -f /usr/share/snake/setntp ] ; then
+            /usr/share/snake/setntp
+        fi
+    fi
+
+#Setting timezone
+/usr/share/snake/settz
+
+if [ -f /etc/init.d/syslog ] ; then
+ . /etc/init.d/syslog start
+fi
+
+/bin/dmesg | while read LINE
+do
+	/usr/bin/logger -t boot-kernel "${LINE}"
+done
+
+/sbin/klogd
+
+if [ -f /etc/init.d/telnet ] ; then
+ . /etc/init.d/telnet start &
+fi
+
+if [ -f /etc/init.d/sshd ] ; then
+ . /etc/init.d/sshd start &
+fi
+
+if [ -f /etc/init.d/samba ] ; then
+  . /etc/init.d/samba start &
+fi
+
+if [ -f /etc/init.d/httpsvc ] ; then
+  . /etc/init.d/httpsvc start &
+fi
+
+if [ -f /etc/init.d/cron ] ; then
+  . /etc/init.d/cron start &
+fi
+
+if [ -f /etc/init.d/ftpsvc ] ; then
+  . /etc/init.d/ftpsvc start &
+fi
+
+if [ -f /etc/init.d/webserver ] ; then
+  . /etc/init.d/webserver start &
+fi
+
+if [ -f /etc/init.d/ddns ] ; then
+  . /etc/init.d/ddns start &
+fi
+
+if [ -f /etc/init.d/modules ] ; then
+  . /etc/init.d/modules start &
+fi
