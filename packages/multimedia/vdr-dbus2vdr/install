@@ -1,0 +1,40 @@
+#!/bin/sh
+
+. config/options
+
+get_meta vdr
+verlte 1.7.36 $PKG_VERSION && VDRINS="no" || VDRINS="yes"
+
+get_meta $1
+
+cd $PKG_BUILD_DIR
+#mkdir -p $INSTALL/usr/lib/vdr/plugins
+#cp -a $BUILD/${PKG_NAME}-${PKG_VERSION}/lib$1*.so.* $INSTALL/usr/lib/vdr/plugins
+
+NAME=`echo $1 | sed s/vdr-//`
+mkdir -p $INSTALL/etc/vdr/plugins.d
+echo "PLUGIN=${NAME}" > $INSTALL/etc/vdr/plugins.d/50_$NAME
+echo "OPTIONS=\"--shutdown-hooks=/etc/vdr/shutdown-hooks --shutdown-hooks-wrapper=/usr/bin/shutdown-wrapper\"" >> $INSTALL/etc/vdr/plugins.d/50_$NAME
+echo "ENABLED=yes" >> $INSTALL/etc/vdr/plugins.d/50_$NAME
+
+if [ $VDRINS = "no" ]; then
+  mkdir -p $INSTALL/usr/lib/vdr/plugins
+  cp -a lib$1*.so.* $INSTALL/usr/lib/vdr/plugins
+  for loc in $INCLUDED_LOCALES; do
+  LOCALE=`echo $loc|cut -f1 -d.`
+    if [ -d locale/$LOCALE ]; then
+      mkdir -p $INSTALL/usr/share/locale/$LOCALE
+      cp -a locale/$LOCALE/* $INSTALL/usr/share/locale/$LOCALE/
+    fi
+  done
+else
+  do_install usr
+fi
+
+mkdir -p $INSTALL/etc/dbus-1/system.d
+cp etc/de.tvdr.vdr.conf $INSTALL/etc/dbus-1/system.d
+mkdir -p $INSTALL/usr/bin
+cp bin/* $INSTALL/usr/bin
+cp shutdown-wrapper $INSTALL/usr/bin
+mkdir -p $INSTALL/etc/vdr/shutdown-hooks
+cp $ROOT/$PACKAGES/$PKG_SECTION/$1/config/S90.custom $INSTALL/etc/vdr/shutdown-hooks

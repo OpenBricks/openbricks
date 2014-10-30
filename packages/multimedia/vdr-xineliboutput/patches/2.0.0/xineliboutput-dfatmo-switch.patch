@@ -1,0 +1,96 @@
+--- vdr-plugin-xineliboutput-1.0.7+cvs20111129.2100.orig/xine_frontend.c
++++ vdr-plugin-xineliboutput-1.0.7+cvs20111129.2100/xine_frontend.c
+@@ -1424,6 +1424,41 @@ static int fe_send_event(frontend_t *thi
+   } else if (!strcmp(data, "POWER_OFF")) {
+     shutdown_system(this->shutdown_cmd, 1);
+ 
++  } else if (!strncasecmp(data, "DFATMOENABLED", 13)) {
++    if (this->postplugins) {
++      int i;
++      for (i = 0; i < this->postplugins->post_video_elements_num; ++i) {
++        post_element_t *pve = this->postplugins->post_video_elements[i];
++        if (pve->enable && (!strcmp(pve->name, "dfatmo") || !strcmp(pve->name, "atmo"))) {
++          xine_post_in_t *input_api = (xine_post_in_t *) xine_post_input(pve->post, "parameters");
++          if (input_api) {
++            xine_post_api_t *post_api = (xine_post_api_t *) input_api->data;
++            xine_post_api_descr_t *api_descr = post_api->get_param_descr();
++            xine_post_api_parameter_t *parm = api_descr->parameter;
++            while(parm->type != POST_PARAM_TYPE_LAST) {
++              if (!strcmp(parm->name, "enabled")) {
++                uint8_t *param_data = malloc(api_descr->struct_size);
++                if (param_data) {
++                  post_api->get_parameters(pve->post, param_data);
++                  int *enabled = (int *)(param_data + parm->offset);
++                  char *p = strpbrk(data + 13, "01");
++                  if (p)
++                    *enabled = (atoi(p)) ? 1: 0;
++                  else
++                    *enabled = (*enabled) ? 0: 1;
++                  post_api->set_parameters(pve->post, param_data);
++                  free(param_data);
++                }
++                break;
++              }
++              parm++;
++            }
++          }
++          break;
++        }
++      }
++    }
++
+   } else {
+ 
+     LOGDBG("Event: %s", data);
+--- vdr-plugin-xineliboutput-1.0.7+cvs20111129.2100.orig/xine_frontend_main.c
++++ vdr-plugin-xineliboutput-1.0.7+cvs20111129.2100/xine_frontend_main.c
+@@ -428,9 +428,11 @@ int main(int argc, char *argv[])
+                      "  mapping keyboard f,F     -> fullscreen toggle\n"
+                      "          keyboard d,D     -> deinterlace toggle\n"
+                      "          keyboard p,P     -> power off\n"
++                     "          keyboard a,A     -> DFAtmo enabled toggle\n"
+                      "          LIRC Deinterlace -> deinterlace toggle\n"
+                      "          LIRC Fullscreen  -> fullscreen toggle\n"
+                      "          LIRC PowerOff    -> power off\n"
++                     "          LIRC KEY_BRIGHTNESS_CYCLE -> DFAtmo enabled toggle\n"
+                      "          LIRC Quit        -> exit\n");
+               break;
+     case 'b': nokbd = daemon_mode = 1;
+--- vdr-plugin-xineliboutput-1.0.7+cvs20111129.2100.orig/xine_frontend_kbd.c
++++ vdr-plugin-xineliboutput-1.0.7+cvs20111129.2100/xine_frontend_kbd.c
+@@ -215,6 +215,10 @@ static void *kbd_receiver_thread(void *f
+         fe->send_event(fe, "TOGGLE_DEINTERLACE");
+         continue;
+       }
++      if (code == 'a' || code == 'A') {
++        fe->send_event(fe, "DFATMOENABLED");
++        continue;
++      }
+     }
+ 
+     snprintf(str, sizeof(str), "%016" PRIX64, code);
+@@ -288,6 +292,10 @@ static void *slave_receiver_thread(void
+       fe->send_input_event(fe, NULL, str+5, 0, 0);
+       continue;
+     }
++    if (!strncasecmp(str, "DFATMOENABLED", 13)) {
++      fe->send_event(fe, str);
++      continue;
++    }
+ 
+     LOGMSG("Unknown slave mode command: %s", str);
+ 
+--- vdr-plugin-xineliboutput-1.0.7+cvs20111129.2100.orig/xine_frontend_lirc.c
++++ vdr-plugin-xineliboutput-1.0.7+cvs20111129.2100/xine_frontend_lirc.c
+@@ -229,6 +229,11 @@ static void *lirc_receiver_thread(void *
+               fe->send_event(fe, "TOGGLE_DEINTERLACE");
+             continue;
+           }
++          if (!strcmp(KeyName, "KEY_BRIGHTNESS_CYCLE")) {
++            if (!repeat)
++              fe->send_event(fe, "DFATMOENABLED");
++            continue;
++          }
+         }
+ 
+         alarm(3);
