@@ -1,0 +1,68 @@
+diff -r 3f5b3fe4a1d7 src/xitk/event.c
+--- a/src/xitk/event.c	Tue Apr 13 10:06:41 2010 +0200
++++ b/src/xitk/event.c	Thu Apr 15 13:21:15 2010 +0200
+@@ -1208,6 +1208,41 @@ void gui_execute_action_id(action_id_t a
+     }
+     break;
+ 
++  case ACTID_ATMOLIGHT_ENABLE:
++    if (gGui->post_video_elements_num) {
++      int i;
++      for (i = 0; i < gGui->post_video_elements_num; ++i) {
++        post_element_t *pve = gGui->post_video_elements[i];
++        if (!strcmp(pve->name, "atmo")) {
++          xine_post_in_t *input_api = (xine_post_in_t *) xine_post_input(pve->post, "parameters");
++          if (input_api) {
++            xine_post_api_t *post_api = (xine_post_api_t *) input_api->data;
++            xine_post_api_descr_t *api_descr = post_api->get_param_descr();
++            xine_post_api_parameter_t *parm = api_descr->parameter;
++            while(parm->type != POST_PARAM_TYPE_LAST) {
++              if (!strcmp(parm->name, "enabled")) {
++                uint8_t *param_data = malloc(api_descr->struct_size);
++                if (param_data) {
++                  post_api->get_parameters(pve->post, param_data);
++                  int *enabled = (int *)(param_data + parm->offset);
++                  if (gGui->numeric.set)
++                    *enabled = (gGui->numeric.arg) ? 1: 0;
++                  else
++                    *enabled = (*enabled) ? 0: 1;
++                  post_api->set_parameters(pve->post, param_data);
++                  free(param_data);
++                }
++                break;
++              }
++              parm++;
++            }
++          }
++          break;
++        }
++      }
++    }
++    break;
++
+   default:
+     break;
+   }
+diff -r 3f5b3fe4a1d7 src/xitk/kbindings.h
+--- a/src/xitk/kbindings.h	Tue Apr 13 10:06:41 2010 +0200
++++ b/src/xitk/kbindings.h	Thu Apr 15 13:21:15 2010 +0200
+@@ -157,6 +157,7 @@ typedef enum {
+   ACTID_PVR_SETMARK,
+   ACTID_PVR_SETNAME,
+   ACTID_PVR_SAVE,
++  ACTID_ATMOLIGHT_ENABLE,
+ 
+   /*
+    * The below events map one-to-one with definitions in xine-lib's events.h 
+diff -r 3f5b3fe4a1d7 src/xitk/kbindings_common.c
+--- a/src/xitk/kbindings_common.c	Tue Apr 13 10:06:41 2010 +0200
++++ b/src/xitk/kbindings_common.c	Thu Apr 15 13:21:15 2010 +0200
+@@ -325,6 +325,8 @@ static const kbinding_entry_t default_bi
+     "PVRSetName",             ACTID_PVR_SETNAME             , "VOID",     KEYMOD_NOMOD   , 0 , 0},
+   { "input_pvr: save the stream section",
+     "PVRSave",                ACTID_PVR_SAVE                , "VOID",     KEYMOD_NOMOD   , 0 , 0},
++  { "atmolight: switch on/off",
++    "AtmolightEnable",        ACTID_ATMOLIGHT_ENABLE        , "VOID",     KEYMOD_NOMOD   , 0 , 0},
+ #ifdef ENABLE_VDR_KEYS
+   { "VDR Red button",
+     "VDRButtonRed",           ACTID_EVENT_VDR_RED            , "VOID",     KEYMOD_NOMOD   , 0 , 0},
