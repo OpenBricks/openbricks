@@ -1,7 +1,27 @@
-diff -aur --unidirectional-new-file b/drivers/video/sunxi/disp/dev_disp.h c/drivers/video/sunxi/disp/dev_disp.h
---- b/drivers/video/sunxi/disp/dev_disp.h	2014-08-24 19:03:13.000000000 +0200
-+++ c/drivers/video/sunxi/disp/dev_disp.h	2014-10-14 20:28:29.000000000 +0200
-@@ -38,7 +38,8 @@
+From 8ec25fe8c2a9dd8f9d4c81701b2c71e2a2444e40 Mon Sep 17 00:00:00 2001
+From: Rudi <r.ihle@s-t.de>
+Date: Sun, 19 Oct 2014 17:27:33 +0200
+Subject: [PATCH] video: sunxi-hdmi: Change EDID and video mode switching.
+
+Move all video related EDID parsing to generic frame buffer code. The
+video timings used by sunxi are no longer derived directly from EDID.
+Instead, they are converted from fb_videomode structures that are used
+by the upstream frame buffer code.
+
+Signed-off-by: Rudi <r.ihle@s-t.de>
+---
+ drivers/video/sunxi/disp/dev_disp.h  |    3 +-
+ drivers/video/sunxi/disp/dev_fb.c    |   73 +++++++++++--
+ drivers/video/sunxi/disp/disp_hdmi.c |   20 +++-
+ drivers/video/sunxi/disp/disp_hdmi.h |    2 +-
+ drivers/video/sunxi/hdmi/hdmi_edid.c |  191 ++--------------------------------
+ 5 files changed, 92 insertions(+), 197 deletions(-)
+
+diff --git a/drivers/video/sunxi/disp/dev_disp.h b/drivers/video/sunxi/disp/dev_disp.h
+index f181097..335fcb7 100644
+--- a/drivers/video/sunxi/disp/dev_disp.h
++++ b/drivers/video/sunxi/disp/dev_disp.h
+@@ -38,7 +38,8 @@ int disp_suspend(int clk, int status);
  int disp_resume(int clk, int status);
  
  int disp_check_fbmem(int sel, int width, int height);
@@ -11,10 +31,11 @@ diff -aur --unidirectional-new-file b/drivers/video/sunxi/disp/dev_disp.h c/driv
  __s32 Fb_Init(__u32 from);
  __s32 DRV_lcd_open(__u32 sel);
  __s32 DRV_lcd_close(__u32 sel);
-diff -aur --unidirectional-new-file b/drivers/video/sunxi/disp/dev_fb.c c/drivers/video/sunxi/disp/dev_fb.c
---- b/drivers/video/sunxi/disp/dev_fb.c	2014-08-24 19:03:13.000000000 +0200
-+++ c/drivers/video/sunxi/disp/dev_fb.c	2014-10-14 21:35:40.000000000 +0200
-@@ -90,6 +90,15 @@
+diff --git a/drivers/video/sunxi/disp/dev_fb.c b/drivers/video/sunxi/disp/dev_fb.c
+index a453b6f..4a9c26c 100644
+--- a/drivers/video/sunxi/disp/dev_fb.c
++++ b/drivers/video/sunxi/disp/dev_fb.c
+@@ -90,6 +90,15 @@ static u32 tv_mode_to_frame_rate(u32 mode)
  	}
  }
  
@@ -30,7 +51,7 @@ diff -aur --unidirectional-new-file b/drivers/video/sunxi/disp/dev_fb.c c/driver
  static int parse_output_mode(char *mode, int type, int fallback, __bool *edid)
  {
  	u32 i, width, height, interlace, frame_rate;
-@@ -1081,8 +1090,9 @@
+@@ -1081,8 +1090,9 @@ static int Fb_pan_display(struct fb_var_screeninfo *var, struct fb_info *info)
   */
  static int Fb_check_var(struct fb_var_screeninfo *var, struct fb_info *info)
  {
@@ -41,7 +62,7 @@ diff -aur --unidirectional-new-file b/drivers/video/sunxi/disp/dev_fb.c c/driver
  	__inf("Fb_check_var: %dx%d %dbits\n", var->xres, var->yres,
  	      var->bits_per_pixel);
  
-@@ -1095,9 +1105,8 @@
+@@ -1095,9 +1105,8 @@ static int Fb_check_var(struct fb_var_screeninfo *var, struct fb_info *info)
  			continue;
  
  		/* Check that pll is found */
@@ -53,7 +74,7 @@ diff -aur --unidirectional-new-file b/drivers/video/sunxi/disp/dev_fb.c c/driver
  			return -EINVAL;
  	}
  
-@@ -1168,7 +1177,13 @@
+@@ -1168,7 +1177,13 @@ static int Fb_set_par(struct fb_info *info)
  				if (!fb_mode_is_equal(&new_mode, &old_mode)) {
  					mode_changed = (BSP_disp_set_videomode(
  							sel, &new_mode) == 0);
@@ -67,7 +88,7 @@ diff -aur --unidirectional-new-file b/drivers/video/sunxi/disp/dev_fb.c c/driver
  				}
  			}
  
-@@ -1693,11 +1708,12 @@
+@@ -1693,11 +1708,12 @@ int disp_check_fbmem(int sel, int width, int height)
  }
  EXPORT_SYMBOL(disp_check_fbmem);
  
@@ -82,7 +103,7 @@ diff -aur --unidirectional-new-file b/drivers/video/sunxi/disp/dev_fb.c c/driver
  	__u32 sel = 0;
  	__u32 block = 0;
  	LIST_HEAD(old_modelist);
-@@ -1717,8 +1733,14 @@
+@@ -1717,8 +1733,14 @@ void hdmi_edid_received(unsigned char *edid, int block_count)
  			console_lock();
  		}
  
@@ -97,7 +118,7 @@ diff -aur --unidirectional-new-file b/drivers/video/sunxi/disp/dev_fb.c c/driver
  				if (fbi->monspecs.modedb != NULL) {
  					fb_destroy_modedb(fbi->monspecs.modedb);
  					fbi->monspecs.modedb = NULL;
-@@ -1752,11 +1774,8 @@
+@@ -1752,11 +1774,8 @@ void hdmi_edid_received(unsigned char *edid, int block_count)
  
  		/* Filter out modes which we cannot do */
  		list_for_each_entry_safe(m, n, &fbi->modelist, list) {
@@ -111,7 +132,7 @@ diff -aur --unidirectional-new-file b/drivers/video/sunxi/disp/dev_fb.c c/driver
  				list_del(&m->list);
  				kfree(m);
  			}
-@@ -1778,6 +1797,36 @@
+@@ -1778,6 +1797,36 @@ void hdmi_edid_received(unsigned char *edid, int block_count)
  		}
  
  		/*
@@ -148,7 +169,7 @@ diff -aur --unidirectional-new-file b/drivers/video/sunxi/disp/dev_fb.c c/driver
  		 * Tell framebuffer users that modelist was replaced. This is
  		 * to avoid use of old removed modes and to avoid panics.
  		 */
-@@ -1794,6 +1843,8 @@
+@@ -1794,6 +1843,8 @@ void hdmi_edid_received(unsigned char *edid, int block_count)
  		WARN_ON(err);
  	}
  	mutex_unlock(&g_fbi_mutex);
@@ -157,10 +178,11 @@ diff -aur --unidirectional-new-file b/drivers/video/sunxi/disp/dev_fb.c c/driver
  }
  EXPORT_SYMBOL(hdmi_edid_received);
  
-diff -aur --unidirectional-new-file b/drivers/video/sunxi/disp/disp_hdmi.c c/drivers/video/sunxi/disp/disp_hdmi.c
---- b/drivers/video/sunxi/disp/disp_hdmi.c	2014-10-12 13:25:46.000000000 +0200
-+++ c/drivers/video/sunxi/disp/disp_hdmi.c	2014-10-14 21:32:12.000000000 +0200
-@@ -187,7 +187,7 @@
+diff --git a/drivers/video/sunxi/disp/disp_hdmi.c b/drivers/video/sunxi/disp/disp_hdmi.c
+index e77a2d2..01e06f3 100644
+--- a/drivers/video/sunxi/disp/disp_hdmi.c
++++ b/drivers/video/sunxi/disp/disp_hdmi.c
+@@ -187,7 +187,7 @@ __s32 BSP_disp_hdmi_set_mode(__u32 sel, __disp_tv_mode_t mode)
  	return DIS_SUCCESS;
  }
  
@@ -169,7 +191,7 @@ diff -aur --unidirectional-new-file b/drivers/video/sunxi/disp/disp_hdmi.c c/dri
  {
  	/*
  	 * The pixelclock -> picoseconds -> pixelclock conversions we do
-@@ -209,6 +209,18 @@
+@@ -209,6 +209,18 @@ __u32 fb_videomode_pixclock_to_hdmi_pclk(__u32 pixclock)
  void videomode_to_video_timing(struct __disp_video_timing *video_timing,
  		const struct fb_videomode *mode)
  {
@@ -188,7 +210,7 @@ diff -aur --unidirectional-new-file b/drivers/video/sunxi/disp/disp_hdmi.c c/dri
  	memset(video_timing, 0, sizeof(struct __disp_video_timing));
  	video_timing->VIC = 511;
  	video_timing->PCLK =
-@@ -244,6 +256,12 @@
+@@ -244,6 +256,12 @@ void videomode_to_video_timing(struct __disp_video_timing *video_timing,
  	if (mode->sync & FB_SYNC_VERT_HIGH_ACT)
  		video_timing->VSYNC = true;
  
@@ -201,9 +223,10 @@ diff -aur --unidirectional-new-file b/drivers/video/sunxi/disp/disp_hdmi.c c/dri
  }
  
  __s32 BSP_disp_set_videomode(__u32 sel, const struct fb_videomode *mode)
-diff -aur --unidirectional-new-file b/drivers/video/sunxi/disp/disp_hdmi.h c/drivers/video/sunxi/disp/disp_hdmi.h
---- b/drivers/video/sunxi/disp/disp_hdmi.h	2014-08-24 19:03:13.000000000 +0200
-+++ c/drivers/video/sunxi/disp/disp_hdmi.h	2014-10-14 21:32:32.000000000 +0200
+diff --git a/drivers/video/sunxi/disp/disp_hdmi.h b/drivers/video/sunxi/disp/disp_hdmi.h
+index c1e61e0..cbc5e14 100644
+--- a/drivers/video/sunxi/disp/disp_hdmi.h
++++ b/drivers/video/sunxi/disp/disp_hdmi.h
 @@ -22,6 +22,6 @@
  
  __s32 Display_Hdmi_Init(void);
@@ -212,9 +235,10 @@ diff -aur --unidirectional-new-file b/drivers/video/sunxi/disp/disp_hdmi.h c/dri
 +void videomode_to_video_timing(struct __disp_video_timing *video_timing, const struct fb_videomode *mode);
  
  #endif
-diff -aur --unidirectional-new-file b/drivers/video/sunxi/hdmi/hdmi_edid.c c/drivers/video/sunxi/hdmi/hdmi_edid.c
---- b/drivers/video/sunxi/hdmi/hdmi_edid.c	2014-10-12 12:29:38.000000000 +0200
-+++ c/drivers/video/sunxi/hdmi/hdmi_edid.c	2014-10-14 20:55:15.209451574 +0200
+diff --git a/drivers/video/sunxi/hdmi/hdmi_edid.c b/drivers/video/sunxi/hdmi/hdmi_edid.c
+index e3202ed..1f6d278 100644
+--- a/drivers/video/sunxi/hdmi/hdmi_edid.c
++++ b/drivers/video/sunxi/hdmi/hdmi_edid.c
 @@ -21,6 +21,7 @@
  #include <linux/fb.h>
  #include "hdmi_core.h"
@@ -223,7 +247,7 @@ diff -aur --unidirectional-new-file b/drivers/video/sunxi/hdmi/hdmi_edid.c c/dri
  #include "../disp/sunxi_disp_regs.h"
  #include "hdmi_cec.h"
  
-@@ -71,171 +71,6 @@
+@@ -71,171 +72,6 @@ EDID_Version_Check(__u8 *pbuf)
  	return 0;
  }
  
@@ -395,7 +419,7 @@ diff -aur --unidirectional-new-file b/drivers/video/sunxi/hdmi/hdmi_edid.c c/dri
  static __s32
  Parse_AudioData_Block(__u8 *pbuf, __u8 size)
  {
-@@ -345,8 +180,6 @@
+@@ -345,8 +181,6 @@ static __s32 ParseEDID_CEA861_extension_block(__u32 i, __u8 *EDID_Buf)
  			} else {
  				if (tag == 1) { /* ADB */
  					Parse_AudioData_Block(EDID_Buf + 0x80 * i + bsum + 1, len);
@@ -404,7 +428,7 @@ diff -aur --unidirectional-new-file b/drivers/video/sunxi/hdmi/hdmi_edid.c c/dri
  				} else if (tag == 3) { /* vendor specific */
  					Parse_HDMI_VSDB(EDID_Buf + 0x80 * i + bsum + 1, len);
  				}
-@@ -354,18 +187,8 @@
+@@ -354,18 +188,8 @@ static __s32 ParseEDID_CEA861_extension_block(__u32 i, __u8 *EDID_Buf)
  
  			bsum += (len + 1);
  		}
@@ -423,7 +447,7 @@ diff -aur --unidirectional-new-file b/drivers/video/sunxi/hdmi/hdmi_edid.c c/dri
  	return 1;
  }
  
-@@ -432,6 +255,7 @@
+@@ -432,6 +256,7 @@ __s32 ParseEDID(void)
  {
  	__u8 BlockCount;
  	__u32 i;
@@ -431,7 +455,7 @@ diff -aur --unidirectional-new-file b/drivers/video/sunxi/hdmi/hdmi_edid.c c/dri
  	unsigned char *EDID_Buf = kmalloc(EDID_LENGTH*EDID_MAX_BLOCKS, GFP_KERNEL);
  	if (!EDID_Buf)
  		return -ENOMEM;
-@@ -456,11 +280,6 @@
+@@ -456,11 +281,6 @@ __s32 ParseEDID(void)
  	if (EDID_Version_Check(EDID_Buf) != 0)
  		goto ret;
  
@@ -443,7 +467,7 @@ diff -aur --unidirectional-new-file b/drivers/video/sunxi/hdmi/hdmi_edid.c c/dri
  	BlockCount = EDID_Buf[0x7E] + 1;
  	if (BlockCount > EDID_MAX_BLOCKS)
  		BlockCount = EDID_MAX_BLOCKS;
-@@ -476,7 +295,12 @@
+@@ -476,7 +296,12 @@ __s32 ParseEDID(void)
  		}
  	}
  
@@ -457,3 +481,6 @@ diff -aur --unidirectional-new-file b/drivers/video/sunxi/hdmi/hdmi_edid.c c/dri
  
  ret:
  	kfree(EDID_Buf);
+-- 
+1.7.9.5
+

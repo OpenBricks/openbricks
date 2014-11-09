@@ -1,6 +1,23 @@
---- a/drivers/video/fbmon.c	2014-04-22 09:36:27.000000000 +0200
-+++ b/drivers/video/fbmon.c	2014-10-07 08:52:45.602742343 +0200
-@@ -990,7 +991,7 @@
+From cfaf10c4335abd4433cf95bae62c58c439c431e7 Mon Sep 17 00:00:00 2001
+From: Rudi <r.ihle@s-t.de>
+Date: Sun, 19 Oct 2014 16:54:32 +0200
+Subject: [PATCH] video: fbmon: Fix EDID parsing and avoid empty entries in
+ modedb.
+
+Correct a wrong index used when extracting Short Video Descriptors
+from EDID. Also avoid empty entries in modedb array in case of an
+SVD is not present in cea_modes[] table.
+
+Signed-off-by: Rudi <r.ihle@s-t.de>
+---
+ drivers/video/fbmon.c |   41 ++++++++++++++++++++++++-----------------
+ 1 file changed, 24 insertions(+), 17 deletions(-)
+
+diff --git a/drivers/video/fbmon.c b/drivers/video/fbmon.c
+index cef6557..bbf2ec9 100644
+--- a/drivers/video/fbmon.c
++++ b/drivers/video/fbmon.c
+@@ -990,7 +990,7 @@ void fb_edid_to_monspecs(unsigned char *edid, struct fb_monspecs *specs)
  void fb_edid_add_monspecs(unsigned char *edid, struct fb_monspecs *specs)
  {
  	unsigned char *block;
@@ -9,7 +26,7 @@
  	int num = 0, i;
  	u8 svd[64], edt[(128 - 4) / DETAILED_TIMING_DESCRIPTION_SIZE];
  	u8 pos = 4, svd_n = 0;
-@@ -1011,7 +1012,7 @@
+@@ -1011,7 +1011,7 @@ void fb_edid_add_monspecs(unsigned char *edid, struct fb_monspecs *specs)
  		u8 len = edid[pos] & 0x1f, type = (edid[pos] >> 5) & 7;
  		pr_debug("Data block %u of %u bytes\n", type, len);
  		if (type == 2)
@@ -18,7 +35,7 @@
  				u8 idx = edid[pos + i] & 0x7f;
  				svd[svd_n++] = idx;
  				pr_debug("N%sative mode #%d\n",
-@@ -1033,37 +1034,44 @@
+@@ -1033,37 +1033,44 @@ void fb_edid_add_monspecs(unsigned char *edid, struct fb_monspecs *specs)
  	if (!(num + svd_n))
  		return;
  
@@ -32,16 +49,15 @@
  		return;
  
 -	memcpy(m, specs->modedb, specs->modedb_len * sizeof(struct fb_videomode));
--
++	
++	memcpy(modedb, specs->modedb, specs->modedb_len * sizeof(struct fb_videomode));
++	m = &modedb[specs->modedb_len];
+ 
 -	for (i = specs->modedb_len; i < specs->modedb_len + num; i++) {
 -		get_detailed_timing(edid + edt[i - specs->modedb_len], &m[i]);
 -		if (i == specs->modedb_len)
 -			m[i].flag |= FB_MODE_IS_FIRST;
 -		pr_debug("Adding %ux%u@%u\n", m[i].xres, m[i].yres, m[i].refresh);
-+	
-+	memcpy(modedb, specs->modedb, specs->modedb_len * sizeof(struct fb_videomode));
-+	m = &modedb[specs->modedb_len];
-+
 +	for (i = 0; i < num; i++) {
 +		get_detailed_timing(edid + edt[i], m);
 +		pr_debug("Adding %ux%u@%u\n", m->xres, m->yres, m->refresh);
@@ -58,11 +74,10 @@
  			pr_warning("Unimplemented SVD code %d\n", idx);
  		} else {
 -			memcpy(&m[i], cea_modes + idx, sizeof(m[i]));
--			pr_debug("Adding SVD #%d: %ux%u@%u\n", idx,
--				 m[i].xres, m[i].yres, m[i].refresh);
 +			memcpy(m, cea_modes + idx, sizeof(m[0]));
 +			m->flag = FB_MODE_IS_STANDARD;
-+			pr_debug("Adding SVD #%d: %ux%u@%u\n", idx,
+ 			pr_debug("Adding SVD #%d: %ux%u@%u\n", idx,
+-				 m[i].xres, m[i].yres, m[i].refresh);
 +				 m->xres, m->yres, m->refresh);
 +			m++;
 +			num++;
@@ -80,3 +95,6 @@
  }
  
  /*
+-- 
+1.7.9.5
+
