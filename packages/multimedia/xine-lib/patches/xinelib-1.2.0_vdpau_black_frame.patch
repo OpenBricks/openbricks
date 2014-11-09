@@ -1,0 +1,43 @@
+diff --git a/src/video_out/video_out_vdpau.c b/src/video_out/video_out_vdpau.c
+--- a/src/video_out/video_out_vdpau.c
++++ b/src/video_out/video_out_vdpau.c
+@@ -113,7 +113,9 @@ VdpOutputSurfaceRenderBlendState blend =
+ 
+ VdpDevice vdp_device;
+ VdpPresentationQueue vdp_queue;
++VdpPresentationQueue prev_vdp_queue = VDP_INVALID_HANDLE;
+ VdpPresentationQueueTarget vdp_queue_target;
++VdpPresentationQueueTarget prev_vdp_queue_target = VDP_INVALID_HANDLE;
+ 
+ VdpDeviceDestroy *vdp_device_destroy;
+ 
+@@ -2234,8 +2236,16 @@ static int vdpau_gui_data_exchange (vo_d
+       pthread_mutex_lock(&this->drawable_lock); /* wait for other thread which is currently displaying */
+       DO_LOCKDISPLAY
+       this->drawable = (Drawable) data;
+-      vdp_queue_destroy( vdp_queue );
+-      vdp_queue_target_destroy( vdp_queue_target );
++ 
++      // Do not immideatly destory queue as the window would display a black frame
++      // Patch for xineliboutput to allow opening the hud without black frame
++      if (prev_vdp_queue!=VDP_INVALID_HANDLE) {
++        vdp_queue_destroy(prev_vdp_queue);
++        vdp_queue_target_destroy(prev_vdp_queue_target);
++      }
++      prev_vdp_queue=vdp_queue;
++      prev_vdp_queue_target=vdp_queue_target;
++
+       st = vdp_queue_target_create_x11( vdp_device, this->drawable, &vdp_queue_target );
+       if ( st != VDP_STATUS_OK ) {
+         fprintf(stderr, "vo_vdpau: FATAL !! Can't recreate presentation queue target after drawable change !!\n" );
+@@ -2298,6 +2308,10 @@ static void vdpau_dispose (vo_driver_t *
+ 
+   if ( vdp_queue_target != VDP_INVALID_HANDLE )
+     vdp_queue_target_destroy( vdp_queue_target );
++  if ( prev_vdp_queue != VDP_INVALID_HANDLE )
++    vdp_queue_destroy( prev_vdp_queue );
++  if ( prev_vdp_queue_target != VDP_INVALID_HANDLE )
++    vdp_queue_target_destroy( prev_vdp_queue_target );
+ 
+   if ( this->video_mixer!=VDP_INVALID_HANDLE )
+     vdp_video_mixer_destroy( this->video_mixer );

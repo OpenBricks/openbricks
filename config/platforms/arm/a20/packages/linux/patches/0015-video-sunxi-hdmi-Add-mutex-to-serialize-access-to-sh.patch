@@ -1,6 +1,20 @@
-diff -aur --unidirectional-new-file a/hdmi/drv_hdmi.c b/hdmi/drv_hdmi.c
---- a/drivers/video/sunxi/hdmi/drv_hdmi.c	2014-08-24 19:03:13.000000000 +0200
-+++ b/drivers/video/sunxi/hdmi/drv_hdmi.c	2014-10-12 12:24:33.516143737 +0200
+From a36a041fa97a49781de0c3c71fdd8155b3280d5d Mon Sep 17 00:00:00 2001
+From: Rudi <r.ihle@s-t.de>
+Date: Sun, 19 Oct 2014 17:22:53 +0200
+Subject: [PATCH] video: sunxi-hdmi: Add mutex to serialize access to shared
+ resources.
+
+Protect variables shared between kernel thread and driver code by a mutex.
+
+Signed-off-by: Rudi <r.ihle@s-t.de>
+---
+ drivers/video/sunxi/hdmi/drv_hdmi.c |   80 ++++++++++++++++++++++-------------
+ 1 file changed, 50 insertions(+), 30 deletions(-)
+
+diff --git a/drivers/video/sunxi/hdmi/drv_hdmi.c b/drivers/video/sunxi/hdmi/drv_hdmi.c
+index 283d2ae..117119e3 100644
+--- a/drivers/video/sunxi/hdmi/drv_hdmi.c
++++ b/drivers/video/sunxi/hdmi/drv_hdmi.c
 @@ -17,9 +17,6 @@
   * MA 02111-1307 USA
   */
@@ -40,7 +54,7 @@ diff -aur --unidirectional-new-file a/hdmi/drv_hdmi.c b/hdmi/drv_hdmi.c
  
  	return 0;
  }
-@@ -155,11 +157,17 @@
+@@ -155,11 +157,17 @@ static __s32 Hdmi_set_display_mode(__disp_tv_mode_t mode)
  
  	ghdmi.mode = mode;
  	if (hdmi_mode != video_mode) {
@@ -60,7 +74,7 @@ diff -aur --unidirectional-new-file a/hdmi/drv_hdmi.c b/hdmi/drv_hdmi.c
  	return 0;
  }
  
-@@ -172,13 +180,15 @@
+@@ -172,13 +180,15 @@ static __s32 Hdmi_set_display_videomode(const struct __disp_video_timing *mode)
  
  	if (memcmp(mode, &video_timing[video_timing_edid],
  			sizeof(struct __disp_video_timing)) != 0) {
@@ -79,7 +93,7 @@ diff -aur --unidirectional-new-file a/hdmi/drv_hdmi.c b/hdmi/drv_hdmi.c
  	}
  
  	return 0;
-@@ -191,9 +201,14 @@
+@@ -191,9 +201,14 @@ static __s32 Hdmi_Audio_Enable(__u8 mode, __u8 channel)
  	__inf("[Hdmi_Audio_Enable],ch:%d\n", channel);
  
  	if (audio_info.audio_en != audio_en) {
@@ -94,7 +108,7 @@ diff -aur --unidirectional-new-file a/hdmi/drv_hdmi.c b/hdmi/drv_hdmi.c
  	}
  
  	return 0;
-@@ -209,28 +224,35 @@
+@@ -209,28 +224,35 @@ static __s32 Hdmi_Set_Audio_Para(hdmi_audio_t *audio_para)
  		return -1;
  
  	if (audio_para->sample_bit != audio_info.sample_bit) {
@@ -141,7 +155,7 @@ diff -aur --unidirectional-new-file a/hdmi/drv_hdmi.c b/hdmi/drv_hdmi.c
  
  	return 0;
  }
-@@ -284,8 +306,12 @@
+@@ -284,8 +306,12 @@ static int
  Hdmi_run_thread(void *parg)
  {
  	while (1) {
@@ -154,7 +168,7 @@ diff -aur --unidirectional-new-file a/hdmi/drv_hdmi.c b/hdmi/drv_hdmi.c
  		if (kthread_should_stop())
  			break;
  
-@@ -305,9 +331,6 @@
+@@ -305,9 +331,6 @@ __s32 Hdmi_init(struct platform_device *dev)
  	__disp_hdmi_func disp_func;
  	int err = 0;
  
@@ -164,7 +178,7 @@ diff -aur --unidirectional-new-file a/hdmi/drv_hdmi.c b/hdmi/drv_hdmi.c
  	hdmi_base = (void __iomem *) ghdmi.base_hdmi;
  	hdmi_core_initial();
  	err = hdmi_i2c_sunxi_probe(dev);
-@@ -369,9 +392,6 @@
+@@ -369,9 +392,6 @@ __s32 Hdmi_init(struct platform_device *dev)
  __s32 Hdmi_exit(struct platform_device *dev)
  {
  
@@ -174,3 +188,6 @@ diff -aur --unidirectional-new-file a/hdmi/drv_hdmi.c b/hdmi/drv_hdmi.c
  	if (HDMI_task) {
  		kthread_stop(HDMI_task);
  		HDMI_task = NULL;
+-- 
+1.7.9.5
+

@@ -1,0 +1,195 @@
+From 99de2021ac2c7281cd1f902289d68b8b104897f1 Mon Sep 17 00:00:00 2001
+From: Rudi <r.ihle@s-t.de>
+Date: Sun, 9 Nov 2014 09:27:17 +0100
+Subject: [PATCH] video: Determine VIC from fb_videomode.
+
+Set VIC in AVI info frame in case the video mode is DISP_TV_MODE_EDID.
+This patch superseds 620b0ffba331f1d44b7dc7c4db62e5ea1a18d7a6
+
+Signed-off-by: Rudi <r.ihle@s-t.de>
+---
+ drivers/video/sunxi/disp/dev_fb.c    |   16 +++++-----------
+ drivers/video/sunxi/disp/disp_hdmi.c |   31 +++++++++++++++++++++++++++----
+ drivers/video/sunxi/disp/disp_hdmi.h |    1 +
+ drivers/video/sunxi/hdmi/hdmi_core.c |   31 +++++++------------------------
+ 4 files changed, 40 insertions(+), 39 deletions(-)
+
+diff --git a/drivers/video/sunxi/disp/dev_fb.c b/drivers/video/sunxi/disp/dev_fb.c
+index 4a9c26c..58a45a7 100644
+--- a/drivers/video/sunxi/disp/dev_fb.c
++++ b/drivers/video/sunxi/disp/dev_fb.c
+@@ -1713,7 +1713,7 @@ const struct fb_videomode *hdmi_edid_received(unsigned char *edid, int block_cou
+ 	struct fb_event event;
+ 	struct fb_modelist *m, *n;
+ 	struct fb_videomode currMode, *dflt = NULL;
+-	int i, vic;
++	int vic;
+ 	__u32 sel = 0;
+ 	__u32 block = 0;
+ 	LIST_HEAD(old_modelist);
+@@ -1800,16 +1800,10 @@ const struct fb_videomode *hdmi_edid_received(unsigned char *edid, int block_cou
+ 		 * Determine default mode and vic support
+ 		 */
+ 		list_for_each_entry(m, &fbi->modelist, list) {
+-			for (vic = 0, i = 1; i < ARRAY_SIZE(cea_modes); i++) {
+-				if (cea_modes[i].xres == m->mode.xres &&
+-				    cea_modes[i].yres == m->mode.yres &&
+-				    cea_modes[i].vmode == m->mode.vmode &&
+-				    cea_modes[i].refresh == m->mode.refresh) {
+-					vic_support[i] = 1;
+-					vic = i;
+-					break;
+-				}
+-			}
++			vic = vic_from_videomode(&m->mode, FB_VMODE_MASK);
++
++			if (vic)
++				vic_support[vic] = 1;
+ 
+ 			if (!dflt && (m->mode.flag & FB_MODE_IS_FIRST))
+ 				dflt = &m->mode;
+diff --git a/drivers/video/sunxi/disp/disp_hdmi.c b/drivers/video/sunxi/disp/disp_hdmi.c
+index 01e06f3..c29afa5 100644
+--- a/drivers/video/sunxi/disp/disp_hdmi.c
++++ b/drivers/video/sunxi/disp/disp_hdmi.c
+@@ -206,6 +206,25 @@ static __u32 fb_videomode_pixclock_to_hdmi_pclk(__u32 pixclock)
+ 	return pclk * 50000;
+ }
+ 
++int vic_from_videomode(const struct fb_videomode *mode, unsigned vmode_mask)
++{
++	int vic;
++	unsigned rfsh_limit;
++
++	for (vic = 1; vic < ARRAY_SIZE(cea_modes); vic++) {
++		/* allow 59 to match 60 and 23 to match 24 */
++		rfsh_limit = (cea_modes[vic].refresh == 24 || cea_modes[vic].refresh == 60) ? 1 : 0;
++
++		if (cea_modes[vic].xres == mode->xres && cea_modes[vic].yres == mode->yres &&
++		    (unsigned)(cea_modes[vic].refresh - mode->refresh) <= rfsh_limit &&
++		    ((cea_modes[vic].vmode ^ mode->vmode) & vmode_mask) == 0) {
++			return vic;
++		}
++	}
++
++	return 0;
++}
++
+ void videomode_to_video_timing(struct __disp_video_timing *video_timing,
+ 		const struct fb_videomode *mode)
+ {
+@@ -214,15 +233,14 @@ void videomode_to_video_timing(struct __disp_video_timing *video_timing,
+ 		int pclk;
+ 	} pclk_override[] = {
+ 		/*  VIC        PCLK  AVI_PR INPUTX INPUTY HT   HBP  HFP  HPSW  VT  VBP VFP VPSW I  HS VS   override */
+-		{ { 511, 146250000, 0, 1680, 1050, 2240, 456, 104, 176, 1089, 36,  3, 6,  0, 0, 1 }, 146000000 },
+-		{ { 511,  83500000, 0, 1280,  800, 1680, 328,  72, 128,  831, 28,  3, 6,  0, 0, 1 },  83250000 },
+-		{ { 511,  83500000, 0, 1280,  800, 1680, 328,  72, 128,  831, 21, 10, 6,  0, 1, 1 },  83250000 },
++		{ { 0, 146250000, 0, 1680, 1050, 2240, 456, 104, 176, 1089, 36,  3, 6,  0, 0, 1 }, 146000000 },
++		{ { 0,  83500000, 0, 1280,  800, 1680, 328,  72, 128,  831, 28,  3, 6,  0, 0, 1 },  83250000 },
++		{ { 0,  83500000, 0, 1280,  800, 1680, 328,  72, 128,  831, 21, 10, 6,  0, 1, 1 },  83250000 },
+ 	};
+ 
+ 	int i;
+ 
+ 	memset(video_timing, 0, sizeof(struct __disp_video_timing));
+-	video_timing->VIC = 511;
+ 	video_timing->PCLK =
+ 		fb_videomode_pixclock_to_hdmi_pclk(mode->pixclock);
+ 	video_timing->AVI_PR = 0;
+@@ -248,6 +266,9 @@ void videomode_to_video_timing(struct __disp_video_timing *video_timing,
+ 
+ 		if ((video_timing->HT * (video_timing->VT + 1) * (mode->refresh/2)) == video_timing->PCLK)
+ 			video_timing->VT++;
++
++		if (mode->xres == 720 && (mode->yres == 576 || mode->yres == 480))
++			video_timing->AVI_PR = 1;
+ 	}
+ 
+ 	if (mode->sync & FB_SYNC_HOR_HIGH_ACT)
+@@ -262,6 +283,8 @@ void videomode_to_video_timing(struct __disp_video_timing *video_timing,
+ 			break;
+ 		}
+ 	}
++
++	video_timing->VIC = vic_from_videomode(mode, FB_VMODE_MASK);
+ }
+ 
+ __s32 BSP_disp_set_videomode(__u32 sel, const struct fb_videomode *mode)
+diff --git a/drivers/video/sunxi/disp/disp_hdmi.h b/drivers/video/sunxi/disp/disp_hdmi.h
+index cbc5e14..ab77bcc 100644
+--- a/drivers/video/sunxi/disp/disp_hdmi.h
++++ b/drivers/video/sunxi/disp/disp_hdmi.h
+@@ -23,5 +23,6 @@
+ __s32 Display_Hdmi_Init(void);
+ __s32 Display_Hdmi_Exit(void);
+ void videomode_to_video_timing(struct __disp_video_timing *video_timing, const struct fb_videomode *mode);
++int vic_from_videomode(const struct fb_videomode *mode, unsigned vmode_mask);
+ 
+ #endif
+diff --git a/drivers/video/sunxi/hdmi/hdmi_core.c b/drivers/video/sunxi/hdmi/hdmi_core.c
+index ce2efed..879d06f 100644
+--- a/drivers/video/sunxi/hdmi/hdmi_core.c
++++ b/drivers/video/sunxi/hdmi/hdmi_core.c
+@@ -63,7 +63,7 @@ struct __disp_video_timing video_timing[] = {
+ 	{ HDMI720P_60_3D_FP,  148500000,  0,  1280, 1440, 1650, 260, 110, 40,  750, 25,  5,  5, 0,  1,  1 },
+ 	{ HDMI1360_768_60,     85500000,  0,  1360,  768, 1792, 368, 64, 112,  795, 24,  3,  6, 0,  1,  1 },
+ 	{ HDMI1280_1024_60,   108000000,  0,  1280, 1024, 1688, 360, 48, 112, 1066, 41,  1,  3, 0,  1,  1 },
+-	{ HDMI_EDID, } /* Entry reserved for EDID detected preferred timing */
++	{ 0 } /* Entry reserved for EDID detected preferred timing */
+ };
+ 
+ const int video_timing_edid = ARRAY_SIZE(video_timing) - 1;
+@@ -219,7 +219,10 @@ __s32 get_video_info(__s32 vic)
+ {
+ 	__s32 i;
+ 
+-	for (i = 0; i < ARRAY_SIZE(video_timing); i++)
++	if (vic == HDMI_EDID)
++		return video_timing_edid;
++	
++	for (i = 0; i < video_timing_edid; i++)
+ 		if (vic == video_timing[i].VIC)
+ 			return i;
+ 
+@@ -227,25 +230,6 @@ __s32 get_video_info(__s32 vic)
+ 	return -1;
+ }
+ 
+-__s32 vic_from_video_timing(const struct __disp_video_timing *mode)
+-{
+-	__s32 i;
+-	struct __disp_video_timing temp_mode;
+-	
+-	memcpy(&temp_mode, mode, sizeof(temp_mode));
+-
+-	for (i = 0; i < ARRAY_SIZE(video_timing); i++)
+-	{
+-	      temp_mode.VIC = video_timing[i].VIC;
+-	      
+-	      if (memcmp(&temp_mode, &video_timing[i], sizeof(temp_mode)) == 0)
+-			return video_timing[i].VIC;
+-	}
+-	
+-	return HDMI_EDID;
+-}
+-
+-
+ static __s32 get_audio_info(__s32 sample_rate)
+ {
+ 	__s32 vic_tab;
+@@ -320,9 +304,8 @@ __s32 video_config(__s32 vic)
+ 		return 0;
+ 	else
+ 		video_mode = vic;
+-	
+-	if (vic == HDMI_EDID)
+-		vic = vic_from_video_timing(&video_timing[video_timing_edid]);
++
++	vic = video_timing[vic_tab].VIC;
+ 
+ 	if ((vic == HDMI1440_480I) || (vic == HDMI1440_576I))
+ 		dw = 1; /* Double Width */
+-- 
+1.7.9.5
+
