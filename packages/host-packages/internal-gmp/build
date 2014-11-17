@@ -1,0 +1,42 @@
+#!/bin/sh
+
+export BUILD=$BUILD_NOARCH
+
+. config/options
+
+$SCRIPTS/build internal-m4
+
+get_meta internal-m4
+dir_internal_m4=$ROOT/$PKG_BUILD_DIR/.install/usr/bin
+
+get_meta $1
+
+cd $PKG_BUILD_DIR
+
+export CFLAGS="$CFLAGS -fPIC"
+export CPPFLAGS="$CPPFLAGS -fexceptions"
+
+[ -d internal-objdir ] && rm -rf internal-objdir
+
+mkdir -p internal-objdir
+cd internal-objdir
+
+setup_toolchain host
+CC=$LOCAL_CC
+CXX=$LOCAL_CXX
+M4=$dir_internal_m4/m4
+
+../configure --enable-mpbsd \
+	     --enable-cxx \
+	     --prefix=/usr
+
+make
+#make check
+make_install toolchain
+
+mkdir -p $ROOT/$PKG_BUILD_DIR
+rm -rf $ROOT/$PKG_BUILD_DIR/.install
+mv .install $ROOT/$PKG_BUILD_DIR
+
+sed -i -e "/^libdir=/d" $ROOT/$PKG_BUILD_DIR/.install/usr/lib/libgmp.la
+echo "libdir='$ROOT/$PKG_BUILD_DIR/.install/usr/lib'" >> $ROOT/$PKG_BUILD_DIR/.install/usr/lib/libgmp.la

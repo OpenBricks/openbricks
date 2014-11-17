@@ -1,0 +1,52 @@
+#!/bin/sh
+
+export BUILD=$BUILD_NOARCH
+
+. config/options
+
+get_meta $1
+
+if [ -f $ROOT/$PKG_BUILD_DIR/gcc-ok ] ; then
+  # Nothing to do, gcc is already built  
+  exit 0
+else
+$SCRIPTS/build internal-m4
+$SCRIPTS/build internal-gmp
+$SCRIPTS/build internal-mpfr
+$SCRIPTS/build internal-mpc
+
+get_meta internal-gmp
+dir_internal_gmp=$ROOT/$PKG_BUILD_DIR/.install/usr
+
+get_meta internal-mpfr
+dir_internal_mpfr=$ROOT/$PKG_BUILD_DIR/.install/usr
+
+get_meta internal-mpc
+dir_internal_mpc=$ROOT/$PKG_BUILD_DIR/.install/usr
+
+get_meta $1
+cd $PKG_BUILD_DIR
+
+setup_toolchain host
+
+mkdir -p $1
+cd $1
+
+CC=$LOCAL_CC
+CXX=$LOCAL_CXX
+
+../configure --with-gmp=$dir_internal_gmp   \
+             --with-mpfr=$dir_internal_mpfr \
+             --with-mpc=$dir_internal_mpc   \
+             --disable-multilib             \
+             --enable-shared
+
+
+make
+#make_install
+mkdir -p "$ROOT/$PKG_BUILD_DIR/.install"
+make install DESTDIR="$ROOT/$PKG_BUILD_DIR/.install"
+
+cd ..
+touch gcc-ok
+fi
