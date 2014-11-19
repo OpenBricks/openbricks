@@ -33,15 +33,5 @@ else
   alias cd=my_cd
   update_ps1
 fi
-  col_cyan="\033[1;36m"
-  col_normal="\033[0;39m"
-
-  PS1="\[${col_cyan}\]\u@\h:\[${col_blue}\]\w\[${col_normal}\]\$ "
-  export PS1
-else
-  ## it's sh from busybox
-  alias cd=my_cd
-  update_ps1
-fi
 
 alias ll='ls -l'
