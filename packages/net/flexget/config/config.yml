@@ -1,0 +1,154 @@
+templates:
+  tvshows:
+    exists_series:
+      - /media/usb0/TV Shows/
+      - /media/usb0/Downloads/incomplete
+    regexp:
+      reject:
+        - FASTSUB
+        - VOSTFR
+        - Subtitulado
+    content_filter:
+      reject:
+        - '*.rar'
+        - '*.zip'
+        - '*.avi'  
+    transmission:
+      host: localhost
+      port: 9091
+      username: '{{ secrets.transmission.usr }}'
+      password: '{{ secrets.transmission.pwd }}'
+      path: /media/usb0/TV Shows/{{series_name|pathscrub}}/S{{"%02d"|format(series_season)}}  
+    inputs:
+      - rss: http://showrss.info/rss.php?user_id=00000&hd=2&proper=1&raw=true
+  movies:
+    transmission:
+      host: localhost
+      port: 9091
+      username: '{{ secrets.transmission.usr }}'
+      password: '{{ secrets.transmission.pwd }}'
+      path: /media/usb0/Movies
+ 
+tasks:
+  get_tvshowshd:
+    priority: 1
+    template: tvshows
+    configure_series:
+      from:
+        trakt_list:
+          username: '{{ secrets.trakt.usr }}'
+          password: '{{ secrets.trakt.pwd }}'
+          api_key: '{{ secrets.trakt.api }}'
+          custom: Following in HD
+      settings:
+        quality: 720p hdtv
+ 
+  get_tvshows:
+    priority: 2
+    template: tvshows
+    configure_series:
+      from:
+        trakt_list:
+          username: '{{ secrets.trakt.usr }}'
+          password: '{{ secrets.trakt.pwd }}'
+          api_key: '{{ secrets.trakt.api }}'
+          custom: Following
+      settings:
+        quality: hdtv <720p
+
+  fill_movie_queue:
+    priority: 3
+    trakt_list:
+      username: '{{ secrets.trakt.usr }}'
+      password: '{{ secrets.trakt.pwd }}'
+      api_key: '{{ secrets.trakt.api }}'
+      movies: watchlist
+    seen: local
+    queue_movies:
+      quality: 720p+ bluray
+    accept_all: yes
+
+  get_movies1080p:
+    template: movies
+    priority: 4
+    quality: 1080p bluray
+    content_size:
+      max: 13000
+      min: 6000
+    torrent_alive: yes
+    discover:
+      what:
+        - emit_movie_queue: yes
+      from:
+        - piratebay:
+            category: highres movies
+            sort_by: default
+        - kat:
+            category: movies
+        - torrentz: good
+        - publichd:
+            category:
+              - BluRay 1080p
+              - BRRip
+    seen_movies: strict
+    movie_queue: yes
+
+  get_movies720p:
+    template: movies
+    priority: 5
+    quality: 720p bluray
+    content_size:
+      max: 8600
+      min: 4400
+    torrent_alive: yes
+    discover:
+      what:
+        - emit_movie_queue: yes
+      from:
+        - piratebay:
+            category: highres movies
+            sort_by: default
+        - kat:
+            category: movies
+        - torrentz: good
+        - publichd:
+            category:
+              - BluRay 720p
+              - BRRip
+    seen_movies: strict
+    movie_queue: yes
+
+  get_movieslowq:
+    template: movies
+    priority: 6
+    quality: 720p bluray
+    content_size:
+      max: 4600
+      min: 2000
+    torrent_alive: yes
+    discover:
+      what:
+        - emit_movie_queue: yes
+      from:
+        - piratebay:
+            category: highres movies
+            sort_by: default
+        - kat:
+            category: movies
+        - torrentz: good
+        - publichd:
+            category:
+              - BluRay 720p
+              - BRRip
+    seen_movies: strict
+    movie_queue: yes
+
+  cleanup:
+    priority: 8
+    clean_transmission:
+      host: localhost
+      port: 9091
+      username: '{{ secrets.transmission.usr }}'
+      password: '{{ secrets.transmission.pwd }}'
+      finished_for: 10 days
+      
