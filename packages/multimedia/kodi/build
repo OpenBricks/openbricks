@@ -1,0 +1,192 @@
+#!/bin/sh
+
+. config/options
+
+get_meta swig
+SWIG_VER=$PKG_VERSION
+
+get_meta $1
+
+export MAKEFLAGS=-j2
+
+kodi_set_option() {
+  PKG="$1"
+  OPT="$2"
+  CFG_LIST="$3"
+  pkg_uses $PKG $OPT && CFG=enable || CFG=disable
+  for CFG_NAME in $CFG_LIST; do
+    EXTRA_CONFIG="$EXTRA_CONFIG --$CFG-$CFG_NAME"
+  done
+  return 0
+}
+
+kodi_set_option $1 "opengl"            "gl"
+kodi_set_option $1 "opengles"          "gles"
+kodi_set_option $1 "openmax"           "openmax"
+kodi_set_option $1 "joystick"          "joystick"
+kodi_set_option $1 "zeroconf"          "avahi"
+kodi_set_option $1 "webserver"         "webserver"
+kodi_set_option $1 "vdpau"             "vdpau"
+kodi_set_option $1 "xvba"              "xvba"
+kodi_set_option $1 "vaapi"             "vaapi"
+kodi_set_option $1 "crystalhd"         "crystalhd"
+kodi_set_option $1 "pulse"             "pulse"
+kodi_set_option $1 "dvdcss"            "dvdcss"
+kodi_set_option $1 "bluray"            "libbluray"
+kodi_set_option $1 "rtmp"              "rtmp"
+kodi_set_option $1 "nonfree"           "non-free"
+kodi_set_option $1 "libcec"            "libcec"
+kodi_set_option $1 "libnfs"            "nfs"
+kodi_set_option $1 "afpclient"         "afpclient"
+kodi_set_option $1 "airplay"           "airplay"
+kodi_set_option $1 "airtunes"          "airtunes"
+kodi_set_option $1 "screensavers"      "rsxs"
+kodi_set_option $1 "gstreamer"         "gstreamer"
+kodi_set_option $1 "xorg"              "x11 xrandr"
+kodi_set_option $1 "sdl"               "sdl"
+kodi_set_option $1 "alsa"               "alsa"
+
+
+# check for nVidia ARM Tegra2 optimizations
+CFG_TEGRA="--disable-tegra"
+[ "$TARGET_PLATFORM" = tegra2 ] && CFG_TEGRA="--enable-tegra"
+[ "$TARGET_MACHINE" = cubox ] && EXTRA_CONFIG="$EXTRA_CONFIG --with-platform=marvell-dove"
+if [ "$TARGET_MACHINE" = raspberrypi ]; then
+  EXTRA_CONFIG="$EXTRA_CONFIG --with-platform=raspberry-pi"
+  if pkg_uses $1 openmax; then
+    EXTRA_CONFIG="$EXTRA_CONFIG --disable-openmax --enable-player=omxplayer"
+    local_cflags="-I$LIB_PREFIX/include/interface/vcos/pthreads -I$LIB_PREFIX/include/interface/vmcs_host/linux"
+    local_cxxflags="-I$LIB_PREFIX/include/interface/vcos/pthreads -I$LIB_PREFIX/include/interface/vmcs_host/linux"
+  fi
+fi
+
+if [ "$TARGET_MACHINE" = pandaboard ]; then
+  EXTRA_CONFIG="$EXTRA_CONFIG --enable-player=gstplayer"
+fi
+
+if [ "$TARGET_PLATFORM" = a10 ] || [ "$TARGET_PLATFORM" = a20 ]; then
+  #export CEDARLIBS="-lcedarv -lvecore"
+  export CEDARLIBS="-lcedarx"
+  EXTRA_CONFIG="$EXTRA_CONFIG --with-platform=allwinner-a10"
+fi
+
+if [ "$TARGET_PLATFORM" = imx6 ]; then
+  EXTRA_CONFIG="$EXTRA_CONFIG --enable-codec=imxvpu"
+fi
+
+if [ "$FPU_OPTIMIZATIONS" = "neon" -o  "$FPU_OPTIMIZATIONS" = "neon-vfp4" ]; then
+  EXTRA_CONFIG="$EXTRA_CONFIG --enable-neon"
+fi
+
+[ "$FPU_OPTIMIZATIONS" = "neon-vfp4" ] && CFLAGS="$CFLAGS -mfpu=vfpv4"
+[ "$FPU_OPTIMIZATIONS" = "neon-vfp4" ] && CXXFLAGS="$CXXFLAGS -mfpu=vfpv4"
+
+export LIBS="$LIBS -lstdc++"
+export LIB_P=$LIB_PREFIX
+
+export PYTHON_VERSION=2.7
+export PYTHON_CPPFLAGS=-I$LIB_PREFIX/include/python2.7
+export PYTHON_LDFLAGS="-L$LIB_PREFIX/lib/python2.7 -lpython2.7"
+export PYTHON_SITE_PKG=$LIB_PREFIX/lib/python2.7/site-packages
+export PYTHON_EXTRA_LIBS="-lpthread -ldl -lutil"
+export PYTHON_EXTRA_LDFLAGS="-Xlinker -export-dynamic"
+
+#export ac_cv_path_JAVA_EXE="/usr/bin/java"
+
+export SWIG_LIB=$ROOT/$TOOLCHAIN/share/swig/$SWIG_VER
+
+cd $PKG_BUILD_DIR
+
+touch .dummy.in
+
+
+# bootstrap
+if [ ! -f configure ] ; then
+  # build libsquish for target
+  setup_toolchain target
+  cd tools/depends/native/libsquish-native
+  make NATIVEPLATFORM=target NATIVEPREFIX=$LIB_PREFIX
+  cd -
+  
+  # build TexturePacker (and libsquish) for host
+  setup_toolchain host
+  cd tools/depends/native/TexturePacker
+  make
+  cd -
+  
+  # autoreconf for directory . may fail ...
+  do_autoconf || true
+  setup_toolchain host
+  BOOTSTRAP_STANDALONE=1 make -f bootstrap.mk
+
+  if [ "$TARGET_MACHINE" != "pandaboard" ] ; then
+    setup_toolchain host
+    BOOTSTRAP_STANDALONE=1 make -f codegenerator.mk
+  fi
+fi
+
+
+sed -i 's%PYTHON_VERSION=$ac_python_version%PYTHON_VERSION=2.7%' configure
+GCC_NO_LTO=1 GCC_NO_GOLD=1 GCC_NO_GRAPHITE=1 GCC_NO_LOOP_TREE=1 \
+do_configure \
+  --with-arch=$TARGET_ARCH \
+  --with-cpu=$TARGET_CPU \
+  --disable-debug \
+  --enable-optimizations \
+  --disable-vdadecoder \
+  --disable-profiling \
+  --disable-goom \
+  --disable-ccache \
+  --disable-mid \
+  --disable-hal \
+  --disable-asap-codec \
+  --enable-projectm \
+  --with-ffmpeg=shared \
+  $CFG_TEGRA \
+  $EXTRA_CONFIG \
+
+# leaked host includes break the Python components build
+sed -i Makefile.include -e "s:-I$ROOT/$TOOLCHAIN/include::"
+
+# leaked host includes also break libdvdnav
+sed -i lib/libdvd/libdvdnav/config.mak \
+    -e "s:^DVDREAD_CFLAGS=.*$:DVDREAD_CFLAGS=-I$LIB_PREFIX/include:" \
+    -e "s:^DVDREAD_LIBS=.*$:DVDREAD_LIBS=-L$LIB_PREFIX/lib -ldvdread:" \
+
+#export MAKEFLAGS=-j1
+make externals
+make kodi.bin
+make kodi-xrandr
+make skins
+make_install
+
+if [ "$TARGET_ARCH" = arm ]; then
+  # workaround to make the addons run
+  ln -sf /usr/lib/kodi/addons/library.kodi.addon/libXBMC_addon-arm.so .install/usr/lib/kodi/addons/library.xbmc.addon/libXBMC_addon-arm-linux.so || true
+  ln -sf /usr/lib/kodi/addons/library.kodi.gui/libXBMC_gui-arm.so .install/usr/lib/kodi/addons/library.xbmc.gui/libXBMC_gui-arm-linux.so || true
+  ln -sf /usr/lib/kodi/addons/library.kodi.pvr/libXBMC_pvr-arm.so .install/usr/lib/kodi/addons/library.xbmc.pvr/libXBMC_pvr-arm-linux.so || true
+fi
+
+for i in .install/usr/lib/kodi/system/players/dvdplayer/*; do
+  lib=$(basename $i)
+  ln -s /usr/lib/kodi/system/players/dvdplayer/$lib .install/usr/lib/$lib;
+done
+
+cp -P $ROOT/$PACKAGES/$PKG_SECTION/$1/scripts/kodi-default-settings.sh \
+  .install/usr/lib/kodi/
+
+# remove unneeded files from skins
+for i in .install/usr/share/kodi/addons/skin.*; do
+  rm $i/media/Makefile*
+
+  if [ -f $i/media/Textures.xbt ]; then
+    find $i/media -type f -not -iregex ".*\.xbt" -delete
+    find $i/media -type d -empty -delete
+  fi
+done
+
+# hook into global home page
+mkdir -p .install/srv/www/htdocs
+cp $ROOT/$PACKAGES/$PKG_SECTION/$1/www/* .install/srv/www/htdocs
+
+exit 0
