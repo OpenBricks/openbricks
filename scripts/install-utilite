@@ -1,16 +1,41 @@
 #!/bin/sh
 
-ARCH_SRC="http://download.geexbox.org/snapshots/geexbox-xbmc-imx6-utilite/latest/binaries.utilite"
-ARCHIVE=`curl http://download.geexbox.org/snapshots/geexbox-xbmc-imx6-utilite/latest/binaries.utilite/ -s| grep tar.xz | cut -d'"' -f2`
+
+CUSTOM_ARCHIVE="$1"
+if ! [ ${CUSTOM_ARCHIVE} ] ; then
+  printf "${CUSTOM_ARCHIVE} doesn't exist !\n"
+  exit 1
+else
+  ARCHIVE="`basename ${CUSTOM_ARCHIVE}`"
+fi
 mkdir -p /root/install-utilite/temp
-# wget http://download.openbricks.org/utilite/boot.scr -O /root/install-utilite/boot.scr
-wget $ARCH_SRC/$ARCHIVE -O /root/install-utilite/$ARCHIVE
+
+if [ -f ${CUSTOM_ARCHIVE} ] ; then
+  ln -s ${CUSTOM_ARCHIVE} /root/install-utilite/$ARCHIVE
+else
+  ARCH_SRC="http://download.geexbox.org/snapshots/geexbox-xbmc-imx6-utilite/latest/binaries.utilite"
+  ARCHIVE=`curl http://download.geexbox.org/snapshots/geexbox-xbmc-imx6-utilite/latest/binaries.utilite/ -s| grep tar.xz | cut -d'"' -f2`
+  printf "Downloading $ARCH_SRC/$ARCHIVE ...\n"
+  wget $ARCH_SRC/$ARCHIVE -O /root/install-utilite/$ARCHIVE
+fi
+
+printf "Mounting partitions ...\n"
 mount /dev/sda2 /root/install-utilite/temp
+
+printf "    Erasing all data in /dev/sda2 ...\n"
 rm -rf /root/install-utilite/temp/*
+
 mkdir /root/install-utilite/temp/boot
 mount /dev/sda1 /root/install-utilite/temp/boot
+
+printf "    Erasing all data in /dev/sda1 ...\n"
 rm -rf /root/install-utilite/temp/boot/*
+
+printf "Unpacking archive ...\n"
 tar --no-same-owner -xaf /root/install-utilite/$ARCHIVE -C /root/install-utilite/temp
-# cp /root/install-utilite/boot.scr /root/install-utilite/temp/boot/boot.scr
+
+printf "Done, Unmounting partitions ...\n"
 umount /dev/sda1
 umount /dev/sda2
+
+printf "Please reboot, removing your µsdcard.\n"
