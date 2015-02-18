@@ -65,8 +65,8 @@ if [ ! -f "$GUI_SETTINGS" ] ; then
 
   GUI_LIMIT="1080"
   if [ "$SYS_PREFIX" = "rpi" ] ; then
-    MEMSIZE=`cat /proc/meminfo | grep "MemTotal" | grep "[0-9]*" -o`
-    [ $MEMSIZE -le 262144 ] && GUI_LIMIT="720"
+    MEMSIZE=`vcgencmd get_mem gpu | grep -o "[0-9]*"`
+    [ $MEMSIZE -le 256 ] && GUI_LIMIT="720"
   fi
     
   sed -i $GUI_SETTINGS \
