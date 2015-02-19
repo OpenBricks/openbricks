@@ -19,7 +19,7 @@ set_system_prefix () {
   if   grep -q "OMAP4 Panda board" /proc/cpuinfo; then SYS_PREFIX="panda"
   elif grep -q "Snowball" /proc/cpuinfo;          then SYS_PREFIX="snowball"
   elif grep -q "SolidRun CuBox" /proc/cpuinfo;    then SYS_PREFIX="cubox"
-  elif grep -q "BCM2708" /proc/cpuinfo;           then SYS_PREFIX="rpi"
+  elif grep -q "BCM270[8|9]" /proc/cpuinfo;       then SYS_PREFIX="rpi"
   elif grep -q "sun[4-7]i" /proc/cpuinfo;         then SYS_PREFIX="a10"
   elif grep -q "CM-FX6" /proc/cpuinfo;            then SYS_PREFIX="utilite"
   elif grep -q "i.MX6" /proc/cpuinfo;             then SYS_PREFIX="cuboxi"
@@ -65,8 +65,8 @@ if [ ! -f "$GUI_SETTINGS" ] ; then
 
   GUI_LIMIT="1080"
   if [ "$SYS_PREFIX" = "rpi" ] ; then
-    MEMSIZE=`cat /proc/meminfo | grep "MemTotal" | grep "[0-9]*" -o`
-    [ $MEMSIZE -le 262144 ] && GUI_LIMIT="720"
+    MEMSIZE=`vcgencmd get_mem gpu | grep -o "[0-9]*"`
+    [ $MEMSIZE -le 256 ] && GUI_LIMIT="720"
   fi
     
   sed -i $GUI_SETTINGS \
