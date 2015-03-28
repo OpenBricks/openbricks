@@ -1,16 +1,43 @@
 #!/bin/sh
 
-ARCH_SRC="http://download.geexbox.org/snapshots/geexbox-xbmc-imx6-utilite/latest/binaries.utilite"
-ARCHIVE=`curl http://download.geexbox.org/snapshots/geexbox-xbmc-imx6-utilite/latest/binaries.utilite/ -s| grep tar.xz | cut -d'"' -f2`
-mkdir -p /root/install-utilite/temp
-# wget http://download.openbricks.org/utilite/boot.scr -O /root/install-utilite/boot.scr
-wget $ARCH_SRC/$ARCHIVE -O /root/install-utilite/$ARCHIVE
-mount /dev/sda2 /root/install-utilite/temp
-rm -rf /root/install-utilite/temp/*
-mkdir /root/install-utilite/temp/boot
-mount /dev/sda1 /root/install-utilite/temp/boot
-rm -rf /root/install-utilite/temp/boot/*
-tar --no-same-owner -xaf /root/install-utilite/$ARCHIVE -C /root/install-utilite/temp
-# cp /root/install-utilite/boot.scr /root/install-utilite/temp/boot/boot.scr
+CUSTOM_ARCHIVE="$1"
+if [ -n "${CUSTOM_ARCHIVE}" ] && [ ! -f ${CUSTOM_ARCHIVE} ]; then
+  printf "Archive ${CUSTOM_ARCHIVE} doesn't exist !\n"
+  exit 1
+fi
+
+WORKDIR=$HOME/install-utilite
+rm -rf $WORKDIR/temp
+mkdir -p $WORKDIR/temp
+
+if [ -f ${CUSTOM_ARCHIVE} ] ; then
+  ARCHIVE="`basename ${CUSTOM_ARCHIVE}`"
+  ln -sf ${CUSTOM_ARCHIVE} $WORKDIR/$ARCHIVE
+else
+  ARCH_SRC="http://download.geexbox.org/snapshots/geexbox-xbmc-imx6-utilite/latest/binaries.utilite"
+  ARCHIVE=`curl $ARCH_SRC/ -s | grep "tar\.xz" | cut -d'"' -f2`
+  printf "Downloading $ARCH_SRC/$ARCHIVE ...\n"
+  curl -o $WORKDIR/$ARCHIVE $ARCH_SRC/$ARCHIVE
+fi
+
+printf "Mounting partitions ...\n"
+mount /dev/sda2 $WORKDIR/temp
+
+printf "    Erasing all data in /dev/sda2 ...\n"
+rm -rf $WORKDIR/temp/*
+
+mkdir $WORKDIR/temp/boot
+mount /dev/sda1 $WORKDIR/temp/boot
+
+printf "    Erasing all data in /dev/sda1 ...\n"
+rm -rf $WORKDIR/temp/boot/*
+
+printf "Unpacking archive ...\n"
+tar --no-same-owner -xaf $WORKDIR/$ARCHIVE -C $WORKDIR/temp
+
+printf "Done, Unmounting partitions ...\n"
 umount /dev/sda1
 umount /dev/sda2
+sync
+
+printf "Please reboot, removing your µsdcard.\n"
