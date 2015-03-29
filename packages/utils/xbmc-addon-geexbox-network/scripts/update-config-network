@@ -1,5 +1,8 @@
 #!/bin/sh
 
+DSTCFG=/etc/network
+SRCCFG=$HOME/.xbmc/userdata/addon_data/geexbox.addon.network/settings.xml
+
 # Usage: isset <variable>
 isset() {
   local var="$1"
@@ -17,23 +20,26 @@ valueof() {
   echo "$tmp"
 }
 
-if [ -f /root/.xbmc/userdata/addon_data/geexbox.addon.network/settings.xml ] ; then
+if [ -f $SRCCFG ] ; then
   while read i ; do
-    echo $i| grep "setting " | sed -e 's%<setting id="%%'\
-                                   -e 's%" value%%' \
-                                   -e 's% />%%' >> /tmp/network
-  done < /root/.xbmc/userdata/addon_data/geexbox.addon.network/settings.xml
+    cmd=`echo $i | \
+         grep "setting " | \
+         sed -e 's%<setting id="%%' -e 's%" value%%' -e 's% />.*%%'`
+    #[ -n "$cmd" ] && echo $cmd
+    [ -n "$cmd" ] && eval $cmd
+  done < $SRCCFG
 
-  # update /etc/network with the new values (only for the keys actually defined)
-  . /tmp/network
-  for key in `cat /etc/network | grep -v '^#' | cut -f1 -d=`; do
+  for key in `cat $DSTCFG | grep -v '^#' | cut -f1 -d=`; do
     if isset ${key}; then
       val=`valueof ${key}`
-      sed -e "s%^${key}=.*%${key}=\"${val}\"%" -i /etc/network
+      sed -e "s%^${key}=.*%${key}=\"${val}\"%" -i $DSTCFG
     fi
   done
-  rm -f /tmp/network
 
-  systemctl restart connman.service
-  systemctl restart telnetd.socket
+  for unit in "network-link.service" \
+              "telnetd.socket" "sshd.socket" \
+              "`valueof NETWORK_BACKEND`.service" \
+              "bftpd.service" "lighttpd.service" "smbd.service" "nmbd.service"; do
+    [ -e /lib/systemd/system/$unit ] && systemctl restart $unit
+  done
 fi
