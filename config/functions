@@ -672,24 +672,31 @@ do_python_make_cross () {
   $ROOT/$TOOLCHAIN/bin/python setup.py install $*
 }
 
-# Usage: systemctl_enable <unit> [root_dir]
+# Usage: systemctl_enable <unit> [[root_dir] base_dir]
 systemctl_enable () {
   local unit_name="$1"
   local unit="/lib/systemd/system/${unit_name}"
   local target_dir="$2"
+  local base_dir="$3"
+
+  [ -z "$base_dir" ] && base_dir=lib
+  [ $base_dir = lib ] || [ $base_dir = etc ] || exit 1
 
   [ -z "$target_dir" ] && target_dir=.install
   [ -f "$target_dir/$unit" ] || exit 1
 
   target=`grep '^WantedBy' $target_dir/$unit | cut -f2 -d=`
   if [ -n "$target" ]; then
-    mkdir -p ${target_dir}/lib/systemd/system/${target}.wants
-    ln -s ../$unit_name ${target_dir}/lib/systemd/system/${target}.wants/${unit_name}
+    mkdir -p ${target_dir}/${base_dir}/systemd/system/${target}.wants    
+    [ "$base_dir" = "lib" ] && link="../${unit_name}" || link="${unit}"
+    ln -sf $link ${target_dir}/${base_dir}/systemd/system/${target}.wants/${unit_name}
   fi
 
   target=`grep '^Alias' $target_dir/$unit | cut -f2 -d=`
   for alias_name in $target; do
-    ln -s ${unit_name} ${target_dir}/lib/systemd/system/${alias_name}
+    mkdir -p ${target_dir}/${base_dir}/systemd/system
+    [ "$base_dir" = "lib" ] && link="${unit_name}" || link="${unit}"
+    ln -sf $link ${target_dir}/${base_dir}/systemd/system/${alias_name}
   done
 }
 
