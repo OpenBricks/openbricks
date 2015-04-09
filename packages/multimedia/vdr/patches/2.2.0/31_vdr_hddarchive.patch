@@ -1,0 +1,97 @@
+diff -ruN vdr-2.1.4_30/menu.c vdr-2.1.4_31/menu.c
+--- vdr-2.1.4_30/menu.c	2014-01-26 15:00:34.443241817 +0100
++++ vdr-2.1.4_31/menu.c	2014-01-26 15:03:06.879493379 +0100
+@@ -54,6 +54,18 @@
+ #define CHNUMWIDTH  (numdigits(Channels.MaxNumber()) + 1)
+ #define CHNAMWIDTH  (min(MAXCHNAMWIDTH, Channels.MaxShortChannelNameLength() + 1))
+ 
++struct Hddarchive_archiveid_v1_0
++{
++   const cRecording *recording;
++   bool isarchive;
++   const char *archiveid;
++};
++
++struct Hddarchive_play_v1_0
++{
++   const cRecording *recording;
++};
++
+ // --- cMenuEditCaItem -------------------------------------------------------
+ 
+ class cMenuEditCaItem : public cMenuEditIntItem {
+@@ -2693,7 +2705,23 @@
+   level = Level;
+   name = NULL;
+   totalEntries = newEntries = 0;
+-  SetText(Recording->Title('\t', true, Level));
++   // replace newindicator with '#' for archives
++  cPlugin *hddarchivePlugin = cPluginManager::GetPlugin("hddarchive");
++  Hddarchive_archiveid_v1_0 data;
++  data.recording = Recording;
++  data.isarchive = false;
++  if (hddarchivePlugin) {
++     hddarchivePlugin->Service("Hddarchive-archiveid_v1.0", &data);
++     }
++  if (data.isarchive && (level < 0 || level == recording->HierarchyLevels())) {
++     char *text = strdup(recording->Title('\t', true, level));
++     int nipos = strlen(strrchr(recording->Title('\t', true, level), '\t') + 1);
++     text[strlen(recording->Title('\t', true, level)) - nipos - 2] = '#';
++     SetText(text); 
++     free(text);
++     }
++  else
++     SetText(Recording->Title('\t', true, Level));
+   if (*Text() == '\t')
+      name = strdup(Text() + 2); // 'Text() + 2' to skip the two '\t'
+ }
+@@ -2873,6 +2901,13 @@
+      if (ri->IsDirectory())
+         Open();
+      else {
++        cPlugin *hddarchivePlugin = cPluginManager::GetPlugin("hddarchive");
++        Hddarchive_play_v1_0 data;
++        data.recording = ri->Recording();
++        if (hddarchivePlugin) {
++           hddarchivePlugin->Service("Hddarchive-play_v1.0", &data);
++           return osEnd;
++           }
+         cReplayControl::SetRecording(ri->Recording()->FileName());
+         return osReplay;
+         }
+@@ -2899,6 +2934,17 @@
+   if (HasSubMenu() || Count() == 0)
+      return osContinue;
+   cMenuRecordingItem *ri = (cMenuRecordingItem *)Get(Current());
++  cPlugin *hddarchivePlugin = cPluginManager::GetPlugin("hddarchive");
++  Hddarchive_archiveid_v1_0 data;
++  data.recording = ri->Recording();
++  data.isarchive = false;
++  if (hddarchivePlugin) {
++     hddarchivePlugin->Service("Hddarchive-archiveid_v1.0", &data);
++     if (data.isarchive) {
++        Skins.Message(mtError, tr("Cannot delete archived recording!"));
++        return osContinue;
++        }
++     }
+   if (ri && !ri->IsDirectory()) {
+      if (Interface->Confirm(tr("Delete recording?"))) {
+         cRecordControl *rc = cRecordControls::GetRecordControl(ri->Recording()->FileName());
+@@ -5800,7 +5846,16 @@
+   if (*fileName) {
+      Hide();
+      if (!RecordingsHandler.GetUsage(fileName)) {
+-        if (!marks.Count())
++        cPlugin *hddarchivePlugin = cPluginManager::GetPlugin("hddarchive");
++        Hddarchive_archiveid_v1_0 data;
++        data.recording = GetRecording();
++        data.isarchive = false;
++        if (hddarchivePlugin) {
++           hddarchivePlugin->Service("Hddarchive-archiveid_v1.0", &data);
++           }
++        if (data.isarchive)
++           Skins.Message(mtError, tr("Cannot edit archived recording!"));
++        else if (!marks.Count())
+            Skins.Message(mtError, tr("No editing marks defined!"));
+         else if (!marks.GetNumSequences())
+            Skins.Message(mtError, tr("No editing sequences defined!"));
