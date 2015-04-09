@@ -1,0 +1,2110 @@
+diff -Nur '--exclude=.svn' setup-0.3.1.orig//config.c setup-0.3.1/config.c
+--- setup-0.3.1.orig//config.c	2008-01-30 12:01:34.000000000 +0100
++++ setup-0.3.1/config.c	2010-11-27 12:56:29.392176092 +0100
+@@ -108,9 +108,11 @@
+   if (!ok)
+      dumpXMLError("Error while Loading XML-FILE");
+ 
+-  if (ok) {
+-     if ((ok = _sysconfig.LoadFile(sysconfigFile)) == true)
++  if (ok && sysconfigFile) {
++//     if (sysconfigFile && (ok = _sysconfig.LoadFile(sysconfigFile)) == true)
+         ok = readVdrLib();
++//     else
++//        ok = false;
+      }
+ 
+   return(ok);
+@@ -140,17 +142,17 @@
+ 
+   TiXmlComment  comment;
+   comment.SetValue("\n\
+--   VDR Configuration File\n\
++-   System-Setup Configuration File\n\
+ -\n\
+ -\n\
+ -   Example:\n\
+ -\n\
+--  <setup sysconfigFile=\"/var/lib/vdr/plugins/setup/sysconfig\"> \n\
++-  <setup sysconfigFile=\"/etc/rc.config\"> \n\
+ -         bootLinux=\"/sbin/reboot\"\n\
+ -         VDRlibDir=\"/usr/lib/vdr/plugins\"\n\
+ -         ReturnValue=\"\" -- kann leer bleiben oder: \"true/false\", \"on/off\", \"yes/no\" --\n\
+ -    <plugins sysconfig=\"PLUGINLIST\">\n\
+--         <plugin name=\"setup\" info=\"VDR-Setup\" active=\"yes\" />\n\
++-         <plugin name=\"setup\" info=\"System Setup\" active=\"yes\" />\n\
+ -         <plugin name=\"vdrcd\" param=\"-c /dev/dvd -c /media/dvd -c /media/cdfs\" info=\"VDR CD\"/>\n\
+ -         ...\n\
+ -    </plugin>\n\
+diff -Nur '--exclude=.svn' setup-0.3.1.orig//debug.h setup-0.3.1/debug.h
+--- setup-0.3.1.orig//debug.h	2005-10-12 15:44:14.000000000 +0200
++++ setup-0.3.1/debug.h	2010-10-27 21:47:06.539826477 +0200
+@@ -31,6 +31,6 @@
+ #define DEBUG7(p1, p2, p3, p4, p5, p6, p7)  esyslog(p1, p2, p3, p4, p5, p6, p7)
+ 
+ #endif
+-#define DBG_PREFIX                      "ERROR: Minivdr-Setup"
++#define DBG_PREFIX                      "ERROR: System-Setup"
+ 
+ #endif /* DEBUG_H */
+diff -Nur '--exclude=.svn' setup-0.3.1.orig//HISTORY setup-0.3.1/HISTORY
+--- setup-0.3.1.orig//HISTORY	2009-02-13 14:58:56.000000000 +0100
++++ setup-0.3.1/HISTORY	2010-10-27 21:47:06.539826477 +0200
+@@ -109,7 +109,7 @@
+ -  Added new attribut "help2" Entry and Menu in minivdr-setup.xml
+ -  The file sysconfig will now be created if it does not exist
+ -  removed attribute "bootVDR", now using standard vdr Rebot mechanism
+--  Configurationfiles (minivdr-setup.xml and vdr-menu.xml) are now stored
++-  Configurationfiles (minivdr-setup.xml and menu.xml) are now stored
+    "PluginConfigDirectory/setup"
+ 
+ 2005-06-19: Version 0.1.0
+diff -Nur '--exclude=.svn' setup-0.3.1.orig//i18n.c setup-0.3.1/i18n.c
+--- setup-0.3.1.orig//i18n.c	2009-01-13 11:30:35.000000000 +0100
++++ setup-0.3.1/i18n.c	2010-10-27 23:02:50.107825267 +0200
+@@ -11,13 +11,13 @@
+ #include "i18n.h"
+ 
+ const tI18nPhrase Phrases[] = {
+-  { "VDR-Setup Extension", // English
+-    "VDR-Setup Erweiterung", // Deutsch
++  { "System Setup", // English
++    "System Setup", // Deutsch
+     "", // Slovenski
+     "", // Italiano
+     "", // Nederlands
+     "", // Português
+-    "Extension de configuration", // Français
++    "configuration de system", // Français
+     "", // Norsk
+     "", // suomi
+     "", // Polski
+@@ -33,8 +33,8 @@
+     "", // Dansk
+     "", // Èesky (Czech)
+   },
+-  { "Setup",
+-    "Einstellungen",
++  { "System Setup",
++    "System Einstellungen",
+     "Nastavitve",
+     "Opzioni",
+     "Instellingen",
+diff -Nur '--exclude=.svn' setup-0.3.1.orig//MANUAL.DE setup-0.3.1/MANUAL.DE
+--- setup-0.3.1.orig//MANUAL.DE	2009-01-13 11:30:35.000000000 +0100
++++ setup-0.3.1/MANUAL.DE	2011-03-22 14:31:07.207656866 +0100
+@@ -12,7 +12,7 @@
+ ****** An- und Abwahl von Plugins ******
+ 
+ Per OSD können Plugins an oder abgeschaltet werden. Eventuell benötigte Plugin-
+-Parameter können im Konfigurationsfile vdr-setup.xml hinzugefügt werden.
++Parameter können im Konfigurationsfile setup.xml hinzugefügt werden.
+ Eine geänderte Plugin-Konfiguration wird erst nach dem nächsten Neustart aktiv.
+ 
+ ***** VDR-Menüs *****
+@@ -25,7 +25,7 @@
+          und dessen Patch kann nicht zusammen mit dem Setup-Plugin verwendet
+          werden!
+ 
+-In der Menükonfigurationsdatei "vdr-menu.xml" können Menüs, Plugins und Kommandos
++In der Menükonfigurationsdatei "menu.xml" können Menüs, Plugins und Kommandos
+ definiert werden, welche dann per OSD ausgeführt werden können.
+ Eventuelle Bildschirmausgaben der Kommandos werden auf dem OSD ausgegeben.
+ 
+@@ -38,7 +38,7 @@
+ ****** Systemkonfiguration ändern ******
+ 
+ Im Setup Plugin können die gängigen Systemkonfigurationen per OSD geändert
+-werden. Im Konfigurations-File vdr-setup.xml können dazu beliebige
++werden. Im Konfigurations-File setup.xml können dazu beliebige
+ geschachtelte Menüs (XML Tag <menu> </menu> konfiguriert werden. Jedem
+ Systemparameter wird ein Variablenname zugeordnet, der dann im angegebenen
+ System-Konfigurationsfile, welches mit dem Attribut "sysconfigFile" definiert
+@@ -50,8 +50,8 @@
+ ****** Systemvoraussetzungen ******
+ 
+     * In das Plugin Konfigurationsverzeichnis (z.B: /etc/vdr/plugins/setup)
+-      müssen die Dateien vdr-setup.xml und vdr-menu.xml abgelegt werden.
+-    * Die in der Datei vdr-setup.xml mit dem Attribut "sysconfigFile
++      muss die Dateien setup.xml und (z.B. /etc/vdr) menu.xml abgelegt werden.
++    * Die in der Datei setup.xml mit dem Attribut "sysconfigFile
+       gekennzeichnete Datei wird vom Plugin angelegt, falls Sie nicht existieren
+       sollte. In dieser Datei werden die Einstellungen in Form von
+       Shellvariablen gespeichert.
+@@ -73,12 +73,12 @@
+ *************************************
+ 
+ Das VDR-Setup Plugin nutzt zwei Konfigurationsdateien.
+-    * vdr-setup.xml
+-    * vdr-menu.xml
++    * setup.xml
++    * menu.xml
+ 
+-***** Beschreibung vdr-setup.xml *****
++***** Beschreibung setup.xml *****
+ 
+-Die Datei vdr-setup.xml beschreibt die Konfiguration des Setup-Plugins im XML
++Die Datei setup.xml beschreibt die Konfiguration des Setup-Plugins im XML
+ Format.
+ 
+ <setup>
+@@ -176,7 +176,7 @@
+           aktivierten Plugins gespeichert.
+           Dieses optionale Attribut gibt ein Kommando mit kompletter
+ command   Pfadbeschreibung und Parametern an, welches ausgeführt wird, wenn das
+-          Submenü mit OK beendet wird.
++          Submenü mit OK beendet wird und der Wert geÃ¤ndert wurde.
+           definiert den Typ des Eintrags. Erlaubt sind die folgenden Einträge:
+             text
+                 Erlaubt das Editieren eines Textes.
+@@ -201,12 +201,8 @@
+                 Definiert die Kindersicherungsfunktion. Die eingegebenen Werte
+                 werden in Form von "*" angezeigt.
+             channellist
+-setup           Erlaubt die Auswahl von vordefinierten Kanallisten. Die
+-                Kanallisten müssen in den Verzeichnis <vdrdir>/plugins/channels
+-                mit der Endung *.conf abgelegt werden. Das Setup-Plugin linkt
+-                dann die ausgewählte Kanalliste nach <vdrdir>/channels.conf
+-            networkdriver"
+-                erlaubt die Auswahl eines Netzwerktreibers
++setup           dieses comando wird ausgefÃ¼hrt um eine liste der attribute zu
++                erhalten, mit denen eine selection liste gefuellt werden soll.
+ help1     Dieses optionale Attribut gibt einen kurzen Hilfstext an welcher in
+           der Statuszeile angezeigt wird, wenn der Cursor auf dem Eintrag steht.
+           Dieses optionale Attribut gibt eine Datei mit einem langen Hilfstext
+@@ -220,9 +216,9 @@
+ Innerhalb eines Entries vom Typ "selection" können beliebig viele <value> Werte
+ definiert werden, die dann zur Auswahl stehen.
+  
+-***** Beschreibung vdr-menu.xml *****
++***** Beschreibung menu.xml *****
+ 
+-In der Datei vdr-menu.xml wird die Menükonfiguration des VDR abgelegt.
++In der Datei menu.xml wird die Menükonfiguration des VDR abgelegt.
+ 
+ <menus>
+ 
+diff -Nur '--exclude=.svn' setup-0.3.1.orig//menus.c setup-0.3.1/menus.c
+--- setup-0.3.1.orig//menus.c	2006-03-05 10:47:25.000000000 +0100
++++ setup-0.3.1/menus.c	2010-11-27 17:42:36.488080259 +0100
+@@ -797,17 +797,10 @@
+ {
+     bool ok = true;
+ 
+-    if( _setupCommand != NULL)
++    if( _setupCommand != NULL && strcmp(_setupCommand, "childlock")!=0 )
+     {
+-     if(strcmp(_setupCommand, "networkdriver")==0)
+-     {
+-       ok = ReadNetworkDrivers();
++       ok = ExecSetupCommand();
+        _selectionValues.SetSelection(selection);
+-     }
+-     if( strcmp(_setupCommand, "channellist")==0 )
+-     {
+-       ok = ChannelList();
+-     }
+     }
+     else
+         if( node != NULL && node->Type() == TiXmlNode::ELEMENT)
+@@ -827,153 +820,40 @@
+  * 
+  * @return 
+  */
+-bool MenuEntry::ChannelList( )
++bool MenuEntry::ExecSetupCommand()
+ {
+-  bool ok = true;
+-  DIR        *dirFP = NULL;
+-  char * channelDir=NULL;
+-  char * channelFile=NULL;
+-  struct dirent *entry = NULL;
+-
+-  asprintf(&channelDir,"%s", cPlugin::ConfigDirectory());
+-  char *tmp = strrchr(channelDir,'/');
+-  *tmp = '\0';
+-
+-  asprintf(&channelFile, "%s/channels.conf",channelDir);
+-  asprintf(&channelDir,  "%s/channels",channelDir);
+-
+-  
+-   if(  (dirFP = opendir(channelDir))!= NULL)
+-   {
+-        while( (entry=readdir(dirFP))!=NULL)
+-        {
+-            char *tmp=NULL;
+-
+-            if( (tmp=strstr(entry->d_name, ".conf"))!= NULL)
+-            {
+-              tmp[0]='\0';
+-              _selectionValues.Add(entry->d_name);
+-            }
+-        }
+-        char buf[PATH_MAX];
+-        if( realpath(channelFile, buf) != NULL)
+-        {
+-          _selectionValues.SetSelection(buf);
+-        }
+-        else
+-        {
+-          DEBUG4("%s Can not resolve realpath of %s  errno=%d\n", DBG_PREFIX, channelFile, errno );
+-          ok = false;
+-        }
+-   }
+-   else
+-   {
+-     DEBUG4("%s Can not read directory:%s  errno=%d\n", DBG_PREFIX, channelDir, errno);
++   bool ok = true;
++   char  *command;
++   const char * line;
++   char fname[] = "/tmp/setup.values";
++   int err;
++
++   asprintf (&command, "%s >%s", _setupCommand, fname);
++   if (err=system(command)) {
++     DEBUG4("%s: Could not execute: %s, errno=%d\n", DBG_PREFIX, _setupCommand, err);
++     ok = false;
++   } else {
++     FILE * fp = fopen(fname, "r");
++     if( fp != NULL)
++     {
++       while( (line = readLine(fp)) != NULL)
++       {
++         _selectionValues.Add(line);
++         delete [] line;
++       }
++    
++       fclose(fp);
++     }
++     else
++     {
++       DEBUG4("%s: Could not read file: %s, errno=%d\n", DBG_PREFIX, fname, errno);
++       ok = false;
++     }
+    }
+    
+-   if( dirFP!=NULL ) closedir(dirFP);
+-   if( channelDir != NULL) free(channelDir);
+-   if( channelFile != NULL) free(channelFile);
+-   
+    return(ok);
+-  
+-}
+-
+-
+-
+-/**
+- * 
+- * @return 
+- */
+-bool MenuEntry::ReadNetworkDrivers( )
+-{
+- struct utsname uName;
+- bool ok=true;
+- 
+- if( uname(&uName) == 0)
+- {
+-   char * dir = NULL;
+-      
+-   asprintf(&dir, "/lib/modules/%s/kernel/drivers/net", uName.release);
+-   readNetworkDriversDir(dir, "");
+-   if( dir!= NULL) free(dir);
+- }
+- else
+- {
+-   DEBUG3("%s UNAME failed, errno=%d\n", DBG_PREFIX, errno);
+-   ok=false;
+- }
+-
+- return(ok);
+ }
+ 
+-/**
+- * 
+- * @param dir 
+- * @return 
+- */
+-bool MenuEntry::readNetworkDriversDir(char *dir, char *prefix)
+-{
+- DIR           *modDir = NULL;
+- struct dirent *entry  = NULL;
+- struct stat   buf;
+- bool ok=true;
+- char *path=NULL;
+-
+-   asprintf(&path, "%s/%s", dir, prefix);
+-
+-   if(  (modDir = opendir(path))!= NULL)
+-   {
+-        while( (entry=readdir(modDir))!=NULL)
+-        {   
+-
+-            if( strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0)
+-            {
+-                char *tmp=NULL;                
+-                asprintf(&tmp, "%s/%s", path, entry->d_name);
+-                stat(tmp, &buf);
+-                free(tmp);
+-                
+-                if( S_ISDIR(buf.st_mode))
+-                {
+-
+-                  char *newPrefix=NULL;
+-                  if(strlen(prefix)>0)
+-                    asprintf(&newPrefix, "%s/%s", prefix, entry->d_name);
+-                  else
+-                    asprintf(&newPrefix, "%s", entry->d_name);
+-                  readNetworkDriversDir(dir, newPrefix);
+-                  free(newPrefix);
+-                }
+-                else
+-                if( S_ISREG(buf.st_mode))
+-                {
+-                    if( (tmp=strstr(entry->d_name, ".o")) != NULL ||
+-                        (tmp=strstr(entry->d_name, ".ko"))!= NULL)
+-                    {
+-                      tmp[0] = '\0';
+-                      char *myEntry=NULL;
+-                      if(strlen(prefix)!= 0)
+-                         asprintf(&myEntry, "%s/%s", prefix, entry->d_name);
+-                      else
+-                         asprintf(&myEntry, "%s", entry->d_name);
+-                      _selectionValues.Add(myEntry);
+-                      free(myEntry);
+-                    }
+-                }
+-            }
+-        }
+-   }
+-   else
+-   {
+-     ok=false;
+-     DEBUG4("%s Can not read directory:%s  errno=%d\n", DBG_PREFIX, path, errno);
+-   }
+-   if( modDir!=NULL ) closedir(modDir);
+-   if( path!=NULL) free(path);
+-   
+-   return(ok);
+-}
+ 
+ int * MenuEntry::GetReferenceSelection( )
+ {
+@@ -1007,7 +887,7 @@
+       {
+         if( Sysconfig::GetVariable(sysconf) != NULL)
+           val=Sysconfig::GetVariable(sysconf);
+-    
++
+         SetName(nam);
+         SetSysconfigName(sysconf);
+         SetValue(typ, val);
+@@ -1038,7 +918,7 @@
+ 
+ /**
+  * Convert ENtry in XML Structure
+- * @return xml Eölement or NULL if error
++ * @return xml Eï¿½lement or NULL if error
+  */
+ TiXmlNode *MenuEntry::SaveXml( )
+ {
+@@ -1141,6 +1021,34 @@
+ }
+ 
+ 
++/**
++ * read one line from opened file
++ * @param fp opened filepointer
++ * @return null if EOF or allocated character String holding one line
++ */
++const char * MenuEntry::readLine( FILE * fp )
++{
++  char myChar;
++  char buf[1024];
++  int  i=0;
++  int  maxLen = (int) sizeof(buf)-1;
++  char *line=NULL;
++  while((myChar=fgetc(fp)) != EOF )
++  {
++    if(myChar=='\n' || i==maxLen)
++    {
++       line = new char[i+1];
++       strncpy(line, buf, i);
++       line[i]='\0';
++       return(line);
++    }
++    else
++      buf[i++]=myChar;
++  }
++  return((const char*)line);
++}
++
++
+ // ###################################################################################
+ //  Menus
+ // ###################################################################################
+diff -Nur '--exclude=.svn' setup-0.3.1.orig//menus.h setup-0.3.1/menus.h
+--- setup-0.3.1.orig//menus.h	2008-01-08 19:53:01.000000000 +0100
++++ setup-0.3.1/menus.h	2010-11-17 18:33:14.181489326 +0100
+@@ -143,8 +143,7 @@
+     const char*GetValueIp() {return _valueIp;}
+     void SetSetupCommand(const char *command);
+     const char* GetSetupCommand();
+-    bool  ReadNetworkDrivers( );
+-    bool  ChannelList();
++    bool  ExecSetupCommand();
+     int   GetNrOfSelectionValues();
+     const char *GetSelectionValue(int index);
+     const char *GetSelectedValue();
+@@ -163,6 +162,7 @@
+     void Print(int offset);
+ private:
+     bool  readNetworkDriversDir(char *dir, char *prefix);
++    const char *readLine(FILE *fp);
+ };
+ 
+ 
+diff -Nur '--exclude=.svn' setup-0.3.1.orig//patches/vdr-1.6.0-2_setup-zulu-edition.diff setup-0.3.1/patches/vdr-1.6.0-2_setup-zulu-edition.diff
+--- setup-0.3.1.orig//patches/vdr-1.6.0-2_setup-zulu-edition.diff	2009-01-19 12:16:05.000000000 +0100
++++ setup-0.3.1/patches/vdr-1.6.0-2_setup-zulu-edition.diff	2010-10-28 01:06:09.587825033 +0200
+@@ -41,9 +41,9 @@
+ +#ifdef USE_SETUP
+ +  // Load Menu Configuration
+ +  char *menuXML = NULL;
+-+  asprintf(&menuXML, "%s/setup/vdr-menu.%s.xml", cPlugin::ConfigDirectory(), Setup.OSDLanguage);
+++  asprintf(&menuXML, "%s/../menu.%s.xml", cPlugin::ConfigDirectory(), Setup.OSDLanguage);
+ +  if (access(menuXML, 04) == -1)
+-+     asprintf(&menuXML, "%s/setup/vdr-menu.xml", cPlugin::ConfigDirectory());
+++     asprintf(&menuXML, "%s/../menu.xml", cPlugin::ConfigDirectory());
+ +  subMenu.LoadXml(menuXML);
+ +  free(menuXML);
+ +  nrDynamicMenuEntries=0;
+diff -Nur '--exclude=.svn' setup-0.3.1.orig//po/ca_ES.po setup-0.3.1/po/ca_ES.po
+--- setup-0.3.1.orig//po/ca_ES.po	2009-02-13 11:21:57.000000000 +0100
++++ setup-0.3.1/po/ca_ES.po	2011-03-22 14:13:55.134327950 +0100
+@@ -9,20 +9,18 @@
+ msgstr ""
+ "Project-Id-Version: VDR 1.5.7\n"
+ "Report-Msgid-Bugs-To: <see README>\n"
+-"POT-Creation-Date: 2008-06-17 19:53+0200\n"
++"POT-Creation-Date: 2010-11-16 20:10+0100\n"
+ "PO-Revision-Date: 2008-01-27 18:38+0100\n"
+ "Last-Translator: Jordi Vilà <jvila@tinet.org>\n"
+ "Language-Team: <vdr@linuxtv.org>\n"
++"Language: \n"
+ "MIME-Version: 1.0\n"
+ "Content-Type: text/plain; charset=ISO-8859-1\n"
+ "Content-Transfer-Encoding: 8bit\n"
+ 
+-msgid "VDR-Setup Extension"
++msgid "System Setup"
+ msgstr ""
+ 
+-msgid "Setup"
+-msgstr "Configuració"
+-
+ msgid "Menu Edit"
+ msgstr ""
+ 
+@@ -97,7 +95,7 @@
+ msgid "Delete"
+ msgstr "Esborrar"
+ 
+-msgid "missing channels/xxx.conf"
++msgid "missing selection values"
+ msgstr ""
+ 
+ msgid "Help"
+@@ -124,11 +122,11 @@
+ msgid "setupSetup$Main menu entry"
+ msgstr ""
+ 
++msgid "Setup"
++msgstr "Configuració"
++
+ msgid "setupSetup$Menu suffix"
+ msgstr ""
+ 
+ msgid "setupSetup$Entry prefix"
+ msgstr ""
+-
+-msgid "setupSetup$Return value"
+-msgstr ""
+diff -Nur '--exclude=.svn' setup-0.3.1.orig//po/cs_CZ.po setup-0.3.1/po/cs_CZ.po
+--- setup-0.3.1.orig//po/cs_CZ.po	2009-02-13 11:21:57.000000000 +0100
++++ setup-0.3.1/po/cs_CZ.po	2011-03-22 14:13:55.178327586 +0100
+@@ -7,20 +7,18 @@
+ msgstr ""
+ "Project-Id-Version: VDR 1.5.7\n"
+ "Report-Msgid-Bugs-To: <see README>\n"
+-"POT-Creation-Date: 2008-06-17 19:53+0200\n"
++"POT-Creation-Date: 2010-11-16 20:10+0100\n"
+ "PO-Revision-Date: 2008-01-27 18:38+0100\n"
+ "Last-Translator: Vladimír Bárta <vladimir.barta@k2atmitec.cz>\n"
+ "Language-Team: <vdr@linuxtv.org>\n"
++"Language: \n"
+ "MIME-Version: 1.0\n"
+ "Content-Type: text/plain; charset=ISO-8859-2\n"
+ "Content-Transfer-Encoding: 8bit\n"
+ 
+-msgid "VDR-Setup Extension"
++msgid "System Setup"
+ msgstr ""
+ 
+-msgid "Setup"
+-msgstr "Nastavení"
+-
+ msgid "Menu Edit"
+ msgstr ""
+ 
+@@ -95,7 +93,7 @@
+ msgid "Delete"
+ msgstr "Smazat"
+ 
+-msgid "missing channels/xxx.conf"
++msgid "missing selection values"
+ msgstr ""
+ 
+ msgid "Help"
+@@ -122,11 +120,11 @@
+ msgid "setupSetup$Main menu entry"
+ msgstr ""
+ 
++msgid "Setup"
++msgstr "Nastavení"
++
+ msgid "setupSetup$Menu suffix"
+ msgstr ""
+ 
+ msgid "setupSetup$Entry prefix"
+ msgstr ""
+-
+-msgid "setupSetup$Return value"
+-msgstr ""
+diff -Nur '--exclude=.svn' setup-0.3.1.orig//po/da_DK.po setup-0.3.1/po/da_DK.po
+--- setup-0.3.1.orig//po/da_DK.po	2009-02-13 11:21:57.000000000 +0100
++++ setup-0.3.1/po/da_DK.po	2011-03-22 14:13:55.214327289 +0100
+@@ -7,20 +7,18 @@
+ msgstr ""
+ "Project-Id-Version: VDR 1.5.7\n"
+ "Report-Msgid-Bugs-To: <see README>\n"
+-"POT-Creation-Date: 2008-06-17 19:53+0200\n"
++"POT-Creation-Date: 2010-11-16 20:10+0100\n"
+ "PO-Revision-Date: 2008-01-27 18:38+0100\n"
+ "Last-Translator: Mogens Elneff <mogens@elneff.dk>\n"
+ "Language-Team: <vdr@linuxtv.org>\n"
++"Language: \n"
+ "MIME-Version: 1.0\n"
+ "Content-Type: text/plain; charset=ISO-8859-15\n"
+ "Content-Transfer-Encoding: 8bit\n"
+ 
+-msgid "VDR-Setup Extension"
++msgid "System Setup"
+ msgstr ""
+ 
+-msgid "Setup"
+-msgstr "Indstillinger"
+-
+ msgid "Menu Edit"
+ msgstr ""
+ 
+@@ -95,7 +93,7 @@
+ msgid "Delete"
+ msgstr "Slet"
+ 
+-msgid "missing channels/xxx.conf"
++msgid "missing selection values"
+ msgstr ""
+ 
+ msgid "Help"
+@@ -122,11 +120,11 @@
+ msgid "setupSetup$Main menu entry"
+ msgstr ""
+ 
++msgid "Setup"
++msgstr "Indstillinger"
++
+ msgid "setupSetup$Menu suffix"
+ msgstr ""
+ 
+ msgid "setupSetup$Entry prefix"
+ msgstr ""
+-
+-msgid "setupSetup$Return value"
+-msgstr ""
+diff -Nur '--exclude=.svn' setup-0.3.1.orig//po/de_DE.po setup-0.3.1/po/de_DE.po
+--- setup-0.3.1.orig//po/de_DE.po	2009-02-13 11:21:57.000000000 +0100
++++ setup-0.3.1/po/de_DE.po	2011-03-22 14:13:55.246327023 +0100
+@@ -7,19 +7,17 @@
+ msgstr ""
+ "Project-Id-Version: VDR 1.5.7\n"
+ "Report-Msgid-Bugs-To: <see README>\n"
+-"POT-Creation-Date: 2008-06-17 19:53+0200\n"
++"POT-Creation-Date: 2010-11-16 20:10+0100\n"
+ "PO-Revision-Date: 2008-01-27 18:38+0100\n"
+ "Last-Translator: Klaus Schmidinger <kls@cadsoft.de>\n"
+ "Language-Team: <vdr@linuxtv.org>\n"
++"Language: \n"
+ "MIME-Version: 1.0\n"
+ "Content-Type: text/plain; charset=ISO-8859-15\n"
+ "Content-Transfer-Encoding: 8bit\n"
+ 
+-msgid "VDR-Setup Extension"
+-msgstr "VDR-Setup Erweiterung"
+-
+-msgid "Setup"
+-msgstr "Einstellungen"
++msgid "System Setup"
++msgstr ""
+ 
+ msgid "Menu Edit"
+ msgstr "Menü bearbeiten"
+@@ -93,8 +91,8 @@
+ msgid "Delete"
+ msgstr "Löschen"
+ 
+-msgid "missing channels/xxx.conf"
+-msgstr "fehlende channels/xxx.conf"
++msgid "missing selection values"
++msgstr ""
+ 
+ msgid "Help"
+ msgstr "Hilfe"
+@@ -120,11 +118,20 @@
+ msgid "setupSetup$Main menu entry"
+ msgstr "Hauptmenü Eintrag"
+ 
++msgid "Setup"
++msgstr "Einstellungen"
++
+ msgid "setupSetup$Menu suffix"
+ msgstr "Menü Suffix"
+ 
+ msgid "setupSetup$Entry prefix"
+ msgstr "Entry Prefix"
+ 
+-msgid "setupSetup$Return value"
+-msgstr "Rückgabe Wert"
++#~ msgid "missing channels/xxx.conf"
++#~ msgstr "fehlende channels/xxx.conf"
++
++#~ msgid "setupSetup$Return value"
++#~ msgstr "Rückgabe Wert"
++
++#~ msgid "VDR-Setup Extension"
++#~ msgstr "VDR-Setup Erweiterung"
+diff -Nur '--exclude=.svn' setup-0.3.1.orig//po/el_GR.po setup-0.3.1/po/el_GR.po
+--- setup-0.3.1.orig//po/el_GR.po	2009-02-13 11:21:57.000000000 +0100
++++ setup-0.3.1/po/el_GR.po	2011-03-22 14:13:55.278326759 +0100
+@@ -7,20 +7,18 @@
+ msgstr ""
+ "Project-Id-Version: VDR 1.5.7\n"
+ "Report-Msgid-Bugs-To: <see README>\n"
+-"POT-Creation-Date: 2008-06-17 19:53+0200\n"
++"POT-Creation-Date: 2010-11-16 20:10+0100\n"
+ "PO-Revision-Date: 2008-01-27 18:38+0100\n"
+ "Last-Translator: Dimitrios Dimitrakos <mail@dimitrios.de>\n"
+ "Language-Team: <vdr@linuxtv.org>\n"
++"Language: \n"
+ "MIME-Version: 1.0\n"
+ "Content-Type: text/plain; charset=ISO-8859-7\n"
+ "Content-Transfer-Encoding: 8bit\n"
+ 
+-msgid "VDR-Setup Extension"
++msgid "System Setup"
+ msgstr ""
+ 
+-msgid "Setup"
+-msgstr "Ñõèìéóåéò"
+-
+ msgid "Menu Edit"
+ msgstr ""
+ 
+@@ -95,7 +93,7 @@
+ msgid "Delete"
+ msgstr "ÄéáãñáöÞ"
+ 
+-msgid "missing channels/xxx.conf"
++msgid "missing selection values"
+ msgstr ""
+ 
+ msgid "Help"
+@@ -122,11 +120,11 @@
+ msgid "setupSetup$Main menu entry"
+ msgstr ""
+ 
++msgid "Setup"
++msgstr "Ñõèìéóåéò"
++
+ msgid "setupSetup$Menu suffix"
+ msgstr ""
+ 
+ msgid "setupSetup$Entry prefix"
+ msgstr ""
+-
+-msgid "setupSetup$Return value"
+-msgstr ""
+diff -Nur '--exclude=.svn' setup-0.3.1.orig//po/es_ES.po setup-0.3.1/po/es_ES.po
+--- setup-0.3.1.orig//po/es_ES.po	2009-02-13 11:21:57.000000000 +0100
++++ setup-0.3.1/po/es_ES.po	2011-03-22 14:13:55.310326494 +0100
+@@ -7,20 +7,18 @@
+ msgstr ""
+ "Project-Id-Version: VDR 1.5.7\n"
+ "Report-Msgid-Bugs-To: <see README>\n"
+-"POT-Creation-Date: 2008-06-17 19:53+0200\n"
++"POT-Creation-Date: 2010-11-16 20:10+0100\n"
+ "PO-Revision-Date: 2008-01-27 18:38+0100\n"
+ "Last-Translator: Ruben Nunez Francisco <ruben.nunez@tang-it.com>\n"
+ "Language-Team: <vdr@linuxtv.org>\n"
++"Language: \n"
+ "MIME-Version: 1.0\n"
+ "Content-Type: text/plain; charset=ISO-8859-15\n"
+ "Content-Transfer-Encoding: 8bit\n"
+ 
+-msgid "VDR-Setup Extension"
++msgid "System Setup"
+ msgstr ""
+ 
+-msgid "Setup"
+-msgstr "Configuración"
+-
+ msgid "Menu Edit"
+ msgstr ""
+ 
+@@ -95,7 +93,7 @@
+ msgid "Delete"
+ msgstr "Borrar"
+ 
+-msgid "missing channels/xxx.conf"
++msgid "missing selection values"
+ msgstr ""
+ 
+ msgid "Help"
+@@ -122,11 +120,11 @@
+ msgid "setupSetup$Main menu entry"
+ msgstr ""
+ 
++msgid "Setup"
++msgstr "Configuración"
++
+ msgid "setupSetup$Menu suffix"
+ msgstr ""
+ 
+ msgid "setupSetup$Entry prefix"
+ msgstr ""
+-
+-msgid "setupSetup$Return value"
+-msgstr ""
+diff -Nur '--exclude=.svn' setup-0.3.1.orig//po/et_EE.po setup-0.3.1/po/et_EE.po
+--- setup-0.3.1.orig//po/et_EE.po	2009-02-13 11:21:57.000000000 +0100
++++ setup-0.3.1/po/et_EE.po	2011-03-22 14:13:55.346326196 +0100
+@@ -7,20 +7,18 @@
+ msgstr ""
+ "Project-Id-Version: VDR 1.5.7\n"
+ "Report-Msgid-Bugs-To: <see README>\n"
+-"POT-Creation-Date: 2008-06-17 19:53+0200\n"
++"POT-Creation-Date: 2010-11-16 20:10+0100\n"
+ "PO-Revision-Date: 2008-01-27 18:38+0100\n"
+ "Last-Translator: Arthur Konovalov <kasjas@hot.ee>\n"
+ "Language-Team: <vdr@linuxtv.org>\n"
++"Language: \n"
+ "MIME-Version: 1.0\n"
+ "Content-Type: text/plain; charset=ISO-8859-13\n"
+ "Content-Transfer-Encoding: 8bit\n"
+ 
+-msgid "VDR-Setup Extension"
++msgid "System Setup"
+ msgstr ""
+ 
+-msgid "Setup"
+-msgstr "Sätted"
+-
+ msgid "Menu Edit"
+ msgstr ""
+ 
+@@ -95,7 +93,7 @@
+ msgid "Delete"
+ msgstr "Kustuta"
+ 
+-msgid "missing channels/xxx.conf"
++msgid "missing selection values"
+ msgstr ""
+ 
+ msgid "Help"
+@@ -122,11 +120,11 @@
+ msgid "setupSetup$Main menu entry"
+ msgstr ""
+ 
++msgid "Setup"
++msgstr "Sätted"
++
+ msgid "setupSetup$Menu suffix"
+ msgstr ""
+ 
+ msgid "setupSetup$Entry prefix"
+ msgstr ""
+-
+-msgid "setupSetup$Return value"
+-msgstr ""
+diff -Nur '--exclude=.svn' setup-0.3.1.orig//po/fi_FI.po setup-0.3.1/po/fi_FI.po
+--- setup-0.3.1.orig//po/fi_FI.po	2009-02-13 11:21:57.000000000 +0100
++++ setup-0.3.1/po/fi_FI.po	2011-03-22 14:13:55.378325932 +0100
+@@ -10,20 +10,18 @@
+ msgstr ""
+ "Project-Id-Version: VDR 1.5.7\n"
+ "Report-Msgid-Bugs-To: <see README>\n"
+-"POT-Creation-Date: 2008-06-17 19:53+0200\n"
++"POT-Creation-Date: 2010-11-16 20:10+0100\n"
+ "PO-Revision-Date: 2008-01-27 18:38+0100\n"
+ "Last-Translator: Rolf Ahrenberg <rahrenbe@cc.hut.fi>\n"
+ "Language-Team: <vdr@linuxtv.org>\n"
++"Language: \n"
+ "MIME-Version: 1.0\n"
+ "Content-Type: text/plain; charset=ISO-8859-15\n"
+ "Content-Transfer-Encoding: 8bit\n"
+ 
+-msgid "VDR-Setup Extension"
++msgid "System Setup"
+ msgstr ""
+ 
+-msgid "Setup"
+-msgstr "Asetukset"
+-
+ msgid "Menu Edit"
+ msgstr ""
+ 
+@@ -98,7 +96,7 @@
+ msgid "Delete"
+ msgstr "Poista"
+ 
+-msgid "missing channels/xxx.conf"
++msgid "missing selection values"
+ msgstr ""
+ 
+ msgid "Help"
+@@ -125,11 +123,11 @@
+ msgid "setupSetup$Main menu entry"
+ msgstr ""
+ 
++msgid "Setup"
++msgstr "Asetukset"
++
+ msgid "setupSetup$Menu suffix"
+ msgstr ""
+ 
+ msgid "setupSetup$Entry prefix"
+ msgstr ""
+-
+-msgid "setupSetup$Return value"
+-msgstr ""
+diff -Nur '--exclude=.svn' setup-0.3.1.orig//po/fr_FR.po setup-0.3.1/po/fr_FR.po
+--- setup-0.3.1.orig//po/fr_FR.po	2009-02-13 11:21:57.000000000 +0100
++++ setup-0.3.1/po/fr_FR.po	2011-03-22 14:13:55.414325633 +0100
+@@ -10,19 +10,17 @@
+ msgstr ""
+ "Project-Id-Version: VDR 1.5.7\n"
+ "Report-Msgid-Bugs-To: <see README>\n"
+-"POT-Creation-Date: 2008-06-17 19:53+0200\n"
++"POT-Creation-Date: 2010-11-16 20:10+0100\n"
+ "PO-Revision-Date: 2008-01-27 18:38+0100\n"
+ "Last-Translator: Nicolas Huillard <nhuillard@e-dition.fr>\n"
+ "Language-Team: <vdr@linuxtv.org>\n"
++"Language: \n"
+ "MIME-Version: 1.0\n"
+ "Content-Type: text/plain; charset=ISO-8859-1\n"
+ "Content-Transfer-Encoding: 8bit\n"
+ 
+-msgid "VDR-Setup Extension"
+-msgstr "Extension de configuration"
+-
+-msgid "Setup"
+-msgstr "Configuration"
++msgid "System Setup"
++msgstr ""
+ 
+ msgid "Menu Edit"
+ msgstr "Edition du menu"
+@@ -101,8 +99,8 @@
+ msgid "Delete"
+ msgstr "Supprimer"
+ 
+-msgid "missing channels/xxx.conf"
+-msgstr "channels/xxx.conf manquant"
++msgid "missing selection values"
++msgstr ""
+ 
+ msgid "Help"
+ msgstr "Aide"
+@@ -128,11 +126,20 @@
+ msgid "setupSetup$Main menu entry"
+ msgstr ""
+ 
++msgid "Setup"
++msgstr "Configuration"
++
+ msgid "setupSetup$Menu suffix"
+ msgstr "Suffixe Menu"
+ 
+ msgid "setupSetup$Entry prefix"
+ msgstr "Entry préfix"
+ 
+-msgid "setupSetup$Return value"
+-msgstr "Valeur de retour"
++#~ msgid "missing channels/xxx.conf"
++#~ msgstr "channels/xxx.conf manquant"
++
++#~ msgid "setupSetup$Return value"
++#~ msgstr "Valeur de retour"
++
++#~ msgid "VDR-Setup Extension"
++#~ msgstr "Extension de configuration"
+diff -Nur '--exclude=.svn' setup-0.3.1.orig//po/hr_HR.po setup-0.3.1/po/hr_HR.po
+--- setup-0.3.1.orig//po/hr_HR.po	2009-02-13 11:21:57.000000000 +0100
++++ setup-0.3.1/po/hr_HR.po	2011-03-22 14:13:55.446325369 +0100
+@@ -8,20 +8,18 @@
+ msgstr ""
+ "Project-Id-Version: VDR 1.5.7\n"
+ "Report-Msgid-Bugs-To: <see README>\n"
+-"POT-Creation-Date: 2008-06-17 19:53+0200\n"
++"POT-Creation-Date: 2010-11-16 20:10+0100\n"
+ "PO-Revision-Date: 2008-01-27 18:38+0100\n"
+ "Last-Translator: Drazen Dupor <drazen.dupor@dupor.com>\n"
+ "Language-Team: <vdr@linuxtv.org>\n"
++"Language: \n"
+ "MIME-Version: 1.0\n"
+ "Content-Type: text/plain; charset=ISO-8859-2\n"
+ "Content-Transfer-Encoding: 8bit\n"
+ 
+-msgid "VDR-Setup Extension"
++msgid "System Setup"
+ msgstr ""
+ 
+-msgid "Setup"
+-msgstr "Konfiguracija"
+-
+ msgid "Menu Edit"
+ msgstr ""
+ 
+@@ -96,7 +94,7 @@
+ msgid "Delete"
+ msgstr "Obri¹i"
+ 
+-msgid "missing channels/xxx.conf"
++msgid "missing selection values"
+ msgstr ""
+ 
+ msgid "Help"
+@@ -123,11 +121,11 @@
+ msgid "setupSetup$Main menu entry"
+ msgstr ""
+ 
++msgid "Setup"
++msgstr "Konfiguracija"
++
+ msgid "setupSetup$Menu suffix"
+ msgstr ""
+ 
+ msgid "setupSetup$Entry prefix"
+ msgstr ""
+-
+-msgid "setupSetup$Return value"
+-msgstr ""
+diff -Nur '--exclude=.svn' setup-0.3.1.orig//po/hu_HU.po setup-0.3.1/po/hu_HU.po
+--- setup-0.3.1.orig//po/hu_HU.po	2009-02-13 11:21:57.000000000 +0100
++++ setup-0.3.1/po/hu_HU.po	2011-03-22 14:13:55.478325103 +0100
+@@ -8,20 +8,18 @@
+ msgstr ""
+ "Project-Id-Version: VDR 1.5.7\n"
+ "Report-Msgid-Bugs-To: <see README>\n"
+-"POT-Creation-Date: 2008-06-17 19:53+0200\n"
++"POT-Creation-Date: 2010-11-16 20:10+0100\n"
+ "PO-Revision-Date: 2008-01-27 18:38+0100\n"
+ "Last-Translator: Istvan Koenigsberger <istvnko@hotmail.com>, Guido Josten <guido.josten@t-online.de>\n"
+ "Language-Team: <vdr@linuxtv.org>\n"
++"Language: \n"
+ "MIME-Version: 1.0\n"
+ "Content-Type: text/plain; charset=ISO-8859-2\n"
+ "Content-Transfer-Encoding: 8bit\n"
+ 
+-msgid "VDR-Setup Extension"
++msgid "System Setup"
+ msgstr ""
+ 
+-msgid "Setup"
+-msgstr "Beállítások"
+-
+ msgid "Menu Edit"
+ msgstr ""
+ 
+@@ -96,7 +94,7 @@
+ msgid "Delete"
+ msgstr "Törölni"
+ 
+-msgid "missing channels/xxx.conf"
++msgid "missing selection values"
+ msgstr ""
+ 
+ msgid "Help"
+@@ -123,11 +121,11 @@
+ msgid "setupSetup$Main menu entry"
+ msgstr ""
+ 
++msgid "Setup"
++msgstr "Beállítások"
++
+ msgid "setupSetup$Menu suffix"
+ msgstr ""
+ 
+ msgid "setupSetup$Entry prefix"
+ msgstr ""
+-
+-msgid "setupSetup$Return value"
+-msgstr ""
+diff -Nur '--exclude=.svn' setup-0.3.1.orig//po/it_IT.po setup-0.3.1/po/it_IT.po
+--- setup-0.3.1.orig//po/it_IT.po	2009-02-09 23:17:09.000000000 +0100
++++ setup-0.3.1/po/it_IT.po	2011-03-22 14:13:55.510324839 +0100
+@@ -9,10 +9,11 @@
+ msgstr ""
+ "Project-Id-Version: VDR 1.5.7\n"
+ "Report-Msgid-Bugs-To: <see README>\n"
+-"POT-Creation-Date: 2008-06-17 19:53+0200\n"
++"POT-Creation-Date: 2010-11-16 20:10+0100\n"
+ "PO-Revision-Date: 2009-02-09 23:17+0100\n"
+ "Last-Translator: Diego Pierotto <vdr-italian@tiscali.it>\n"
+ "Language-Team:  <vdr@linuxtv.org>\n"
++"Language: \n"
+ "MIME-Version: 1.0\n"
+ "Content-Type: text/plain; charset=utf-8\n"
+ "Content-Transfer-Encoding: 8bit\n"
+@@ -20,11 +21,8 @@
+ "X-Poedit-Country: ITALY\n"
+ "X-Poedit-SourceCharset: utf-8\n"
+ 
+-msgid "VDR-Setup Extension"
+-msgstr "Estensione delle opzioni per VDR"
+-
+-msgid "Setup"
+-msgstr "Opzioni"
++msgid "System Setup"
++msgstr ""
+ 
+ msgid "Menu Edit"
+ msgstr "Menu Modifica"
+@@ -98,8 +96,8 @@
+ msgid "Delete"
+ msgstr "Elimina"
+ 
+-msgid "missing channels/xxx.conf"
+-msgstr "canali/xxx.conf mancanti"
++msgid "missing selection values"
++msgstr ""
+ 
+ msgid "Help"
+ msgstr "Aiuto"
+@@ -125,12 +123,20 @@
+ msgid "setupSetup$Main menu entry"
+ msgstr "Voce menu principale"
+ 
++msgid "Setup"
++msgstr "Opzioni"
++
+ msgid "setupSetup$Menu suffix"
+ msgstr "Suffisso menu"
+ 
+ msgid "setupSetup$Entry prefix"
+ msgstr "Valore prefisso"
+ 
+-msgid "setupSetup$Return value"
+-msgstr "Invia valore"
++#~ msgid "missing channels/xxx.conf"
++#~ msgstr "canali/xxx.conf mancanti"
++
++#~ msgid "setupSetup$Return value"
++#~ msgstr "Invia valore"
+ 
++#~ msgid "VDR-Setup Extension"
++#~ msgstr "Estensione delle opzioni per VDR"
+diff -Nur '--exclude=.svn' setup-0.3.1.orig//po/nl_NL.po setup-0.3.1/po/nl_NL.po
+--- setup-0.3.1.orig//po/nl_NL.po	2009-02-13 11:21:57.000000000 +0100
++++ setup-0.3.1/po/nl_NL.po	2011-03-22 14:13:55.542324573 +0100
+@@ -9,20 +9,18 @@
+ msgstr ""
+ "Project-Id-Version: VDR 1.5.7\n"
+ "Report-Msgid-Bugs-To: <see README>\n"
+-"POT-Creation-Date: 2008-06-17 19:53+0200\n"
++"POT-Creation-Date: 2010-11-16 20:10+0100\n"
+ "PO-Revision-Date: 2008-01-27 18:38+0100\n"
+ "Last-Translator: Maarten Wisse <Maarten.Wisse@urz.uni-hd.de>\n"
+ "Language-Team: <vdr@linuxtv.org>\n"
++"Language: \n"
+ "MIME-Version: 1.0\n"
+ "Content-Type: text/plain; charset=ISO-8859-15\n"
+ "Content-Transfer-Encoding: 8bit\n"
+ 
+-msgid "VDR-Setup Extension"
++msgid "System Setup"
+ msgstr ""
+ 
+-msgid "Setup"
+-msgstr "Instellingen"
+-
+ msgid "Menu Edit"
+ msgstr ""
+ 
+@@ -97,7 +95,7 @@
+ msgid "Delete"
+ msgstr "Verwijder"
+ 
+-msgid "missing channels/xxx.conf"
++msgid "missing selection values"
+ msgstr ""
+ 
+ msgid "Help"
+@@ -124,11 +122,11 @@
+ msgid "setupSetup$Main menu entry"
+ msgstr ""
+ 
++msgid "Setup"
++msgstr "Instellingen"
++
+ msgid "setupSetup$Menu suffix"
+ msgstr ""
+ 
+ msgid "setupSetup$Entry prefix"
+ msgstr ""
+-
+-msgid "setupSetup$Return value"
+-msgstr ""
+diff -Nur '--exclude=.svn' setup-0.3.1.orig//po/nn_NO.po setup-0.3.1/po/nn_NO.po
+--- setup-0.3.1.orig//po/nn_NO.po	2009-02-13 11:21:57.000000000 +0100
++++ setup-0.3.1/po/nn_NO.po	2011-03-22 14:13:55.578324276 +0100
+@@ -8,20 +8,18 @@
+ msgstr ""
+ "Project-Id-Version: VDR 1.5.7\n"
+ "Report-Msgid-Bugs-To: <see README>\n"
+-"POT-Creation-Date: 2008-06-17 19:53+0200\n"
++"POT-Creation-Date: 2010-11-16 20:10+0100\n"
+ "PO-Revision-Date: 2008-01-27 18:38+0100\n"
+ "Last-Translator: Truls Slevigen <truls@slevigen.no>\n"
+ "Language-Team: <vdr@linuxtv.org>\n"
++"Language: \n"
+ "MIME-Version: 1.0\n"
+ "Content-Type: text/plain; charset=ISO-8859-1\n"
+ "Content-Transfer-Encoding: 8bit\n"
+ 
+-msgid "VDR-Setup Extension"
++msgid "System Setup"
+ msgstr ""
+ 
+-msgid "Setup"
+-msgstr "Konfigurasjon"
+-
+ msgid "Menu Edit"
+ msgstr ""
+ 
+@@ -96,7 +94,7 @@
+ msgid "Delete"
+ msgstr "Slett"
+ 
+-msgid "missing channels/xxx.conf"
++msgid "missing selection values"
+ msgstr ""
+ 
+ msgid "Help"
+@@ -123,11 +121,11 @@
+ msgid "setupSetup$Main menu entry"
+ msgstr ""
+ 
++msgid "Setup"
++msgstr "Konfigurasjon"
++
+ msgid "setupSetup$Menu suffix"
+ msgstr ""
+ 
+ msgid "setupSetup$Entry prefix"
+ msgstr ""
+-
+-msgid "setupSetup$Return value"
+-msgstr ""
+diff -Nur '--exclude=.svn' setup-0.3.1.orig//po/pl_PL.po setup-0.3.1/po/pl_PL.po
+--- setup-0.3.1.orig//po/pl_PL.po	2009-02-13 11:21:57.000000000 +0100
++++ setup-0.3.1/po/pl_PL.po	2011-03-22 14:13:55.614323977 +0100
+@@ -7,20 +7,18 @@
+ msgstr ""
+ "Project-Id-Version: VDR 1.5.7\n"
+ "Report-Msgid-Bugs-To: <see README>\n"
+-"POT-Creation-Date: 2008-06-17 19:53+0200\n"
++"POT-Creation-Date: 2010-11-16 20:10+0100\n"
+ "PO-Revision-Date: 2008-01-27 18:38+0100\n"
+ "Last-Translator: Michael Rakowski <mrak@gmx.de>\n"
+ "Language-Team: <vdr@linuxtv.org>\n"
++"Language: \n"
+ "MIME-Version: 1.0\n"
+ "Content-Type: text/plain; charset=ISO-8859-2\n"
+ "Content-Transfer-Encoding: 8bit\n"
+ 
+-msgid "VDR-Setup Extension"
++msgid "System Setup"
+ msgstr ""
+ 
+-msgid "Setup"
+-msgstr "Ustawienia"
+-
+ msgid "Menu Edit"
+ msgstr ""
+ 
+@@ -95,7 +93,7 @@
+ msgid "Delete"
+ msgstr "Usuñ"
+ 
+-msgid "missing channels/xxx.conf"
++msgid "missing selection values"
+ msgstr ""
+ 
+ msgid "Help"
+@@ -122,11 +120,11 @@
+ msgid "setupSetup$Main menu entry"
+ msgstr ""
+ 
++msgid "Setup"
++msgstr "Ustawienia"
++
+ msgid "setupSetup$Menu suffix"
+ msgstr ""
+ 
+ msgid "setupSetup$Entry prefix"
+ msgstr ""
+-
+-msgid "setupSetup$Return value"
+-msgstr ""
+diff -Nur '--exclude=.svn' setup-0.3.1.orig//po/pt_PT.po setup-0.3.1/po/pt_PT.po
+--- setup-0.3.1.orig//po/pt_PT.po	2009-02-13 11:21:57.000000000 +0100
++++ setup-0.3.1/po/pt_PT.po	2011-03-22 14:13:55.650323680 +0100
+@@ -7,20 +7,18 @@
+ msgstr ""
+ "Project-Id-Version: VDR 1.5.7\n"
+ "Report-Msgid-Bugs-To: <see README>\n"
+-"POT-Creation-Date: 2008-06-17 19:53+0200\n"
++"POT-Creation-Date: 2010-11-16 20:10+0100\n"
+ "PO-Revision-Date: 2008-01-27 18:38+0100\n"
+ "Last-Translator: Paulo Lopes <pmml@netvita.pt>\n"
+ "Language-Team: <vdr@linuxtv.org>\n"
++"Language: \n"
+ "MIME-Version: 1.0\n"
+ "Content-Type: text/plain; charset=ISO-8859-1\n"
+ "Content-Transfer-Encoding: 8bit\n"
+ 
+-msgid "VDR-Setup Extension"
++msgid "System Setup"
+ msgstr ""
+ 
+-msgid "Setup"
+-msgstr "Configurar"
+-
+ msgid "Menu Edit"
+ msgstr ""
+ 
+@@ -95,7 +93,7 @@
+ msgid "Delete"
+ msgstr "Apagar"
+ 
+-msgid "missing channels/xxx.conf"
++msgid "missing selection values"
+ msgstr ""
+ 
+ msgid "Help"
+@@ -122,11 +120,11 @@
+ msgid "setupSetup$Main menu entry"
+ msgstr ""
+ 
++msgid "Setup"
++msgstr "Configurar"
++
+ msgid "setupSetup$Menu suffix"
+ msgstr ""
+ 
+ msgid "setupSetup$Entry prefix"
+ msgstr ""
+-
+-msgid "setupSetup$Return value"
+-msgstr ""
+diff -Nur '--exclude=.svn' setup-0.3.1.orig//po/ro_RO.po setup-0.3.1/po/ro_RO.po
+--- setup-0.3.1.orig//po/ro_RO.po	2009-02-13 11:21:57.000000000 +0100
++++ setup-0.3.1/po/ro_RO.po	2011-03-22 14:13:55.682323414 +0100
+@@ -8,20 +8,18 @@
+ msgstr ""
+ "Project-Id-Version: VDR 1.5.7\n"
+ "Report-Msgid-Bugs-To: <see README>\n"
+-"POT-Creation-Date: 2008-06-17 19:53+0200\n"
++"POT-Creation-Date: 2010-11-16 20:10+0100\n"
+ "PO-Revision-Date: 2008-01-27 18:38+0100\n"
+ "Last-Translator: Lucian Muresan <lucianm@users.sourceforge.net>\n"
+ "Language-Team: <vdr@linuxtv.org>\n"
++"Language: \n"
+ "MIME-Version: 1.0\n"
+ "Content-Type: text/plain; charset=ISO-8859-2\n"
+ "Content-Transfer-Encoding: 8bit\n"
+ 
+-msgid "VDR-Setup Extension"
++msgid "System Setup"
+ msgstr ""
+ 
+-msgid "Setup"
+-msgstr "Configuraþie"
+-
+ msgid "Menu Edit"
+ msgstr ""
+ 
+@@ -96,7 +94,7 @@
+ msgid "Delete"
+ msgstr "ªterge"
+ 
+-msgid "missing channels/xxx.conf"
++msgid "missing selection values"
+ msgstr ""
+ 
+ msgid "Help"
+@@ -123,11 +121,11 @@
+ msgid "setupSetup$Main menu entry"
+ msgstr ""
+ 
++msgid "Setup"
++msgstr "Configuraþie"
++
+ msgid "setupSetup$Menu suffix"
+ msgstr ""
+ 
+ msgid "setupSetup$Entry prefix"
+ msgstr ""
+-
+-msgid "setupSetup$Return value"
+-msgstr ""
+diff -Nur '--exclude=.svn' setup-0.3.1.orig//po/ru_RU.po setup-0.3.1/po/ru_RU.po
+--- setup-0.3.1.orig//po/ru_RU.po	2009-02-13 11:21:57.000000000 +0100
++++ setup-0.3.1/po/ru_RU.po	2011-03-22 14:13:55.714323150 +0100
+@@ -7,20 +7,18 @@
+ msgstr ""
+ "Project-Id-Version: VDR 1.5.7\n"
+ "Report-Msgid-Bugs-To: <see README>\n"
+-"POT-Creation-Date: 2008-06-17 19:53+0200\n"
++"POT-Creation-Date: 2010-11-16 20:10+0100\n"
+ "PO-Revision-Date: 2008-01-27 18:38+0100\n"
+ "Last-Translator: Vyacheslav Dikonov <sdiconov@mail.ru>\n"
+ "Language-Team: <vdr@linuxtv.org>\n"
++"Language: \n"
+ "MIME-Version: 1.0\n"
+ "Content-Type: text/plain; charset=ISO-8859-5\n"
+ "Content-Transfer-Encoding: 8bit\n"
+ 
+-msgid "VDR-Setup Extension"
++msgid "System Setup"
+ msgstr ""
+ 
+-msgid "Setup"
+-msgstr "½ÐáâàÞÙÚÐ"
+-
+ msgid "Menu Edit"
+ msgstr ""
+ 
+@@ -95,7 +93,7 @@
+ msgid "Delete"
+ msgstr "ÃÔÐÛØâì"
+ 
+-msgid "missing channels/xxx.conf"
++msgid "missing selection values"
+ msgstr ""
+ 
+ msgid "Help"
+@@ -122,11 +120,11 @@
+ msgid "setupSetup$Main menu entry"
+ msgstr ""
+ 
++msgid "Setup"
++msgstr "½ÐáâàÞÙÚÐ"
++
+ msgid "setupSetup$Menu suffix"
+ msgstr ""
+ 
+ msgid "setupSetup$Entry prefix"
+ msgstr ""
+-
+-msgid "setupSetup$Return value"
+-msgstr ""
+diff -Nur '--exclude=.svn' setup-0.3.1.orig//po/sl_SI.po setup-0.3.1/po/sl_SI.po
+--- setup-0.3.1.orig//po/sl_SI.po	2009-02-13 11:21:57.000000000 +0100
++++ setup-0.3.1/po/sl_SI.po	2011-03-22 14:13:55.750322852 +0100
+@@ -8,20 +8,18 @@
+ msgstr ""
+ "Project-Id-Version: VDR 1.5.7\n"
+ "Report-Msgid-Bugs-To: <see README>\n"
+-"POT-Creation-Date: 2008-06-17 19:53+0200\n"
++"POT-Creation-Date: 2010-11-16 20:10+0100\n"
+ "PO-Revision-Date: 2008-01-27 18:38+0100\n"
+ "Last-Translator: Matjaz Thaler <matjaz.thaler@guest.arnes.si>\n"
+ "Language-Team: <vdr@linuxtv.org>\n"
++"Language: \n"
+ "MIME-Version: 1.0\n"
+ "Content-Type: text/plain; charset=ISO-8859-2\n"
+ "Content-Transfer-Encoding: 8bit\n"
+ 
+-msgid "VDR-Setup Extension"
++msgid "System Setup"
+ msgstr ""
+ 
+-msgid "Setup"
+-msgstr "Nastavitve"
+-
+ msgid "Menu Edit"
+ msgstr ""
+ 
+@@ -96,7 +94,7 @@
+ msgid "Delete"
+ msgstr "Izbri¹i"
+ 
+-msgid "missing channels/xxx.conf"
++msgid "missing selection values"
+ msgstr ""
+ 
+ msgid "Help"
+@@ -123,11 +121,11 @@
+ msgid "setupSetup$Main menu entry"
+ msgstr ""
+ 
++msgid "Setup"
++msgstr "Nastavitve"
++
+ msgid "setupSetup$Menu suffix"
+ msgstr ""
+ 
+ msgid "setupSetup$Entry prefix"
+ msgstr ""
+-
+-msgid "setupSetup$Return value"
+-msgstr ""
+diff -Nur '--exclude=.svn' setup-0.3.1.orig//po/sv_SE.po setup-0.3.1/po/sv_SE.po
+--- setup-0.3.1.orig//po/sv_SE.po	2009-02-13 11:21:57.000000000 +0100
++++ setup-0.3.1/po/sv_SE.po	2011-03-22 14:13:55.782322587 +0100
+@@ -8,20 +8,18 @@
+ msgstr ""
+ "Project-Id-Version: VDR 1.5.7\n"
+ "Report-Msgid-Bugs-To: <see README>\n"
+-"POT-Creation-Date: 2008-06-17 19:53+0200\n"
++"POT-Creation-Date: 2010-11-16 20:10+0100\n"
+ "PO-Revision-Date: 2008-01-27 18:38+0100\n"
+ "Last-Translator: Tomas Prybil <tomas@prybil.se>\n"
+ "Language-Team: <vdr@linuxtv.org>\n"
++"Language: \n"
+ "MIME-Version: 1.0\n"
+ "Content-Type: text/plain; charset=ISO-8859-1\n"
+ "Content-Transfer-Encoding: 8bit\n"
+ 
+-msgid "VDR-Setup Extension"
++msgid "System Setup"
+ msgstr ""
+ 
+-msgid "Setup"
+-msgstr "Inställningar"
+-
+ msgid "Menu Edit"
+ msgstr ""
+ 
+@@ -96,7 +94,7 @@
+ msgid "Delete"
+ msgstr "Ta bort"
+ 
+-msgid "missing channels/xxx.conf"
++msgid "missing selection values"
+ msgstr ""
+ 
+ msgid "Help"
+@@ -123,11 +121,11 @@
+ msgid "setupSetup$Main menu entry"
+ msgstr ""
+ 
++msgid "Setup"
++msgstr "Inställningar"
++
+ msgid "setupSetup$Menu suffix"
+ msgstr ""
+ 
+ msgid "setupSetup$Entry prefix"
+ msgstr ""
+-
+-msgid "setupSetup$Return value"
+-msgstr ""
+diff -Nur '--exclude=.svn' setup-0.3.1.orig//po/tr_TR.po setup-0.3.1/po/tr_TR.po
+--- setup-0.3.1.orig//po/tr_TR.po	2009-02-13 11:21:57.000000000 +0100
++++ setup-0.3.1/po/tr_TR.po	2011-03-22 14:13:55.814322323 +0100
+@@ -7,18 +7,16 @@
+ msgstr ""
+ "Project-Id-Version: VDR 1.5.7\n"
+ "Report-Msgid-Bugs-To: <see README>\n"
+-"POT-Creation-Date: 2008-06-17 19:53+0200\n"
++"POT-Creation-Date: 2010-11-16 20:10+0100\n"
+ "PO-Revision-Date: 2008-01-27 18:38+0100\n"
+ "Last-Translator: Oktay Yolgeçen <oktay_73@yahoo.de>\n"
+ "Language-Team: <vdr@linuxtv.org>\n"
++"Language: \n"
+ "MIME-Version: 1.0\n"
+ "Content-Type: text/plain; charset=ISO-8859-9\n"
+ "Content-Transfer-Encoding: 8bit\n"
+ 
+-msgid "VDR-Setup Extension"
+-msgstr ""
+-
+-msgid "Setup"
++msgid "System Setup"
+ msgstr ""
+ 
+ msgid "Menu Edit"
+@@ -93,7 +91,7 @@
+ msgid "Delete"
+ msgstr ""
+ 
+-msgid "missing channels/xxx.conf"
++msgid "missing selection values"
+ msgstr ""
+ 
+ msgid "Help"
+@@ -120,11 +118,11 @@
+ msgid "setupSetup$Main menu entry"
+ msgstr ""
+ 
+-msgid "setupSetup$Menu suffix"
++msgid "Setup"
+ msgstr ""
+ 
+-msgid "setupSetup$Entry prefix"
++msgid "setupSetup$Menu suffix"
+ msgstr ""
+ 
+-msgid "setupSetup$Return value"
++msgid "setupSetup$Entry prefix"
+ msgstr ""
+diff -Nur '--exclude=.svn' setup-0.3.1.orig//README setup-0.3.1/README
+--- setup-0.3.1.orig//README	2009-01-19 10:27:42.000000000 +0100
++++ setup-0.3.1/README	2010-10-27 21:58:38.447817049 +0200
+@@ -18,16 +18,16 @@
+ 
+ The Plugin can be easily configured by editing XML the following XML-Files:
+ 
+-  [VDR-CONFIG-DIR]/plugins/vdr-setup.xml
+-  [VDR-CONFIG-DIR]/plugins/vdr-menu.xml
++  [VDR-CONFIG-DIR]/plugins/setup.xml
++  [VDR-CONFIG-DIR]/menu.xml
+ 
+-minivdr-setup.xml
++setup.xml
+ =============
+-Holds the Setup configuration, See Examples/*/vdr-setup.xml:
++Holds the Setup configuration, See Examples/*/setup.xml:
+ 
+-vdr-menu.xml
++menu.xml
+ ============
+-Holds the VDR Menu-Submenu configuration. See Examples/vdr-menu.xml.
++Holds the VDR Menu-Submenu configuration. See Examples/menu.xml.
+ 
+ The configuration files must be copied into the directory PluginsConfigdirectory/setup
+ 
+@@ -42,7 +42,7 @@
+ vdr-1.6.0-2_setup-zulu-edition.diff is required
+ 
+ Also please make sure, that the file specified with the parameter "sysconfigFile"
+- (see vdr-setup.xml) exists.
++ (see setup.xml) exists.
+ The Plugin will save the configured parameters in this file in the form of:
+ 
+ VARIABLE="value"
+@@ -52,7 +52,7 @@
+ the stored Variables.
+ 
+ 
+-All Variable names can be specified within the minivdr-setup.xml configuration file
++All Variable names can be specified within the setup.xml configuration file
+ itself. The predefined Variable PLUGINLIST will hold all activated Plugins including
+ their optional parameters, and can be used in the VDR startup script to dynamically
+ specifiy the Plugins.
+diff -Nur '--exclude=.svn' setup-0.3.1.orig//setup.c setup-0.3.1/setup.c
+--- setup-0.3.1.orig//setup.c	2008-01-16 21:51:27.000000000 +0100
++++ setup-0.3.1/setup.c	2010-10-27 23:01:11.007822572 +0200
+@@ -15,8 +15,8 @@
+ #include "i18n.h"
+ 
+ static const char *VERSION        = "0.3.1-zulu-edition";
+-static const char *DESCRIPTION    = trNOOP("VDR-Setup Extension");
+-static const char *MAINMENUENTRY  = trNOOP("Setup");
++static const char *DESCRIPTION    = trNOOP("System Setup");
++static const char *MAINMENUENTRY  = trNOOP("System Setup");
+ 
+ //holds setup configuration
+ cSetupSetup  setupSetup;
+diff -Nur '--exclude=.svn' setup-0.3.1.orig//setupmenu.c setup-0.3.1/setupmenu.c
+--- setup-0.3.1.orig//setupmenu.c	2009-01-13 11:30:35.000000000 +0100
++++ setup-0.3.1/setupmenu.c	2011-03-22 14:09:37.208553115 +0100
+@@ -214,12 +214,12 @@
+   // Load Menu Configuration
+   char *menuXML = NULL;
+ #if VDRVERSNUM < 10507
+-  asprintf(&menuXML, "%s/setup/vdr-menu.%i.xml", cPlugin::ConfigDirectory(), Setup.OSDLanguage);
++  asprintf(&menuXML, "%s/../menu.%i.xml", cPlugin::ConfigDirectory(), Setup.OSDLanguage);
+ #else
+-  asprintf(&menuXML, "%s/setup/vdr-menu.%s.xml", cPlugin::ConfigDirectory(), Setup.OSDLanguage);
++  asprintf(&menuXML, "%s/../menu.%s.xml", cPlugin::ConfigDirectory(), Setup.OSDLanguage);
+ #endif
+   if (access(menuXML, 06) == -1)
+-     asprintf(&menuXML, "%s/setup/vdr-menu.xml", cPlugin::ConfigDirectory());
++     asprintf(&menuXML, "%s/../menu.xml", cPlugin::ConfigDirectory());
+   isyslog("setup: loading %s", menuXML);
+   _vdrSubMenu.LoadXml(menuXML);
+   free(menuXML);
+@@ -564,7 +564,7 @@
+ 
+ //#################################################################################################//  cSetupGenericMenu
+ //################################################################################################
+-cSetupGenericMenu::cSetupGenericMenu(const char *title, MenuNode *node, Config  *config)  : cSetupMenu()
++cSetupGenericMenu::cSetupGenericMenu(const char *title, MenuNode *node, Config  *config)  : cSetupMenu(true)
+ {
+   _node     = node;
+   _editItem = false;
+@@ -572,7 +572,7 @@
+   _config   = config;
+ 
+   SetTitle(title);
+-  SetCols(25);
++  SetCols(30);
+ 
+   if (_node != NULL)
+      Set();
+@@ -637,7 +637,7 @@
+              {
+                if (e->GetNrOfSelectionValues() == 0) {
+                   char *txt = NULL;
+-                  asprintf(&txt, "%s:\t%s", nohk(e->GetName()), tr("missing channels/xxx.conf"));
++                  asprintf(&txt, "%s:\t%s", nohk(e->GetName()), tr("missing selection values"));
+                   Add(new cOsdItem (txt));
+                   free(txt);
+                   }
+@@ -694,16 +694,24 @@
+                           }
+                        }
+                     else {
++                       Sysconfig *sysconfig = new Sysconfig();
+                        if (!_editItem) { //close submenu only if we do not have edited an textitem
+                           state = osBack;
+                           _config->SaveFile(); // Write New Configurationfile
+ 
++                          bool changed = false;
+                           for (int i=0;  i < _node->GetNr(); i++) {
+                               n = _node->GetNode(i);
+-                              if ( n->GetType() == MenuNode::ENTRY)
++                              //fprintf (stderr, "%s = %s => %s\n", n->GetMenuEntry()->GetSysconfigName(), sysconfig->GetVariable(n->GetMenuEntry()->GetSysconfigName()), sysconfig->GetInitvalue(n->GetMenuEntry()->GetSysconfigName()));
++                              if ( n->GetType() == MenuNode::ENTRY && strcmp(sysconfig->GetVariable(n->GetMenuEntry()->GetSysconfigName()), sysconfig->GetInitvalue(n->GetMenuEntry()->GetSysconfigName()))!=0) {
++                                 sysconfig->SetInitvalue(n->GetMenuEntry()->GetSysconfigName(), sysconfig->GetVariable(n->GetMenuEntry()->GetSysconfigName()));
++                                 changed = true;
++                                 //fprintf (stderr, "exec: %s\n", n->GetMenuEntry()->GetCommand());
+                                  ExecuteCommand(n->GetMenuEntry()->GetCommand());
++                                 }
+                               }
+-                          ExecuteCommand(_node->GetMenu()->GetCommand());
++                          if (changed)
++                              ExecuteCommand(_node->GetMenu()->GetCommand());
+                           }
+ 
+                        _editItem = false;
+@@ -792,18 +800,18 @@
+ //#############################################################################################
+ 
+ 
+-cSetupMenu::cSetupMenu() : cOsdMenu(tr("Setup"))
++cSetupMenu::cSetupMenu(bool sub) : cOsdMenu(tr("System Setup"))
+ {
+   char *configFile=NULL;
+ 
+   SetCols(20);
+ #if VDRVERSNUM < 10507
+-  asprintf(&configFile, "%s/setup/vdr-setup.%i.xml", cPlugin::ConfigDirectory(), Setup.OSDLanguage);
++  asprintf(&configFile, "%s/setup/setup.%i.xml", cPlugin::ConfigDirectory(), Setup.OSDLanguage);
+ #else
+-  asprintf(&configFile, "%s/setup/vdr-setup.%s.xml", cPlugin::ConfigDirectory(), Setup.OSDLanguage);
++  asprintf(&configFile, "%s/setup/setup.%s.xml", cPlugin::ConfigDirectory(), Setup.OSDLanguage);
+ #endif
+   if (access(configFile, 06) == -1)
+-     asprintf(&configFile, "%s/setup/vdr-setup.xml", cPlugin::ConfigDirectory());
++     asprintf(&configFile, "%s/setup/setup.xml", cPlugin::ConfigDirectory());
+   isyslog("setup: loading %s", configFile);
+ 
+   _config    = new Config( configFile );
+@@ -815,7 +823,7 @@
+   _childLockEntered = NULL;
+   _childLockEnteredHidden = NULL;
+ 
+-  if (_config != NULL && _config->LoadFile() == true) {
++  if( _config != NULL && (sub || _config->LoadFile())) {
+      if (_config->GetChildLock() != NULL && strcmp(_config->GetChildLock(), "0000") != 0) {
+         _childLock = true;
+         _childLockEntered          = Util::Strdupnew(_config->GetChildLock());
+@@ -1048,7 +1056,7 @@
+   char *result = NULL;
+ 
+   if (help != NULL) {
+-     asprintf(&helpfile, "%s/setup/help/%s", cPlugin::ConfigDirectory(), help);
++     asprintf(&helpfile, "/usr/share/doc/%s", help);
+      FILE *fp = fopen(helpfile, "r");
+      if (fp != NULL) {
+         fseek(fp, 0L, SEEK_END);
+diff -Nur '--exclude=.svn' setup-0.3.1.orig//setupmenu.h setup-0.3.1/setupmenu.h
+--- setup-0.3.1.orig//setupmenu.h	2009-01-13 11:30:35.000000000 +0100
++++ setup-0.3.1/setupmenu.h	2010-10-27 21:47:13.819825018 +0200
+@@ -89,7 +89,7 @@
+ protected:
+    Config *_config;
+ public:
+-    cSetupMenu();
++    cSetupMenu(bool sub=false);
+     ~cSetupMenu();
+     void Set();
+     void SetAskChildCode();
+diff -Nur '--exclude=.svn' setup-0.3.1.orig//setupsetup.c setup-0.3.1/setupsetup.c
+--- setup-0.3.1.orig//setupsetup.c	2008-01-22 17:23:09.000000000 +0100
++++ setup-0.3.1/setupsetup.c	2010-10-28 02:21:53.171823604 +0200
+@@ -27,7 +27,7 @@
+   strcpy(_menuSuffix, " ...");
+   strcpy(_entryPrefix, "-");
+   DirectMenu = 0;
+-  ReturnValue = 1;
++  ReturnValue = 3;
+ }
+ 
+ bool cSetupSetup::SetupParse( const char *Name, const char *Value )
+@@ -49,11 +49,12 @@
+   ReturnValues[0]="true/false";
+   ReturnValues[1]="on/off";
+   ReturnValues[2]="yes/no";
++  ReturnValues[3]="1/0";
+ 
+   Add(new cMenuEditBoolItem(tr("setupSetup$Main menu entry"), &setupSetup.DirectMenu, tr("Setup"), tr("Menu Edit")));
+   Add(new cMenuEditStrItem(tr("setupSetup$Menu suffix"),       setupSetup._menuSuffix, sizeof(setupSetup._menuSuffix),  trVDR(FileNameChars)));
+   Add(new cMenuEditStrItem(tr("setupSetup$Entry prefix"),      setupSetup._entryPrefix, sizeof(setupSetup._entryPrefix), trVDR(FileNameChars)));
+-  Add(new cMenuEditStraItem(tr("setupSetup$Return value"),    &setupSetup.ReturnValue, 3, ReturnValues));
++//  Add(new cMenuEditStraItem(tr("setupSetup$Return value"),    &setupSetup.ReturnValue, 4, ReturnValues));
+ }
+ 
+ 
+@@ -74,12 +75,12 @@
+      switch (Key) {
+         case kOk: // Load Menu Configuration
+ #if VDRVERSNUM < 10507
+-                 asprintf(&menuXML, "%s/setup/vdr-menu.%i.xml", cPlugin::ConfigDirectory(), Setup.OSDLanguage);
++                 asprintf(&menuXML, "%s/../menu.%i.xml", cPlugin::ConfigDirectory(), Setup.OSDLanguage);
+ #else
+-                 asprintf(&menuXML, "%s/setup/vdr-menu.%s.xml", cPlugin::ConfigDirectory(), Setup.OSDLanguage);
++                 asprintf(&menuXML, "%s/../menu.%s.xml", cPlugin::ConfigDirectory(), Setup.OSDLanguage);
+ #endif
+                  if (access(menuXML, 06) == -1)
+-                    asprintf(&menuXML, "%s/setup/vdr-menu.xml", cPlugin::ConfigDirectory());
++                    asprintf(&menuXML, "%s/../menu.xml", cPlugin::ConfigDirectory());
+                  if (vdrSubMenu.LoadXml(menuXML)) {
+                     isyslog("setup: saved setup to %s", menuXML);
+                     vdrSubMenu.SetMenuSuffix(setupSetup._menuSuffix);
+diff -Nur '--exclude=.svn' setup-0.3.1.orig//setupsetup.h setup-0.3.1/setupsetup.h
+--- setup-0.3.1.orig//setupsetup.h	2008-01-29 23:19:13.000000000 +0100
++++ setup-0.3.1/setupsetup.h	2010-10-28 01:03:10.703824720 +0200
+@@ -43,7 +43,7 @@
+ class cSetupSetupPage : public cMenuSetupPage
+ {
+   private:
+-    const char *ReturnValues[3];
++    const char *ReturnValues[4];
+   public:
+     cSetupSetupPage();
+     void Store(void);
+diff -Nur '--exclude=.svn' setup-0.3.1.orig//sysconfig.c setup-0.3.1/sysconfig.c
+--- setup-0.3.1.orig//sysconfig.c	2006-02-04 12:59:29.000000000 +0100
++++ setup-0.3.1/sysconfig.c	2010-11-28 12:40:00.014506831 +0100
+@@ -80,29 +80,32 @@
+ //------------------------------------------------------
+ 
+ Variable * Sysconfig::_variables=NULL;
++Variable * Sysconfig::_initvalues=NULL;
+ int        Sysconfig::_nr =0;
+ char      *Sysconfig::_filename=NULL;
+ 
+ Sysconfig::Sysconfig()
+ {
+-  _variables = NULL;
+-  _filename  = NULL;
+-  _nr        = 0;
++//  _variables = NULL;
++//  _initvalues  = NULL;
++//  _filename  = NULL;
++//  _nr        = 0;
+ }
+ 
+ 
+ Sysconfig::~Sysconfig()
+ {
+-  destroy();
++//  destroy();
+ }
+ 
+ void Sysconfig::destroy( )
+ {
+-
+   delete [] _variables;
++  delete [] _initvalues;
+   delete [] _filename;
+ 
+   _variables=NULL;
++  _initvalues=NULL;
+   _filename=NULL;
+   _nr=0;
+ }
+@@ -113,6 +116,7 @@
+ {
+    bool result = true;
+    const char * line;
++
+    destroy();
+    _filename = Util::Strdupnew(fname);
+    FILE * fp = fopen(fname, "r");
+@@ -142,24 +146,27 @@
+ bool Sysconfig::SaveFile( )
+ {
+   bool result=true;
+-   FILE * fp = fopen(_filename, "w");
+-   if(fp != NULL)
+-   {
+-     fprintf(fp, "#\n\
+-# Generated by Setup-Plugin, \n\
+-# (c) 2005,2006 by Ralf Dotzert\n\
+-#\n\n");
+-     for(int i=0; i< _nr; i++)
+-     {
+-       fprintf(fp, "%s=\"%s\"\n", _variables[i].GetName(), _variables[i].GetValue());
+-     }
+-     fclose(fp);
+-   }
+-   else
+-    {
+-     DEBUG4("%s: Could not write file: %s, errno=%d\n", DBG_PREFIX, _filename, errno);
+-     result=false;
++  int   status=0;
++  char *cmd=NULL;
++  for(int i=0; i< _nr; i++)
++  {
++    if (strcmp (_initvalues[i].GetValue(), _variables[i].GetValue())!=0) {
++//      asprintf(&cmd, "./updatesetting \"%s\" \"%s\"", _variables[i].GetName(), _variables[i].GetValue());
++      asprintf(&cmd, "/usr/bin/updatesetting \"%s\" \"%s\"", _variables[i].GetName(), _variables[i].GetValue());
++      status=system(cmd);
++      if( status == -1 ) 
++	  {
++        DEBUG3("%s: fork of command %s failed\n", DBG_PREFIX, cmd);
++	    result=false;
++      } 
++	  else if( WEXITSTATUS(status) != 0) 
++	  {
++        DEBUG4("%s: executing of command %s returned=%d\n", DBG_PREFIX, cmd, WEXITSTATUS(status));
++	    result=false;
++      }
++      free(cmd);
+     }
++  }
+   return(result);
+ }
+ 
+@@ -200,10 +207,11 @@
+   char *val=NULL;
+   if(strlen(line)>0 && line[0] != '#' ) // comment line
+   {
+-    if( (nam =strtok((char*)line, "=")) != NULL &&
+-        ( val=strtok(NULL, "\"")) != NULL )
+-    {
+-      addVariable(nam, val);
++    if( (nam =strtok((char*)line, "=")) != NULL) {
++      if((val=strtok(NULL, "\"")) == NULL ) {
++        val="";
++      }
++      addVariable(nam, val, val);
+     }
+   }
+   
+@@ -215,7 +223,7 @@
+  * @param name specifiesd the name of the variables
+  * @param value specifies the value of the variable
+  */
+-void Sysconfig::addVariable( const char * name, const char * value )
++void Sysconfig::addVariable( const char * name, const char * value, const char * init="" )
+ {
+     Variable *v = new Variable[_nr+1];
+  
+@@ -232,6 +240,24 @@
+     v[_nr].SetName(name);
+     v[_nr].SetValue(value);
+     _variables=v;
++
++
++    v = new Variable[_nr+1];
++
++    //copy existing Array elements
++    for(int i=0; i<_nr; i++)
++    {
++    //    v[i] = variables[i];
++     v[i].SetName(_initvalues[i].GetName());
++     v[i].SetValue(_initvalues[i].GetValue());
++    }
++
++    delete []_initvalues;
++
++    v[_nr].SetName(name);
++    v[_nr].SetValue(init);
++    _initvalues=v;
++
+     _nr++;  
+ }
+ 
+@@ -264,13 +290,37 @@
+       index=i;
+     }
+   }
+-  if( found)
++  if(found)
+     _variables[index].SetValue(value);
+   else
+     addVariable(name, value);
+ }
+ 
+ /**
++ * Set or overwrite the specified variable
++ * @param name name of variable
++ * @param value value of variable
++ */
++void Sysconfig::SetInitvalue(const char * name, const char * value )
++{
++  bool found =false;
++  int  index=0;
++
++  for(int i=0; i<_nr && found==false; i++)
++  {
++    if( strcmp(name, _initvalues[i].GetName())==0 )
++    {
++      found=true;
++      index=i;
++    }
++  }
++  if(found)
++    _initvalues[index].SetValue(value);
++  else
++    addVariable(name, value);
++}
++
++/**
+  * returns the current filename of the sysconfig
+  * @return return filename
+  */
+@@ -297,6 +347,25 @@
+   else
+     return(NULL);
+ }
++
++const char * Sysconfig::GetInitvalue( const char * name )
++{
++  bool found =false;
++  int  index=0;
++
++  for(int i=0; i<_nr && found==false; i++)
++  {
++    if( strcmp(name, _initvalues[i].GetName())==0 )
++    {
++      found=true;
++      index=i;
++    }
++  }
++  if( found)
++    return(_initvalues[index].GetValue());
++  else
++    return(NULL);
++}
+ 
+ 
+ 
+diff -Nur '--exclude=.svn' setup-0.3.1.orig//sysconfig.h setup-0.3.1/sysconfig.h
+--- setup-0.3.1.orig//sysconfig.h	2005-10-12 15:44:14.000000000 +0200
++++ setup-0.3.1/sysconfig.h	2010-11-28 12:39:48.784852276 +0100
+@@ -34,6 +34,7 @@
+ 
+ class Sysconfig{
+ static Variable *_variables;
++static Variable *_initvalues;
+ static  int       _nr;
+ static char     *_filename;
+ public:
+@@ -44,12 +45,14 @@
+      bool SaveFile();
+      void Print();
+      void SetVariable(const char* name, const char*value);
+-    static const char *GetVariable(const char *name);
++     void SetInitvalue(const char* name, const char*value);
++     static const char *GetVariable(const char *name);
++     static const char *GetInitvalue(const char *name);
+      char *GetFileName();
+ private:
+      const char *readLine(FILE *fp);
+      void addLine(const char *line);
+-     void addVariable(const char *name, const char *value);
++     void addVariable(const char *name, const char *value, const char *init);
+ };
+ 
+ 
+diff -Nur '--exclude=.svn' setup-0.3.1.orig//util.c setup-0.3.1/util.c
+--- setup-0.3.1.orig//util.c	2008-01-30 11:49:29.000000000 +0100
++++ setup-0.3.1/util.c	2010-10-28 01:16:09.659825672 +0200
+@@ -40,6 +40,8 @@
+ static const char *offStr = "off";
+ static const char *yesStr = "yes";
+ static const char *noStr = "no";
++static const char *oneStr = "1";
++static const char *zeroStr = "0";
+ 
+ 
+ char *Util::Strdupnew(const char  *str)
+@@ -83,9 +85,9 @@
+   bool ok=true;
+ 
+   if (string != NULL) {
+-     if (strcmp(string, trueStr) == 0 || strcmp(string, onStr) == 0 || strcmp(string, yesStr) == 0)
++     if (strcmp(string, trueStr) == 0 || strcmp(string, onStr) == 0 || strcmp(string, yesStr) == 0 || strcmp(string , oneStr)  == 0)
+         flag = true;
+-     else if (strcmp(string, falseStr) == 0 || strcmp(string, offStr) == 0 || strcmp(string, noStr) == 0)
++     else if (strcmp(string, falseStr) == 0 || strcmp(string, offStr) == 0 || strcmp(string, noStr) == 0 || strcmp(string , zeroStr)  == 0 || strcmp(string , "")  == 0)
+         flag = false;
+      else
+         ok = false;
+@@ -186,13 +188,15 @@
+      if (setupSetup.ReturnValue == 0)      result = trueStr;
+      else if (setupSetup.ReturnValue == 1) result = onStr;
+      else if (setupSetup.ReturnValue == 2) result = yesStr;
+-     else result = onStr;
++     else if (setupSetup.ReturnValue == 2) result = oneStr;
++     else result = oneStr;
+      }
+   else {
+      if (setupSetup.ReturnValue == 0)      result = falseStr;
+      else if (setupSetup.ReturnValue == 1) result = offStr;
+      else if (setupSetup.ReturnValue == 2) result = noStr;
+-     else result = offStr;
++     else if (setupSetup.ReturnValue == 3) result = zeroStr;
++     else result = zeroStr;
+      }
+ 
+   return(result);
+--- setup-0.3.1/menus.c.orig	2011-10-18 10:49:23.000000000 +0200
++++ setup-0.3.1/menus.c	2012-03-11 22:30:03.046965496 +0100
+@@ -23,7 +23,7 @@
+ #include "sysconfig.h"
+ #include "debug.h"
+ 
+-#define VALUETEXTMAXLEN 40
++#define VALUETEXTMAXLEN 100
+ #define VALUEIPMAXLEN   16
+ 
+ // ###################################################################################

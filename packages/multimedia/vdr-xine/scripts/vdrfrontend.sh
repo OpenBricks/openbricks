@@ -2,6 +2,10 @@
 export DISPLAY=0:0
 ASPECT_RATIO="anamorphic"
 
+. /etc/pvr.conf
+
+[ "$BACKEND" != vdr ] && exit 0
+
 GEOMETRY=`xrandr | grep "\*" | cut -d" " -f4`
 
 

@@ -1,0 +1,153 @@
+From ac0430c0b4c331d9adc87b8556545875e08ed82c Mon Sep 17 00:00:00 2001
+From: Lucian Muresan <lucianm@users.sourceforge.net>
+Date: Tue, 18 Dec 2012 01:05:02 +0100
+Subject: [PATCH 3/3] softhddevice-video-scaling-without-YAEPG-vdr-1.7.33_v4
+
+---
+ softhddevice.cpp | 90 +++++++++++++++++++++++++++++++++++++++++---------------
+ video.h          |  2 +-
+ 2 files changed, 67 insertions(+), 25 deletions(-)
+
+diff --git a/softhddevice.cpp b/softhddevice.cpp
+index d20f2cb..113efcc 100644
+--- a/softhddevice.cpp
++++ b/softhddevice.cpp
+@@ -313,17 +313,9 @@ cSoftOsd::~cSoftOsd(void)
+     SetActive(false);
+     // done by SetActive: OsdClose();
+ 
+-#ifdef USE_YAEPG
+-    // support yaepghd, video window
+-    if (vidWin.bpp) {			// restore fullsized video
+-	int width;
+-	int height;
+-	double video_aspect;
+-
+-	::GetOsdSize(&width, &height, &video_aspect);
+-	// works osd relative
+-	VideoSetOutputPosition(0, 0, width, height);
+-    }
++#if APIVERSNUM >= 10733
++    // rescale to full-size when Osd disappears
++    cDevice::PrimaryDevice()->ScaleVideo();
+ #endif
+ }
+ 
+@@ -346,19 +338,9 @@ void cSoftOsd::Flush(void)
+     if (OsdLevel >= OSD_LEVEL_SUBTITLES && IsOpen()) {
+ 	return;
+     }
+-#ifdef USE_YAEPG
+-    // support yaepghd, video window
+-    if (vidWin.bpp) {
+-#ifdef OSD_DEBUG
+-	dsyslog("[softhddev]%s: %dx%d+%d+%d\n", __FUNCTION__, vidWin.Width(),
+-	    vidWin.Height(), vidWin.x1, vidWin.y2);
+-#endif
+-
+-	// FIXME: vidWin is OSD relative not video window.
+-	VideoSetOutputPosition(Left() + vidWin.x1, Top() + vidWin.y1,
+-	    vidWin.Width(), vidWin.Height());
+-    }
+-#endif
++	// scale to the size and position stored by the last call to cDevice::CanScaleVideo
++	// by passing a cRect(-1,-1,-1,-1) as by our convention
++	cDevice::PrimaryDevice()->ScaleVideo(cRect(-1,-1,-1,-1));
+ 
+     //
+     //	VDR draws subtitle without clearing the old
+@@ -1464,11 +1446,18 @@ class cSoftHdDevice:public cDevice
+ // Image Grab facilities
+ 
+     virtual uchar *GrabImage(int &, bool, int, int, int);
++#if APIVERSNUM >= 10733
++    virtual cRect CanScaleVideo(const cRect &Rect, int Alignment = taCenter);
++    virtual void ScaleVideo(const cRect &Rect = cRect::Null);
++  private:
++	cRect vidWinRect; // default constructor initializes with cRect::Null which is interpreted as "full size" 
++#endif
+ 
+ #if 0
+ // SPU facilities
+   private:
+     cDvbSpuDecoder * spuDecoder;
++
+   public:
+     virtual cSpuDecoder * GetSpuDecoder(void);
+ #endif
+@@ -1888,6 +1877,59 @@ uchar *cSoftHdDevice::GrabImage(int &size, bool jpeg, int quality, int width,
+     return::GrabImage(&size, jpeg, quality, width, height);
+ }
+ 
++#if APIVERSNUM >= 10733
++///< Asks the output device whether it can scale the currently shown video in
++///< such a way that it fits into the given Rect, while retaining its proper
++///< aspect ratio. If the scaled video doesn't exactly fit into Rect, Alignment
++///< is used to determine how to align the actual rectangle with the requested
++///< one. The actual rectangle can be smaller, larger or the same size as the
++///< given Rect, and its location may differ, depending on the capabilities of
++///< the output device, which may not be able to display a scaled video at
++///< arbitrary sizes and locations. The device shall, however, do its best to
++///< match the requested Rect as closely as possible, preferring a size and
++///< location that fits completely into the requested Rect if possible.
++///< Returns the rectangle that can actually be used when scaling the video.
++///< A skin plugin using this function should rearrange its content according
++///< to the rectangle returned from calling this function, and should especially
++///< be prepared for cases where the returned rectangle is way off the requested
++///< Rect, or even Null. In such cases, the skin may want to fall back to
++///< working with full screen video.
++///< If this device can't scale the video, a Null rectangle is returned (this
++///< is also the default implementation).
++cRect cSoftHdDevice::CanScaleVideo(const cRect &Rect, int Alignment/* = taCenter*/)
++{
++    // first implementation: we can always scale, we're a soft device ;-), ignore alignment for now
++
++	// so let's just remember what the next call to ScaleVideo should actually use as a rectangle
++	// argument if called with cRect(-1,-1,-1,-1)
++	vidWinRect = Rect; 
++    return vidWinRect;
++}
++
++///< Scales the currently shown video in such a way that it fits into the given
++///< Rect. Rect should be one retrieved through a previous call to
++///< CanScaleVideo() (otherwise results may be undefined).
++///< Even if video output is scaled, the functions GetVideoSize() and
++///< GetOsdSize() must still return the same values as if in full screen mode!
++///< If this device can't scale the video, nothing happens.
++///< To restore full screen video, call this function with a Null rectangle.
++void cSoftHdDevice::ScaleVideo(const cRect &Rect/* = cRect::Null*/)
++{
++	const cRect * actualRect = &Rect;
++	if (Rect == cRect(-1,-1,-1,-1)) {
++		// actual rectangle was stored here by the previous call to CanScaleVideo
++		actualRect = &vidWinRect;
++	} else {
++		// remember the value, just for the case we were called explicitly with a real value
++		vidWinRect = Rect;
++	}
++
++	// let our specialized code do the actual resizing / repositioning
++    VideoSetOutputPosition((*actualRect).X(), (*actualRect).Y(), (*actualRect).Width(), (*actualRect).Height());
++}
++#endif
++
++
+ /**
+ **	Call rgb to jpeg for C Plugin.
+ */
+diff --git a/video.h b/video.h
+index 0868169..8a49b4c 100644
+--- a/video.h
++++ b/video.h
+@@ -109,7 +109,7 @@ extern void VideoSetSaturation(int);
+     /// Set hue adjustment.
+ extern void VideoSetHue(int);
+ 
+-    /// Set video output position.
++    /// Set video output position (Null width or height sets to full available window or screen).
+ extern void VideoSetOutputPosition(int, int, int, int);
+ 
+     /// Set video mode.
+-- 
+1.8.0
+

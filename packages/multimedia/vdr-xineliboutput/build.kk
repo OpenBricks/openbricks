@@ -1,0 +1,78 @@
+#!/bin/sh
+
+. config/options
+
+export MAKEFLAGS=-j1
+
+get_meta vdr
+VDR_VERSION=$PKG_VERSION
+
+$SCRIPTS/build vdr
+
+VDR_DIR=`basename $BUILD/vdr-$VDR_VERSION`
+
+cd $BUILD/$1*
+
+if pkg_uses $1 fb || pkg_uses $1 directfb; then
+  FB_CONFIG="--enable-fb"
+else
+  FB_CONFIG="--disable-fb"
+fi
+
+if pkg_uses $1 libvdpau; then
+  VDPAU_CONFIG="--enable-vdpau"
+else
+  VDPAU_CONFIG="--disable-vdpau"
+fi
+
+if pkg_uses $1 xorg; then
+  XORG_CONFIG="--enable-x11 --disable-xinerama --enable-xshm --enable-xdpms --enable-xrender --enable-xshape"
+else
+#  XORG_CONFIG="--disable-x11 --disable-xinerama --disable-xshm --disable-xdpms --disable-xrandr --disable-xrender --disable-xshape"
+  XORG_CONFIG="--enable-x11 --disable-xinerama --enable-xshm --enable-xdpms --enable-xrender --enable-xshape"
+fi
+
+if pkg_uses $1 opengl; then
+  OPENGL_CONFIG="--enable-opengl"
+else
+  OPENGL_CONFIG="--disable-opengl"
+fi
+
+echo $XORG_CONFIG
+read enterKey
+./configure \
+           $FB_CONFIG \
+           $XORG_CONFIG \
+           $OPENGL_CONFIG \
+           --enable-vdr \
+           --enable-libxine \
+           --enable-libjpeg \
+           --disable-dbus-glib-1 \
+           --cc="$CC" \
+           --cxx="$CXX" \
+           --add-cflags="$CFLAGS" \
+	   $VDPAU_CONFIG \
+
+export VDRDIR="$ROOT/$BUILD/$VDR_DIR"
+
+gcc -o mpg2c mpg2c.c
+
+make \
+  LIBDIR="." \
+  LOCALEDIR="./locale" \
+  HOST_CC="$HOST_CC" \
+  HOST_CFLAGS="$HOST_CFLAGS" \
+  HOST_LDFLAGS="$HOST_LDFLAGS" \
+  NOSIGNAL_IMAGE_FILE=/usr/share/vdr/xineliboutput/nosignal_sifbox_720x576.mpg \
+
+do_strip bin lib$1.so.*
+
+make_install
+
+if pkg_uses $1 bluray; then
+  cd xine/BluRay
+  make
+  make_install
+fi
+
+exit 0

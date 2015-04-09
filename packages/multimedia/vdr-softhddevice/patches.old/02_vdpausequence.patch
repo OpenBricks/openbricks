@@ -1,0 +1,88 @@
+diff --git a/video.c b/video.c
+index 732f98d..0defc42 100644
+--- a/video.c
++++ b/video.c
+@@ -5949,7 +5949,10 @@ static inline void VdpauGetProc(const VdpFuncId id, void *addr,
+ ///
+ ///	Initialize output queue.
+ ///
+-static void VdpauInitOutputQueue(void)
++///	@retval 0	ok
++///	@retval -1	failure
++///
++static int VdpauInitOutputQueue(void)
+ {
+     VdpStatus status;
+     VdpRGBAFormat format;
+@@ -5961,7 +5964,7 @@ static void VdpauInitOutputQueue(void)
+     if (status != VDP_STATUS_OK) {
+ 	Error(_("video/vdpau: can't create presentation queue target: %s\n"),
+ 	    VdpauGetErrorString(status));
+-	return;
++	return -1;
+     }
+ 
+     status =
+@@ -5972,7 +5975,7 @@ static void VdpauInitOutputQueue(void)
+ 	    VdpauGetErrorString(status));
+ 	VdpauPresentationQueueTargetDestroy(VdpauQueueTarget);
+ 	VdpauQueueTarget = 0;
+-	return;
++	return -1;
+     }
+ 
+     VdpauQueueBackgroundColor->red = 0.01;
+@@ -6013,6 +6016,8 @@ static void VdpauInitOutputQueue(void)
+     Debug(3,
+ 	"video/vdpau: created grab render output surface %dx%d with id 0x%08x\n",
+ 	VideoWindowWidth, VideoWindowHeight, VdpauGrabRenderSurface);
++
++    return 0;
+ }
+ 
+ ///
+@@ -6497,7 +6502,14 @@ static int VdpauInit(const char *display_name)
+     //
+     //	Create presentation queue, only one queue pro window
+     //
+-    VdpauInitOutputQueue();
++    if (VdpauInitOutputQueue() < 0) {
++	if (VdpauDeviceDestroy) {
++	    VdpauDeviceDestroy(VdpauDevice);
++	}
++	VdpauDevice = 0;
++	VdpauPreemption = 1;
++	return -1;
++    }
+ 
+     return 1;
+ }
+@@ -8142,15 +8154,24 @@ static int VdpauPreemptionRecover(void)
+     if (status != VDP_STATUS_OK) {
+ 	Error(_("video/vdpau: can't register preemption callback: %s\n"),
+ 	    VdpauGetErrorString(status));
++	// FIXME: should i destroy the vdpau-device?
++	VdpauPreemption = 1;
++	return -1;
+     }
+ 
+     VdpauPreemption = 0;
+     Debug(3, "video/vdpau: display preemption recovery\n");
+ 
+-    VdpauInitOutputQueue();
++    if (VdpauInitOutputQueue() < 0) {	// failed fallback to preemption
++	// FIXME: should i destroy the vdpau-device?
++	VdpauPreemption = 1;
++	return -1;
++    }
+ 
+-    // mixer
+     for (i = 0; i < VdpauDecoderN; ++i) {
++	VdpauDecoders[i]->Device = VdpauDevice;
++
++	// mixer
+ 	VdpauDecoders[i]->VideoDecoder = VDP_INVALID_HANDLE;
+ 	VdpauDecoders[i]->VideoMixer = VDP_INVALID_HANDLE;
+ 	VdpauDecoders[i]->SurfaceFreeN = 0;
+
+

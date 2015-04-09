@@ -1,0 +1,166 @@
+diff -ub a/ttxtsubs.c b/ttxtsubs.c
+--- a/ttxtsubs.c	2012-05-06 10:32:56.407162991 +0300
++++ b/ttxtsubs.c	2012-05-06 11:38:49.151704383 +0300
+@@ -316,8 +316,6 @@
+ bool cPluginTtxtsubs::SetupParse(const char *Name, const char *Value)
+ {
+   if(!strcasecmp(Name, "Display")) { globals.mDoDisplay = atoi(Value); globals.mRealDoDisplay=globals.mDoDisplay; }
+-  else if(!strcasecmp(Name, "ReplayDelay")) globals.mReplayDelay = atoi(Value);
+-  else if(!strcasecmp(Name, "ReplayTsDelay")) globals.mReplayTsDelay = atoi(Value);
+   else if(!strcasecmp(Name, "MainMenuEntry")) globals.mMainMenuEntry = atoi(Value);
+   else if(!strcasecmp(Name, "FontSize")) globals.mFontSize = atoi(Value);
+   else if(!strcasecmp(Name, "OutlineWidth")) globals.mOutlineWidth = atoi(Value);
+@@ -519,8 +517,6 @@
+   }
+ 
+   Add(new cMenuEditBoolItem(tr("Display Subtitles"), &mConf.mDoDisplay));
+-  Add(new cMenuEditIntItem(tr("Replay Delay (PES)"), &mConf.mReplayDelay, 0, 5000));
+-  Add(new cMenuEditIntItem(tr("Replay Delay (TS)"), &mConf.mReplayTsDelay, 0, 5000));
+   if(mConf.mMainMenuEntry < 0 || mConf.mMainMenuEntry >= numMainMenuAlts)
+     mConf.mMainMenuEntry = 0;  // menu item segfaults if out of range
+   Add(new cMenuEditStraItem(tr("Main Menu Alternative"), &mConf.mMainMenuEntry,
+@@ -578,8 +574,6 @@
+   }
+ 
+   SetupStore("Display", mConf.mDoDisplay);
+-  SetupStore("ReplayDelay", mConf.mReplayDelay);
+-  SetupStore("ReplayTsDelay", mConf.mReplayTsDelay);
+   SetupStore("MainMenuEntry", mConf.mMainMenuEntry);
+   SetupStore("FontSize", mConf.mFontSize);
+   SetupStore("OutlineWidth", mConf.mOutlineWidth);
+diff -ub vdr-plugin-ttxtsubs-orig/ttxtsubsdisplay.c ttxtsubs/ttxtsubsdisplay.c
+--- a/ttxtsubsdisplay.c	2012-05-06 10:32:56.407162991 +0300
++++ b/ttxtsubsdisplay.c	2012-05-06 10:55:30.875210862 +0300
+@@ -31,6 +31,7 @@
+ #include <vdr/font.h>
+ #include <vdr/config.h>
+ #include <vdr/tools.h>
++#include <vdr/device.h>
+ 
+ #include "ttxtsubsglobals.h"
+ #include "ttxtsubsdisplay.h"
+@@ -164,7 +165,7 @@
+ }
+ 
+ 
+-void cTtxtSubsDisplay::TtxtData(const uint8_t *Data, uint64_t sched_time)
++void cTtxtSubsDisplay::TtxtData(const uint8_t *Data, uint32_t sched_pts)
+ {
+     int mp;
+     int mag; // X in ETSI EN 300 706
+@@ -256,8 +257,13 @@
+ 
+             if (_pageState != collecting)
+             {
+-                int diff = sched_time - cTimeMs::Now();
+-                //printf("Got sched_time %llx, diff %d\n", sched_time, diff);
++                uint32_t pts = cDevice::PrimaryDevice()->GetSTC();
++                int diff = (sched_pts - pts) / 90;
++                if( diff > 15000 )
++                {
++                  isyslog( "ttxtsubs: too long delay (%d ms), discarding", diff );
++                  return;
++                }
+                 if (diff > 10) cCondWait::SleepMs(diff);
+             }
+ 
+diff -ub vdr-plugin-ttxtsubs-orig/ttxtsubsdisplayer.c ttxtsubs/ttxtsubsdisplayer.c
+--- a/ttxtsubsdisplayer.c	2012-05-06 10:32:56.407162991 +0300
++++ b/ttxtsubsdisplayer.c	2012-05-06 11:34:36.287264711 +0300
+@@ -31,7 +31,7 @@
+   mDisp(new cTtxtSubsDisplay()),
+   mGetMutex(),
+   mGetCond(),
+-  mRingBuf(94000, true),
++  mRingBuf(188000, true),
+   mRun(0)
+ {
+   mDisp->SetPage(textpage);
+@@ -59,9 +59,7 @@
+     f = mRingBuf.Get();
+ 
+     if(f) {
+-      uint64_t sched_time;
+-      memcpy(&sched_time, f->Data() + 46, sizeof(sched_time));
+-      mDisp->TtxtData(f->Data(), sched_time);
++      mDisp->TtxtData(f->Data(), f->Pts());
+       mRingBuf.Drop(f);
+     } else {
+       // wait for more data
+@@ -102,6 +100,7 @@
+ void cTtxtSubsPlayer::PES_data(uchar *p, int Length, bool IsPesRecording, const struct tTeletextSubtitlePage teletextSubtitlePages[], int pageCount)
+ {
+   int i;
++  int64_t pts = 0;
+ 
+   //printf("cTtxtSubsPlayer: len: %d\n", Length); // XXX
+ 
+@@ -136,14 +135,21 @@
+   if(mHasFilteredStream && !mFoundLangPage)
+     SearchLanguagePage(p, Length);
+ 
++  if ((p[6] & 0xC0) == 0x80 && (p[7] & 0x80)) {
++      //Copied from xineliboutput/tools/pes.c
++      pts  = ((int64_t)(p[ 9] & 0x0E)) << 29 ;
++      pts |= ((int64_t) p[10])         << 22 ;
++      pts |= ((int64_t)(p[11] & 0xFE)) << 14 ;
++      pts |= ((int64_t) p[12])         <<  7 ;
++      pts |= ((int64_t)(p[13] & 0xFE)) >>  1 ;
++  }
++
+   // payload_unit_start_indicator
+   for(i = 1; (i*46) < Length ; i++) {
+     if(0xff == p[i*46]) // stuffing data
+       continue;
+ 
+-    uint64_t sched_time=cTimeMs::Now() + (IsPesRecording ? globals.replayDelay() : globals.replayTsDelay());
+-    cFrame *f = new cFrame(p + i*46, 46 + sizeof(sched_time));
+-    memcpy(f->Data() + 46, &sched_time, sizeof(sched_time));
++    cFrame *f = new cFrame(p + i*46, 46, ftUnknown, -1, pts);
+     if (mRingBuf.Put(f))
+     {
+         mGetCond.Broadcast();
+diff -ub vdr-plugin-ttxtsubs-orig/ttxtsubsdisplay.h ttxtsubs/ttxtsubsdisplay.h
+--- a/ttxtsubsdisplay.h	2012-05-06 10:32:56.407162991 +0300
++++ b/ttxtsubsdisplay.h	2012-05-06 10:42:33.023662919 +0300
+@@ -45,7 +45,7 @@
+     void SetPage(int Pageno); // Pageno is 0x000 to 0x799
+     void Hide(void);
+     void Show(void);
+-    void TtxtData(const uint8_t *, uint64_t sched_time = 0);
++    void TtxtData(const uint8_t *, uint32_t sched_pts = 0);
+ 
+ protected:
+     void ShowOSD();
+diff -ub vdr-plugin-ttxtsubs-orig/ttxtsubsglobals.h ttxtsubs/ttxtsubsglobals.h
+--- a/ttxtsubsglobals.h	2012-05-06 10:32:56.407162991 +0300
++++ b/ttxtsubsglobals.h	2012-05-06 11:36:43.159264874 +0300
+@@ -39,9 +39,7 @@
+     mRealDoDisplay(1),
+     mMainMenuEntry(0),
+     mFontSize(20),
+-    mOutlineWidth(2),
+-    mReplayDelay(0),
+-    mReplayTsDelay(0)
++    mOutlineWidth(2)
+     {
+       memset(mLanguages, 0, sizeof(mLanguages));
+       memset(mHearingImpaireds, 0, sizeof(mHearingImpaireds));
+@@ -56,8 +54,6 @@
+   int (*hearingImpaireds(void))[MAXLANGUAGES][2] {return &mHearingImpaireds;}
+ 
+   int langChoise(const char *lang, const int HI);
+-  int replayDelay(void) {return mReplayDelay;}
+-  int replayTsDelay(void) {return mReplayTsDelay;}
+ 
+  protected:
+   int mDoDisplay;
+@@ -67,8 +63,6 @@
+   int mOutlineWidth;
+   char mLanguages[MAXLANGUAGES][2][4];
+   int mHearingImpaireds[MAXLANGUAGES][2];
+-  int mReplayDelay;
+-  int mReplayTsDelay;
+ };
+ 
+ extern cTtxtsubsConf globals;

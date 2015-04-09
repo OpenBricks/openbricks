@@ -1,0 +1,243 @@
+From be0b774e54f1bf208e5d2316cc47c806d30e36a8 Mon Sep 17 00:00:00 2001
+From: etobi <git@e-tobi.net>
+Date: Fri, 12 Feb 2010 21:55:04 +0100
+Subject: [PATCH 1/6] Record teletext subtitles
+
+---
+ channels.c |   20 ++++++++++++++++++++
+ channels.h |   16 ++++++++++++++++
+ pat.c      |   18 +++++++++++++++++-
+ receiver.c |    3 ++-
+ remux.c    |   29 +++++++++++++++++++++++++++++
+ remux.h    |    3 +++
+ 6 files changed, 87 insertions(+), 2 deletions(-)
+
+diff --git a/channels.c b/channels.c
+index b9204f2..5ab31bb 100644
+--- a/channels.c
++++ b/channels.c
+@@ -378,6 +378,26 @@ void cChannel::SetSubtitlingDescriptors(uchar *SubtitlingTypes, uint16_t *Compos
+      }
+ }
+ 
++void cChannel::SetTeletextSubtitlePages(tTeletextSubtitlePage pages[], int numberOfPages)
++{
++  int mod = CHANNELMOD_NONE;
++  if (totalTtxtSubtitlePages != numberOfPages)
++     mod |= CHANNELMOD_PIDS;
++  totalTtxtSubtitlePages = 0;
++  for (int i = 0; (i < numberOfPages) && (totalTtxtSubtitlePages < MAXTXTPAGES); i++) {
++      if (teletextSubtitlePages[totalTtxtSubtitlePages].ttxtMagazine != pages[i].ttxtMagazine ||
++          teletextSubtitlePages[totalTtxtSubtitlePages].ttxtPage != pages[i].ttxtPage ||
++          teletextSubtitlePages[totalTtxtSubtitlePages].ttxtType != pages[i].ttxtType ||
++          strcmp(teletextSubtitlePages[totalTtxtSubtitlePages].ttxtLanguage, pages[i].ttxtLanguage)) {
++         mod |= CHANNELMOD_PIDS;
++         teletextSubtitlePages[totalTtxtSubtitlePages] = pages[i];
++         }
++      totalTtxtSubtitlePages++;
++      }
++  modification |= mod;
++  Channels.SetModified();
++}
++
+ void cChannel::SetCaIds(const int *CaIds)
+ {
+   if (caids[0] && caids[0] <= CA_USER_MAX)
+diff --git a/channels.h b/channels.h
+index 51f9830..3fc443c 100644
+--- a/channels.h
++++ b/channels.h
+@@ -35,6 +35,7 @@
+ #define MAXDPIDS 16 // dolby (AC3 + DTS)
+ #define MAXSPIDS 32 // subtitles
+ #define MAXCAIDS 12 // conditional access
++#define MAXTXTPAGES 8 // teletext pages
+ 
+ #define MAXLANGCODE1 4 // a 3 letter language code, zero terminated
+ #define MAXLANGCODE2 8 // up to two 3 letter language codes, separated by '+' and zero terminated
+@@ -71,6 +72,16 @@ public:
+   static const tChannelID InvalidID;
+   };
+ 
++struct tTeletextSubtitlePage {
++  tTeletextSubtitlePage(void) { ttxtPage = ttxtMagazine = 0; ttxtType = 0x02; strcpy(ttxtLanguage, "und"); }
++  tTeletextSubtitlePage(int page) { ttxtMagazine = (page / 100) & 0x7; ttxtPage = (((page % 100) / 10) << 4) + (page % 10); ttxtType = 0x02; strcpy(ttxtLanguage, "und"); }
++  char ttxtLanguage[MAXLANGCODE1];
++  uchar ttxtPage;
++  uchar ttxtMagazine;
++  uchar ttxtType;
++  int PageNumber(void) const { return BCDCHARTOINT(ttxtMagazine) * 100 + BCDCHARTOINT(ttxtPage); }
++  };
++
+ class cChannel;
+ 
+ class cLinkChannel : public cListObject {
+@@ -115,6 +126,8 @@ private:
+   uint16_t compositionPageIds[MAXSPIDS];
+   uint16_t ancillaryPageIds[MAXSPIDS];
+   int tpid;
++  int totalTtxtSubtitlePages;
++  tTeletextSubtitlePage teletextSubtitlePages[MAXTXTPAGES];
+   int caids[MAXCAIDS + 1]; // list is zero-terminated
+   int nid;
+   int tid;
+@@ -164,6 +177,8 @@ public:
+   uint16_t CompositionPageId(int i) const { return (0 <= i && i < MAXSPIDS) ? compositionPageIds[i] : uint16_t(0); }
+   uint16_t AncillaryPageId(int i) const { return (0 <= i && i < MAXSPIDS) ? ancillaryPageIds[i] : uint16_t(0); }
+   int Tpid(void) const { return tpid; }
++  const tTeletextSubtitlePage *TeletextSubtitlePages() const { return teletextSubtitlePages; }
++  int TotalTeletextSubtitlePages() const { return totalTtxtSubtitlePages; }
+   const int *Caids(void) const { return caids; }
+   int Ca(int Index = 0) const { return Index < MAXCAIDS ? caids[Index] : 0; }
+   int Nid(void) const { return nid; }
+@@ -190,6 +205,7 @@ public:
+   void SetName(const char *Name, const char *ShortName, const char *Provider);
+   void SetPortalName(const char *PortalName);
+   void SetPids(int Vpid, int Ppid, int Vtype, int *Apids, int *Atypes, char ALangs[][MAXLANGCODE2], int *Dpids, int *Dtypes, char DLangs[][MAXLANGCODE2], int *Spids, char SLangs[][MAXLANGCODE2], int Tpid);
++  void SetTeletextSubtitlePages(tTeletextSubtitlePage pages[], int numberOfPages);
+   void SetCaIds(const int *CaIds); // list must be zero-terminated
+   void SetCaDescriptors(int Level);
+   void SetLinkChannels(cLinkChannels *LinkChannels);
+diff --git a/pat.c b/pat.c
+index b7493ec..d2b8ce8 100644
+--- a/pat.c
++++ b/pat.c
+@@ -343,6 +343,8 @@ void cPatFilter::Process(u_short Pid, u_char Tid, const u_char *Data, int Length
+         char DLangs[MAXDPIDS][MAXLANGCODE2] = { "" };
+         char SLangs[MAXSPIDS][MAXLANGCODE2] = { "" };
+         int Tpid = 0;
++        tTeletextSubtitlePage TeletextSubtitlePages[MAXTXTPAGES];
++        int NumTPages = 0;
+         int NumApids = 0;
+         int NumDpids = 0;
+         int NumSpids = 0;
+@@ -434,8 +436,21 @@ void cPatFilter::Process(u_short Pid, u_char Tid, const u_char *Data, int Length
+                                     NumSpids++;
+                                     }
+                                  break;
+-                            case SI::TeletextDescriptorTag:
++                            case SI::TeletextDescriptorTag: {
+                                  Tpid = esPid;
++                                 SI::TeletextDescriptor *sd = (SI::TeletextDescriptor *)d;
++                                 SI::TeletextDescriptor::Teletext ttxt;
++                                 for (SI::Loop::Iterator it; sd->teletextLoop.getNext(ttxt, it); ) {
++                                     bool isSubtitlePage = (ttxt.getTeletextType() == 0x02) || (ttxt.getTeletextType() == 0x05);
++                                     if ((NumTPages < MAXTXTPAGES) && ttxt.languageCode[0] && isSubtitlePage) {
++                                        strn0cpy(TeletextSubtitlePages[NumTPages].ttxtLanguage, I18nNormalizeLanguageCode(ttxt.languageCode), MAXLANGCODE1);
++                                        TeletextSubtitlePages[NumTPages].ttxtPage = ttxt.getTeletextPageNumber();
++                                        TeletextSubtitlePages[NumTPages].ttxtMagazine = ttxt.getTeletextMagazineNumber();
++                                        TeletextSubtitlePages[NumTPages].ttxtType = ttxt.getTeletextType();
++                                        NumTPages++;
++                                        }
++                                     }
++                                 }
+                                  break;
+                             case SI::ISO639LanguageDescriptorTag: {
+                                  SI::ISO639LanguageDescriptor *ld = (SI::ISO639LanguageDescriptor *)d;
+@@ -537,6 +552,7 @@ void cPatFilter::Process(u_short Pid, u_char Tid, const u_char *Data, int Length
+             }
+         if (Setup.UpdateChannels >= 2) {
+            Channel->SetPids(Vpid, Ppid, Vtype, Apids, Atypes, ALangs, Dpids, Dtypes, DLangs, Spids, SLangs, Tpid);
++           Channel->SetTeletextSubtitlePages(TeletextSubtitlePages, NumTPages);
+            Channel->SetCaIds(CaDescriptors->CaIds());
+            Channel->SetSubtitlingDescriptors(SubtitlingTypes, CompositionPageIds, AncillaryPageIds);
+            }
+diff --git a/receiver.c b/receiver.c
+index 6a9ba04..1312b9b 100644
+--- a/receiver.c
++++ b/receiver.c
+@@ -81,7 +81,8 @@ bool cReceiver::SetPids(const cChannel *Channel)
+             (Channel->Ppid() == Channel->Vpid() || AddPid(Channel->Ppid())) &&
+             AddPids(Channel->Apids()) &&
+             AddPids(Channel->Dpids()) &&
+-            AddPids(Channel->Spids());
++            AddPids(Channel->Spids()) &&
++            AddPid(Channel->Tpid());
+      }
+ return true;
+ }
+diff --git a/remux.c b/remux.c
+index 78ab294..adec265 100644
+--- a/remux.c
++++ b/remux.c
+@@ -219,6 +219,29 @@ int cPatPmtGenerator::MakeSubtitlingDescriptor(uchar *Target, const char *Langua
+   return i;
+ }
+ 
++int cPatPmtGenerator::MakeTeletextDescriptor(uchar *Target, const tTeletextSubtitlePage *pages, int pageCount)
++{
++  int i = 0, j = 0;
++  Target[i++] = SI::TeletextDescriptorTag;
++  int l = i;
++  Target[i++] = 0x00; // length
++  for (int n = 0; n < pageCount; n++) {
++      const char* Language = pages[n].ttxtLanguage;
++      Target[i++] = *Language++;
++      Target[i++] = *Language++;
++      Target[i++] = *Language++;
++      Target[i++] = (pages[n].ttxtType << 3) + pages[n].ttxtMagazine;
++      Target[i++] = pages[n].ttxtPage;
++      j++;
++      }
++  if (j > 0) {
++     Target[l] = j * 5; // update length
++     IncEsInfoLength(i);
++     return i;
++     }
++  return 0;
++}
++
+ int cPatPmtGenerator::MakeLanguageDescriptor(uchar *Target, const char *Language)
+ {
+   int i = 0;
+@@ -306,6 +329,7 @@ void cPatPmtGenerator::GeneratePmt(const cChannel *Channel)
+   if (Channel) {
+      int Vpid = Channel->Vpid();
+      int Ppid = Channel->Ppid();
++     int Tpid = Channel->Tpid();
+      uchar *p = buf;
+      int i = 0;
+      p[i++] = 0x02; // table id
+@@ -338,6 +362,10 @@ void cPatPmtGenerator::GeneratePmt(const cChannel *Channel)
+          i += MakeStream(buf + i, 0x06, Channel->Spid(n));
+          i += MakeSubtitlingDescriptor(buf + i, Channel->Slang(n), Channel->SubtitlingType(n), Channel->CompositionPageId(n), Channel->AncillaryPageId(n));
+          }
++     if (Tpid) {
++        i += MakeStream(buf + i, 0x06, Tpid);
++        i += MakeTeletextDescriptor(buf + i, Channel->TeletextSubtitlePages(), Channel->TotalTeletextSubtitlePages());
++        }
+ 
+      int sl = i - SectionLength - 2 + 4; // -2 = SectionLength storage, +4 = length of CRC
+      buf[SectionLength] |= (sl >> 8) & 0x0F;
+@@ -501,6 +529,7 @@ void cPatPmtParser::ParsePmt(const uchar *Data, int Length)
+      spids[0] = 0;
+      atypes[0] = 0;
+      dtypes[0] = 0;
++     totalTtxtSubtitlePages = 0;
+      SI::PMT::Stream stream;
+      for (SI::Loop::Iterator it; Pmt.streamLoop.getNext(stream, it); ) {
+          dbgpatpmt("     stream type = %02X, pid = %d", stream.getStreamType(), stream.getPid());
+diff --git a/remux.h b/remux.h
+index b882279..80d6afd 100644
+--- a/remux.h
++++ b/remux.h
+@@ -174,6 +174,7 @@ protected:
+   int MakeStream(uchar *Target, uchar Type, int Pid);
+   int MakeAC3Descriptor(uchar *Target, uchar Type);
+   int MakeSubtitlingDescriptor(uchar *Target, const char *Language, uchar SubtitlingType, uint16_t CompositionPageId, uint16_t AncillaryPageId);
++  int MakeTeletextDescriptor(uchar *Target, const tTeletextSubtitlePage *pages, int pageCount);
+   int MakeLanguageDescriptor(uchar *Target, const char *Language);
+   int MakeCRC(uchar *Target, const uchar *Data, int Length);
+   void GeneratePmtPid(const cChannel *Channel);
+@@ -231,6 +232,8 @@ private:
+   uint16_t compositionPageIds[MAXSPIDS];
+   uint16_t ancillaryPageIds[MAXSPIDS];
+   bool updatePrimaryDevice;
++  int totalTtxtSubtitlePages;
++  tTeletextSubtitlePage teletextSubtitlePages[MAXTXTPAGES];
+ protected:
+   int SectionLength(const uchar *Data, int Length) { return (Length >= 3) ? ((int(Data[1]) & 0x0F) << 8)| Data[2] : 0; }
+ public:
+-- 
+1.7.6.3
+

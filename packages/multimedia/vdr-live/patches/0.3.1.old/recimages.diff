@@ -1,0 +1,297 @@
+diff --git a/epg_events.cpp b/epg_events.cpp
+index cd4996e..b8f6d7d 100644
+--- a/epg_events.cpp
++++ b/epg_events.cpp
+@@ -179,7 +179,12 @@ namespace vdrlive
+ 		}
+ 		return m_archived;
+ 	}
+-
++	
++	const string EpgRecording::FileName() const
++	{
++	    return m_recording->FileName();
++	}
++	
+ 	time_t EpgRecording::GetStartTime() const
+ 	{
+ #if VDRVERSNUM < 10726
+@@ -323,6 +328,35 @@ namespace vdrlive
+ 			}
+ 			return found;
+ 		}
++		
++		bool ScanForRecImages(string const & imageId, string const & recfolder ,string const & wildcard, list<string> & images)
++		{
++			bool found = false;
++			
++			const string filemask(recfolder + "/" + wildcard);
++			glob_t globbuf;
++			globbuf.gl_offs = 0;
++			if (!LiveSetup().GetRecImageType().empty() && glob(filemask.c_str(), GLOB_DOOFFS, NULL, &globbuf) == 0) {
++				for(size_t i = 0; i < globbuf.gl_pathc; i++) {
++					const string imagefile(globbuf.gl_pathv[i]);
++					const string imagecopy(imagefile);
++					
++					size_t delimPos = imagefile.find_last_of('/');
++					images.push_back(imagefile.substr(delimPos+1));
++					
++					//create a temporary symlink of the image im tmp
++					const string imagename(imagefile.substr(delimPos+1));
++					const string tmpfile("/tmp/" + imageId + "_" + imagename);
++					
++					char cmdBuff[500];
++					sprintf(cmdBuff,"ln -s \"%s\" \"%s\"",imagefile.c_str(),tmpfile.c_str());
++					system(cmdBuff);
++					found = true;
++				}
++				globfree(&globbuf);
++			}
++			return found;
++		}		
+ 
+ 		list<string> EpgImages(string const &epgid)
+ 		{
+@@ -366,6 +400,30 @@ namespace vdrlive
+ 			return images;
+ 		}
+ 
++		list<string> RecImages(string const &epgid, string const &recfolder)
++		{
++			size_t delimPos = epgid.find_last_of('_');
++			string imageId = epgid.substr(delimPos+1);
++
++			list<string> images;
++			string recimagetype = LiveSetup().GetRecImageType();
++			//Scan for recording images of given type
++			//Uses all images of the given type of the current recording directory
++
++			if (!recimagetype.empty() && ! ScanForRecImages(imageId, recfolder, "*_*." + recimagetype, images))
++			{
++				// if we didn't find images that follow the scheme
++				// above we try to find images that contain only the
++				// event id as file name without extension:
++				if (! ScanForRecImages(imageId, recfolder, "*." + recimagetype, images))
++				{
++
++				}
++			}
++			return images;
++		}
++
++
+ 		int ElapsedTime(time_t const startTime, time_t const endTime)
+ 		{
+ 			// Elapsed time is only meaningful when there is a non zero
+diff --git a/epg_events.h b/epg_events.h
+index 7d05b45..a6a5b35 100644
+--- a/epg_events.h
++++ b/epg_events.h
+@@ -56,6 +56,11 @@ namespace vdrlive
+ 		std::list<std::string> EpgImages(std::string const &epgid);
+ 
+ 		/**
++		 *  Return a list of EpgImages in the given folder by recimagename.
++		 */
++		std::list<std::string> RecImages(std::string const &epgid, std::string const &recfolder);
++
++		/**
+ 		 *  Calculate the duration. A duration can be zero or
+ 		 *  negative. Negative durations are considered invalid by
+ 		 *  LIVE.
+@@ -96,6 +101,8 @@ namespace vdrlive
+ 			virtual cChannel const * Channel() const { return 0; }
+ 
+ 			virtual std::string const Archived() const { return ""; }
++			
++			virtual std::string const FileName() const { return ""; }
+ 
+ 			virtual std::string const StartTime(const char* format) const;
+ 
+@@ -141,6 +148,8 @@ namespace vdrlive
+ 			virtual time_t GetStartTime() const;
+ 
+ 			virtual time_t GetEndTime() const;
++			
++			virtual std::string const FileName() const { return ""; }
+ 
+ 		private:
+ 			const std::string m_info;
+@@ -171,6 +180,8 @@ namespace vdrlive
+ 			virtual time_t GetEndTime() const { return m_event->EndTime(); }
+ 
+ 			virtual cChannel const * Channel() const { return Channels.GetByChannelID(m_event->ChannelID());}
++			
++			virtual std::string const FileName() const { return ""; }
+ 
+ 		private:
+ 			cEvent const * m_event;
+@@ -199,6 +210,9 @@ namespace vdrlive
+ 			virtual time_t GetEndTime() const { return 0; }
+ 
+ 			virtual cChannel const * Channel() const { return Channels.GetByChannelID(m_channelID);}
++			
++			virtual std::string const FileName() const { return ""; }
++
+ 
+ 		private:
+ 			tChannelID m_channelID;
+@@ -229,6 +243,8 @@ namespace vdrlive
+ 			virtual std::string const LongDescr() const;
+ 
+ 			virtual std::string const Archived() const;
++			
++			virtual std::string const FileName() const;
+ 
+ 			virtual time_t GetStartTime() const;
+ 
+diff --git a/pages/epginfo.ecpp b/pages/epginfo.ecpp
+index 743dcb2..eebb450 100644
+--- a/pages/epginfo.ecpp
++++ b/pages/epginfo.ecpp
+@@ -125,7 +125,7 @@ using namespace std;
+ 			tools_component = "epginfo.epgTools";
+ 		}
+ </%cpp>
+-		<& pageelems.epg_tt_box boxId=(epgEvent->Id()) caption=(epgEvent->Caption()) tools_comp=(tools_component) time=(start) title=(epgEvent->Title()) short_descr=(epgEvent->ShortDescr()) long_descr=(epgEvent->LongDescr()) archived=(epgEvent->Archived()) elapsed=(epgEvent->Elapsed()) &>
++		<& pageelems.epg_tt_box boxId=(epgEvent->Id()) caption=(epgEvent->Caption()) tools_comp=(tools_component) time=(start) title=(epgEvent->Title()) short_descr=(epgEvent->ShortDescr()) long_descr=(epgEvent->LongDescr()) archived=(epgEvent->Archived()) elapsed=(epgEvent->Elapsed()) filename=(epgEvent->FileName()) &>
+ <%cpp>
+ 	}
+ 	if (aboutBox) {
+diff --git a/pages/pageelems.ecpp b/pages/pageelems.ecpp
+index ad8a494..d880c24 100644
+--- a/pages/pageelems.ecpp
++++ b/pages/pageelems.ecpp
+@@ -327,6 +327,7 @@ int update_status(1);
+ 	string title;
+ 	string short_descr;
+ 	string long_descr;
++	string filename;
+ 	string archived;
+ 	int elapsed = -1;
+ </%args>
+@@ -358,6 +359,16 @@ int update_status(1);
+ 						<img src="/epgimages/<$ *it $>" class="epg_image"/>
+ <%cpp>
+ 	}
++
++	list<string> images1 = EpgEvents::RecImages(boxId, filename);
++	size_t delimPos = boxId.find_last_of('_');
++        string recId = (delimPos)?boxId.substr(delimPos+1):boxId;
++
++	for(std::list<std::string>::iterator it = images1.begin(); it != images1.end(); ++it ) {
++</%cpp>
++						<img src="/recimages/<$ recId $>/<$ *it $>" class="epg_image"/>
++<%cpp>
++	}
+ </%cpp>
+ 					</span>
+ 					<%cpp> reply.out() << StringEscapeAndBreak(long_descr); </%cpp>
+diff --git a/setup.cpp b/setup.cpp
+index bd72e92..357aa8b 100644
+--- a/setup.cpp
++++ b/setup.cpp
+@@ -62,6 +62,7 @@ bool Setup::ParseCommandLine( int argc, char* argv[] )
+ 			{ "ip",   required_argument, NULL, 'i' },
+ 			{ "log",  required_argument, NULL, 'l' },
+ 			{ "epgimages",  required_argument, NULL, 'e' },
++			{ "recimagetype",  required_argument, NULL, 'r' },			
+ #if TNT_SSL_SUPPORT
+ 			{ "sslport", required_argument, NULL, 's' },
+ 			{ "cert", required_argument, NULL, 'c' },
+@@ -77,6 +78,7 @@ bool Setup::ParseCommandLine( int argc, char* argv[] )
+ 		case 'i': m_serverIps.push_back( optarg ); break;
+ 		case 'l': m_tntnetloglevel = optarg; break;
+ 		case 'e': m_epgimagedir = optarg; break;
++		case 'r': m_recimagetype = optarg; break;
+ #if TNT_SSL_SUPPORT
+ 		case 's': m_serverSslPort = atoi( optarg ); break;
+ 		case 'c': m_serverSslCert = optarg; break;
+@@ -109,7 +111,9 @@ char const* Setup::CommandLineHelp() const
+ 				<< "  -k KEY,  --key=KEY           full path to a custom ssl certificate key file\n"
+ #endif
+ 				<< "  -l level, --log=level        log level for tntnet (values: WARN, ERROR, INFO, DEBUG, TRACE)\n"
+-				<< "  -e <dir>, --epgimages=<dir>  directory for epgimages\n";
++
++				<< "  -e <dir>, --epgimages=<dir>  directory for epgimages\n"
++				<< "  -r <dir>, --recimagetype=<dir>  type of rec images (jpg, png)\n";
+ 		m_helpString = builder.str();
+ 	}
+ 	return m_helpString.c_str();
+diff --git a/setup.h b/setup.h
+index 4d83762..483c3cc 100644
+--- a/setup.h
++++ b/setup.h
+@@ -63,6 +63,7 @@ class Setup
+ 		std::string const GetStreamdevType() const { return m_streamdevType; }
+ 		bool GetShowIMDb() const { return m_showIMDb != 0; }
+ 		std::string const GetEpgImageDir() { return m_epgimagedir; }
++		std::string const GetRecImageType() { return m_recimagetype; }
+ 		bool GetShowChannelsWithoutEPG() const { return m_showChannelsWithoutEPG != 0; }
+ 
+ 		void SetLastChannel(int lastChannel) { m_lastChannel = lastChannel; }
+@@ -116,6 +117,7 @@ class Setup
+ #endif
+ 		IpList m_serverIps;
+ 		std::string m_epgimagedir;
++		std::string m_recimagetype;
+ 
+ 		// setup options
+ 		int m_lastChannel;
+diff --git a/tntconfig.cpp b/tntconfig.cpp
+index 3a1fd14..e196a60 100644
+--- a/tntconfig.cpp
++++ b/tntconfig.cpp
+@@ -106,6 +106,16 @@ namespace vdrlive {
+ 			file << "MapUrl ^/epgimages/([^/]*)\\.([^./]+) content@ " << epgImgPath << "/$1.$2 image/$2" << endl;
+ 		}
+ 
++		string const recImgType(LiveSetup().GetRecImageType());
++		if (!recImgType.empty()) {
++			// inserted by 'winni' -- EXPLOITABLE! (checked by tadi)
++			// file << "MapUrl ^/epgimages/(.*)\\.(.+) content@ " << epgImgPath << "/$1.$2 image/$2" << endl;
++
++			// inserted by 'tadi' -- verified with above, but not counterchecked yet!
++			file << "MapUrl ^/recimages/([^/]*)/([^/]*)\\.([^./]+) content@ /tmp/$1_$2.$3 image/$3" << endl;
++		}
++
++
+ 		// select additional (not build in) javascript.
+ 		// WARNING: no path components with '.' in the name are allowed. Only
+ 		// the basename may contain dots and must end with '.js'
+@@ -268,6 +278,16 @@ namespace vdrlive {
+ 				.pushArg("image/$2");
+ 		}
+ 
++		// rec images
++		string const recImgType(LiveSetup().GetRecImageType());
++		if (!recImgType.empty()) {
++			// inserted by 'tadi' -- verified with above, but not counterchecked yet!
++			app.mapUrl("^/recimages/([^/]*)/([^/]*)\\.([^./]+)", "content")
++				.setPathInfo("/tmp/$1_$2.$3")
++				.pushArg("image/$3");
++		}
++
++
+ 		// select additional (not build in) javascript.
+ 		// WARNING: no path components with '.' in the name are allowed. Only
+ 		// the basename may contain dots and must end with '.js'
+
+--- vdr-live-0.3.1/tntconfig.cpp.org	2013-12-28 15:19:28.112498897 +0100
++++ vdr-live-0.3.1/tntconfig.cpp	2013-12-28 15:21:17.968495624 +0100
+@@ -337,9 +337,12 @@
+ 		string const recImgType(LiveSetup().GetRecImageType());
+ 		if (!recImgType.empty()) {
+ 			// inserted by 'tadi' -- verified with above, but not counterchecked yet!
+-			app.mapUrl("^/recimages/([^/]*)/([^/]*)\\.([^./]+)", "content")
+-				.setPathInfo("/tmp/$1_$2.$3")
+-				.pushArg("image/$3");
++			MapUrl(app,
++                           "^/recimages/([^/]*)/([^/]*)\\.([^./]+)",
++                           "content",
++                           epgImgPath,
++                           "/tmp/$1_$2.$3",
++                           "image/$3");
+ 		}
+ 
+ 
