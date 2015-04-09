@@ -1,0 +1,109 @@
+diff -ruN vdr-2.1.4_14/config.h vdr-2.1.4_15/config.h
+--- vdr-2.1.4_14/config.h	2014-01-26 14:22:08.424443788 +0100
++++ vdr-2.1.4_15/config.h	2014-01-26 14:25:03.819532621 +0100
+@@ -36,6 +36,10 @@
+ // plugins to work with newer versions of the core VDR as long as no
+ // VDR header files have changed.
+
++// The MainMenuHook Patch's version number:
++#define MAINMENUHOOKSVERSION "1.0.1"
++#define MAINMENUHOOKSVERSNUM 10001  // Version * 10000 + Major * 100 + Minor
++
+ #define MAXPRIORITY       99
+ #define MINPRIORITY       (-MAXPRIORITY)
+ #define LIVEPRIORITY      0                  // priority used when selecting a device for live viewing
+diff -ruN vdr-2.1.4_14/menu.c vdr-2.1.4_15/menu.c
+--- vdr-2.1.4_14/menu.c	2014-01-26 14:22:08.436443178 +0100
++++ vdr-2.1.4_15/menu.c	2014-01-26 14:25:03.823532417 +0100
+@@ -3948,15 +3948,31 @@
+ 
+   // Initial submenus:
+ 
++  cOsdObject *menu = NULL;
+   switch (State) {
+-    case osSchedule:   AddSubMenu(new cMenuSchedule); break;
+-    case osChannels:   AddSubMenu(new cMenuChannels); break;
+-    case osTimers:     AddSubMenu(new cMenuTimers); break;
+-    case osRecordings: AddSubMenu(new cMenuRecordings(NULL, 0, OpenSubMenus)); break;
+-    case osSetup:      AddSubMenu(new cMenuSetup); break;
+-    case osCommands:   AddSubMenu(new cMenuCommands(tr("Commands"), &Commands)); break;
++    case osSchedule:
++        if (!cPluginManager::CallFirstService("MainMenuHooksPatch-v1.0::osSchedule", &menu))
++            menu = new cMenuSchedule;
++        break;
++    case osChannels:
++        if (!cPluginManager::CallFirstService("MainMenuHooksPatch-v1.0::osChannels", &menu))
++            menu = new cMenuChannels;
++        break;
++    case osTimers:
++        if (!cPluginManager::CallFirstService("MainMenuHooksPatch-v1.0::osTimers", &menu))
++            menu = new cMenuTimers;
++        break;
++    case osRecordings:
++        if (!cPluginManager::CallFirstService("MainMenuHooksPatch-v1.0::osRecordings", &menu))
++            menu = new cMenuRecordings(NULL, 0, true);
++        break;
++    case osSetup:      menu = new cMenuSetup; break;
++    case osCommands:   menu = new cMenuCommands(tr("Commands"), &Commands); break;
+     default: break;
+     }
++  if (menu)
++     if (menu->IsMenu())
++        AddSubMenu((cOsdMenu *) menu);
+ }
+ 
+ cOsdObject *cMenuMain::PluginOsdObject(void)
+@@ -4064,13 +4080,34 @@
+   eOSState state = cOsdMenu::ProcessKey(Key);
+   HadSubMenu |= HasSubMenu();
+ 
++  cOsdObject *menu = NULL;
+   switch (state) {
+-    case osSchedule:   return AddSubMenu(new cMenuSchedule);
+-    case osChannels:   return AddSubMenu(new cMenuChannels);
+-    case osTimers:     return AddSubMenu(new cMenuTimers);
+-    case osRecordings: return AddSubMenu(new cMenuRecordings);
+-    case osSetup:      return AddSubMenu(new cMenuSetup);
+-    case osCommands:   return AddSubMenu(new cMenuCommands(tr("Commands"), &Commands));
++    case osSchedule:
++        if (!cPluginManager::CallFirstService("MainMenuHooksPatch-v1.0::osSchedule", &menu))
++            menu = new cMenuSchedule;
++        else
++            state = osContinue;
++        break;
++    case osChannels:
++        if (!cPluginManager::CallFirstService("MainMenuHooksPatch-v1.0::osChannels", &menu))
++            menu = new cMenuChannels;
++        else
++            state = osContinue;
++        break;
++    case osTimers:
++        if (!cPluginManager::CallFirstService("MainMenuHooksPatch-v1.0::osTimers", &menu))
++            menu = new cMenuTimers;
++        else
++            state = osContinue;
++        break;
++    case osRecordings:
++        if (!cPluginManager::CallFirstService("MainMenuHooksPatch-v1.0::osRecordings", &menu))
++            menu = new cMenuRecordings;
++        else
++            state = osContinue;
++        break;
++    case osSetup:      menu = new cMenuSetup; break;
++    case osCommands:   menu = new cMenuCommands(tr("Commands"), &Commands); break;
+     case osStopRecord: if (Interface->Confirm(tr("Stop recording?"))) {
+                           cOsdItem *item = Get(Current());
+                           if (item) {
+@@ -4122,6 +4159,12 @@
+                default:      break;
+                }
+     }
++  if (menu) {
++     if (menu->IsMenu())
++        return AddSubMenu((cOsdMenu *) menu);
++     pluginOsdObject = menu;
++     return osPlugin;
++  }
+   if (!HasSubMenu() && Update(HadSubMenu))
+      Display();
+   if (Key != kNone) {

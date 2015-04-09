@@ -1,0 +1,68 @@
+diff -ruN vdr/skinlcars.c vdr-1/skinlcars.c
+--- vdr/skinlcars.c	2013-11-16 14:20:19.000000000 +0100
++++ vdr-1/skinlcars.c	2014-01-08 21:28:03.000000000 +0100
+@@ -31,6 +31,19 @@
+ #include "themes.h"
+ #include "videodir.h"
+ 
++// BEGIN remotetimers_skinlcars.patch
++#include "plugin.h"
++#include "remotetimers.h"
++
++namespace PluginRemoteTimers {
++   // copy of timers.c CompareTimers
++   static int CompareTimers(const void *a, const void *b)
++   {
++     return (*(const cTimer **)a)->Compare(**(const cTimer **)b);
++   }
++}
++// END remotetimers_skinlcars.patch
++
+ #include "symbols/arrowdown.xpm"
+ #include "symbols/arrowup.xpm"
+ #include "symbols/audio.xpm"
+@@ -1244,12 +1257,25 @@
+ 
+ void cSkinLCARSDisplayMenu::DrawTimers(void)
+ {
+-  if (Timers.Modified(lastTimersState)) {
++  static cPlugin* pRemoteTimers = cPluginManager::CallFirstService("RemoteTimers::RefreshTimers-v1.0", NULL);
++  cString errorMsg;
++  bool drawRemoteTimers = false;
++  if (pRemoteTimers && initial) {
++     drawRemoteTimers = pRemoteTimers->Service("RemoteTimers::RefreshTimers-v1.0", &errorMsg);
++     }
++
++  if (Timers.Modified(lastTimersState) || drawRemoteTimers) {
+      deviceRecording.Clear();
+      const cFont *font = cFont::GetFont(fontOsd);
+      osd->DrawRectangle(xs00, ys04, xs04 - 1, ys05 - 1, Theme.Color(clrBackground));
+      osd->DrawRectangle(xs07, ys04, xs13 - 1, ys05 - 1, Theme.Color(clrBackground));
+      cSortedTimers SortedTimers;
++     if (drawRemoteTimers) {
++        cTimer* timer = NULL;
++        while (pRemoteTimers->Service("RemoteTimers::ForEach-v1.0", &timer) && timer != NULL)
++              SortedTimers.Append(timer);
++        SortedTimers.Sort(PluginRemoteTimers::CompareTimers);
++        }
+      cVector<int> FreeDeviceSlots;
+      int NumDevices = 0;
+      int y = ys04;
+@@ -1261,7 +1287,7 @@
+                if (y + lineHeight > ys05)
+                   break;
+                if (const cTimer *Timer = SortedTimers[i]) {
+-                  if (Timer->Recording()) {
++                  if (Timer->Recording() && cRecordControls::GetRecordControl(Timer)) {
+                      if (cRecordControl *RecordControl = cRecordControls::GetRecordControl(Timer)) {
+                         if (!Device || Device == RecordControl->Device()) {
+                            DrawTimer(Timer, y, NumTimers > 0);
+@@ -1319,6 +1345,8 @@
+          }
+      osd->DrawText(xs02, ys00, itoa(NumTimers), Theme.Color(clrMenuFrameFg), frameColor, font, xs03 - xs02, ys01 - ys00, taBottom | taLeft | taBorder);
+      osd->DrawText(xs08, ys00, itoa(NumDevices), Theme.Color(clrMenuFrameFg), frameColor, font, xs09 - xs08, ys01 - ys00, taBottom | taRight | taBorder);
++     if (*errorMsg)
++       SetMessage(mtError, *errorMsg);
+      lastSignalDisplay = 0;
+      initial = true; // forces redrawing of devices
+      }
