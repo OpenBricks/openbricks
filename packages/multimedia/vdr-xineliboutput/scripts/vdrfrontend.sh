@@ -1,4 +1,8 @@
 #!/bin/sh
+. /etc/pvr.conf
+
+[ "$BACKEND" != vdr ] && exit 0
+
 sleep 3
 if lsmod | grep vmwgfx > /dev/null; then
    DRIVER="--video=xshm"
