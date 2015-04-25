@@ -336,10 +336,15 @@ do_qmake () {
 # Usage: do_strip [bin|shlib|staticlib|kmod] <path>
 do_strip() {
   local options="--remove-section=.comment --remove-section=.note"
+  local PATCHELF="patchelf"
+  local new_rpath
+  local oIFS
+
   case "$1" in
-    shlib|kmod) options="$options --strip-unneeded"; shift ;;
-    staticlib)  options="$options --strip-debug"   ; shift ;;
     bin)        shift ;;
+    shlib)      options="$options --strip-unneeded"; shift ;;
+    staticlib)  options="$options --strip-debug"   ; PATCHELF=""; shift ;;
+    kmod)       options="$options --strip-unneeded"; PATCHELF=""; shift ;;
   esac
 
   if [ -n "$1" ]; then
@@ -347,6 +352,20 @@ do_strip() {
       file $i 2>&1 | grep -qv ELF && continue
       echo "Stripping $i"
       $STRIP $options $i || true
+
+      if [ "$STRIP" = "$TARGET_STRIP" ] && [ -n "$PATCHELF" ]; then
+        new_rpath=""
+        oIFS=$IFS
+        IFS=":" 
+        for part in `$PATCHELF --print-rpath $i`; do
+          if echo $part | grep -qv "^$ROOT"; then
+            [ -n "$new_rpath" ] && new_rpath="$new_rpath:"
+            new_rpath="${new_rpath}${part}"
+          fi
+        done
+        IFS=$oIFS
+        $PATCHELF --set-rpath "$new_rpath" $i || true
+      fi
     done
   fi
 }
