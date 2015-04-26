@@ -2,16 +2,22 @@
 
 . config/options
 
-cd $BUILD/$1*
+get_meta $1
+cd $PKG_BUILD_DIR
 
 # restart from scratch in case there are leftovers from a previous build
 rm -f config.cache
+rm -f Makefile.orig
 [ -f Makefile ] && make distclean
 [ -d .install ] && rm -rf .install
 
 export ac_cv_have_long_long_format=yes
-export PGEN_FOR_BUILD="$ROOT/$TOOLCHAIN/bin/pgen"
-export PYTHON_FOR_BUILD="$ROOT/$TOOLCHAIN/bin/python"
+export ac_cv_file__dev_ptmx=yes
+export ac_cv_file__dev_ptc=yes
+export ac_cv_working_tzset=yes
+
+export CROSS_COMPILE=$TARGET_PREFIX
+export PYTHONBUILDDIR=$ROOT/$PKG_BUILD_DIR
 
 if pkg_uses $1 openssl; then
   SSL_CONFIG="--enable-ssl"
@@ -35,11 +41,36 @@ do_configure \
   --with-expat=system \
   --disable-curses \
   --disable-ipv6 \
+  --disable-ossaudiodev \
   $SSL_CONFIG \
+  
+  
+autoreconf -Wcross --verbose --install --force Modules/_ctypes/libffi
 
-export PYTHON_MODULES_INCLUDE="$LIB_PREFIX/include $SYSROOT_PREFIX/include"
-export PYTHON_MODULES_LIB="$LIB_PREFIX/lib $SYSROOT_PREFIX/lib"
+# regenerate platform specific files, because they depend on system headers
+cd Lib/plat-linux2
+  include=$SYSROOT_PREFIX/usr/include $ROOT/$TOOLCHAIN/bin/python \
+  $ROOT/$PKG_BUILD_DIR/Tools/scripts/h2py.py -i '(u_long)' \
+  $SYSROOT_PREFIX/usr/include/dlfcn.h \
+  $SYSROOT_PREFIX/usr/include/linux/cdrom.h \
+  $SYSROOT_PREFIX/usr/include/netinet/in.h \
+  $SYSROOT_PREFIX/usr/include/sys/types.h
+  sed -e "s,$SYSROOT_PREFIX,,g" -i *.py
+cd -
 
-make
-make_install
-do_python_strip
+sed -i -e s,ccache\ ,'$(CCACHE) ', Makefile
+
+sed -i -e "s/@LIB@/lib/g" Makefile
+
+make CROSS_COMPILE="${TARGET_PREFIX}" \
+     PYTHONBUILDDIR="$ROOT/$PKG_BUILD_DIR" \
+     HOSTPGEN=$ROOT/$TOOLCHAIN/bin/pgen \
+     HOSTPYTHON=$ROOT/$TOOLCHAIN/bin/python \
+     STAGING_LIBDIR=$LIB_PREFIX/lib \
+     STAGING_INCDIR=$LIB_PREFIX/include \
+     STAGING_BASELIBDIR=$LIB_PREFIX/lib \
+     BUILD_SYS="$HOST_NAME" \
+     HOST_SYS="$TARGET_NAME" \
+     OPT="$CFLAGS" \
+     DESTDIR=$ROOT/$PKG_BUILD_DIR/.install \
+     LIBDIR=/usr/lib install

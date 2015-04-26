@@ -336,10 +336,15 @@ do_qmake () {
 # Usage: do_strip [bin|shlib|staticlib|kmod] <path>
 do_strip() {
   local options="--remove-section=.comment --remove-section=.note"
+  local PATCHELF="patchelf"
+  local new_rpath
+  local oIFS
+
   case "$1" in
-    shlib|kmod) options="$options --strip-unneeded"; shift ;;
-    staticlib)  options="$options --strip-debug"   ; shift ;;
     bin)        shift ;;
+    shlib)      options="$options --strip-unneeded"; shift ;;
+    staticlib)  options="$options --strip-debug"   ; PATCHELF=""; shift ;;
+    kmod)       options="$options --strip-unneeded"; PATCHELF=""; shift ;;
   esac
 
   if [ -n "$1" ]; then
@@ -347,6 +352,20 @@ do_strip() {
       file $i 2>&1 | grep -qv ELF && continue
       echo "Stripping $i"
       $STRIP $options $i || true
+
+      if [ "$STRIP" = "$TARGET_STRIP" ] && [ -n "$PATCHELF" ]; then
+        new_rpath=""
+        oIFS=$IFS
+        IFS=":" 
+        for part in `$PATCHELF --print-rpath $i`; do
+          if echo $part | grep -qv "^$ROOT"; then
+            [ -n "$new_rpath" ] && new_rpath="$new_rpath:"
+            new_rpath="${new_rpath}${part}"
+          fi
+        done
+        IFS=$oIFS
+        $PATCHELF --set-rpath "$new_rpath" $i || true
+      fi
     done
   fi
 }
@@ -656,24 +675,47 @@ do_perl_strip () {
       -e '/^#[^!"'"'"']/d'
 }
 
-# Usage: systemctl_enable <unit> [root_dir]
+do_python_make_host () {
+  BUILD_SYS="$HOST_NAME" \
+  HOST_SYS="$HOST_NAME" \
+  STAGING_LIBDIR=$ROOT/$TOOLCHAIN/lib \
+  STAGING_INCDIR=$ROOT/$TOOLCHAIN/include \
+  $ROOT/$TOOLCHAIN/bin/python setup.py install $*
+}
+
+do_python_make_cross () {
+  STAGING_LIBDIR=$LIB_PREFIX/lib \
+  STAGING_INCDIR=$LIB_PREFIX/include \
+  BUILD_SYS="$HOST_NAME" \
+  HOST_SYS="$TARGET_NAME" \
+  $ROOT/$TOOLCHAIN/bin/python setup.py install $*
+}
+
+# Usage: systemctl_enable <unit> [[root_dir] base_dir]
 systemctl_enable () {
   local unit_name="$1"
   local unit="/lib/systemd/system/${unit_name}"
   local target_dir="$2"
+  local base_dir="$3"
+
+  [ -z "$base_dir" ] && base_dir=lib
+  [ $base_dir = lib ] || [ $base_dir = etc ] || exit 1
 
   [ -z "$target_dir" ] && target_dir=.install
   [ -f "$target_dir/$unit" ] || exit 1
 
   target=`grep '^WantedBy' $target_dir/$unit | cut -f2 -d=`
   if [ -n "$target" ]; then
-    mkdir -p ${target_dir}/lib/systemd/system/${target}.wants
-    ln -s ../$unit_name ${target_dir}/lib/systemd/system/${target}.wants/${unit_name}
+    mkdir -p ${target_dir}/${base_dir}/systemd/system/${target}.wants    
+    [ "$base_dir" = "lib" ] && link="../${unit_name}" || link="${unit}"
+    ln -sf $link ${target_dir}/${base_dir}/systemd/system/${target}.wants/${unit_name}
   fi
 
   target=`grep '^Alias' $target_dir/$unit | cut -f2 -d=`
   for alias_name in $target; do
-    ln -s ${unit_name} ${target_dir}/lib/systemd/system/${alias_name}
+    mkdir -p ${target_dir}/${base_dir}/systemd/system
+    [ "$base_dir" = "lib" ] && link="${unit_name}" || link="${unit}"
+    ln -sf $link ${target_dir}/${base_dir}/systemd/system/${alias_name}
   done
 }
 

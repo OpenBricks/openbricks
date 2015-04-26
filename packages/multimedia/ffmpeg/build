@@ -4,39 +4,35 @@
 get_meta $1
 
 if pkg_uses $1 vdpau; then
-  VDPAU_CONFIG="--enable-vdpau"
+  FFMPEG_VDPAU="--enable-vdpau"
 else
-  VDPAU_CONFIG="--disable-vdpau"
+  FFMPEG_VDPAU="--disable-vdpau"
 fi
 
 if pkg_uses $1 vaapi; then
-  VAAPI_CONFIG="--enable-vaapi"
+  FFMPEG_VAAPI="--enable-vaapi"
 else
-  VAAPI_CONFIG="--disable-vaapi"
+  FFMPEG_VAAPI="--disable-vaapi"
 fi
 
 if [ "$DEBUG" = yes ]; then
-  DEBUG_CONFIG="--enable-debug --disable-stripping"
+  FFMPEG_DEBUG="--enable-debug --disable-stripping"
 else
-  DEBUG_CONFIG="--disable-debug --enable-stripping"
+  FFMPEG_DEBUG="--disable-debug --enable-stripping"
 fi
 
 if [ "$OPTIMIZATIONS" = size ]; then
-  OPTIM_CONFIG="--enable-small"
+  FFMPEG_OPTIM="--enable-small"
 else
-  OPTIM_CONFIG="--disable-small"
+  FFMPEG_OPTIM="--disable-small"
 fi
 
-if [ "$FPU_OPTIMIZATIONS" = neon -o "$FPU_OPTIMIZATIONS" = "neon-vfp4" ]; then
-  FPU_CONFIG="--enable-neon"
-else
-  FPU_CONFIG="--disable-neon"
-fi
 
 cd $PKG_BUILD_DIR
 
 do_gcc_strip_lto
 do_gcc_strip_gold
+
 case "$TARGET_ARCH" in
   arm)
       FFMPEG_CPU=""
@@ -44,23 +40,23 @@ case "$TARGET_ARCH" in
       FFMPEG_PIC="--enable-pic"
   ;;
   i?86)
-      FFMPEG_CPU=""
+      FFMPEG_CPU="--cpu=$TARGET_CPU"
       FFMPEG_TABLES="--disable-hardcoded-tables"
       FFMPEG_PIC="--disable-pic"
   ;;
   x86_64)
-      FFMPEG_CPU=""
+      FFMPEG_CPU="--cpu=$TARGET_CPU"
       FFMPEG_TABLES="--disable-hardcoded-tables"
       FFMPEG_PIC="--enable-pic"
   ;;
 esac
 
-case "$TARGET_FPU" in
+case "$FPU_OPTIMIZATIONS" in
   neon*)
       FFMPEG_FPU="--enable-neon"
   ;;
   vfp*)
-      FFMPEG_FPU=""
+      FFMPEG_FPU="--disable-neon --enable-vfp --disable-decoder=hevc"
   ;;
   *)
       FFMPEG_FPU=""
@@ -70,7 +66,6 @@ esac
 #export LIBRARY_PATH=$XORG_PREFIX/lib
 sed -i 's/-lflite"/-lflite -lasound"/' configure &&
 ./configure --prefix=/usr \
-              --cpu=$TARGET_CPU \
               --arch=$TARGET_ARCH \
               --enable-cross-compile \
               --cross-prefix=$TARGET_PREFIX \
@@ -102,7 +97,6 @@ sed -i 's/-lflite"/-lflite -lasound"/' configure &&
               $FFMPEG_DEBUG \
               $FFMPEG_PIC \
               --enable-optimizations \
-              --disable-armv5te --disable-armv6t2 \
               --disable-extra-warnings \
               --disable-ffprobe \
               --disable-ffplay \
