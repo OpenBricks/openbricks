@@ -1,0 +1,144 @@
+diff --git a/ports/sysdeps/unix/sysv/linux/arm/readelflib.c b/ports/sysdeps/unix/sysv/linux/arm/readelflib.c
+index e767f9e..37483fc 100644
+--- a/ports/sysdeps/unix/sysv/linux/arm/readelflib.c
++++ b/ports/sysdeps/unix/sysv/linux/arm/readelflib.c
+@@ -25,6 +25,130 @@ int process_elf64_file (const char *file_name, const char *lib, int *flag,
+ 			unsigned int *osversion, char **soname,
+ 			void *file_contents, size_t file_length);
+ 
++/* Read an unsigned leb128 value from P, store the value in VAL, return
++   P incremented past the value.  We assume that a word is large enough to
++   hold any value so encoded; if it is smaller than a pointer on some target,
++   pointers should not be leb128 encoded on that target.  */
++static const unsigned char *
++read_uleb128 (const unsigned char *p, unsigned long *val)
++{
++  unsigned int shift = 0;
++  unsigned char byte;
++  unsigned long result;
++
++  result = 0;
++  do
++    {
++      byte = *p++;
++      result |= (byte & 0x7f) << shift;
++      shift += 7;
++    }
++  while (byte & 0x80);
++
++  *val = result;
++  return p;
++}
++
++#define ATTR_TAG_FILE          1
++#define ABI_VFP_args          28
++#define VFP_ARGS_IN_VFP_REGS   1
++
++/* Check the ABI in the ARM attributes. Search through the section
++   headers looking for the ARM attributes section, then check the
++   VFP_ARGS attribute. */
++static int is_library_hf(const char *file_name, void *file_contents, size_t file_length)
++{
++  unsigned int i;
++  ElfW(Ehdr) *ehdr = (ElfW(Ehdr) *) file_contents;
++  ElfW(Shdr) *shdrs;
++
++  shdrs = file_contents + ehdr->e_shoff;
++  for (i = 0; i < ehdr->e_shnum; i++)
++    {
++      if (SHT_ARM_ATTRIBUTES == shdrs[i].sh_type)
++        {
++	  /* We've found a likely section. Load the contents and
++	   * check the tags */
++	  unsigned char *p = (unsigned char *)file_contents + shdrs[i].sh_offset;
++	  unsigned char * end;
++
++	  /* Sanity-check the attribute section details. Make sure
++	   * that it's the "aeabi" section, that's all we care
++	   * about. */
++	  if (*p == 'A')
++            {
++	      unsigned long len = shdrs[i].sh_size - 1;
++	      unsigned long namelen;
++	      p++;
++
++	      while (len > 0)
++                {
++		  unsigned long section_len = p[0] | p[1] << 8 | p[2] << 16 | p[3] << 24;
++		  if (section_len > len)
++		    section_len = len;
++
++		  p += 4;
++		  len -= section_len;
++		  section_len -= 4;
++
++		  if (0 != strcmp((char *)p, "aeabi"))
++                    {
++		      p += section_len;
++		      continue;
++                    }
++		  namelen = strlen((char *)p) + 1;
++		  p += namelen;
++		  section_len -= namelen;
++
++		  /* We're in a valid section. Walk through this
++		   * section looking for the tag we care about
++		   * (ABI_VFP_args) */
++		  while (section_len > 0)
++                    {
++		      unsigned long tag, val;
++		      unsigned long size;
++
++		      end = p;
++		      tag = (*p++);
++
++		      size = p[0] | p[1] << 8 | p[2] << 16 | p[3] << 24;
++		      if (size > section_len)
++			size = section_len;
++		      p += 4;
++
++		      section_len -= size;
++		      end += size;
++		      if (ATTR_TAG_FILE != tag)
++                        {
++			  /* ignore, we don't care */
++			  p = end;
++			  continue;
++                        }
++		      while (p < end)
++                        {
++			  p = read_uleb128 (p, &tag);
++			  /* Handle the different types of tag. */
++			  if ( (tag == 4) || (tag == 5) || (tag == 67) )
++                            {
++			      /* Special cases for string values */
++			      namelen = strlen((char *)p) + 1;
++			      p += namelen;
++                            }
++			  else
++                            {
++			      p = read_uleb128 (p, &val);
++                            }
++			  if ( (tag == ABI_VFP_args) && (val == VFP_ARGS_IN_VFP_REGS) )
++			    return 1;
++                        }
++                    }
++                }
++            }
++        }
++    }
++  return 0;
++}
++
+ /* Returns 0 if everything is ok, != 0 in case of error.  */
+ int
+ process_elf_file (const char *file_name, const char *lib, int *flag,
+@@ -47,6 +171,8 @@ process_elf_file (const char *file_name, const char *lib, int *flag,
+ 	    *flag = FLAG_ARM_LIBHF|FLAG_ELF_LIBC6;
+ 	  else if (elf32_header->e_flags & EF_ARM_ABI_FLOAT_SOFT)
+ 	    *flag = FLAG_ARM_LIBSF|FLAG_ELF_LIBC6;
++	  else if (is_library_hf(file_name, file_contents, file_length))
++	    *flag = FLAG_ARM_LIBHF|FLAG_ELF_LIBC6;
+ 	  else
+ 	    /* We must assume the unmarked objects are compatible
+ 	       with all ABI variants. Such objects may have been
