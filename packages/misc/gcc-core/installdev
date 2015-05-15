@@ -13,21 +13,27 @@ if [ -z "$GCC_VERSION" ]; then
   echo "GCC_VERSION is not set, there's something wrong with gcc-$TOOLCHAIN_TYPE"
   exit 1
 fi
-TARGET_CC=$INSTALL/bin/$TARGET_NAME-gcc
-CROSS_CC=$TARGET_CC-$GCC_VERSION
 
-cat > $TARGET_CC <<EOF
-#!/bin/sh
-$ROOT/$TOOLCHAIN/bin/ccache $CROSS_CC "\$@"
-EOF
-chmod +x $TARGET_CC
-
-# To avoid cache trashing
+# Fabricate a fixed time stamp for the compilers used in conjunction with ccache
 DATE="0501`echo $GCC_VERSION | sed 's/\([0-9]\)/0\1/g' | sed 's/\.//g'`"
-touch -c -t $DATE $CROSS_CC
+
+# Use ccache for our compilers
+for tool in "gcc"; do
+  SHIM_TOOL=$INSTALL/bin/$TARGET_NAME-$tool
+  REAL_TOOL=$SHIM_TOOL-$GCC_VERSION
+  [ ! -f $REAL_TOOL ] && mv $SHIM_TOOL $REAL_TOOL
+  cat > $SHIM_TOOL <<EOF
+#!/bin/sh
+$ROOT/$TOOLCHAIN/bin/ccache $ROOT/$TOOLCHAIN/bin/$TARGET_NAME-$tool-$GCC_VERSION "\$@"
+EOF
+  chmod +x $SHIM_TOOL
+  # Set timestamp of the real tool to avoid ccache trashing
+  touch -c -t $DATE $REAL_TOOL
+done
 
 # Create bfd-plugins directory for binutils and place the lto plugin there
 # Note: binutils have been patched to search for plugins in this location
 mkdir -p $ROOT/$TOOLCHAIN/lib/bfd-plugins
 ln -sf ../../libexec/gcc/$TARGET_NAME/$GCC_VERSION/liblto_plugin.so $ROOT/$TOOLCHAIN/lib/bfd-plugins/liblto_plugin.so
 
+exit 0

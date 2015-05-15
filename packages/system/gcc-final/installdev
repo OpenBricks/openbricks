@@ -16,28 +16,21 @@ if [ -z "$GCC_VERSION" ]; then
   exit 1
 fi
 
-TARGET_CC=$INSTALL/bin/$TARGET_NAME-gcc
-CROSS_CC=$TARGET_CC-$GCC_VERSION
-cat > $TARGET_CC <<EOF
-#!/bin/sh
-$ROOT/$TOOLCHAIN/bin/ccache $CROSS_CC "\$@"
-EOF
-chmod +x $TARGET_CC
-# To avoid cache trashing
+# Fabricate a fixed time stamp for the compilers used in conjunction with ccache
 DATE="0501`echo $GCC_VERSION | sed 's/\([0-9]\)/0\1/g' | sed 's/\.//g'`"
-touch -c -t $DATE $CROSS_CC
 
-TARGET_CXX=$INSTALL/bin/$TARGET_NAME-g++
-if [ -f "$TARGET_CXX" ]; then
-  CROSS_CXX=$TARGET_CXX-$GCC_VERSION
-  [ ! -f "$CROSS_CXX" ] && mv $TARGET_CXX $CROSS_CXX
-  cat > $TARGET_CXX <<EOF
+# Use ccache for our compilers
+for tool in "gcc" "g++" "c++"; do
+  SHIM_TOOL=$INSTALL/bin/$TARGET_NAME-$tool
+  REAL_TOOL=$SHIM_TOOL-$GCC_VERSION
+  [ ! -f $REAL_TOOL ] && mv $SHIM_TOOL $REAL_TOOL
+  cat > $SHIM_TOOL <<EOF
 #!/bin/sh
-$ROOT/$TOOLCHAIN/bin/ccache $CROSS_CXX "\$@"
+$ROOT/$TOOLCHAIN/bin/ccache $ROOT/$TOOLCHAIN/bin/$TARGET_NAME-$tool-$GCC_VERSION "\$@"
 EOF
-  chmod +x $TARGET_CXX
-  # To avoid cache trashing
-  touch -c -t $DATE $CROSS_CXX
-fi
+  chmod +x $SHIM_TOOL
+  # Set timestamp of the real tool to avoid ccache trashing
+  touch -c -t $DATE $REAL_TOOL
+done
 
 exit 0
