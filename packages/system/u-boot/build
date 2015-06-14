@@ -20,7 +20,7 @@ export PATH=$(echo $PATH | sed "s|$ROOT/$TOOLCHAIN/bin:||g" ):$ROOT/$TOOLCHAIN/b
 
 export MAKEFLAGS=-j1
 
-make CROSS_COMPILE="$TARGET_PREFIX" $MACHINE_UBOOT_CONFIG
+make CROSS_COMPILE="$TARGET_PREFIX" $MACHINE_UBOOT_CONFIG $MACHINE_UBOOT_OPTIONS
 make CROSS_COMPILE="$TARGET_PREFIX" HOSTCC="$HOST_CC" HOSTSTRIP="true"
 
 if [ -n "$MACHINE_UBOOT_CONFIG_EXTRA" ]; then
@@ -37,7 +37,7 @@ if [ -n "$MACHINE_UBOOT_CONFIG_EXTRA" ]; then
 
   for i in $MACHINE_UBOOT_CONFIG_EXTRA ; do
     echo "building $i"
-    make CROSS_COMPILE="$TARGET_PREFIX" $i
+    make CROSS_COMPILE="$TARGET_PREFIX" $i $MACHINE_UBOOT_OPTIONS
     make CROSS_COMPILE="$TARGET_PREFIX" HOSTCC="$HOST_CC" HOSTSTRIP="true"
     if [ -n "$MACHINE_UBOOT_BINARY_EXTRA" ]; then
       mv $MACHINE_UBOOT_BINARY_EXTRA extra-uboot/$MACHINE_UBOOT_BINARY_EXTRA.`echo $i | sed -e "s/_config//"`
@@ -69,8 +69,12 @@ if [ -r "$BOOT_CFG" ]; then
   [ $TARGET_PLATFORM = "omap4" ] && \
     sed -i "s%_DISPLAY_%$OMAP_DISPLAY%" boot.cfg
 
+  MKIMAGE_ARGS=""
+  [ -n "$UBOOT_ENTRYPOINT" ] && MKIMAGE_ARGS="$MKIMAGE_ARGS -e $UBOOT_ENTRYPOINT"
+  [ -n "$UBOOT_LOADADDRESS" ] && MKIMAGE_ARGS="$MKIMAGE_ARGS -a $UBOOT_LOADADDRESS"
+
   mkimage -A arm -O u-boot -T script -C none \
-    -n "$DISTRONAME Boot" -d boot.cfg boot.ini
+    -n "$DISTRONAME Boot" $MKIMAGE_ARGS -d boot.cfg boot.ini
 fi
 
 # Prepare for install & installdev scripts
