@@ -9,11 +9,13 @@ if [ -z "$1" ]; then
   echo "Option : user=ssh_username"
   echo "Option : --force (overwrite files)"
   echo "Option : --local copy file to \$BINARIES_DL"
+  echo "Option : --do-not-check"
   exit 1
 fi
 
 ssh_user=""
 pkg=""
+CHECK=0
 
 for arg in "$@"; do
   case $arg in
@@ -28,6 +30,9 @@ for arg in "$@"; do
       ;;
     --local)
       LOCAL_R=0
+      ;;
+    --do-not-check)
+      CHECK=1
       ;;
     *)
       pkg=$arg
@@ -52,7 +57,11 @@ mod_name () {
   done
 
   # check for platform-specific package overlay
-  INSTALL_RULE=$PACKAGES/$1/install
+  if [ -r $PACKAGES/$PKG_SECTION/$1/install ] ; then
+    INSTALL_RULE=$PACKAGES/$PKG_SECTION/$1/install
+  else
+    INSTALL_RULE=$PACKAGES/$1/install
+  fi
   PLATFORM_INSTALL="$PLATFORM_PACKAGES/$1/install"
   [ -r "$PLATFORM_INSTALL" ] && INSTALL_RULE="$PLATFORM_INSTALL"
   MACHINE_INSTALL="$MACHINE_PACKAGES/$1/install"
@@ -65,7 +74,20 @@ mod_name () {
   if [ "$PKG_OPK_ARCH" = unsupported ]; then
     echo "$1 is not supported on $TARGET_ARCH"
   fi
-  INSTALLDEV_RULE=$PACKAGES/$1/installdev
+
+  if [ -r $PACKAGES/$PKG_SECTION/$1/installdev ] ; then
+    INSTALLDEV_RULE=$PACKAGES/$PKG_SECTION/$1/installdev
+  else
+    INSTALLDEV_RULE=$PACKAGES/$1/installdev
+  fi
+  PLATFORM_INSTALLDEV="$PLATFORM_PACKAGES/$1/installdev"
+  [ -r "$PLATFORM_INSTALLDEV" ] && INSTALLDEV_RULE="$PLATFORM_INSTALLDEV"
+  MACHINE_INSTALLDEV="$MACHINE_PACKAGES/$1/installdev"
+  [ -r "$MACHINE_INSTALLDEV" ] && INSTALLDEV_RULE="$MACHINE_INSTALLDEV"
+
+  # check for flavour-specific package overlay
+  FLAVOUR_INSTALLDEV="$FLAVOUR_PACKAGES/$1/installdev"
+  [ -r "$FLAVOUR_INSTALLDEV" ] && INSTALLDEV_RULE="$FLAVOUR_INSTALLDEV"
   
   if [ ! -f $INSTALL_RULE ]; then
     echo "$1 is not a runtime package, skipping ..."
@@ -91,13 +113,19 @@ create_link () {
   if [ "$LOCAL_R" = 0 ] ; then
      if [ -f $BINARIES_DL/$name ] ; then
        [ -z $FORCE ] && echo "Package $name aready exists at $BINARIES_DL : use --force to overwrite it !" || ( echo "!! Warning : Using --force for $name !!" && ln -s $PROOT/$1 $TEMP_SEND/$name )
+     else
+       ln -s $PROOT/$1 $TEMP_SEND/$name
      fi
   else
-    if ! wget --no-check-certificate --passive-ftp --spider -nv -q $REPO_PATH/$name ; then
-      ln -s $PROOT/$1 $TEMP_SEND/$name
+    if [ "$CHECK" = "0" ] ; then
+      if ! wget --no-check-certificate --passive-ftp --spider -nv -q $REPO_PATH/$name ; then
+        ln -s $PROOT/$1 $TEMP_SEND/$name
+      else
+        [ -z $FORCE ] && echo "Package $name aready exists at $REPO_PATH : use --force to overwrite it !" || ( echo "!! Warning : Using --force for $name !!" && ln -s $PROOT/$1 $TEMP_SEND/$name )
+      fi
     else
-      [ -z $FORCE ] && echo "Package $name aready exists at $REPO_PATH : use --force to overwrite it !" || ( echo "!! Warning : Using --force for $name !!" && ln -s $PROOT/$1 $TEMP_SEND/$name )
-  fi
+      ln -s $PROOT/$1 $TEMP_SEND/$name
+    fi
   fi
 }
 
@@ -110,8 +138,8 @@ send_to_server () {
 }
 
 get_all () {
-  for i in $PACKAGES/* ; do
-    j=${i#$PACKAGES/}
+  for i in $PACKAGES/*/* ; do
+    j=${i#$PACKAGES/*/}
     mod_name "$j"
   done
 }

@@ -9,11 +9,11 @@ if [ -z "$1" ]; then
 fi
 
 [ "$2" = "--verbose" ] && VERBOSE=0
-#VERBOSE=0
+VERBOSE=0
 
-[ -n "$REPO_URL" ] && REPO_L=$REPO_URL || REPO_L=$REPO_PATH
+[ -n "$REPO_URL" ] && REPO_L=$REPO_URL || REPO_L="`echo $REPO_PATH | sed -e 's%/packages%%'`"
 
-BLACKLIST_OPK=$ROOT/$BUILD_NOARCH/blacklist-opk.txt
+BLACKLIST_OPK=$ROOT/blacklist-opk.txt
 BINARIES_DL=$ROOT/binaries-dl/binaries.$VERSION_SUFFIX
 
 mkdir -p $BINARIES_DL $ROOT/$STAMPS $DEVPKGROOT $PKGROOT
@@ -26,7 +26,7 @@ change_name () {
 }
 
 get_binary () {
-  if wget --no-check-certificate --passive-ftp --spider -nv -q $REPO_PATH/$1 ; then
+  if wget --no-check-certificate --passive-ftp --spider -nv -q $REPO_L/$1 ; then
      [ ! -f $ROOT/$STAMPS/need-symlink ] && touch $ROOT/$STAMPS/need-symlink
      until [ -f "$BINARIES_DL/$1" ] || wget --no-check-certificate --passive-ftp -c -P $BINARIES_DL $REPO_L/$1; do
      NBWGET=$(($NBWGET+1))
@@ -37,7 +37,7 @@ get_binary () {
      fi
      done
   else
-    [ "$VERBOSE" = 0 ] && echo " $1 not found at $REPO_PATH"
+    [ "$VERBOSE" = 0 ] && echo " $1 not found at $REPO_L"
     count=$(($count+1))
     [ "$VERBOSE" = 0 ] && echo "count : $count"  
   fi
@@ -78,7 +78,11 @@ check_opk () {
   done
 
   # check for platform-specific package overlay
-  INSTALL_RULE=$PACKAGES/$1/install
+  if [ -r $PACKAGES/$PKG_SECTION/$1/install ] ; then
+    INSTALL_RULE=$PACKAGES/$PKG_SECTION/$1/install
+  else
+    INSTALL_RULE=$PACKAGES/$1/install
+  fi
   PLATFORM_INSTALL="$PLATFORM_PACKAGES/$1/install"
   [ -r "$PLATFORM_INSTALL" ] && INSTALL_RULE="$PLATFORM_INSTALL"
   MACHINE_INSTALL="$MACHINE_PACKAGES/$1/install"
@@ -89,9 +93,22 @@ check_opk () {
   [ -r "$FLAVOUR_INSTALL" ] && INSTALL_RULE="$FLAVOUR_INSTALL"
 
   if [ "$PKG_OPK_ARCH" = unsupported ]; then
-    [ "$VERBOSE" = 0 ] && echo "$1 is not supported on $TARGET_ARCH"
+    echo "$1 is not supported on $TARGET_ARCH"
   fi
-  INSTALLDEV_RULE=$PACKAGES/$1/installdev
+
+  if [ -r $PACKAGES/$PKG_SECTION/$1/installdev ] ; then
+    INSTALLDEV_RULE=$PACKAGES/$PKG_SECTION/$1/installdev
+  else
+    INSTALLDEV_RULE=$PACKAGES/$1/installdev
+  fi
+  PLATFORM_INSTALLDEV="$PLATFORM_PACKAGES/$1/installdev"
+  [ -r "$PLATFORM_INSTALLDEV" ] && INSTALLDEV_RULE="$PLATFORM_INSTALLDEV"
+  MACHINE_INSTALLDEV="$MACHINE_PACKAGES/$1/installdev"
+  [ -r "$MACHINE_INSTALLDEV" ] && INSTALLDEV_RULE="$MACHINE_INSTALLDEV"
+
+  # check for flavour-specific package overlay
+  FLAVOUR_INSTALLDEV="$FLAVOUR_PACKAGES/$1/installdev"
+  [ -r "$FLAVOUR_INSTALLDEV" ] && INSTALLDEV_RULE="$FLAVOUR_INSTALLDEV"
   
   [ -f $ROOT/$STAMPS/dl-from-repo-not-ok ] && rm $ROOT/$STAMPS/dl-from-repo-not-ok
   [ -f $ROOT/$STAMPS/need-symlink ] && rm $ROOT/$STAMPS/need-symlink

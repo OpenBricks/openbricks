@@ -1,0 +1,52 @@
+#!/bin/sh
+
+. config/options
+get_meta $1
+
+
+case $TARGET_PLATFORM in
+  armada5xx)
+    $SCRIPTS/unpack linux
+    EXTRA_CONFIG="-DHAVE_TDA995X_API=1"
+    EXTRA_INCLUDES="-I$(kernel_path)/drivers/video/dovefb/nxp_hdmi -I$(kernel_path)/drivers/video/dovefb/nxp_hdmi/inc"
+    ;;
+
+  bcm270*)
+    EXTRA_CONFIG="-DHAVE_RPI_API=1"
+    EXTRA_INCLUDES="-I$LIB_PREFIX/include/interface/vcos/pthreads -I$LIB_PREFIX/include/interface/vmcs_host/linux"
+    ;;
+    
+  exynos5)
+    EXTRA_CONFIG="-DHAVE_EXYNOS_API=1"
+    EXTRA_INCLUDES=""
+    ;;
+                           
+  imx6)
+    EXTRA_CONFIG="-DHAVE_IMX6_API=1"
+    EXTRA_INCLUDES=""
+    ;;
+esac
+
+
+cd $PKG_BUILD_DIR
+INSTALL_PREFIX=$PWD/.install/usr
+
+mkdir -p .build
+cd .build
+cmake -DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX \
+      -DCMAKE_FIND_ROOT_PATH=$LIB_PREFIX \
+      -DSWIG_DIR=$TOOLCHAIN/bin \
+      -DBUILD_SHARED_LIBS=1 \
+      $EXTRA_CONFIG \
+      -DCMAKE_CXX_FLAGS="$EXTRA_INCLUDES" \
+      ..
+make
+make install
+cd ..
+
+strip_bins $INSTALL_PREFIX/bin
+strip_libs $INSTALL_PREFIX/lib
+
+sed -e "s%$INSTALL_PREFIX%$LIB_PREFIX%g" \
+    -e "s%Requires:.*%%" \
+    -i $INSTALL_PREFIX/lib/pkgconfig/*.pc

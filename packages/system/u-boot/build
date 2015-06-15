@@ -20,7 +20,7 @@ export PATH=$(echo $PATH | sed "s|$ROOT/$TOOLCHAIN/bin:||g" ):$ROOT/$TOOLCHAIN/b
 
 export MAKEFLAGS=-j1
 
-make CROSS_COMPILE="$TARGET_PREFIX" $MACHINE_UBOOT_CONFIG
+make CROSS_COMPILE="$TARGET_PREFIX" $MACHINE_UBOOT_CONFIG $MACHINE_UBOOT_OPTIONS
 make CROSS_COMPILE="$TARGET_PREFIX" HOSTCC="$HOST_CC" HOSTSTRIP="true"
 
 if [ -n "$MACHINE_UBOOT_CONFIG_EXTRA" ]; then
@@ -37,7 +37,7 @@ if [ -n "$MACHINE_UBOOT_CONFIG_EXTRA" ]; then
 
   for i in $MACHINE_UBOOT_CONFIG_EXTRA ; do
     echo "building $i"
-    make CROSS_COMPILE="$TARGET_PREFIX" $i
+    make CROSS_COMPILE="$TARGET_PREFIX" $i $MACHINE_UBOOT_OPTIONS
     make CROSS_COMPILE="$TARGET_PREFIX" HOSTCC="$HOST_CC" HOSTSTRIP="true"
     if [ -n "$MACHINE_UBOOT_BINARY_EXTRA" ]; then
       mv $MACHINE_UBOOT_BINARY_EXTRA extra-uboot/$MACHINE_UBOOT_BINARY_EXTRA.`echo $i | sed -e "s/_config//"`
@@ -69,6 +69,51 @@ if [ -r "$BOOT_CFG" ]; then
   [ $TARGET_PLATFORM = "omap4" ] && \
     sed -i "s%_DISPLAY_%$OMAP_DISPLAY%" boot.cfg
 
+  MKIMAGE_ARGS=""
+  [ -n "$UBOOT_ENTRYPOINT" ] && MKIMAGE_ARGS="$MKIMAGE_ARGS -e $UBOOT_ENTRYPOINT"
+  [ -n "$UBOOT_LOADADDRESS" ] && MKIMAGE_ARGS="$MKIMAGE_ARGS -a $UBOOT_LOADADDRESS"
+
   mkimage -A arm -O u-boot -T script -C none \
-    -n "$DISTRONAME Boot" -d boot.cfg boot.ini
+    -n "$DISTRONAME Boot" $MKIMAGE_ARGS -d boot.cfg boot.ini
+fi
+
+# Prepare for install & installdev scripts
+
+[ -d .install ] && rm -rf .install
+mkdir -p .install/boot
+mkdir -p .install/share
+ln -s ../boot .install/share/u-boot
+
+installdir=".install/boot"
+
+if [ -n "$MACHINE_UBOOT_BINARY" ]; then
+  cp $MACHINE_UBOOT_BINARY $installdir
+else
+  cp u-boot.bin $installdir
+fi
+
+if [ -n "$MACHINE_UBOOT_CONFIG_EXTRA" ]; then
+  mkdir -p $installdir/extra-uboot
+  cp extra-uboot/* $installdir/extra-uboot
+fi
+
+if [ -n "$MACHINE_UBOOT_LOADER" ]; then
+  cp $MACHINE_UBOOT_LOADER $installdir
+fi
+
+[ -r boot.cfg ] && \
+  cp boot.cfg $installdir
+
+if [ -r boot.ini ]; then
+  if [ -n "$MACHINE_UBOOT_SCRIPT" ]; then
+    cp boot.ini $installdir/$MACHINE_UBOOT_SCRIPT
+  else
+    cp boot.ini $installdir
+    # some boards read boot.scr by default
+    cp $installdir/boot.ini $installdir/boot.scr
+  fi  
+fi
+
+if [ -r uEnv.txt ] ; then
+  cp uEnv.txt $installdir
 fi
