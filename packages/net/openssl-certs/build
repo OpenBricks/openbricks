@@ -3,24 +3,31 @@
 . config/options
 
 get_meta $1
-BUILD_DIR=$ROOT/$PKG_BUILD_DIR
-
-get_meta $PKG_PARENT
-PARENT_BUILD_DIR=$ROOT/$PKG_BUILD_DIR
-
-cd $BUILD_DIR
-for f in c_rehash make-ca.sh make-cert.pl remove-expired-certs.sh; do
-  cp $PARENT_BUILD_DIR/.install/usr/bin/$f .
-done
-
-sed -e "s%^#!/usr/bin/perl%#!$ROOT/$TOOLCHAIN/bin/perl%" -i c_rehash *.pl
-sed -e "s%^CONVERTSCRIPT=.*%CONVERTSCRIPT=$BUILD_DIR/make-cert.pl%" -i make-ca.sh
-
-./make-ca.sh
-./remove-expired-certs.sh certs
-./c_rehash certs
-mv -f BLFS-ca-bundle-*.crt ca-bundle.crt
+cd $PKG_BUILD_DIR
 
 rm -rf .install
-mkdir -p .install/etc/ssl
+mkdir -p .install/usr/bin .install/etc/ssl
+
+# copy target scripts
+cp -P $ROOT/$PACKAGES/$PKG_SECTION/$1/scripts/* \
+  .install/usr/bin
+
+# copy host scripts
+for f in make-ca.sh make-cert.pl remove-expired-certs.sh; do
+  cp .install/usr/bin/$f .
+done
+
+# modify host scripts
+sed -e "s%^OPENSSL=.*%OPENSSL=openssl%" -i remove-expired-certs.sh
+sed -e "s%^#!/usr/bin/perl%#!$ROOT/$TOOLCHAIN/bin/perl%" -i make-cert.pl
+sed -e "s%^CONVERTSCRIPT=.*%CONVERTSCRIPT=\"./make-cert.pl\"%" -i make-ca.sh
+
+# run host scripts
+./make-ca.sh
+./remove-expired-certs.sh certs
+$ROOT/$TOOLCHAIN/bin/c_rehash certs
+
+mv -f BLFS-ca-bundle-*.crt ca-bundle.crt
+ln -sf ../ca-bundle.crt ./certs/ca-certificates.crt
+
 mv -t .install/etc/ssl ca-bundle.crt certs 
