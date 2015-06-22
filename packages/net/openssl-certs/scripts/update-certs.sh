@@ -42,14 +42,16 @@ if [[ ! -f $file ]]; then
 fi
 
 unset certhost certdir url WGET C_REHASH TMP CHECK_PROGRAMS ERROR
+
 echo "Reformatting certificates for openssl..."
 make-ca.sh
 echo "Removing expired certificates..."
 remove-expired-certs.sh certs
-cp -v certs/*.pem /etc/ssl/certs
+echo "Copying..."
+rm -f /etc/ssl/certs/*.pem
+cp certs/*.pem /etc/ssl/certs
+cat certs/*.pem > /etc/ssl/ca-bundle.crt
+rm -rf certs BLFS-ca-bundle*
 echo "Rehashing..."
 c_rehash /etc/ssl/certs
-cp BLFS-ca-bundle*.crt /etc/ssl/ca-bundle.crt
-rm -r certs BLFS-ca-bundle*
 echo "SSL certificates successfully installed."
-

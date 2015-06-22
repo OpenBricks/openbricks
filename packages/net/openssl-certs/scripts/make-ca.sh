@@ -3,7 +3,6 @@
 # Script to populate OpenSSL's CApath from a bundle of PEM formatted CAs
 #
 # The file certdata.txt must exist in the local directory
-# Version number is obtained from the version of the data.
 #
 # Authors: DJ Lucas
 #          Bruce Dubbs
@@ -17,20 +16,10 @@ if [ ! -r $certdata ]; then
   exit 1
 fi
 
-REVISION=$(grep CVS_ID $certdata | cut -f4 -d'$')
-
-if [ -z "${REVISION}" ]; then
-  echo "$certfile has no 'Revision' in CVS_ID"
-  exit 1
-fi
-
-VERSION=$(echo $REVISION | cut -f2 -d" ")
-
 TEMPDIR=$(mktemp -d)
 TRUSTATTRIBUTES="CKA_TRUST_SERVER_AUTH"
-BUNDLE="BLFS-ca-bundle-${VERSION}.crt"
+#BUNDLE="BLFS-ca-bundle-${VERSION}.crt"
 CONVERTSCRIPT="/bin/make-cert.pl"
-SSLDIR="/etc/ssl"
 
 mkdir "${TEMPDIR}/certs"
 
@@ -91,5 +80,5 @@ if test -f certs/8f111d69.pem; then
 fi
 
 # Finally, generate the bundle and clean up.
-cat certs/*.pem >  ${BUNDLE}
+#cat certs/*.pem >  ${BUNDLE}
 rm -r "${TEMPDIR}"
