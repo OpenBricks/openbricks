@@ -26,7 +26,7 @@ while ( <IN> )
     if ( /^CKA_VALUE MULTILINE_OCTAL/ )
     {
         $incert = 1;
-        open( OUT, "|openssl x509 -text -inform DER -fingerprint" )
+        open( OUT, "|openssl x509 -inform DER -outform PEM" )
             || die "could not pipe to openssl x509";
     }
 
