@@ -174,8 +174,6 @@ if [ "$DL" = yes ]; then
 
       i=$(eval echo $i)
 
-      NBWGET=1
-
       if [ -n "$PKG_ARCHIVE_NAME" ]; then
         PACKAGE_BASENAME=$PKG_ARCHIVE_NAME
       else
@@ -183,27 +181,24 @@ if [ "$DL" = yes ]; then
       fi
 
       if [ -f $SOURCES/$1/$PACKAGE_BASENAME ]; then
-        # file is already downloaded, just igored.
+        # file is already downloaded, just ignore.
         echo "Detected $PACKAGE_BASENAME for $1 sources..."
-        do_md5sum    "$SOURCES/$1/$PACKAGE_BASENAME"
-        do_sha256sum "$SOURCES/$1/$PACKAGE_BASENAME"
-        touch $STAMPS_NOARCH/$1/$PACKAGE_BASENAME.ok
-      elif [ -f $MACHINE_PACKAGES/$1/$i ]; then
+      elif [ -f $MACHINE_PACKAGES/$1/$PACKAGE_BASENAME ]; then
         # machine-specific file is already here, just copy
-        echo "\nJust copying machine $i for $1 sources..."
-        cp $MACHINE_PACKAGES/$1/$i $SOURCES/$1
-      elif [ -f $PLATFORM_PACKAGES/$1/$i ]; then
+        echo "\nJust copying machine $PACKAGE_BASENAME for $1 sources..."
+        cp $MACHINE_PACKAGES/$1/$PACKAGE_BASENAME $SOURCES/$1
+      elif [ -f $PLATFORM_PACKAGES/$1/$PACKAGE_BASENAME ]; then
         # platform-specific file is already here, just copy
-        echo "\nJust copying platform $i for $1 sources..."
-        cp $PLATFORM_PACKAGES/$1/$i $SOURCES/$1
-      elif [ -f $FLAVOUR_PACKAGES/$1/$i ]; then
+        echo "\nJust copying platform $PACKAGE_BASENAME for $1 sources..."
+        cp $PLATFORM_PACKAGES/$1/$PACKAGE_BASENAME $SOURCES/$1
+      elif [ -f $FLAVOUR_PACKAGES/$1/$PACKAGE_BASENAME ]; then
         # flavour-specific file is already here, just copy
-        echo "\nJust copying flavour $i for $1 sources..."
-        cp $FLAVOUR_PACKAGES/$1/$i $SOURCES/$1
-      elif [ -f $PACKAGES/$PKG_SECTION/$1/$i ]; then
+        echo "\nJust copying flavour $PACKAGE_BASENAME for $1 sources..."
+        cp $FLAVOUR_PACKAGES/$1/$PACKAGE_BASENAME $SOURCES/$1
+      elif [ -f $PACKAGES/$PKG_SECTION/$1/$PACKAGE_BASENAME ]; then
         # file is already here, just copy
-        echo "\nJust copying $i for $1 sources..."
-        cp $PACKAGES/$PKG_SECTION/$1/$i $SOURCES/$1
+        echo "\nJust copying $PACKAGE_BASENAME for $1 sources..."
+        cp $PACKAGES/$PKG_SECTION/$1/$PACKAGE_BASENAME $SOURCES/$1
       else
         # have to download
 
@@ -211,28 +206,27 @@ if [ "$DL" = yes ]; then
         [ "$MIRROR" = yes -a -n "$MIRROR_URL" ] \
           && i="$MIRROR_URL/$PACKAGE_BASENAME"
 
-        until [ -f $STAMPS_NOARCH/$1/$PACKAGE_BASENAME.ok ] || wget $WGET_OPT -O $SOURCES/$1/$PACKAGE_BASENAME $i; do
-          NBWGET=$(($NBWGET+1))
-          if [ $NBWGET -gt 10 ]; then
+        NBWGET=10
+        WGET_ARGS="-O $SOURCES/$1/$PACKAGE_BASENAME $i"
+        until wget $WGET_OPT $WGET_ARGS; do
+          NBWGET=$(($NBWGET-1))
+
+          if [ $NBWGET -eq 2 ]; then
             if [ "$MIRROR" = yes -a -n "$MIRROR_URL" ]; then
-              echo "\nCan't get $1 sources : $i\n Try later !!"
-              exit 1
+              NBWGET=0
             else
               echo "\nCan't get $1 sources, trying on OpenBricks server..."
-              until [ -f $STAMPS_NOARCH/$1/$PACKAGE_BASENAME.ok ] || wget $WGET_OPT -P $SOURCES/$1 $DISTRO_SRCS/$PACKAGE_BASENAME; do
-                NBWGET=$(($NBWGET+1))
-                if [ $NBWGET -gt 10 ]; then
-                  echo "\nCan't get $1 sources : $i\n Try later !!"
-                  exit 1
-                fi
-              done
+              WGET_ARGS="-P $SOURCES/$1 $DISTRO_SRCS/$PACKAGE_BASENAME"
             fi
-
-            do_md5sum    "$SOURCES/$1/$PACKAGE_BASENAME"
-            do_sha256sum "$SOURCES/$1/$PACKAGE_BASENAME"
-            touch $STAMPS_NOARCH/$1/$PACKAGE_BASENAME.ok
+          fi
+          
+          if [ $NBWGET -eq 0 ]; then
+            rm -f $SOURCES/$1/$PACKAGE_BASENAME
+            echo "\nCan't get $1 sources : $i\n Try later !!"
+            exit 1
           fi
         done
+
       fi
 
       do_md5sum    "$SOURCES/$1/$PACKAGE_BASENAME"
