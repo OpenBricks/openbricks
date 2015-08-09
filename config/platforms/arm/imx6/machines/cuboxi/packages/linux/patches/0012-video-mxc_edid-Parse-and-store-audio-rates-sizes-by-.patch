@@ -1,0 +1,152 @@
+From 11d5ff02689b210afdb46f1d8891861478b26235 Mon Sep 17 00:00:00 2001
+From: Rudi <r.ihle@s-t.de>
+Date: Sun, 9 Aug 2015 16:23:31 +0200
+Subject: [PATCH 11/13] video: mxc_edid: Parse and store audio rates/sizes by
+ channel count.
+
+A sink may have different audio restrictions depending on the maximum
+channel count. This patch changes the EDID parsing so that sample_rates
+and sample_sizes are stored separately for 2, 4, 6 and 8 channels.
+
+Signed-off-by: Rudi <r.ihle@s-t.de>
+---
+ drivers/video/mxc/mxc_edid.c | 27 +++++++++++++++------------
+ include/video/mxc_edid.h     |  5 ++---
+ sound/soc/fsl/fsl_hdmi.c     | 14 +++++++++-----
+ 3 files changed, 26 insertions(+), 20 deletions(-)
+
+diff --git a/drivers/video/mxc/mxc_edid.c b/drivers/video/mxc/mxc_edid.c
+index e27a977..394b3eb 100644
+--- a/drivers/video/mxc/mxc_edid.c
++++ b/drivers/video/mxc/mxc_edid.c
+@@ -286,12 +286,20 @@ int mxc_edid_parse_ext_blk(unsigned char *edid,
+
+	detail_timing_desc_offset = edid[index++];
+
++	memset(cfg->sample_rates, 0, sizeof(cfg->sample_rates));
++	memset(cfg->sample_sizes, 0, sizeof(cfg->sample_sizes));
++
+	if (revision >= 2) {
+		cfg->cea_underscan = (edid[index] >> 7) & 0x1;
+		cfg->cea_basicaudio = (edid[index] >> 6) & 0x1;
+		cfg->cea_ycbcr444 = (edid[index] >> 5) & 0x1;
+		cfg->cea_ycbcr422 = (edid[index] >> 4) & 0x1;
+
++		if (cfg->cea_basicaudio) {
++		      cfg->sample_rates[0] = 0x07;
++		      cfg->sample_sizes[0] = 0x01;
++		}
++
+		DPRINTK("CEA underscan %d\n", cfg->cea_underscan);
+		DPRINTK("CEA basicaudio %d\n", cfg->cea_basicaudio);
+		DPRINTK("CEA ycbcr444 %d\n", cfg->cea_ycbcr444);
+@@ -299,10 +307,6 @@ int mxc_edid_parse_ext_blk(unsigned char *edid,
+	}
+
+	if (revision >= 3) {
+-		cfg->max_channels = 0;
+-		cfg->sample_rates = 0;
+-		cfg->sample_sizes = 0;
+-
+		/* short desc */
+		DPRINTK("CEA Short desc timmings\n");
+		index++;
+@@ -504,7 +508,8 @@ int mxc_edid_parse_ext_blk(unsigned char *edid,
+				}
+			case 0x1: /*Audio data block*/
+				{
+-					u8 audio_format, max_ch, byte1, byte2, byte3;
++					u8 audio_format, byte1, byte2, byte3;
++					int ch_idx;
+
+					i = 0;
+					while (i < blklen) {
+@@ -515,20 +520,18 @@ int mxc_edid_parse_ext_blk(unsigned char *edid,
+						i += 3;
+
+						audio_format = byte1 >> 3;
+-						max_ch = (byte1 & 0x07) + 1;
+
+						DPRINTK("Audio Format Descriptor : %2d\n", audio_format);
+-						DPRINTK("Max Number of Channels  : %2d\n", max_ch);
++						DPRINTK("Max Number of Channels  : %2d\n", (byte1 & 0x07) + 1);
+						DPRINTK("Sample Rates            : %02x\n", byte2);
+
+						/* ALSA can't specify specific compressed
+						 * formats, so only care about PCM for now. */
+						if (audio_format == AUDIO_CODING_TYPE_LPCM) {
+-							if (max_ch > cfg->max_channels)
+-								cfg->max_channels = max_ch;
+-
+-							cfg->sample_rates |= byte2;
+-							cfg->sample_sizes |= byte3 & 0x7;
++							for (ch_idx = (byte1 & 0x07) / 2; ch_idx >= 0; ch_idx--) {
++								cfg->sample_rates[ch_idx] |= byte2;
++								cfg->sample_sizes[ch_idx] |= byte3 & 0x7;
++							}
+							DPRINTK("Sample Sizes            : %02x\n",
+								byte3 & 0x7);
+						}
+diff --git a/include/video/mxc_edid.h b/include/video/mxc_edid.h
+index 9d34f22..b3e5ded 100644
+--- a/include/video/mxc_edid.h
++++ b/include/video/mxc_edid.h
+@@ -94,9 +94,8 @@ struct mxc_edid_cfg {
+	u16 hdmi_3d_struct_all;
+	u32 vsd_max_tmdsclk_rate;
+
+-	u8 max_channels;
+-	u8 sample_sizes;
+-	u8 sample_rates;
++	u8 sample_sizes[4];
++	u8 sample_rates[4];
+	u8 speaker_alloc;
+ };
+
+diff --git a/sound/soc/fsl/fsl_hdmi.c b/sound/soc/fsl/fsl_hdmi.c
+index 416b698..4ba9d23 100644
+--- a/sound/soc/fsl/fsl_hdmi.c
++++ b/sound/soc/fsl/fsl_hdmi.c
+@@ -277,10 +277,11 @@ static int cea_audio_rates[HDMI_MAX_RATES] = {
+ static void fsl_hdmi_get_playback_rates(void)
+ {
+	int i, count = 0;
+-	u8 rates;
++	u8 rates = edid_cfg.sample_rates[0] | edid_cfg.sample_rates[1] |
++			edid_cfg.sample_rates[2] | edid_cfg.sample_rates[3];
+
+	/* Always assume basic audio support */
+-	rates = edid_cfg.sample_rates | 0x7;
++	rates |= 0x07;
+
+	for (i = 0 ; i < HDMI_MAX_RATES ; i++)
+		if ((rates & (1 << i)) != 0)
+@@ -296,11 +297,13 @@ static void fsl_hdmi_get_playback_rates(void)
+ static void fsl_hdmi_get_playback_sample_size(void)
+ {
+	int i = 0;
++	u8 sizes = edid_cfg.sample_sizes[0] | edid_cfg.sample_sizes[1] |
++			edid_cfg.sample_sizes[2] | edid_cfg.sample_sizes[3];
+
+	/* Always assume basic audio support */
+	playback_sample_size[i++] = 16;
+
+-	if (edid_cfg.sample_sizes & 0x4)
++	if (sizes & 0x4)
+		playback_sample_size[i++] = 32;
+
+	playback_constraint_bits.list = playback_sample_size;
+@@ -318,8 +321,9 @@ static void fsl_hdmi_get_playback_channels(void)
+	playback_channels[i++] = channels;
+	channels += 2;
+
+-	while ((i < HDMI_MAX_CHANNEL_CONSTRAINTS) &&
+-			(channels <= edid_cfg.max_channels)) {
++	while (i < HDMI_MAX_CHANNEL_CONSTRAINTS &&
++	       i < ARRAY_SIZE(edid_cfg.sample_rates) &&
++	       edid_cfg.sample_rates[i] && edid_cfg.sample_sizes[i]) {
+		playback_channels[i++] = channels;
+		channels += 2;
+	}
+--
+1.9.1
