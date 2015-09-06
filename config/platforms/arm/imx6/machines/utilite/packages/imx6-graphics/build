@@ -1,0 +1,93 @@
+#!/bin/sh
+
+. config/options
+
+require_glibc $1
+
+get_meta $1
+cd $PKG_BUILD_DIR
+
+rm -rf .install
+mkdir -p .install/usr/lib/pkgconfig .install/usr/include .install/etc
+
+if [ "$ARM_HARDFLOAT_ABI" = yes ] ; then
+  data=$PWD/hfp/gpu-core
+else
+  data=$PWD/sfp/gpu-core
+fi
+
+#dir_pc_files=$ROOT/$PACKAGES/$PKG_SECTION/$1/config
+dir_pc_files=$data/usr/lib/pkgconfig
+pc_files="glesv1_cm glesv2 vg"
+
+cp -P $data/usr/lib/*.so* .install/usr/lib
+cp -r $data/usr/include/* .install/usr/include
+
+## install pc files
+if pkg_uses $1 x11 ; then
+  backend=x11
+  for i in $pc_files egl ; do
+    cp $dir_pc_files/${i}_x11.pc .install/usr/lib/pkgconfig/$i.pc
+  done
+  cp -r $data/usr/lib/dri .install/usr/lib
+elif pkg_uses $1 wayland ; then
+  backend=wl
+  for i in $pc_files egl_wayland gc_wayland_protocol wayland-egl wayland-viv ; do
+    cp $dir_pc_files/$i.pc .install/usr/lib/pkgconfig/$i.pc
+  done
+elif pkg_uses $1 directfb ; then
+  backend=dfb
+  for i in $pc_files egl_directfb ; do
+    cp $dir_pc_files/$i.pc .install/usr/lib/pkgconfig/$i.pc
+  done
+  cp $data/etc/* .install/etc
+  cp -r $data/usr/lib/directfb-*/* .instal/usr/lib
+else
+  backend=fb
+  for i in $pc_files egl_linuxfb; do
+    cp $dir_pc_files/$i.pc .install/usr/lib/pkgconfig/$i.pc
+  done
+fi
+mv .install/usr/lib/pkgconfig/egl_*.pc .install/usr/lib/pkgconfig/egl.pc
+sed -i -e "s:/usr:$LIB_PREFIX:g" .install/usr/lib/pkgconfig/*.pc
+
+##
+
+## Install libs
+mv .install/usr/lib/libGL.so.1.2 .install/usr/lib/libGL.so.1.2.0
+ln -sf libGL.so.1.2.0 .install/usr/lib/libGL.so.1.2
+ln -sf libGL.so.1.2.0 .install/usr/lib/libGL.so.1
+ln -sf libGL.so.1.2.0 .install/usr/lib/libGL.so
+
+mv .install/usr/lib/libEGL-$backend.so .install/usr/lib/libEGL.so.1.0
+ln -sf libEGL.so.1.0 .install/usr/lib/libEGL.so.1
+ln -sf libEGL.so.1.0 .install/usr/lib/libEGL.so
+
+mv -f .install/usr/lib/libGAL-$backend.so .install/usr/lib/libGAL.so
+
+[ $backend = x11 ] && srclib=libGAL_egl.dri.so || srclib=libGAL_egl.$backend.so
+mv -f .install/usr/lib/$srclib .install/usr/lib/libGAL_egl.so
+
+[ $backend = fb ] && srclib=libVIVANTE-$backend.so || libVIVANTE.so
+mv -f .install/usr/lib/$srclib .install/usr/lib/libVIVANTE.so
+
+mv .install/usr/lib/libGLESv2-$backend.so .install/usr/lib/libGLESv2.so.2.0.0
+ln -sf libGLESv2.so.2.0.0 .install/usr/lib/libGLESv2.so.2
+ln -sf libGLESv2.so.2.0.0 .install/usr/lib/libGLESv2.so
+
+##
+
+## clean a little
+
+if ! pkg_uses $1 wayland ; then
+  rm .install/usr/lib/libgc_wayland_protocol.*
+  rm .install/usr/lib/libwayland-viv.*
+fi
+
+for backend in wl x11 fb dfb dri; do
+  find .install/usr/lib -name "*$backend.so" -delete
+done
+
+if [ "$DEVROOTFS" = yes ] ; then
+  ln -sf .install .install-unstripped
+fi
