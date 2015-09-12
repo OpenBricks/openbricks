@@ -20,9 +20,11 @@ export PATH=$(echo $PATH | sed "s|$ROOT/$TOOLCHAIN/bin:||g" ):$ROOT/$TOOLCHAIN/b
 
 export MAKEFLAGS=-j1
 
+# build configuration
 make CROSS_COMPILE="$TARGET_PREFIX" $MACHINE_UBOOT_CONFIG $MACHINE_UBOOT_OPTIONS
+# build u-boot
 make CROSS_COMPILE="$TARGET_PREFIX" HOSTCC="$HOST_CC" HOSTSTRIP="true"
-
+# build fw_env tools
 ubootmajor=`grep "^VERSION *=" Makefile | grep -o "[0-9]*$"`
 if [ -z "$ubootmajor" ] || [ "$ubootmajor" -lt 2014 ]; then
   make CROSS_COMPILE="$TARGET_PREFIX" HOSTCC="$TARGET_CC" HOSTSTRIP="$TARGET_STRIP" env
@@ -31,6 +33,7 @@ else
 fi
 
 
+# build additional u-boot configurations
 if [ -n "$MACHINE_UBOOT_CONFIG_EXTRA" ]; then
   echo "found extra config to build : $MACHINE_UBOOT_CONFIG_EXTRA"
   mkdir -p extra-uboot
@@ -61,21 +64,31 @@ if [ -n "$MACHINE_UBOOT_CONFIG_EXTRA" ]; then
   fi
 fi
 
-# check for uEnv.txt
-USER_ENV="$CONFIG_MACHINE/uEnv.txt"
-[ ! -r "$USER_ENV" ] && USER_ENV="$CONFIG_PLATFORM/uEnv.txt"
-if [ -r "$USER_ENV" ]; then
-  cp $USER_ENV uEnv.txt
+
+# join components to single firmware file
+# MACHINE_UBOOT_FIRMWARE="myfirmware.bin:<size> component1@<offset> ... componentX@<offset>"
+if [ -n "$MACHINE_UBOOT_FIRMWARE" ]; then
+  fw_image=""
+  for p in $MACHINE_UBOOT_FIRMWARE; do
+    case `echo $p | grep -o '[:|@]'` in
+    ':')
+      fw_image=`echo $p | sed -e 's/:.*//'`
+      tr < /dev/zero '\000' '\377' | dd of=`echo $p | sed -e 's/:/ bs=1K count=/'`
+      ;;
+    '@')
+      [ -f "$fw_image" ] && \
+      dd conv=notrunc of=$fw_image if=`echo $p | sed -e 's/@/ bs=1K seek=/'`
+      ;;
+    esac
+  done
+
+  # use firmware file instead of u-boot binary
+  [ -z "$MACHINE_UBOOT_BINARY" ] && MACHINE_UBOOT_BINARY=$fw_image
 fi
 
 # check for boot.cfg
 BOOT_CFG="$CONFIG_MACHINE/boot.cfg"
 [ ! -r "$BOOT_CFG" ] && BOOT_CFG="$CONFIG_PLATFORM/boot.cfg"
-
-if [ "$TARGET_MACHINE" = "utilite" ]; then
-  dd if=/dev/zero count=500 bs=1K | tr '\000' '\377' > cm-fx6-firmware
-  dd if=SPL of=cm-fx6-firmware bs=1K seek=1 conv=notrunc && dd if=u-boot.img of=cm-fx6-firmware bs=1K seek=64 conv=notrunc
-fi
 
 if [ -r "$BOOT_CFG" ]; then
   cp $BOOT_CFG boot.cfg
@@ -89,6 +102,14 @@ if [ -r "$BOOT_CFG" ]; then
 
   ./tools/mkimage -A arm -O u-boot -T script -C none \
     -n "$DISTRONAME Boot" $MKIMAGE_ARGS -d boot.cfg boot.ini
+fi
+
+# check for uEnv.txt
+USER_ENV="$CONFIG_MACHINE/uEnv.txt"
+[ ! -r "$USER_ENV" ] && USER_ENV="$CONFIG_PLATFORM/uEnv.txt"
+
+if [ -r "$USER_ENV" ]; then
+  cp $USER_ENV uEnv.txt
 fi
 
 # check for fw_env.config
@@ -108,12 +129,7 @@ if [ -r "$ENV_CFG" ] && [ -r tools/env/fw_printenv ]; then
   ln -s fw_printenv .install/usr/bin/fw_setenv
 fi
 
-
 installdir=".install/boot"
-
-if [ -f cm-fx6-firmware ] ; then
-  cp cm-fx6-firmware $installdir
-fi
 
 if [ -n "$MACHINE_UBOOT_BINARY" ]; then
   cp $MACHINE_UBOOT_BINARY $installdir
