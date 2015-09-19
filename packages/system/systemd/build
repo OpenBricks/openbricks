@@ -6,16 +6,24 @@ $SCRIPTS/uninstalldev dbus
 get_meta $1
 cd $PKG_BUILD_DIR
 
+./autogen.sh
+
 export ac_cv_func_malloc_0_nonnull=yes
 export ac_cv_path_KMOD="/usr/bin/kmod"
 GCC_NO_LTO=1 GCC_NO_GOLD=1 \
 do_configure \
-            --disable-gtk-doc-html \
-            --enable-gudev \
-            --enable-introspection=no \
+            --disable-utmp \
+            --disable-gnuefi \
+            --disable-ldconfig \
+            --disable-timesyncd \
+            --disable-resolved \
+            --disable-networkd \
+            --disable-libiptc \
+            --disable-kdbus \
+            --disable-tests \
+            --disable-split-usr \
             --disable-selinux \
             --disable-ima \
-            --disable-tcpwrap \
             --disable-pam \
             --disable-audit \
             --disable-acl \
@@ -29,23 +37,19 @@ do_configure \
             --disable-vconsole \
             --disable-xz \
             --disable-quotacheck \
-            --enable-readahead \
             --disable-manpages \
             --disable-qrencode \
             --disable-microhttpd \
+            --disable-bootchart \
             --without-python \
             --with-dbuspolicydir=/etc/dbus-1/system.d \
             --with-dbussessionservicedir=/usr/share/dbus-1/services \
             --with-dbussystemservicedir=/usr/share/dbus-1/system-services \
-            --with-dbusinterfacedir=/usr/share/dbus-1/interfaces \
-            --with-firmware-path=/firmware \
             --with-sysvinit-path= \
             --with-sysvrcnd-path= \
             --with-pamlibdir= \
             --with-rootprefix= \
-            --with-rootlibdir=/lib \
-            --without-python \
-            --disable-bootchart \
+            --with-rootlibdir=/lib
 
 export MAKEFLAGS=-j1
 make
@@ -55,13 +59,15 @@ SYSTEMD=.install/lib/systemd
 SYSUNITS=$SYSTEMD/system
 
 # we don't care about utmp (it's not even supported by our libc)
-rm -f $SYSTEMD/systemd-update-utmp
-rm -f $SYSUNITS/systemd-update-utmp.service
-rm -f $SYSUNITS/sysinit.target.wants/systemd-update-utmp.service
-rm -f $SYSUNITS/systemd-update-utmp-runlevel.service
-rm -f $SYSUNITS/systemd-update-utmp-shutdown.service
-rm -f $SYSUNITS/shutdown.target.wants/systemd-update-utmp-shutdown.service
-rm -f $SYSUNITS/runlevel?.target.wants/systemd-update-utmp-runlevel.service
+if [ $PKG_VERSION -lt 217 ]; then
+  rm -f $SYSTEMD/systemd-update-utmp
+  rm -f $SYSUNITS/systemd-update-utmp.service
+  rm -f $SYSUNITS/sysinit.target.wants/systemd-update-utmp.service
+  rm -f $SYSUNITS/systemd-update-utmp-runlevel.service
+  rm -f $SYSUNITS/systemd-update-utmp-shutdown.service
+  rm -f $SYSUNITS/shutdown.target.wants/systemd-update-utmp-shutdown.service
+  rm -f $SYSUNITS/runlevel?.target.wants/systemd-update-utmp-runlevel.service
+fi
 
 # boot to multi-user.target as fallback default
 ln -sf multi-user.target $SYSUNITS/default.target
@@ -69,8 +75,10 @@ ln -sf multi-user.target $SYSUNITS/default.target
 # udev
 if [ $PKG_VERSION -lt 209 ]; then
   systemd_libs="gudev-1.0 systemd-daemon systemd-id128 systemd-journal"
-else
+elif [ $PKG_VERSION -lt 221 ]; then
   systemd_libs="gudev-1.0 systemd"
+else
+  systemd_libs="systemd"
 fi
 
 # Note: These links are only valid in the toolchain tree
