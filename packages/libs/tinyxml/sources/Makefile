@@ -39,8 +39,8 @@ clean:
 install:
 	install -d -m 0755  $(DESTDIR)/usr/lib
 	install -m 0755 $(name).so.$(version) $(DESTDIR)/usr/lib/
-	install -m 0755 $(name).so.$(major) $(DESTDIR)/usr/lib/
-	install -m 0755 $(name).so $(DESTDIR)/usr/lib/
+	cp -P $(name).so.$(major) $(DESTDIR)/usr/lib/
+	cp -P $(name).so $(DESTDIR)/usr/lib/
 	install -d -m 0755  $(DESTDIR)/usr/lib/pkgconfig
 	install -m 0644 tinyxml.pc $(DESTDIR)/usr/lib/pkgconfig
 	install -d -m 0755  $(DESTDIR)/usr/include
