@@ -1,0 +1,43 @@
+diff -Naur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp
+--- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp	2015-08-22 02:16:33.000000000 +0200
++++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp	2015-08-25 20:35:04.000000000 +0200
+@@ -422,6 +422,7 @@
+   m_bytesToBeConsumed = 0;
+   m_previousPts = DVD_NOPTS_VALUE;
+   m_warnOnce = true;
++  m_forcedWidthDivHeightRatio = 0;
+ #ifdef DUMP_STREAM
+   m_dump = NULL;
+ #endif
+@@ -501,6 +502,8 @@
+   }
+ #endif
+ 
++  m_forcedWidthDivHeightRatio = m_hints.forced_aspect ? (65536 * m_hints.aspect) : 0;
++
+   m_convert_bitstream = false;
+   switch(m_hints.codec)
+   {
+@@ -1108,7 +1114,10 @@
+   pDvdVideoPicture->iWidth = m_frameInfo.pExtInfo->FrmCropRect.nRight - m_frameInfo.pExtInfo->FrmCropRect.nLeft;
+   pDvdVideoPicture->iHeight = m_frameInfo.pExtInfo->FrmCropRect.nBottom - m_frameInfo.pExtInfo->FrmCropRect.nTop;
+ 
+-  pDvdVideoPicture->iDisplayWidth = ((pDvdVideoPicture->iWidth * m_frameInfo.pExtInfo->nQ16ShiftWidthDivHeightRatio) + 32767) >> 16;
++  int widthDivHeightRatio = m_forcedWidthDivHeightRatio ?
++    m_forcedWidthDivHeightRatio : m_frameInfo.pExtInfo->nQ16ShiftWidthDivHeightRatio;
++
++  pDvdVideoPicture->iDisplayWidth = ((pDvdVideoPicture->iWidth * widthDivHeightRatio) + 32767) >> 16;
+   pDvdVideoPicture->iDisplayHeight = pDvdVideoPicture->iHeight;
+ 
+   // Current buffer is locked already -> hot potato
+diff -Naur a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecIMX.h b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecIMX.h
+--- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecIMX.h	2015-08-22 02:16:33.000000000 +0200
++++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecIMX.h	2015-08-25 20:29:50.000000000 +0200
+@@ -342,6 +342,7 @@
+   double                       m_previousPts;       // Enable to keep pts when needed
+   bool                         m_frameReported;     // State whether the frame consumed event will be reported by libfslvpu
+   bool                         m_warnOnce;          // Track warning messages to only warn once
++  int                          m_forcedWidthDivHeightRatio; // Aspect ratio when overriden by hint
+ #ifdef DUMP_STREAM
+   FILE                        *m_dump;
+ #endif
