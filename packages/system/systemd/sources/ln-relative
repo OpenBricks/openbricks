@@ -1,0 +1,40 @@
+#! /bin/sh
+
+relpath () {
+    [ $# -ge 1 ] && [ $# -le 2 ] || return 1
+    current="${2:+"$1"}"
+    target="${2:-"$1"}"
+    [ "$target" != . ] || target=/
+    target="/${target##/}"
+    [ "$current" != . ] || current=/
+    current="${current:="/"}"
+    current="/${current##/}"
+    appendix="${target##/}"
+    relative=''
+    while appendix="${target#"$current"/}"
+        [ "$current" != '/' ] && [ "$appendix" = "$target" ]; do
+        if [ "$current" = "$appendix" ]; then
+            relative="${relative:-.}"
+            echo "${relative#/}"
+            return 0
+        fi
+        current="${current%/*}"
+        relative="$relative${relative:+/}.."
+    done
+    relative="$relative${relative:+${appendix:+/}}${appendix#/}"
+    echo "$relative"
+}
+
+s=$1
+while [ "$s" != "${s##-}" ]; do
+  opt="$opt $s"
+  shift
+  s=$1
+done
+
+if [ -n "$1" ] && [ -n "$2" ]; then
+  src=$(readlink -m $1)
+  tgt=$(readlink -m $2)
+
+  ln -s $opt $(relpath $(dirname "$tgt") $(dirname "$src"))/$(basename "$src") "$tgt"
+fi
