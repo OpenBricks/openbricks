@@ -28,8 +28,6 @@ select_qt_embedded () {
 
   pkg_uses $1 touchscreen && \
     CFG_EMBEDDED="$CFG_EMBEDDED -qt-mouse-tslib"
-
-  return 0
 }
 
 select_qt_x11 () {
@@ -40,31 +38,33 @@ select_qt_x11 () {
   CFG_X="$CFG_X -xkb"
 }
 
+enable_feature () {
+  use_flag=$2
+  qt_flag=$3  
+  qt_mode=$4
+
+  [ -z "$qt_flag" ] && qt_flag=$use_flag
+
+  if pkg_uses $1 $use_flag; then
+    if [ -z "$qt_mode" ]; then
+      CFG_QT_FEATURES="$CFG_QT_FEATURES -$qt_flag"
+    else
+      CFG_QT_FEATURES="$CFG_QT_FEATURES -$qt_mode-$qt_flag"
+    fi
+  else   
+    CFG_QT_FEATURES="$CFG_QT_FEATURES -no-$qt_flag"
+  fi
+}
+
+strip_option () {
+  echo "$1" | sed -e "s%$2%%g"
+}
+
 # Ensure one of the qualifying flags has been set to build QT.
 if ! pkg_uses $1 embedded && ! pkg_uses $1 xorg; then
   die
 fi
 
-pkg_uses $1 opengl && \
-  CROSS_GL="-opengl" || CROSS_GL="-no-opengl"
-
-pkg_uses $1 opengles && \
-  CROSS_GL="-opengl es2"
-
-pkg_uses $1 openvg && \
-  CROSS_VG="-openvg" || CROSS_VG="-no-openvg"
-
-pkg_uses $1 openssl && \
-  CROSS_SSL="-openssl" || CROSS_SSL="-no-openssl"
-
-pkg_uses $1 gstreamer && \
-  CROSS_GST="-phonon" || CROSS_GST="-no-phonon"
-
-pkg_uses $1 mysql && \
-  CROSS_MYSQL="-qt-sql-mysql -plugin-sql-mysql" || CROSS_MYSQL="-no-sql-mysql"
-
-pkg_uses $1 qt3 && \
-  CROSS_QT_LEGACY="-qt3support" || CROSS_QT_LEGACY="-no-qt3support"
 
 # architecture specific options
 case "$TARGET_ARCH" in
@@ -100,20 +100,6 @@ else
   CFG_NEON="-no-neon"
 fi
 
-if pkg_uses $1 webkit; then
-    CFG_WEBKIT="-webkit"
-    CFG_JS="-javascript-jit"
-else
-    CFG_WEBKIT="-no-webkit"
-    CFG_JS="-no-javascript-jit"
-fi
-
-if pkg_uses $1 declarative; then
-    CFG_DECLARATIVE="-declarative"
-else
-    CFG_DECLARATIVE="-no-declarative"
-fi
-
 if pkg_uses $1 xorg; then
   select_qt_x11 $1
   CFG_QT="$CFG_X"
@@ -121,6 +107,22 @@ else
   select_qt_embedded $1
   CFG_QT="$CFG_EMBEDDED"
 fi
+
+CFG_QT_FEATURES=""
+enable_feature $1 "opengl"
+enable_feature $1 "opengles" "opengl es2"
+enable_feature $1 "openvg"
+enable_feature $1 "openssl"
+enable_feature $1 "gstreamer" "phonon"
+enable_feature $1 "qt3" "qt3support"
+enable_feature $1 "webkit"
+enable_feature $1 "webkit" "javascript-jit"
+enable_feature $1 "declarative"
+
+enable_feature $1 "tds" "sql-tds" "plugin"
+enable_feature $1 "mysql" "sql-mysql" "plugin"
+#enable_feature $1 "sqlite" "sql-sqlite" "qt"
+
 
 cd $PKG_BUILD_DIR
 
@@ -132,8 +134,13 @@ mkdir -p $MKSPECS_DIR
 QMAKE_CONF=$MKSPECS_DIR/qmake.conf
 pkg_uses $1 mysql && MYSQL_INCDIR="$LIB_PREFIX/include/mysql"
 
-strip_thumb="`echo $TARGET_CFLAGS | sed 's/-mthumb//'`"
-export TARGET_CFLAGS="$strip_thumb"
+
+# why ?
+TARGET_CFLAGS="$(strip_option "$TARGET_CFLAGS" -mthumb)"
+
+# gcc 4.9.x doesn't like this...
+TARGET_CFLAGS="$(strip_option "$TARGET_CFLAGS" -fgraphite-identity)"
+
 
 if [ "$TARGET_ARCH" = i386 ]; then
     ARCHFLAGS="-m32"
@@ -241,18 +248,10 @@ yes | ./configure \
             -shared \
             -stl \
             -no-separate-debug-info \
-            $CFG_QT_LEGACY \
+            $CFG_QT \
+            $CFG_QT_FEATURES \
             -qt-sql-sqlite \
             -system-sqlite \
-            $CROSS_MYSQL \
-            $CROSS_GL \
-            $CROSS_VG \
-            $CROSS_SSL \
-            $CROSS_GST \
-            $CFG_WEBKIT \
-            $CFG_JS \
-            $CFG_DECLARATIVE \
-            $CFG_QT \
             -exceptions \
             -xmlpatterns \
             -multimedia \
