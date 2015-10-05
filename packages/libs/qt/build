@@ -28,6 +28,8 @@ select_qt_embedded () {
 
   pkg_uses $1 touchscreen && \
     CFG_EMBEDDED="$CFG_EMBEDDED -qt-mouse-tslib"
+    
+  return 0
 }
 
 select_qt_x11 () {
@@ -36,6 +38,8 @@ select_qt_x11 () {
   CFG_X="$CFG_X -xrender"
   CFG_X="$CFG_X -xinput"
   CFG_X="$CFG_X -xkb"
+
+  return 0
 }
 
 enable_feature () {
@@ -60,11 +64,34 @@ strip_option () {
   echo "$1" | sed -e "s%$2%%g"
 }
 
+extra_options_gles () {
+  case "$GLES_PROVIDER" in
+    sgx)
+      ;;
+    tegra)
+      ;;
+    imx5)
+      ;;
+    imx6)
+      TARGET_CFLAGS="$TARGET_CFLAGS -DLINUX -DEGL_API_FB"
+      ;;
+    mali)
+      ;;
+    vivante)
+      TARGET_CFLAGS="$TARGET_CFLAGS -lVIVANTE -lXdamage -lXfixes -lpthread"
+      ;;
+    vc)
+      TARGET_CFLAGS="$TARGET_CFLAGS -I$LIB_PREFIX/include/interface/vmcs_host/linux"
+      TARGET_CFLAGS="$TARGET_CFLAGS -I$LIB_PREFIX/include/interface/vcos/pthreads"
+      TARGET_CFLAGS="$TARGET_CFLAGS -lGLESv2"
+      ;;
+  esac
+}
+
 # Ensure one of the qualifying flags has been set to build QT.
 if ! pkg_uses $1 embedded && ! pkg_uses $1 xorg; then
   die
 fi
-
 
 # architecture specific options
 case "$TARGET_ARCH" in
@@ -109,8 +136,15 @@ else
 fi
 
 CFG_QT_FEATURES=""
-enable_feature $1 "opengl"
-enable_feature $1 "opengles" "opengl es2"
+if pkg_uses $1 opengl; then
+  enable_feature $1 "opengl" "opengl desktop"
+elif pkg_uses $1 opengles; then
+  extra_options_gles
+  enable_feature $1 "opengles" "opengl es2"
+else
+  enable_feature $1 "" "opengl"
+fi
+
 enable_feature $1 "openvg"
 enable_feature $1 "openssl"
 enable_feature $1 "gstreamer" "phonon"
@@ -118,10 +152,17 @@ enable_feature $1 "qt3" "qt3support"
 enable_feature $1 "webkit"
 enable_feature $1 "webkit" "javascript-jit"
 enable_feature $1 "declarative"
+enable_feature $1 "cups"
 
 enable_feature $1 "tds" "sql-tds" "plugin"
 enable_feature $1 "mysql" "sql-mysql" "plugin"
 #enable_feature $1 "sqlite" "sql-sqlite" "qt"
+
+if pkg_uses $1 devtools; then
+  CFG_QT_DOCS="-make docs"
+else
+  CFG_QT_DOCS="-nomake docs"
+fi
 
 
 cd $PKG_BUILD_DIR
@@ -142,18 +183,11 @@ TARGET_CFLAGS="$(strip_option "$TARGET_CFLAGS" -mthumb)"
 TARGET_CFLAGS="$(strip_option "$TARGET_CFLAGS" -fgraphite-identity)"
 
 
-if [ "$TARGET_ARCH" = i386 ]; then
-    ARCHFLAGS="-m32"
-elif [ "$TARGET_ARCH" = x86_64 ]; then
-    ARCHFLAGS="-m64"
-fi
-
 cat > $MKSPECS_DIR/qplatformdefs.h <<EOF
 #include "../linux-g++/qplatformdefs.h"
 EOF
 
 cat > $QMAKE_CONF <<EOF
-
 MAKEFILE_GENERATOR      = UNIX
 TARGET_PLATFORM         = unix
 TEMPLATE                = app
@@ -260,13 +294,12 @@ yes | ./configure \
             -script \
             -scripttools \
             -no-nis \
-            -no-cups \
             -make libs \
             -make tools \
-            -nomake examples \
-            -nomake demos \
-            -nomake docs \
             -make translations \
+            $CFG_QT_DOCS \
+            -nomake demos \
+            -nomake examples \
             -no-pch \
             -v
 
