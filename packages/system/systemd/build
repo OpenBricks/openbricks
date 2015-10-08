@@ -6,21 +6,38 @@ $SCRIPTS/uninstalldev dbus
 get_meta $1
 cd $PKG_BUILD_DIR
 
-if [ ! -e ./configure ]; then
+if [ ! -e ./configure ] || grep -qv "ln --relative" configure.ac ; then
   # workaround for hosts that don't support 'ln --relative'
   # we use a wrapper script to emulate this option
   sed -i -e "s%ln --relative%ln%" configure.ac
   sed -i -e "s%\$(LN_S) --relative%${PWD}/ln-relative%" Makefile.am
 
-  ./autogen.sh
+  ln -sf $ROOT/$PACKAGES/$PKG_SECTION/$1/scripts/ln-relative
+
+  [ -e ./autogen.sh ] && ./autogen.sh || do_autoconf
+fi
+
+if [ $PKG_VERSION -lt 217 ]; then
+EXTRA_CONFIG="\
+            --disable-gtk-doc \
+            --disable-tcpwrap \
+            --enable-gudev \
+            --enable-readahead \
+            --enable-introspection=no \
+            --with-firmware-path=/firmware \
+            --with-dbusinterfacedir=/usr/share/dbus-1/interfaces \
+"
+else
+EXTRA_CONFIG="\
+            --disable-utmp \
+            --disable-gnuefi \
+"
 fi
 
 export ac_cv_func_malloc_0_nonnull=yes
 export ac_cv_path_KMOD="/usr/bin/kmod"
 GCC_NO_LTO=1 GCC_NO_GOLD=1 \
 do_configure \
-            --disable-utmp \
-            --disable-gnuefi \
             --disable-timesyncd \
             --disable-resolved \
             --disable-networkd \
@@ -55,7 +72,8 @@ do_configure \
             --with-sysvrcnd-path= \
             --with-pamlibdir= \
             --with-rootprefix= \
-            --with-rootlibdir=/lib
+            --with-rootlibdir=/lib \
+            $EXTRA_CONFIG
 
 export MAKEFLAGS=-j1
 make
@@ -88,6 +106,7 @@ else
 fi
 
 # Note: These links are only valid in the toolchain tree
+#       they will not be installed on the target rootfs
 for i in $systemd_libs; do
   ln -sf ../../../lib/lib${i}.so.0 .install/usr/lib/lib${i}.so
 done
