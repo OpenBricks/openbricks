@@ -4,38 +4,105 @@
 
 get_meta $1
 
-mkdir -p $INSTALL/share/initramfs/bin
-mkdir -p $INSTALL/share/initramfs/sbin
-mkdir -p $INSTALL/share/initramfs/sys
-mkdir -p $INSTALL/share/initramfs/proc
-mkdir -p $INSTALL/share/initramfs/dev
-mkdir -p $INSTALL/share/initramfs/mnt
-mkdir -p $INSTALL/share/initramfs/newroot
-mkdir -p $INSTALL/share/initramfs/squashfs
-mkdir -p $INSTALL/share/initramfs/rw
-mkdir -p $INSTALL/share/initramfs/plymouth
-mkdir -p $INSTALL/share/initramfs/lib
-mkdir -p $INSTALL/share/initramfs/etc
+### create directories like a real install
+dest=$INSTALL/share/initramfs
 
-cp $ROOT/$PACKAGES/$PKG_SECTION/$PKG_NAME/scripts/linuxrc $INSTALL/share/initramfs/init
-cp $ROOT/$PACKAGES/$PKG_SECTION/$PKG_NAME/scripts/shutdown $INSTALL/share/initramfs/bin
-cp $ROOT/$PACKAGES/$PKG_SECTION/$PKG_NAME/scripts/assign-ip $INSTALL/share/initramfs/bin
-cp $PKG_BUILD_DIR/busybox $INSTALL/share/initramfs/bin
-cp $BUILD/plymouth-lite*/.install/usr/share/plymouth/splash.png $INSTALL/share/initramfs/plymouth
-cp $BUILD/plymouth-lite*/.install/usr/bin/ply-image $INSTALL/share/initramfs/bin
-cp $BUILD/samba-*/source*/.install/usr/sbin/mount.cifs $INSTALL/share/initramfs/sbin
+mkdir -p $dest/etc
+mkdir -p $dest/usr/bin
+mkdir -p $dest/usr/sbin
+mkdir -p $dest/usr/lib
+mkdir -p $dest/dev
+mkdir -p $dest/mnt
+mkdir -p $dest/tmp
+mkdir -p $dest/root
+mkdir -p $dest/var/log
+mkdir -p $dest/var/cache
+mkdir -p $dest/var/spool
+mkdir -p $dest/proc
+mkdir -p $dest/sys
+mkdir -p $dest/usr/lib/firmware
+mkdir -p $dest/run
+ln -s usr/bin $dest/bin
+ln -s usr/sbin $dest/sbin
+ln -s usr/lib $dest/lib
+ln -s /run $dest/var/run
+ln -s /run/lock $dest/var/lock
+ln -s /usr/lib/firmware $dest/firmware
+
+if [ $TARGET_ARCH = x86_64 -o $TARGET_ARCH = powerpc64 ]; then
+  ln -s usr/lib $dest/lib64
+  ln -s lib $dest/usr/lib64
+fi
+
+# specific to our init
+mkdir -p $dest/newroot
+mkdir -p $dest/squashfs
+mkdir -p $dest/rw
+mkdir -p $dest/plymouth
+
+###
+
+src=$ROOTFS/lib
+destlib=$dest/lib
+destbin=$dest/bin
+copylib () {
+  cp -L $src/$1 $destlib
+}
+
+copybin () {
+  cp $ROOTFS/bin/$1 $destbin
+}
+
+cp $ROOT/$PACKAGES/$PKG_SECTION/$PKG_NAME/scripts/linuxrc $dest/init
+cp $ROOT/$PACKAGES/$PKG_SECTION/$PKG_NAME/scripts/shutdown $destbin
+cp $ROOT/$PACKAGES/$PKG_SECTION/$PKG_NAME/scripts/assign-ip $destbin
+cp $PKG_BUILD_DIR/busybox $destbin
+cp $BUILD/plymouth-lite*/.install/usr/share/plymouth/splash.png $dest/plymouth
+cp $BUILD/plymouth-lite*/.install/usr/bin/ply-image $dest/bin
+cp $BUILD/samba-*/source*/.install/usr/sbin/mount.cifs $dest/sbin
 
 # library for ntfs-3g
-[ "$TARGET_ARCH" = "i386" ] && cp $ROOTFS/lib/ld-linux.so.2 $INSTALL/share/initramfs/lib || cp $ROOTFS/lib/ld-linux-x86-64.so.2 $INSTALL/share/initramfs/lib
-cp $ROOTFS/lib/libdl.so.2 $INSTALL/share/initramfs/lib
-cp $ROOTFS/usr/lib/libfuse.so.2 $INSTALL/share/initramfs/lib
-cp $ROOTFS/usr/lib/libgcc_s.so.1 $INSTALL/share/initramfs/lib
-cp $ROOTFS/lib/librt.so.1 $INSTALL/share/initramfs/lib
-cp $ROOTFS/lib/libc.so.6 $INSTALL/share/initramfs/lib
-cp $ROOTFS/lib/libpthread.so.0 $INSTALL/share/initramfs/lib
-cp $ROOTFS/bin/ntfs-3g $INSTALL/share/initramfs/bin
-ln -sf /bin/ntfs-3g $INSTALL/share/initramfs/sbin/mount.ntfs
-ln -sf /lib $INSTALL/share/initramfs/lib64
+[ "$TARGET_ARCH" = "i386" ] && copylib ld-linux.so.2 || copylib ld-linux-x86-64.so.2
+copylib libdl.so.2
+copylib libfuse.so.2
+copylib libgcc_s.so.1
+copylib librt.so.1
+copylib libc.so.6
+copylib libpthread.so.0
+copybin ntfs-3g
+ln -sf /bin/ntfs-3g $dest/sbin/mount.ntfs
 echo "ntfs" >> $INSTALL/share/initramfs/etc/filesystems
+
+# Kernel modules
+KERNEL_VERSION=`kernel_version`
+find $ROOTFS/lib/modules/$KERNEL_VERSION/kernel -type f |  cpio --make-directories -p --quiet $INSTALL/share/initramfs
+cp -r $INSTALL/share/initramfs/$ROOTFS/lib/* $INSTALL/share/initramfs/lib
+rm -r $INSTALL/share/initramfs/$ROOTFS
+if [ -d $INSTALL/share/initramfs/tmp ] ; then
+  rm -r $INSTALL/share/initramfs/tmp
+fi
+
+## firmware
+cp -r $ROOTFS/usr/lib/firmware $destlib
+
+## copy lib for systemd, systemd, blkid, udevadm
+copylib libblkid.so.1
+copylib libkmod.so.2
+copylib libuuid.so.1
+cp $ROOTFS/sbin/blkid $dest/sbin
+copybin udevadm
+ln -sf /usr/bin/udevadm $dest/bin/udevinfo
+cp -r $ROOTFS/lib/systemd $dest/lib
+cp -r $ROOTFS/usr/lib/udev $dest/usr/lib
+
+
+## kmod, modprobe & co
+copybin kmod
+ln -sf /usr/bin/kmod $dest/sbin/modprobe
+ln -sf /usr/bin/kmod $dest/sbin/modinfo
+ln -sf /usr/bin/kmod $dest/sbin/insmod
+ln -sf /usr/bin/kmod $dest/sbin/lsmod
+
+depmod -b $INSTALL/share/initramfs $KERNEL_VERSION
 
 ln -s busybox $INSTALL/share/initramfs/bin/sh
