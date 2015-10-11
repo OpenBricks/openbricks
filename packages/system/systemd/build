@@ -96,20 +96,24 @@ fi
 # boot to multi-user.target as fallback default
 ln -sf multi-user.target $SYSUNITS/default.target
 
-# udev
-if [ $PKG_VERSION -lt 209 ]; then
-  systemd_libs="gudev-1.0 systemd-daemon systemd-id128 systemd-journal"
-elif [ $PKG_VERSION -lt 221 ]; then
-  systemd_libs="gudev-1.0 systemd"
-else
-  systemd_libs="systemd"
-fi
-
-# Note: These links are only valid in the toolchain tree
-#       they will not be installed on the target rootfs
-for i in $systemd_libs; do
-  ln -sf ../../../lib/lib${i}.so.0 .install/usr/lib/lib${i}.so
-done
-ln -sf ../../../lib/libudev.so.1 .install/usr/lib/libudev.so
-
+# we don't (yet) have proper user/groups management...
 sed -i -e 's/, *GROUP=\"[^\"]*\"//g' .install/lib/udev/rules.d/*
+
+
+# fixup devpackage: In our toolchain tree, /lib will go to systroot. Therefore
+#                   we have to adjust the links in /usr/lib accordingly. Note
+#                   that most of these links are not valid on the rootfs and
+#                   should *not* be installed there.
+#
+#                   systemd-XXXXX are legacy libs and may not be present
+#                   gudev-1.0 can reside in /lib or /usr/lib or may not exist
+systemd_libs="systemd udev gudev-1.0 systemd-daemon systemd-id128 systemd-journal"
+for i in $systemd_libs; do
+  if [ -e .install/lib/lib${i}.so.0 ]; then
+    ln -sf ../../../lib/lib${i}.so.0 .install/usr/lib/lib${i}.so
+  elif [ -e .install/lib/lib${i}.so.1 ]; then
+    ln -sf ../../../lib/lib${i}.so.1 .install/usr/lib/lib${i}.so
+  elif [ -e .install/usr/lib/lib${i}.so.0 ]; then
+    ln -sf lib${i}.so.0 .install/usr/lib/lib${i}.so
+  fi
+done
