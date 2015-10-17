@@ -1,0 +1,251 @@
+diff -Naur a/xbmc/windowing/egl/EGLNativeTypeA10.cpp b/xbmc/windowing/egl/EGLNativeTypeA10.cpp
+--- a/xbmc/windowing/egl/EGLNativeTypeA10.cpp	2014-10-15 13:29:39.000000000 +0200
++++ b/xbmc/windowing/egl/EGLNativeTypeA10.cpp	2014-10-15 14:18:38.927270632 +0200
+@@ -21,8 +21,10 @@
+ #include <EGL/egl.h>
+ #include "EGLNativeTypeA10.h"
+ #include "utils/log.h"
++#include "utils/RegExp.h"
+ #include "utils/StringUtils.h"
+ #include "guilib/gui3d.h"
++#include "cores/AudioEngine/AEFactory.h"
+ 
+ #if defined(ALLWINNERA10) && !defined(TARGET_ANDROID)
+ #include "cores/VideoRenderers/LinuxRendererA10.h"
+@@ -58,8 +58,23 @@
+ 
+ void CEGLNativeTypeA10::Initialize()
+ {
++  // Check if we can change the framebuffer resolution
++  int fd = open("/sys/class/graphics/fb0/mode", O_RDWR);
++  if (fd >= 0)
++  {
++    CLog::Log(LOGNOTICE, "%s - graphics sysfs is writable", __FUNCTION__);
++    m_readonly = false;
++  }
++  else
++  {
++    CLog::Log(LOGNOTICE, "%s - graphics sysfs is read-only", __FUNCTION__);
++    m_readonly = true;
++  }
++  close(fd);
++  
+   return;
+ }
++
+ void CEGLNativeTypeA10::Destroy()
+ {
+   return;
+@@ -110,19 +125,28 @@
+ bool CEGLNativeTypeA10::GetNativeResolution(RESOLUTION_INFO *res) const
+ {
+ #if defined(ALLWINNERA10) && !defined(TARGET_ANDROID)
+-  res->iWidth = g_fbwin.width;
+-  res->iHeight= g_fbwin.height;
++  std::string mode;
+ 
+-  res->fRefreshRate = g_refreshRate;
+-  res->dwFlags= D3DPRESENTFLAG_PROGRESSIVE | D3DPRESENTFLAG_WIDESCREEN;
+-  res->iScreen       = 0;
+-  res->bFullScreen   = true;
+-  res->iSubtitles    = (int)(0.965 * res->iHeight);
+-  res->fPixelRatio   = 1.0f;
+-  res->iScreenWidth  = res->iWidth;
+-  res->iScreenHeight = res->iHeight;
+-  res->strMode = StringUtils::Format("%dx%d @ %.2f%s - Full Screen", res->iScreenWidth, res->iScreenHeight, res->fRefreshRate,
+-  res->dwFlags & D3DPRESENTFLAG_INTERLACED ? "i" : "");
++  if (!m_readonly)
++    get_sysfs_str("/sys/class/graphics/fb0/mode", mode);
++
++  if( !ModeToResolution(mode, res) )
++  {
++    res->iWidth = g_fbwin.width;
++    res->iHeight= g_fbwin.height;
++
++    res->fRefreshRate = g_refreshRate;
++    res->dwFlags= D3DPRESENTFLAG_PROGRESSIVE | D3DPRESENTFLAG_WIDESCREEN;
++    res->iScreen       = 0;
++    res->bFullScreen   = true;
++    res->iSubtitles    = (int)(0.965 * res->iHeight);
++    res->fPixelRatio   = 1.0f;
++    res->iScreenWidth  = res->iWidth;
++    res->iScreenHeight = res->iHeight;
++    res->strMode = StringUtils::Format("%dx%d @ %.2f%s - Full Screen", res->iScreenWidth, res->iScreenHeight, res->fRefreshRate,
++    res->dwFlags & D3DPRESENTFLAG_INTERLACED ? "i" : "");
++  }
++  
+   CLog::Log(LOGNOTICE,"Current resolution: %s\n",res->strMode.c_str());
+   return true;
+ #else
+@@ -132,28 +156,152 @@
+ 
+ bool CEGLNativeTypeA10::SetNativeResolution(const RESOLUTION_INFO &res)
+ {
+-  return false;
++  if (m_readonly)
++    return false;
++
++  std::string mode;
++  get_sysfs_str("/sys/class/graphics/fb0/mode", mode);
++  if (res.strId == mode)
++    return false;
++
++  DestroyNativeWindow();
++  DestroyNativeDisplay();
++
++  if (set_sysfs_str("/sys/class/graphics/fb0/mode", res.strId) == 0)
++  {
++    g_fbwin.width = res.iWidth;
++    g_fbwin.height = res.iHeight;
++    g_refreshRate = res.fRefreshRate;
++  }
++
++  CreateNativeDisplay();
++
++  CLog::Log(LOGDEBUG, "%s: %s",__FUNCTION__, res.strId.c_str());
++
++  // Reset AE
++  CAEFactory::DeviceChange();
++
++  return true;
+ }
+ 
+ bool CEGLNativeTypeA10::ProbeResolutions(std::vector<RESOLUTION_INFO> &resolutions)
+ {
+   RESOLUTION_INFO res;
+-  bool ret = false;
+-  ret = GetNativeResolution(&res);
+-  if (ret && res.iWidth > 1 && res.iHeight > 1)
++  
++  resolutions.clear();
++
++  if (!m_readonly)
++  {
++    std::string valstr;
++    get_sysfs_str("/sys/class/graphics/fb0/modes", valstr);
++    std::vector<std::string> probe_str;
++    probe_str = StringUtils::Split(valstr, "\n");
++
++    for (size_t i = 0; i < probe_str.size(); i++)
++    {
++      //if(!StringUtils::StartsWith(probe_str[i], "S:"))
++      //  continue;
++      if(ModeToResolution(probe_str[i], &res))
++        resolutions.push_back(res);
++    }
++
++    if (resolutions.size() > 0)
++      return true;
++  }
++  
++  if (GetNativeResolution(&res) && res.iWidth > 1 && res.iHeight > 1)
+   {
+     resolutions.push_back(res);
+     return true;
+   }
++
+   return false;
+ }
+ 
+ bool CEGLNativeTypeA10::GetPreferredResolution(RESOLUTION_INFO *res) const
+ {
+-  return false;
++  return GetNativeResolution(res);
+ }
+ 
+ bool CEGLNativeTypeA10::ShowWindow(bool show)
+ {
+   return false;
+ }
++
++int CEGLNativeTypeA10::get_sysfs_str(std::string path, std::string& valstr) const
++{
++  int len;
++  char buf[256] = {0};
++
++  int fd = open(path.c_str(), O_RDONLY);
++  if (fd >= 0)
++  {
++    while ((len = read(fd, buf, 255)) > 0)
++      valstr.append(buf, len);
++    close(fd);
++  }
++  else
++  {
++    CLog::Log(LOGERROR, "%s: error reading %s",__FUNCTION__, path.c_str());
++    valstr = "fail";
++    return -1;
++  }
++  return 0;
++}
++
++int CEGLNativeTypeA10::set_sysfs_str(std::string path, std::string val) const
++{
++  int fd = open(path.c_str(), O_WRONLY);
++  if (fd >= 0)
++  {
++    val += '\n';
++    write(fd, val.c_str(), val.size());
++    close(fd);
++    return 0;
++  }
++  CLog::Log(LOGERROR, "%s: error writing %s",__FUNCTION__, path.c_str());
++  return -1;
++}
++
++bool CEGLNativeTypeA10::ModeToResolution(std::string mode, RESOLUTION_INFO *res) const
++{
++  if (!res)
++    return false;
++
++  res->iWidth = 0;
++  res->iHeight= 0;
++
++  if(mode.empty())
++    return false;
++
++  std::string fromMode = StringUtils::Mid(mode, 2);
++  StringUtils::Trim(fromMode);
++
++  CRegExp split(true);
++  split.RegComp("([0-9]+)x([0-9]+)([pi])-([0-9]+)");
++  if (split.RegFind(fromMode) < 0)
++    return false;
++
++  int w = atoi(split.GetMatch(1).c_str());
++  int h = atoi(split.GetMatch(2).c_str());
++  std::string p = split.GetMatch(3);
++  int r = atoi(split.GetMatch(4).c_str());
++
++  res->iWidth = w;
++  res->iHeight= h;
++  res->iScreenWidth = w;
++  res->iScreenHeight= h;
++  res->fRefreshRate = r;
++  res->dwFlags = p[0] == 'p' ? D3DPRESENTFLAG_PROGRESSIVE : D3DPRESENTFLAG_INTERLACED;
++
++  res->iScreen       = 0;
++  res->bFullScreen   = true;
++  res->iSubtitles    = (int)(0.965 * res->iHeight);
++  res->fPixelRatio   = 1.0f;
++  res->strMode       = StringUtils::Format("%dx%d @ %.2f%s - Full Screen", res->iScreenWidth, res->iScreenHeight, res->fRefreshRate,
++                                           res->dwFlags & D3DPRESENTFLAG_INTERLACED ? "i" : "");
++  res->strId         = mode;
++
++  return res->iWidth > 0 && res->iHeight> 0;
++}
++
+diff -Naur a/xbmc/windowing/egl/EGLNativeTypeA10.h b/xbmc/windowing/egl/EGLNativeTypeA10.h
+--- a/xbmc/windowing/egl/EGLNativeTypeA10.h	2014-10-15 13:29:39.000000000 +0200
++++ b/xbmc/windowing/egl/EGLNativeTypeA10.h	2014-10-15 13:48:59.382007194 +0200
+@@ -46,4 +46,10 @@
+   virtual bool  GetPreferredResolution(RESOLUTION_INFO *res) const;
+ 
+   virtual bool  ShowWindow(bool show);
++
++protected:
++  bool m_readonly;
++  int get_sysfs_str(std::string path, std::string& valstr) const;
++  int set_sysfs_str(std::string path, std::string val) const;
++  bool ModeToResolution(std::string mode, RESOLUTION_INFO *res) const;
+ };
