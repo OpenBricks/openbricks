@@ -4,64 +4,85 @@
 
 cd $BUILD/$1*
 
+# copy license files
 mkdir -p .install/boot
-cp -P -r boot/*.elf boot/*.dat boot/bootcode.bin boot/LICENCE.* boot/overlays/README .install/boot/
+cp -P -r boot/*.elf boot/*.dat boot/bootcode.bin boot/LICENCE.* .install/boot/
 
+# set distro name
 echo "$DISTRONAME $TARGET_ARCH $DISTRO_VERSION $DISTRO_COPYRIGHT" \
   > .install/boot/issue.txt
+
+
+CMDLINE="dwc_otg.lpm_enable=0 console=ttyAMA0,115200 root=/dev/mmcblk0p2 rootfstype=ext4 rw rootwait vt.global_cursor_default=0"
+if [ "$RPI_USE_CMA" = yes ]; then
+  CMDLINE="$CMDLINE coherent_pool=6M smsc95xx.turbo_mode=N"
+else
+  use_mem_split="# "
+fi
 
 if [ "$RPI_SDTV_COLORBURST" = yes ]; then
   no_colorburst=0
 else
   no_colorburst=1
 fi
+
+if [ -n "$RPI_MPEG2_LICENSE" ]; then
+  mpg2_license="decode_MPG2=$RPI_MPEG2_LICENSE"
+else
+  mpg2_license="# decode_MPG2=0x00000000"
+fi
+
+if [ -n "$RPI_VC1_LICENSE" ]; then
+  vwc1_license="decode_WVC1=$RPI_VC1_LICENSE"
+else
+  vwc1_license="# decode_WVC1=0x00000000"
+fi
+
+
+# create 'cmdline.txt'
+echo "$CMDLINE" > .install/boot/cmdline.txt
+
+# create 'config.txt'
 cat > .install/boot/config.txt <<EOF
 sdtv_mode=$RPI_SDTV_MODE
 sdtv_aspect=$RPI_SDTV_ASPECT
 sdtv_disable_colourburst=$no_colorburst
 
-#hdmi_ignore_cec_init=1
+# hdmi_ignore_cec_init=1
 
 dtparam=spi=on
-#dtparam=i2s=on
-#dtparam=i2c=on
+# dtparam=i2s=on
+# dtparam=i2c=on
 
-#dtoverlay=ds1307-rtc-overlay
-#dtoverlay=hifiberry-amp-overlay
-#dtoverlay=hifiberry-dac-overlay
-#dtoverlay=hifiberry-dacplus-overlay
-#dtoverlay=hifiberry-digi-overlay
-#dtoverlay=iqaudio-dac-overlay
-#dtoverlay=iqaudio-dacplus-overlay
+# dtoverlay=i2s-mmap
+# dtoverlay=mmc-overlay
+dtoverlay=sdhost-overlay
+# dtoverlay=spi-bcm2835-overlay
+
 dtoverlay=lirc-rpi-overlay
-#dtoverlay=pcf2127-rtc-overlay
-#dtoverlay=pcf8523-rtc-overlay
-#dtoverlay=pps-gpio-overlay
-#dtoverlay=w1-gpio-overlay
-#dtoverlay=w1-gpio-pullup-overlay
 
+# dtoverlay=i2c-rtc-overlay,ds1307
+# dtoverlay=i2c-rtc-overlay,ds3231
+# dtoverlay=i2c-rtc-overlay,pcf2127
+# dtoverlay=i2c-rtc-overlay,pcf8523
+# dtoverlay=i2c-rtc-overlay,pcf8563
+
+# dtoverlay=hifiberry-amp-overlay
+# dtoverlay=hifiberry-dac-overlay
+# dtoverlay=hifiberry-dacplus-overlay
+# dtoverlay=hifiberry-digi-overlay
+# dtoverlay=iqaudio-dac-overlay
+# dtoverlay=iqaudio-dacplus-overlay
+# dtoverlay=rpi-dac-overlay
+# dtoverlay=rpi-proto-overlay
+
+# dtoverlay=pps-gpio-overlay
+# dtoverlay=w1-gpio-overlay
+# dtoverlay=w1-gpio-pullup-overlay
+
+${mpg2_license}
+${vwc1_license}
+
+${use_mem_split}gpu_mem_256=112
+${use_mem_split}gpu_mem_512=368
 EOF
-
-if [ -n "$RPI_MPEG2_LICENSE" ]; then
-  echo "decode_MPG2=$RPI_MPEG2_LICENSE" >> .install/boot/config.txt
-else
-  echo "#decode_MPG2=0x00000000" >> .install/boot/config.txt
-fi
-
-if [ -n "$RPI_VC1_LICENSE" ]; then
-  echo "decode_WVC1=$RPI_VC1_LICENSE" >> .install/boot/config.txt
-else
-  echo "#decode_WVC1=0x00000000" >> .install/boot/config.txt
-fi
-
-CMDLINE="dwc_otg.lpm_enable=0 console=ttyAMA0,115200 root=/dev/mmcblk0p2 rootfstype=ext4 rw rootwait vt.global_cursor_default=0"
-if [ "$RPI_USE_CMA" = yes ]; then
-  CMDLINE="$CMDLINE coherent_pool=6M smsc95xx.turbo_mode=N"
-  cat >> .install/boot/config.txt <<EOF
-
-gpu_mem_256=112
-gpu_mem_512=368
-EOF
-fi
-
-echo "$CMDLINE" > .install/boot/cmdline.txt
