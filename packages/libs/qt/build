@@ -133,6 +133,7 @@ if pkg_uses $1 xorg; then
 else
   select_qt_embedded $1
   CFG_QT="$CFG_EMBEDDED"
+  KEYMAPS="de de-latin1 fr fr-latin1 it it2"
 fi
 
 CFG_QT_FEATURES=""
@@ -306,8 +307,26 @@ yes | ./configure \
 ./bin/qmake
 make
 
+# build host version of kmap2qmap
+if [ -n "$KEYMAPS" ]; then
+  cd tools/kmap2qmap-host
+  ../../bin/qmake -spec ../../mkspecs/linux-g++ -o Makefile kmap2qmap.pro
+  make
+  cd ../..
+fi
+
 setup_toolchain target # restore target flags for install
 make_install
+
+# create keymaps ...
+if [ -n "$KEYMAPS" ]; then
+  kmaps=$LIB_PREFIX/share/keymaps/i386
+  qmaps=.install/usr/share/qt4/keymaps
+  mkdir -p $qmaps
+  for m in $KEYMAPS; do
+    ./bin-host/kmap2qmap $kmaps/*/$m.map $qmaps/$m.qmap 1>/dev/null 2>&1
+  done
+fi
 
 # discard native system includes
 sed -i "s%-I/usr/include%%g" .install/usr/lib/*.la
