@@ -948,3 +948,28 @@ apply_series() {
 
   return 0
 }
+
+# Usage: do_cached_build <package_name>
+do_cached_build () {
+  get_meta $1
+
+  cache_dir="../.cache/$1"
+  if [ -d $ROOT/$PKG_BUILD_DIR/$cache_dir/.install ]; then
+    # just link to cached build...
+    echo "Restoring cached build $(readlink -f $ROOT/$PKG_BUILD_DIR/$cache_dir)"
+  else
+    # perform full build and store in cache
+    mkdir -p $ROOT/$PKG_BUILD_DIR/$cache_dir
+    build_package $1 $ROOT/$PKG_BUILD_DIR/$cache_dir/.install
+
+    # move to $cache_dir when neccessary
+    if [ -d $ROOT/$PKG_BUILD_DIR/.install ] && \
+       [ ! -L $ROOT/$PKG_BUILD_DIR/.install ]; then
+      mv $ROOT/$PKG_BUILD_DIR/.install $ROOT/$PKG_BUILD_DIR/$cache_dir
+    fi
+  fi
+
+  # set symlink to cached build
+  cd $ROOT/$PKG_BUILD_DIR
+  ln -sf $cache_dir/.install
+}

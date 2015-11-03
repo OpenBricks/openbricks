@@ -1,72 +1,55 @@
-#!/bin/sh
+#! /bin/sh
 
 export BUILD=$BUILD_NOARCH
 
 . config/options
 
-get_meta $1
+build_package () {
+  # rebuild internal libs
+  for cmd in clean build; do
+    for i in "m4" "gmp" "mpfr" "mpc"; do 
+      $SCRIPTS/$cmd internal-$i
+    done
+  done
 
-if [ -d $ROOT/$BUILD_NOARCH/hgcc/.install ] ; then
-  echo "Found an already built host-gcc in $ROOT/$BUILD_NOARCH/hgcc"
-  echo "   Restoring files ..."
-  cp -r $ROOT/$BUILD_NOARCH/hgcc/.install $ROOT/$PKG_BUILD_DIR
-  touch $ROOT/$PKG_BUILD_DIR/gcc-ok
-fi
+  get_meta internal-gmp
+  dir_internal_gmp=$ROOT/$PKG_BUILD_DIR/.install/usr
 
-if [ -f $ROOT/$PKG_BUILD_DIR/gcc-ok ] ; then
-  # Nothing to do, gcc is already built  
-  exit 0
-else
+  get_meta internal-mpfr
+  dir_internal_mpfr=$ROOT/$PKG_BUILD_DIR/.install/usr
 
-for i in m4 gmp mpfr mpc ; do 
-  $SCRIPTS/clean internal-$i
-done
+  get_meta internal-mpc
+  dir_internal_mpc=$ROOT/$PKG_BUILD_DIR/.install/usr
 
-$SCRIPTS/build internal-m4
-$SCRIPTS/build internal-gmp
-$SCRIPTS/build internal-mpfr
-$SCRIPTS/build internal-mpc
+  get_meta $1
+  cd $PKG_BUILD_DIR
+  setup_toolchain host
 
-get_meta internal-gmp
-dir_internal_gmp=$ROOT/$PKG_BUILD_DIR/.install/usr
+  mkdir -p $1
+  cd $1
 
-get_meta internal-mpfr
-dir_internal_mpfr=$ROOT/$PKG_BUILD_DIR/.install/usr
+  CC=$LOCAL_CC \
+  CXX=$LOCAL_CXX \
+  ../configure --with-gmp=$dir_internal_gmp   \
+               --with-mpfr=$dir_internal_mpfr \
+               --with-mpc=$dir_internal_mpc   \
+               --disable-multilib             \
+               --enable-shared                \
+               --disable-bootstrap
 
-get_meta internal-mpc
-dir_internal_mpc=$ROOT/$PKG_BUILD_DIR/.install/usr
+  make
 
-get_meta $1
-cd $PKG_BUILD_DIR
+  # install directly to $cache_dir
+  mkdir -p $2
+  make install DESTDIR="$2"
 
-setup_toolchain host
+  cd ..
+}
 
-mkdir -p $1
-cd $1
+# perform real build or restore cached copy
+do_cached_build $1
 
-CC=$LOCAL_CC
-CXX=$LOCAL_CXX
-
-../configure --with-gmp=$dir_internal_gmp   \
-             --with-mpfr=$dir_internal_mpfr \
-             --with-mpc=$dir_internal_mpc   \
-             --disable-multilib             \
-             --enable-shared                \
-             --disable-bootstrap
-
-
-make
-
-mkdir -p "$ROOT/$PKG_BUILD_DIR/.install"
-make install DESTDIR="$ROOT/$PKG_BUILD_DIR/.install"
-
-# Hack to enable build on 32bit systems...
-if [ ! -e $ROOT/$PKG_BUILD_DIR/.install/usr/local/lib64 ]; then
-  ln -s lib $ROOT/$PKG_BUILD_DIR/.install/usr/local/lib64
-fi
-
-cd ..
-touch gcc-ok
-mkdir -p $ROOT/$BUILD_NOARCH/hgcc
-cp -r $ROOT/$PKG_BUILD_DIR/.install $ROOT/$BUILD_NOARCH/hgcc
+# hack to enable build on 32bit systems...
+if [ ! -e .install/usr/local/lib64 ]; then
+  ln -s lib .install/usr/local/lib64
 fi

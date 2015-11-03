@@ -1,33 +1,38 @@
-#!/bin/sh
+#! /bin/sh
 
 . config/options
 
-get_meta $1
+build_package () {
+  $SCRIPTS/unpack $PKG_PARENT
 
-$SCRIPTS/unpack $PKG_PARENT
+  cd $BUILD/${PKG_PARENT}-${PKG_VERSION}
+  setup_toolchain host
 
-cd $BUILD/${PKG_PARENT}-${PKG_VERSION}
+  CC=$LOCAL_CC \
+  ./configure --disable-dependency-tracking \
+	      --enable-static \
+	      --disable-shared \
+	      --disable-curl \
+	      --disable-ssl-curl \
+	      --enable-sha256 \
+	      --disable-pathfinder \
+	      --disable-openssl \
+	      --disable-gpg \
+	      --with-opkglibdir=/var/lib
 
-setup_toolchain host
-CC="gcc" ./configure --disable-dependency-tracking \
-            --enable-static \
-            --disable-shared \
-            --disable-curl \
-            --disable-ssl-curl \
-            --enable-sha256 \
-            --disable-pathfinder \
-            --disable-openssl \
-            --disable-gpg \
-            --with-opkglibdir=/var/lib
+  make clean
+  make
 
-make clean
-make
-cp -P src/opkg-cl opkg-host
-make clean
+  # copy directly to $cache_dir
+  mkdir -p $2/bin
+  cp src/opkg-cl $2/bin/opkg
 
-mkdir -p $ROOT/$TOOLCHAIN/bin/
-cp -P opkg-host $ROOT/$TOOLCHAIN/bin/opkg
+  make clean
+}
 
-mkdir -p $ROOT/$PKG_BUILD_DIR/.install
-mv opkg-host $ROOT/$PKG_BUILD_DIR/.install
+# perform real build or restore cached copy
+do_cached_build $1
 
+# special: install to toolchain immediately
+INSTALL=$ROOT/$TOOLCHAIN
+do_install bin
