@@ -1,0 +1,99 @@
+From 590e05a7a49c99cdce4783acc5bfb5da09de2645 Mon Sep 17 00:00:00 2001
+From: Mikko Hurskainen <mikko.hurskainen@nomovok.com>
+Date: Sun, 28 Jul 2013 17:44:16 +0300
+Subject: [PATCH] Fix drawing to 16-bit and 24-bit framebuffers
+
+This patch fixes drawing to 16-bit and 24-bit framebuffers. For
+16-bit framebuffer interpolation is done from 8 bit value to 5/6
+bit value.
+
+Signed-off-by: Mikko Hurskainen <mikko.hurskainen@nomovok.com>
+---
+ ply-frame-buffer.c | 62 +++++++++++++++++++++++++++++++++++++++++++++++++-----
+ 1 file changed, 57 insertions(+), 5 deletions(-)
+
+diff --git a/ply-frame-buffer.c b/ply-frame-buffer.c
+index 1fb8f77..4a7c254 100644
+--- a/ply-frame-buffer.c
++++ b/ply-frame-buffer.c
+@@ -95,12 +95,49 @@ ply_frame_buffer_close_device (ply_frame_buffer_t *buffer)
+     }
+ }
+ 
++static unsigned long
++append_bits(unsigned char *p, unsigned long bytes_per_pixel, unsigned long bits,
++	    unsigned long bits_component, unsigned char value)
++{
++  unsigned char val_shifted;
++  unsigned long bits_byte, byte_offset;
++  unsigned char *byte;
++  if (bits_component == 0)
++    return bits;
++  assert(bits >= bits_component);
++  assert(bits_component <= 8);
++  value = value >> (8 - bits_component);
++  bits_byte = bits % 8;
++  if (bits_byte == 0)
++    bits_byte = 8;
++  byte_offset = (bits - bits_byte) / 8;
++  assert(byte_offset >= 0);
++  assert(byte_offset < bytes_per_pixel);
++  byte = p + byte_offset;
++  if (bits_byte > bits_component)
++    val_shifted = value << (bits_byte - bits_component);
++  else if (bits_byte < bits_component)
++    val_shifted = value >> (bits_component - bits_byte);
++  else
++    val_shifted = value;
++  if (bits_byte == 8)
++    *byte = val_shifted;
++  else
++    *byte = (*byte | val_shifted);
++  if (bits_component > bits_byte)
++    {
++      byte--;
++      val_shifted = value << (8 - (bits_component - bits_byte));
++      *byte = val_shifted;
++    }
++  return bits - bits_component;
++}
++
+ static void
+ flush_generic (ply_frame_buffer_t *buffer)
+ {
+-  unsigned long row, column;
+-  char *row_buffer;
+-  size_t bytes_per_row;
++  unsigned long row;
++  unsigned char *row_buffer;
+   unsigned long x1, y1, x2, y2;
+ 
+   x1 = buffer->area_to_flush.x;
+@@ -112,10 +149,25 @@ flush_generic (ply_frame_buffer_t *buffer)
+   row_buffer = malloc (buffer->row_stride * buffer->bytes_per_pixel);
+   for (row = y1; row < y2; row++)
+     {
+-      unsigned long offset;
++      unsigned long offset, xr;
++      /*
++       * Interpolate from argb32 into given format
++       */
++      for (xr = x1; xr < x2; xr++)
++	{
++	  unsigned char *pr, *ps;
++	  unsigned long bits;
++	  bits = buffer->bytes_per_pixel * 8;
++	  pr = row_buffer + xr * buffer->bytes_per_pixel;
++	  ps = (unsigned char *)&buffer->shadow_buffer[row * buffer->area.width + xr];
++	  bits = append_bits(pr, buffer->bytes_per_pixel, bits, buffer->bits_for_alpha, ps[3]);
++	  bits = append_bits(pr, buffer->bytes_per_pixel, bits, buffer->bits_for_red, ps[2]);
++	  bits = append_bits(pr, buffer->bytes_per_pixel, bits, buffer->bits_for_green, ps[1]);
++	  bits = append_bits(pr, buffer->bytes_per_pixel, bits, buffer->bits_for_blue, ps[0]);
++	}
+ 
+       offset = row * buffer->row_stride * buffer->bytes_per_pixel + x1 * buffer->bytes_per_pixel;
+-      memcpy (buffer->map_address + offset, &buffer->shadow_buffer[row*buffer->area.width + x1],
++      memcpy (buffer->map_address + offset, row_buffer + x1,
+               buffer->area_to_flush.width * buffer->bytes_per_pixel);
+     }
+   free (row_buffer);
