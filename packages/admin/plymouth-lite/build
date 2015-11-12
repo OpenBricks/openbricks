@@ -2,14 +2,31 @@
 
 . config/options
 
-cd $BUILD/$1*
-
-setup_toolchain target
-
-SPLASH_FILE="$ROOT/$CONFIG/flavours/$FLAVOUR/splash-frontend.png"
-[ -f "$SPLASH_FILE" ] && cp -P "$SPLASH_FILE" splash.png
+get_meta $1
+cd $PKG_BUILD_DIR
 
 make
 make_install
 
+# copy splash image
+SPLASH_FILE="$ROOT/$CONFIG/flavours/$FLAVOUR/splash-frontend.png"
+[ -f "$SPLASH_FILE" ] && cp -P "$SPLASH_FILE" .install/usr/share/plymouth/splash.png
 
+
+install_unit_file () {
+  mkdir -p .install/lib/systemd/system
+  cp -P $1 .install/lib/systemd/system
+  systemctl_enable `basename $1`
+}
+
+if [ "$FLAVOUR" = sifbox ]; then
+  install_unit_file \
+    $ROOT/$PACKAGES/$PKG_SECTION/$1/config/plymouth-lite.service
+elif [ "$FLAVOUR" = geexbox ]; then
+  echo > /dev/null
+else
+  for f in ./rpm/*.service; do install_unit_file $f; done
+fi
+
+exit 0
+  

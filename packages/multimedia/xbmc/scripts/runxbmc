@@ -1,33 +1,41 @@
 #!/bin/sh
 
-pre_umount () {
-  [ -f /lib/systemd/system/automounter-nfs.service ] && systemctl stop automounter-nfs.service
-  [ -f /lib/systemd/system/automounter-smb.service ] && systemctl stop automounter-smb.service
+set_cursor_mode () {
+  [ -w /sys/class/graphics/fbcon/cursor_blink ] && \
+    echo "$1" > /sys/class/graphics/fbcon/cursor_blink
 }
 
-[ -n "$LOGFILE" ] || LOGFILE="/dev/null"
+prepare_shutdown () {
+  [ -f /lib/systemd/system/automounter-nfs.service ] && systemctl stop automounter-nfs.service
+  [ -f /lib/systemd/system/automounter-smb.service ] && systemctl stop automounter-smb.service
+  [ -n "$1" ] && systemctl "$1"
+}
+
+set_cursor_mode 0
+/usr/bin/ply-image /usr/share/xbmc/media/Splash.png || true
 /usr/lib/xbmc/xbmc.bin $@
 EXIT_CODE=$?
 
+[ -n "$LOGFILE" ] || LOGFILE="/dev/null"
 case "$EXIT_CODE" in
   64) # 64=powerdown
     echo "xbmc exited with EXIT_CODE=$EXIT_CODE at $(date). Shutting down..." >>$LOGFILE
-    pre_umount
-    systemctl poweroff
+    prepare_shutdown poweroff
     exit 0
   ;;
   66) # 66=reboot
     echo "xbmc exited with EXIT_CODE=$EXIT_CODE at $(date). Rebooting..." >>$LOGFILE
-    pre_umount
-    systemctl reboot
+    prepare_shutdown reboot
     exit 0
   ;;
   0) # 0=quit
     echo "xbmc exited with EXIT_CODE=$EXIT_CODE at $(date). Stopping..." >>$LOGFILE
-    pre_umount
+    prepare_shutdown
+    set_cursor_mode 1
     exit 0
   ;;
   *) # 65=restart-app; let systemd restart the service
-    echo "xbmc exited with EXIT_CODE=$EXIT_CODE at $(date). Returning -1 to systemd..." >>$LOGFILE
+    echo "xbmc exited with EXIT_CODE=$EXIT_CODE at $(date). Returning 1 to systemd..." >>$LOGFILE
+    set_cursor_mode 1
     exit 1
 esac
