@@ -1,0 +1,35 @@
+#!/bin/sh
+
+HCD=""
+EXTRA=""
+TTY="/dev/ttymxc3"
+
+for mmc in mmc1 mmc0; do
+  CHIP_ID=`cat /sys/class/mmc_host/$mmc/$mmc\:0001/$mmc\:0001\:1/device 2>/dev/null`
+  [ -n "$CHIP_ID" ] && break;
+done
+
+case "$CHIP_ID" in
+  "0x4329") HCD="bcm4329.hcd";;
+  "0x4330") HCD="bcm4330.hcd"; EXTRA="--no2bytes --tosleep=50000";;
+        "") echo "No device found."; exit 0;;
+         *) echo "Unknown device: $CHIP_ID"; exit 1;;
+esac
+ 
+echo "Found chip version $CHIP_ID."
+brcm_patchram_plus --patchram /lib/firmware/brcm/$HCD \
+                   --baudrate 3000000 --use_baudrate_for_download \
+                   $TTY --enable_hci $EXTRA &
+
+if [ "$1" = "up" ]; then
+  for i in 1 2 3 4 5 ; do
+    HCI_DEV=`hciconfig | grep UART | cut -d: -f1`
+    if [ -n "$HCI_DEV" ] ; then
+      hciconfig $HCI_DEV up
+      break
+    fi
+    sleep $i
+  done
+fi
+
+exit 0
