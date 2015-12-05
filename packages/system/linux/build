@@ -27,65 +27,67 @@ if [ -n "$MACHINE_DTS" ] ; then
   done
 fi
 
-install_dir="`pwd`/.install"
-debug_dir="`pwd`/.install-debuginfo/usr/lib/debug"
+install_dir="$PWD/.install"
+debug_dir="$PWD/.install-debuginfo/usr/lib/debug"
+
+boot_dir="$install_dir/boot"
+firmware_dir="$install_dir/lib/firmware"
+kmod_dir="$install_dir/lib/modules/$(kernel_version)"
+
 rm -rf $install_dir $debug_dir
-mkdir -p $install_dir/lib/firmware $debug_dir
+mkdir -p $firmware_dir $boot_dir $debug_dir
 
 make modules_install \
   INSTALL_MOD_PATH=.install \
-  DEPMOD=$ROOT/$TOOLCHAIN/bin/depmod \
+  DEPMOD=$ROOT/$TOOLCHAIN/bin/depmod
 
-kmod_dir="$install_dir/lib/modules/$(kernel_version)"
+mv -f $firmware_dir $install_dir
+
+rm -f $kmod_dir/build $kmod_dir/source $kmod_dir/modules.*
+strip_kmods $kmod_dir $debug_dir
+
+cp ./modules.* $kmod_dir
 echo $(kernel_version) > $install_dir/lib/modules/latest
 
-if [ -d .install/lib/firmware ]; then
-  mv .install/lib/firmware .install/firmware
-else
-  mkdir -p .install/firmware
-fi
-rm -f $kmod_dir/build $kmod_dir/source $kmod_dir/modules.*
-strip_kmods "$kmod_dir" "$debug_dir"
-
-mkdir -p .install/boot
 if [ -n "$MACHINE_DTS" ] ; then
   for i in $MACHINE_DTS ; do
-    cp arch/$TARGET_ARCH/boot/dts/$i.dtb .install/boot
+    cp arch/$TARGET_ARCH/boot/dts/$i.dtb $boot_dir
   done
 fi
+
 case $TARGET_ARCH in
   arm|powerpc64)
     if [ "$TARGET_PLATFORM" = bcm2708 ]; then
       # add raspberry pi magic for kernel revisions below 3.18
-      #cat first32k.bin arch/$TARGET_ARCH/boot/Image > .install/boot/kernel.img
+      #cat first32k.bin arch/$TARGET_ARCH/boot/Image > $boot_dir/kernel.img
 
-      ./mkknlimg --dtok arch/$TARGET_ARCH/boot/$IMAGE .install/boot/kernel.img
-      mkdir -p .install/boot/overlays
+      ./mkknlimg --dtok arch/$TARGET_ARCH/boot/$IMAGE $boot_dir/kernel.img
+      mkdir -p $boot_dir/overlays
       if [ -d arch/$TARGET_ARCH/boot/dts/overlays ]; then
-        cp arch/$TARGET_ARCH/boot/dts/overlays/*.dtb .install/boot/overlays/
-        cp arch/$TARGET_ARCH/boot/dts/overlays/README .install/boot/overlays/
+        cp arch/$TARGET_ARCH/boot/dts/overlays/*.dtb $boot_dir/overlays/
+        cp arch/$TARGET_ARCH/boot/dts/overlays/README $boot_dir/overlays/
       else
-        mv -f .install/boot/*overlay.dtb .install/boot/overlays/
+        mv -f $boot_dir/*overlay.dtb $boot_dir/overlays/
       fi
     elif [ "$TARGET_PLATFORM" = bcm2709 ]; then
-      ./mkknlimg --dtok arch/$TARGET_ARCH/boot/$IMAGE .install/boot/kernel7.img
-      mkdir -p .install/boot/overlays
+      ./mkknlimg --dtok arch/$TARGET_ARCH/boot/$IMAGE $boot_dir/kernel7.img
+      mkdir -p $boot_dir/overlays
       if [ -d arch/$TARGET_ARCH/boot/dts/overlays ]; then
-        cp arch/$TARGET_ARCH/boot/dts/overlays/*.dtb .install/boot/overlays/
-        cp arch/$TARGET_ARCH/boot/dts/overlays/README .install/boot/overlays/
+        cp arch/$TARGET_ARCH/boot/dts/overlays/*.dtb $boot_dir/overlays/
+        cp arch/$TARGET_ARCH/boot/dts/overlays/README $boot_dir/overlays/
       else
-        mv -f .install/boot/*overlay.dtb .install/boot/overlays/
+        mv -f $boot_dir/*overlay.dtb $boot_dir/overlays/
       fi
     else
-      cp arch/$TARGET_ARCH/boot/$IMAGE .install/boot
+      cp arch/$TARGET_ARCH/boot/$IMAGE $boot_dir
     fi
     ;;
   mips|powerpc)
-    cp vmlinux .install/boot
-    $STRIP .install/boot/$IMAGE
+    cp vmlinux $boot_dir
+    $STRIP $boot_dir/$IMAGE
     ;;
   i386|x86_64)
-    cp arch/$TARGET_ARCH/boot/$IMAGE .install/boot/vmlinuz
+    cp arch/$TARGET_ARCH/boot/$IMAGE $boot_dir/vmlinuz
     ;;
 esac
 
