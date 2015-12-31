@@ -1,7 +1,5 @@
 # System Settings
 
-# System Settings
-
 export PATH="/bin:/sbin:/usr/bin:/usr/sbin"
 export HOSTNAME=$(cat /etc/hostname)
 
@@ -9,20 +7,16 @@ export HOSTNAME=$(cat /etc/hostname)
 
 update_ps1() {
   cur_user=$USER
-  cur_pwd=$(pwd)
+  cur_pwd=$PWD
   ech="\$"
-  if [ $cur_user = "root" ]; then
-    ech="#"
-  fi
-  if [ $cur_pwd = $HOME ]; then
-    cur_pwd="~"
-  fi
+  [ "$cur_user" = "root" ] && ech="#"
+  [ "$cur_pwd" = "$HOME" ] && cur_pwd="~"
   PS1="$cur_user@$HOSTNAME:$cur_pwd$ech "
 }
 
 my_cd() {
- chdir $@
- update_ps1
+  chdir "$1"
+  update_ps1
 }
 
 if ps ax -o pid,comm | grep `echo $$` | grep -q bash ; then
