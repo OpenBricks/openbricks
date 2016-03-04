@@ -1,0 +1,31 @@
+--- a/src/mrvl_output.c	2011-03-07 18:52:09.000000000 +0100
++++ b/src/mrvl_output.c	2016-02-28 11:37:58.518841191 +0100
+@@ -819,7 +819,8 @@
+     MRVLOutputPrivatePtr    pOutputPriv = (MRVLOutputPrivatePtr)output->driver_private;
+     xf86MonPtr              ddc_mon = NULL, mon;
+     DisplayModePtr          modes = NULL;
+-    struct edid             *edid = (struct edid *)pOutputPriv->edid_raw_data;
++    struct edid             edid_simple, *edid = (struct edid *)pOutputPriv->edid_raw_data;
++
+ 
+     xf86DrvMsg(pScrn->scrnIndex, X_INFO, "mrvl_get_modes_with_edid!\n");
+ 
+@@ -839,10 +840,15 @@
+         }
+ 
+         xf86OutputSetEDID(output, ddc_mon);
+-	mon = ddc_mon;
+-        modes = xf86DDCGetModes(output->scrn->scrnIndex, ddc_mon);
+ 
+-	/* fix up xorg's quirk. */
++        /* Rudi: Simulate behavior of older xorg versions that did not know about CEA modes */
++        memcpy(&edid_simple, edid, sizeof(edid_simple));
++        edid_simple.extensions = 0;
++        mon = xf86InterpretEDID(output->scrn->scrnIndex, (Uchar *)&edid_simple);
++        modes = xf86DDCGetModes(output->scrn->scrnIndex, mon);
++        xfree(mon);
++
++        /* fix up xorg's quirk. */
+         modes = mrvl_additional_quirk(pScrn, modes, edid, mon);
+ 
+         if (edid->extensions)
