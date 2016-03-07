@@ -1,0 +1,100 @@
+diff -u a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp
+--- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp	2016-02-26 18:24:26.000000000 +0100
++++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp	2016-03-06 19:11:40.000000000 +0100
+@@ -1308,6 +1308,7 @@
+   , m_pageCrops(NULL)
+   , m_g2dHandle(NULL)
+   , m_bufferCapture(NULL)
++  , m_CaptureDone(true)
+   , m_checkConfigRequired(true)
+ {
+   // Limit queue to 2
+@@ -1441,6 +1442,8 @@
+ bool CIMXContext::Close()
+ {
+   CLog::Log(LOGINFO, "iMX : Closing context\n");
++  
++  m_CaptureDone = true;
+ 
+   // Stop the ipu thread
+   StopThread();
+@@ -1576,7 +1579,10 @@
+   IPUTask ipu;
+   m_CaptureDone = false;
+   PrepareTask(ipu, NULL, source, false, dest);
+-  return PushTask(ipu);
++  if (dest && dest->Width() > 0 && PushTask(ipu))
++    return true;
++  m_CaptureDone = true;
++  return false;
+ }
+ 
+ bool CIMXContext::ShowPage(int page)
+@@ -1766,7 +1772,7 @@
+ void CIMXContext::WaitCapture()
+ {
+   CSingleLock lk(m_monitor);
+-  while (!m_CaptureDone)
++  while (!m_CaptureDone && !m_bStop)
+     m_inputNotFull.wait(lk);
+ }
+ 
+@@ -2044,8 +2050,6 @@
+       // Launch synchronous blit
+       g2d_blit(m_g2dHandle, &src, &dst);
+       g2d_finish(m_g2dHandle);
+-      if ((m_bufferCapture) && (ipu.task.output.paddr == m_bufferCapture->buf_paddr))
+-        m_CaptureDone = true;
+     }
+     ipu.current->EndRender();
+   }
+@@ -2079,7 +2083,7 @@
+ 
+ void CIMXContext::Process()
+ {
+-  bool ret, useBackBuffer;
++  bool ret, useBackBuffer, isCapture;
+   int backBuffer;
+ 
+   // open g2d here to ensure all g2d fucntions are called from the same thread
+@@ -2101,17 +2105,26 @@
+ 
+       if (m_bStop) break;
+ 
++      isCapture     = false;
+       useBackBuffer = m_vsync;
+       IPUTask &task = m_input[m_beginInput];
+       backBuffer = useBackBuffer?1-m_fbCurrentPage:m_fbCurrentPage;
+ 
+       // Hack to detect we deal with capture buffer
+       if (task.task.output.width != 0)
+-          useBackBuffer = false;
+-      ret = DoTask(task, backBuffer);
++      {
++        isCapture = true;
++        useBackBuffer = false;
++      }
+ 
++      lk.Leave();
++      ret = DoTask(task, backBuffer);
+       // Free resources
+       task.Done();
++      lk.Enter();
++
++      if (isCapture)
++        m_CaptureDone = true;
+ 
+       m_beginInput = (m_beginInput+1) % m_input.size();
+       --m_bufferedInput;
+diff -u a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecIMX.h b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecIMX.h
+--- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecIMX.h	2016-02-26 18:24:26.000000000 +0100
++++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecIMX.h	2016-03-06 14:36:02.000000000 +0100
+@@ -210,7 +210,7 @@
+ 
+   void                           *m_g2dHandle;
+   struct g2d_buf                 *m_bufferCapture;
+-  bool                           m_CaptureDone;
++  volatile bool                  m_CaptureDone;
+   bool                           m_checkConfigRequired;
+   static const int               m_fbPages;
+ };
