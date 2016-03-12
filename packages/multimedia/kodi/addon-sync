@@ -6,10 +6,7 @@ get_meta kodi
 ADDON_BASE=$PKG_BUILD_DIR/project/cmake/addons
 ADDON_PKG_PREFIX=$ROOT/packages/multimedia/kodi-addon-
 
-cd $ADDON_BASE/bootstrap
-cmake .
-make
-cd -
+(cd $ADDON_BASE/bootstrap; cmake . -DCMAKE_INSTALL_PREFIX=../addons; make)
 
 for d in $ADDON_BASE/addons/*.*; do
   addon=$(basename $d)
@@ -22,25 +19,40 @@ for d in $ADDON_BASE/addons/*.*; do
   else
     addon_gitref=$addon_githash
   fi
-  
+
   if [ ! -e ${ADDON_PKG_PREFIX}${addon_id}/meta ]; then
-    echo "File ${ADDON_PKG_PREFIX}${addon_id}/meta NOT found!"
+    if grep -q "all\|linux\|!android" "$d/platforms.txt" ; then
+      echo "File ${ADDON_PKG_PREFIX}${addon_id}/meta not found. Creating new package..."
+
+      mkdir -p ${ADDON_PKG_PREFIX}${addon_id}
+      cp ${ADDON_PKG_PREFIX}pvr.demo/* ${ADDON_PKG_PREFIX}${addon_id}
+
+      sed \
+        -i ${ADDON_PKG_PREFIX}${addon_id}/meta \
+        -e "s%^ADDON_ID=.*%ADDON_ID=\"${addon_id}\"%" \
+        -e "s%^PKG_URL_REV=.*%PKG_URL_REV=\"${addon_gitref}\"%" \
+        -e "s%^PKG_URL=.*%PKG_URL=\"$(dirname ${addon_url})/\${ADDON_ID}.git\"%" \
+        -e "s%^ADDON_REV=.*%ADDON_REV=\"0\"%" \
+        -e "s%^PKG_LONGDESC=.*%PKG_LONGDESC=\"Kodi addon ${addon_id}\"%" \
+       -e "s%^PKG_SHORTDESC=.*%PKG_SHORTDESC=\"Kodi addon ${addon_id}\"%"
+    fi
+
     continue
   fi
-  
+
   if [ "$addon" != "$addon_id" ]; then
     echo "Addon name mismatch: \"${addon}\" should be \"${addon_id}\""
     continue
   fi
-  
+
   #echo $addon_id $addon_url $addon_gitref
-  
+
   sed \
     -i ${ADDON_PKG_PREFIX}${addon_id}/meta \
     -e "s%^ADDON_ID=.*%ADDON_ID=\"${addon_id}\"%" \
     -e "s%^PKG_URL_REV=.*%PKG_URL_REV=\"${addon_gitref}\"%" \
     -e "s%^PKG_URL=.*%PKG_URL=\"$(dirname ${addon_url})/\${ADDON_ID}.git\"%"
-  
+
 done
 
 echo "Please check addon version numbers manually !!!"
