@@ -973,3 +973,38 @@ do_cached_build () {
   cd $ROOT/$PKG_BUILD_DIR
   ln -sf $cache_dir/.install
 }
+
+# Usage: do_cmake_build [cmake_args ...]
+do_cmake_build () {
+  rm -rf .build
+  mkdir -p .build
+  cd .build
+
+  cmake \
+    -DCMAKE_SYSTEM_NAME=Linux \
+    -DCMAKE_FIND_ROOT_PATH=$LIB_PREFIX \
+    -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
+    -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
+    -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
+    -DCMAKE_FIND_NO_INSTALL_PREFIX=1 \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    $@ ..
+
+  make
+  make DESTDIR=../.install install/strip
+
+  cd ..
+
+  if [ -d .install/usr/lib/pkgconfig ]; then
+    sed -e "s%\([=;: ]\|-I\|-L\)/usr%\1$LIB_PREFIX%g" \
+        -i .install/usr/lib/pkgconfig/*.pc
+  fi
+
+  if [ -d .install/usr/lib ]; then
+    cmake_files=$(find .install/usr/lib -name "*-config.cmake")
+    [ -n "$cmake_files" ] && \
+      sed -e "s%\([=;: ]\|-I\|-L\)/usr%\1$LIB_PREFIX%g" -i $cmake_files
+  fi
+
+  return 0
+}
