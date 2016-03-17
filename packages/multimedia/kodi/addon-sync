@@ -1,0 +1,66 @@
+#! /bin/sh
+
+. config/options
+get_meta kodi
+
+ADDON_KODIVER="16"
+ADDON_REFPREFIX="1~"
+
+ADDON_BASE=$PKG_BUILD_DIR/project/cmake/addons
+ADDON_PKG_PREFIX=$ROOT/packages/multimedia/kodi-addon-
+
+(cd $ADDON_BASE/bootstrap; cmake . -DCMAKE_INSTALL_PREFIX=../addons; make)
+
+for d in $ADDON_BASE/addons/*.*; do
+  addon=$(basename $d)
+
+  addon_id=$(cut -f1 -d' ' "$d/$addon.txt")
+  addon_url=$(cut -f2 -d' ' "$d/$addon.txt")
+  addon_githash=$(cut -f3 -d' ' "$d/$addon.txt")
+  if echo "$addon_githash" | grep -q "^[0-9a-fA-F]*$" ; then
+    addon_gitref="${ADDON_REFPREFIX}$(echo "${addon_githash}" | cut -b -7)"
+  else
+    addon_gitref="${ADDON_REFPREFIX}${addon_githash}"
+  fi
+
+  if [ ! -e ${ADDON_PKG_PREFIX}${addon_id}/meta ]; then
+    if grep -q "all\|linux\|!android" "$d/platforms.txt" ; then
+      echo "File ${ADDON_PKG_PREFIX}${addon_id}/meta not found. Creating new package..."
+
+      mkdir -p ${ADDON_PKG_PREFIX}${addon_id}
+      cp ${ADDON_PKG_PREFIX}pvr.demo/* ${ADDON_PKG_PREFIX}${addon_id}
+
+      sed \
+        -i ${ADDON_PKG_PREFIX}${addon_id}/meta \
+        -e "s%^ADDON_ID=.*%ADDON_ID=\"${addon_id}\"%" \
+        -e "s%^PKG_URL_REV=.*%PKG_URL_REV=\"${addon_gitref}\"%" \
+        -e "s%^PKG_URL=.*%PKG_URL=\"$(dirname ${addon_url})/\${ADDON_ID}.git\"%" \
+        -e "s%ADDON_REV%ADDON_KODIVER%g" \
+        -e "s%^ADDON_KODIVER=.*%ADDON_KODIVER=\"$ADDON_KODIVER\"%" \
+        -e "s%^PKG_LONGDESC=.*%PKG_LONGDESC=\"Kodi addon ${addon_id}\"%" \
+        -e "s%^PKG_SHORTDESC=.*%PKG_SHORTDESC=\"Kodi addon ${addon_id}\"%"
+    fi
+
+    continue
+  fi
+
+  if [ "$addon" != "$addon_id" ]; then
+    echo "Addon name mismatch: \"${addon}\" should be \"${addon_id}\""
+    continue
+  fi
+
+  #echo $addon_id $addon_url $addon_gitref
+
+  sed \
+    -i ${ADDON_PKG_PREFIX}${addon_id}/meta \
+    -e "s%^ADDON_ID=.*%ADDON_ID=\"${addon_id}\"%" \
+    -e "s%^PKG_URL_REV=.*%PKG_URL_REV=\"${addon_gitref}\"%" \
+    -e "s%^PKG_URL=.*%PKG_URL=\"$(dirname ${addon_url})/\${ADDON_ID}.git\"%" \
+    -e "s%ADDON_REV%ADDON_KODIVER%g" \
+    -e "s%^ADDON_KODIVER=.*%ADDON_KODIVER=\"$ADDON_KODIVER\"%" \
+    -e "s%^PKG_LONGDESC=.*%PKG_LONGDESC=\"Kodi addon ${addon_id}\"%" \
+    -e "s%^PKG_SHORTDESC=.*%PKG_SHORTDESC=\"Kodi addon ${addon_id}\"%"
+
+done
+
+echo "Please check addon version numbers manually !!!"

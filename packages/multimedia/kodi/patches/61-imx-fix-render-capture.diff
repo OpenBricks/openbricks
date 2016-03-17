@@ -1,0 +1,137 @@
+diff -u a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp
+--- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp	2016-03-08 08:31:28.000000000 +0100
++++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp	2016-03-08 08:34:21.108499109 +0100
+@@ -1308,6 +1308,7 @@
+   , m_pageCrops(NULL)
+   , m_g2dHandle(NULL)
+   , m_bufferCapture(NULL)
++  , m_captureState(fail)
+   , m_checkConfigRequired(true)
+ {
+   // Limit queue to 2
+@@ -1574,9 +1575,12 @@
+ bool CIMXContext::PushCaptureTask(CIMXBuffer *source, CRect *dest)
+ {
+   IPUTask ipu;
+-  m_CaptureDone = false;
++  m_captureState = busy;
+   PrepareTask(ipu, NULL, source, false, dest);
+-  return PushTask(ipu);
++  if (dest && dest->Width() > 0 && PushTask(ipu))
++    return true;
++  m_captureState = fail;
++  return false;
+ }
+ 
+ bool CIMXContext::ShowPage(int page)
+@@ -1766,7 +1770,7 @@
+ void CIMXContext::WaitCapture()
+ {
+   CSingleLock lk(m_monitor);
+-  while (!m_CaptureDone)
++  while (m_captureState == busy && !m_bStop)
+     m_inputNotFull.wait(lk);
+ }
+ 
+@@ -1923,7 +1927,10 @@
+     {
+       m_bufferCapture = g2d_alloc(size, 0);
+       if (m_bufferCapture == NULL)
++      {
+         CLog::Log(LOGERROR, "iMX : Error allocating capture buffer\n");
++        return false;
++      }
+     }
+     ipu.task.output.paddr = m_bufferCapture->buf_paddr;
+     swapColors = true;
+@@ -2044,8 +2051,6 @@
+       // Launch synchronous blit
+       g2d_blit(m_g2dHandle, &src, &dst);
+       g2d_finish(m_g2dHandle);
+-      if ((m_bufferCapture) && (ipu.task.output.paddr == m_bufferCapture->buf_paddr))
+-        m_CaptureDone = true;
+     }
+     ipu.current->EndRender();
+   }
+@@ -2079,7 +2084,7 @@
+ 
+ void CIMXContext::Process()
+ {
+-  bool ret, useBackBuffer;
++  bool ret, useBackBuffer, isCapture;
+   int backBuffer;
+ 
+   // open g2d here to ensure all g2d fucntions are called from the same thread
+@@ -2101,17 +2106,26 @@
+ 
+       if (m_bStop) break;
+ 
++      isCapture     = false;
+       useBackBuffer = m_vsync;
+       IPUTask &task = m_input[m_beginInput];
+       backBuffer = useBackBuffer?1-m_fbCurrentPage:m_fbCurrentPage;
+ 
+       // Hack to detect we deal with capture buffer
+       if (task.task.output.width != 0)
+-          useBackBuffer = false;
+-      ret = DoTask(task, backBuffer);
++      {
++        isCapture = true;
++        useBackBuffer = false;
++      }
+ 
++      lk.Leave();
++      ret = DoTask(task, backBuffer);
+       // Free resources
+       task.Done();
++      lk.Enter();
++
++      if (isCapture)
++        m_captureState = ret ? done : fail;
+ 
+       m_beginInput = (m_beginInput+1) % m_input.size();
+       --m_bufferedInput;
+@@ -2131,7 +2145,9 @@
+     --m_bufferedInput;
+   }
+ 
+-  // close g2d here to ensure all g2d fucntions are called from the same thread
++  m_captureState = fail;
++
++  // close g2d here to ensure all g2d functions are called from the same thread
+   if (m_bufferCapture)
+   {
+     if (g2d_free(m_bufferCapture))
+diff -u a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecIMX.h b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecIMX.h
+--- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecIMX.h	2016-03-08 08:31:28.000000000 +0100
++++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecIMX.h	2016-03-08 08:26:25.000000000 +0100
+@@ -141,7 +141,7 @@
+   // the passed overlay. The buffer format is BGRA (4 byte)
+   void CaptureDisplay(unsigned char *buffer, int iWidth, int iHeight);
+   bool PushCaptureTask(CIMXBuffer *source, CRect *dest);
+-  void *GetCaptureBuffer() const { if (m_bufferCapture) return m_bufferCapture->buf_vaddr; else return NULL; }
++  void *GetCaptureBuffer() const { return (m_captureState == done) ? m_bufferCapture->buf_vaddr : NULL; }
+   void WaitCapture();
+ 
+ private:
+@@ -210,7 +210,7 @@
+ 
+   void                           *m_g2dHandle;
+   struct g2d_buf                 *m_bufferCapture;
+-  bool                           m_CaptureDone;
++  volatile enum { fail, busy, done } m_captureState;
+   bool                           m_checkConfigRequired;
+   static const int               m_fbPages;
+ };
+diff -u a/xbmc/cores/VideoRenderers/RenderCapture.cpp b/xbmc/cores/VideoRenderers/RenderCapture.cpp
+--- a/xbmc/cores/VideoRenderers/RenderCapture.cpp	2015-10-19 08:31:15.000000000 +0200
++++ b/xbmc/cores/VideoRenderers/RenderCapture.cpp	2016-03-08 08:29:53.000000000 +0100
+@@ -90,7 +90,7 @@
+ {
+   g_IMXContext.WaitCapture();
+   m_pixels = reinterpret_cast<uint8_t*>(g_IMXContext.GetCaptureBuffer());
+-  SetState(CAPTURESTATE_DONE);
++  SetState(m_pixels ? CAPTURESTATE_DONE : CAPTURESTATE_FAILED);
+ }
+ 
+ #elif defined(TARGET_RASPBERRY_PI)
