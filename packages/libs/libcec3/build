@@ -1,8 +1,8 @@
 #!/bin/sh
 
 . config/options
-get_meta $1
 
+get_meta $1
 
 case $TARGET_PLATFORM in
   armada5xx)
@@ -12,8 +12,8 @@ case $TARGET_PLATFORM in
     ;;
 
   bcm270*)
-    EXTRA_CONFIG="-DHAVE_RPI_API=1"
-    EXTRA_INCLUDES="-I$LIB_PREFIX/include/interface/vcos/pthreads -I$LIB_PREFIX/include/interface/vmcs_host/linux"
+    EXTRA_CONFIG="-DHAVE_RPI_API=1 -DRPI_INCLUDE_DIR=$LIB_PREFIX/include"
+    EXTRA_INCLUDES=""
     ;;
     
   exynos5)
@@ -27,28 +27,15 @@ case $TARGET_PLATFORM in
     ;;
 esac
 
-
 cd $PKG_BUILD_DIR
-INSTALL_PREFIX=$PWD/.install/usr
 
-mkdir -p .build
-cd .build
-cmake -DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX \
-      -DCMAKE_FIND_ROOT_PATH=$LIB_PREFIX \
-      -DSWIG_DIR=$TOOLCHAIN/bin \
-      -DBUILD_SHARED_LIBS=1 \
-      $EXTRA_CONFIG \
-      -DCMAKE_CXX_FLAGS="$EXTRA_INCLUDES" \
-      -DPYTHON_LIBRARY="$LIB_PREFIX" \
-      -DPYTHON_INCLUDE_DIR="$LIB_PREFIX/include/python2.7" \
-      ..
-make
-make install
-cd ..
+export CXXFLAGS="$CXXFLAGS $EXTRA_INCLUDES"
 
-strip_bins $INSTALL_PREFIX/bin
-strip_libs $INSTALL_PREFIX/lib
+do_cmake_build \
+  $EXTRA_CONFIG \
+  -DBUILD_SHARED_LIBS=1 \
+  -DSWIG_DIR=$TOOLCHAIN/bin \
+  -DPYTHON_LIBRARY="$LIB_PREFIX" \
+  -DPYTHON_INCLUDE_DIR="$LIB_PREFIX/include/python2.7"
 
-sed -e "s%$INSTALL_PREFIX%$LIB_PREFIX%g" \
-    -e "s%Requires:.*%%" \
-    -i $INSTALL_PREFIX/lib/pkgconfig/*.pc
+sed -e "/^Requires:/d" -i .install/usr/lib/pkgconfig/*.pc
