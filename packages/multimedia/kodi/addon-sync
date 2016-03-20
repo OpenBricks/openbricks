@@ -8,14 +8,37 @@ fi
 . config/options
 get_meta kodi
 
+
 ADDON_KODIVER="16"
-ADDON_BASE=$PKG_BUILD_DIR/project/cmake/addons
-ADDON_PKG_PREFIX=$ROOT/packages/multimedia/kodi-addon-
+ADDON_BASE="$PKG_BUILD_DIR/project/cmake/addons"
+ADDON_PKG_PREFIX="$ROOT/packages/multimedia/kodi-addon-"
+
 
 # fetch addon repository
 (cd $ADDON_BASE/bootstrap; cmake . -DCMAKE_INSTALL_PREFIX=../addons; make)
 
-for d in $ADDON_BASE/addons/*.*; do
+
+next_url_rev () {
+  local meta_url_rev="$(grep "^PKG_URL_REV" "$1/meta" | grep -o "[0-9]*~\w*")"
+  local meta_githash="$(echo "$meta_url_rev" | cut -f2 -d~)"
+  local meta_refnum="$(echo "$meta_url_rev" | cut -f1 -d~)"
+
+  if [ -z "$meta_refnum" ]; then
+    # invalid: let's start with 1
+    refnum="1"
+  elif [ "$meta_githash" = "$2" ]; then
+    # same hash: keep
+    refnum="$meta_refnum"
+  else
+    # hash has changed: increment
+    refnum="$(expr $meta_refnum + 1)"
+  fi
+
+  echo "$refnum~$2"
+}
+
+
+for d in $ADDON_BASE/depends/common/*platform $ADDON_BASE/addons/*.*; do
   addon=$(basename $d)
   addon_id=$(cut -f1 -d' ' "$d/$addon.txt")
   addon_url=$(cut -f2 -d' ' "$d/$addon.txt")
@@ -34,10 +57,31 @@ for d in $ADDON_BASE/addons/*.*; do
     continue
   fi
 
+  # check for common libraries
+  if [ "$(dirname $d)" = "$ADDON_BASE/depends/common" ]; then
+    pkg_dir="$ROOT/packages/multimedia/$addon_id"
+    [ -e "$pkg_dir" ] || pkg_dir="$ROOT/packages/libs/$addon_id"
+    [ -e "$pkg_dir" ] || continue
+
+    # query package revision string
+    pkg_url_rev=$(next_url_rev ${pkg_dir} ${addon_githash})
+
+    echo "$addon_id $addon_url $addon_ref $pkg_url_rev *"
+    #continue
+
+    sed \
+      -i ${pkg_dir}/meta \
+      -e "s%^PKG_URL_REV=.*%PKG_URL_REV=\"${pkg_url_rev}\"%" \
+      -e "s%^PKG_URL=.*%PKG_URL=\"$(dirname ${addon_url})/${addon_id}.git\"%"
+
+    continue
+  fi
+
   # this is a new addon: create a package for it based on pvr.demo
   if [ ! -e ${ADDON_PKG_PREFIX}${addon_id}/meta ]; then
     if grep -q "all\|linux\|!android" "$d/platforms.txt" ; then
       echo "File ${ADDON_PKG_PREFIX}${addon_id}/meta not found. Creating new package..."
+      #continue
 
       mkdir -p ${ADDON_PKG_PREFIX}${addon_id}
       cp ${ADDON_PKG_PREFIX}pvr.demo/* ${ADDON_PKG_PREFIX}${addon_id}
@@ -62,26 +106,16 @@ for d in $ADDON_BASE/addons/*.*; do
     continue
   fi
 
-  # load package revision
-  pkg_url_rev="$(grep "^PKG_URL_REV" ${ADDON_PKG_PREFIX}${addon_id}/meta | grep -o "[0-9]*~\w*")"
-  meta_githash="$(echo "$pkg_url_rev" | cut -f2 -d~)"
-  addon_refnum="$(echo "$pkg_url_rev" | cut -f1 -d~)"
+  # query package revision string
+  pkg_url_rev=$(next_url_rev ${ADDON_PKG_PREFIX}${addon_id} ${addon_githash})
 
-  if [ -z "$addon_refnum" ]; then
-    # invalid: let's start with 1
-    addon_refnum="1"
-  elif [ ! "$addon_githash" = "$meta_githash" ]; then
-    # hash has changed: increment
-    addon_refnum="$(expr $addon_refnum + 1)"
-  fi
-
-  echo "$addon_id $addon_url $addon_ref $addon_refnum~$addon_githash"
+  echo "$addon_id $addon_url $addon_ref $pkg_url_rev"
   #continue
 
   sed \
     -i ${ADDON_PKG_PREFIX}${addon_id}/meta \
     -e "s%^ADDON_ID=.*%ADDON_ID=\"${addon_id}\"%" \
-    -e "s%^PKG_URL_REV=.*%PKG_URL_REV=\"${addon_refnum}~${addon_githash}\"%" \
+    -e "s%^PKG_URL_REV=.*%PKG_URL_REV=\"${pkg_url_rev}\"%" \
     -e "s%^PKG_URL=.*%PKG_URL=\"$(dirname ${addon_url})/\${ADDON_ID}.git\"%" \
     -e "s%ADDON_REV%ADDON_KODIVER%g" \
     -e "s%^ADDON_KODIVER=.*%ADDON_KODIVER=\"${ADDON_KODIVER}\"%" \
