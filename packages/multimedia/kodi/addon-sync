@@ -23,8 +23,12 @@ fi
 (cd $ADDON_BASE/bootstrap; cmake . -DCMAKE_INSTALL_PREFIX=../addons; make)
 
 
+meta_url_rev () {
+  echo "$(grep "^PKG_URL_REV" "$1/meta" | grep -o "[0-9]*~\w*")"
+}
+
 next_url_rev () {
-  local meta_url_rev="$(grep "^PKG_URL_REV" "$1/meta" | grep -o "[0-9]*~\w*")"
+  local meta_url_rev="$1"
   local meta_githash="$(echo "$meta_url_rev" | cut -f2 -d~)"
   local meta_refnum="$(echo "$meta_url_rev" | cut -f1 -d~)"
 
@@ -69,9 +73,12 @@ for d in $ADDON_BASE/depends/common/*platform $ADDON_BASE/addons/*.*; do
     [ -e "$pkg_dir" ] || continue
 
     # query package revision string
-    pkg_url_rev=$(next_url_rev ${pkg_dir} ${addon_githash})
+    cur_url_rev=$(meta_url_rev ${pkg_dir})
+    pkg_url_rev=$(next_url_rev ${cur_url_rev} ${addon_githash})
 
-    echo "$addon_id $addon_url $addon_ref $pkg_url_rev *"
+    [ "$pkg_url_rev" = "$cur_url_rev" ] && continue
+    
+    echo "$addon_id $addon_url $addon_ref $pkg_url_rev"
     #continue
 
     sed \
@@ -112,7 +119,10 @@ for d in $ADDON_BASE/depends/common/*platform $ADDON_BASE/addons/*.*; do
   fi
 
   # query package revision string
-  pkg_url_rev=$(next_url_rev ${ADDON_PKG_PREFIX}${addon_id} ${addon_githash})
+  cur_url_rev=$(meta_url_rev ${ADDON_PKG_PREFIX}${addon_id})
+  pkg_url_rev=$(next_url_rev ${cur_url_rev} ${addon_githash})
+  
+  [ "$pkg_url_rev" = "$cur_url_rev" ] && continue
 
   echo "$addon_id $addon_url $addon_ref $pkg_url_rev"
   #continue
