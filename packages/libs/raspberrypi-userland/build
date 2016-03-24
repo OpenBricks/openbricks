@@ -2,36 +2,31 @@
 
 . config/options
 
-cd $BUILD/$1*
+get_meta $1
+cd $PKG_BUILD_DIR
 
-mkdir -p objdir-target
-cd objdir-target
-
-cmake  \
-  -DCMAKE_FIND_ROOT_PATH=$LIB_PREFIX \
-  -DCMAKE_INSTALL_PREFIX=/usr \
-  -DCMAKE_TOOLCHAIN_FILE=/dev/null \
+do_cmake_build \
   -DCMAKE_BUILD_TYPE=Release \
-  ..
+  -DCMAKE_TOOLCHAIN_FILE=/dev/null \
+  -DVIDEOCORE_BUILD_DIR=$PWD/.build-vc
 
-make
-make_install
-install_dir="$PWD/.install"
-debug_dir="$PWD/.install-debuginfo"
-cp -PR $install_dir/opt/vc $install_dir/usr
+install="$PWD/.install"
+cp -PR $install/opt/vc $install/usr
 
 if pkg_uses $1 devtools; then
+  debug="$PWD/.install-debuginfo/usr/lib/debug"
+
   export CFLAGS="$CFLAGS -I$LIB_PREFIX/include/freetype2"
   export LDFLAGS="$LDFLAGS -L${LIB_PREFIX}/lib -lfreetype -lz -lbz2"
 
-  export SDKSTAGE="$install_dir"
+  export SDKSTAGE="$install"
   export PREFIX=$SDKSTAGE
   cd $SDKSTAGE/opt/vc/src/hello_pi
   sh -e rebuild.sh
 
-  mkdir -p $install_dir/usr/bin $debug_dir/usr/bin
-  cp -PR hello_*/hello_*.bin $install_dir/usr/bin
-  strip_bins $SDKSTAGE/usr/bin $debug_dir/usr/bin
+  mkdir -p $debug
+  cp -PR hello_*/hello_*.bin $install/usr/bin
+  strip_bins $install/usr/bin $debug
 fi
 
 exit 0

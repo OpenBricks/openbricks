@@ -1,6 +1,6 @@
 --- a/xbmc/cores/AudioEngine/Engines/ActiveAE/ActiveAE.cpp	2015-10-19 08:31:15.000000000 +0200
 +++ b/xbmc/cores/AudioEngine/Engines/ActiveAE/ActiveAE.cpp	2016-02-07 18:32:00.431735589 +0100
-@@ -1160,14 +1160,18 @@
+@@ -1209,14 +1209,18 @@
        if (!m_vizBuffers && m_audioCallback)
        {
          AEAudioFormat vizFormat = m_internalFormat;
@@ -22,7 +22,7 @@
          m_vizBuffers = new CActiveAEBufferPoolResample(m_internalFormat, vizFormat, m_settings.resampleQuality);
          // TODO use cache of sync + water level
          m_vizBuffers->Create(2000, false, false);
-@@ -1945,18 +1949,33 @@
+@@ -2024,18 +2028,33 @@
                m_vizInitialized = true;
              }
  
@@ -31,7 +31,7 @@
              {
 -              // copy the samples into the viz input buffer
 -              CSampleBuffer *viz = m_vizBuffersInput->GetFreeBuffer();
--              int samples = std::min(512, out->pkt->nb_samples);
+-              int samples = out->pkt->nb_samples;
 -              int bytes = samples * out->pkt->config.channels / out->pkt->planes * out->pkt->bytes_per_sample;
 -              for(int i= 0; i < out->pkt->planes; i++)
 +              // copy the samples into the viz input buffer	      
@@ -40,8 +40,7 @@
 +
 +              // don't copy more than vizNumSamples
 +              if (samples > 0)
-               {
--                memcpy(viz->pkt->data[i], out->pkt->data[i], bytes);
++              {
 +                int bytes = samples * out->pkt->config.channels / out->pkt->planes * out->pkt->bytes_per_sample;
 +                int offset = viz->pkt->nb_samples * out->pkt->config.channels / out->pkt->planes * out->pkt->bytes_per_sample;
 +                for(int i = 0; i < out->pkt->planes; i++)
@@ -51,7 +50,8 @@
 +              // consume complete source packet
 +              viz->pkt->nb_samples += out->pkt->nb_samples;
 +              if (viz->pkt->nb_samples >= viz->pkt->max_nb_samples)
-+              {
+               {
+-                memcpy(viz->pkt->data[i], out->pkt->data[i], bytes);
 +                // set valid sample count
 +                viz->pkt->nb_samples = vizNumSamples;
 +
@@ -64,17 +64,7 @@
              }
              else
                CLog::Log(LOGWARNING,"ActiveAE::%s - viz ran out of free buffers", __FUNCTION__);
-@@ -1972,8 +1991,7 @@
-                 break;
-               else
-               {
--                int samples;
--                samples = std::min(512, buf->pkt->nb_samples);
-+                int samples = std::min(vizNumSamples, buf->pkt->nb_samples);
-                 m_audioCallback->OnAudioData((float*)(buf->pkt->data[0]), samples);
-                 buf->Return();
-                 m_vizBuffers->m_outputSamples.pop_front();
-@@ -1981,7 +1999,12 @@
+@@ -2059,7 +2078,12 @@
              }
            }
            else if (m_vizBuffers)
