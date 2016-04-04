@@ -1,0 +1,84 @@
+diff -u a/tools/hciattach_bcm43xx.c b/tools/hciattach_bcm43xx.c
+--- a/tools/hciattach_bcm43xx.c	2016-04-03 07:57:20.000000000 +0200
++++ b/tools/hciattach_bcm43xx.c	2016-04-03 08:12:36.000000000 +0200
+@@ -225,7 +225,7 @@
+ 	return 0;
+ }
+ 
+-static int bcm43xx_load_firmware(int fd, const char *fw)
++static int bcm43xx_load_firmware(int fd, const char *fw, int options)
+ {
+ 	unsigned char cmd[] = { HCI_COMMAND_PKT, 0x2e, 0xfc, 0x00 };
+ 	struct timespec tm_mode = { 0, 50000 };
+@@ -259,8 +259,13 @@
+ 		goto fail;
+ 	}
+ 
+-	/* Wait 50ms to let the firmware placed in download mode */
+-	nanosleep(&tm_mode, NULL);
++	if (options & 0x01)
++		/* Some chips require this, see brcm_patchram_plus.c */
++		read(fd, &tx_buf[0], 2);
++
++	if (options & 0x02)
++		/* Wait 50ms to let the firmware placed in download mode */
++		nanosleep(&tm_mode, NULL);
+ 
+ 	tcflush(fd, TCIOFLUSH);
+ 
+@@ -352,7 +357,7 @@
+ }
+ 
+ int bcm43xx_init(int fd, int def_speed, int speed, struct termios *ti,
+-		const char *bdaddr)
++		const char *bdaddr, int options)
+ {
+ 	char chip_name[20];
+ 	char fw_path[PATH_MAX];
+@@ -368,7 +373,7 @@
+ 	if (bcm43xx_locate_patch(FIRMWARE_DIR, chip_name, fw_path)) {
+ 		fprintf(stderr, "Patch not found for %s, continue anyway\n", chip_name);
+ 	} else {
+-		if (bcm43xx_load_firmware(fd, fw_path))
++		if (bcm43xx_load_firmware(fd, fw_path, options))
+ 			return -1;
+ 
+ 		/* Controller speed has been reset to def speed */
+diff -u a/tools/hciattach.c b/tools/hciattach.c
+--- a/tools/hciattach.c	2016-04-02 20:57:55.000000000 +0200
++++ b/tools/hciattach.c	2016-04-03 08:12:38.000000000 +0200
+@@ -327,9 +327,14 @@
+ 	return intel_init(fd, u->init_speed, &u->speed, ti);
+ }
+ 
++static int bcm4329(int fd, struct uart_t *u, struct termios *ti)
++{
++	return bcm43xx_init(fd, u->init_speed, u->speed, ti, u->bdaddr, 0x01);
++}
++
+ static int bcm43xx(int fd, struct uart_t *u, struct termios *ti)
+ {
+-	return bcm43xx_init(fd, u->init_speed, u->speed, ti, u->bdaddr);
++	return bcm43xx_init(fd, u->init_speed, u->speed, ti, u->bdaddr, 0x02);
+ }
+ 
+ static int read_check(int fd, void *buf, int count)
+@@ -1141,6 +1146,9 @@
+ 				FLOW_CTL, DISABLE_PM, NULL, bcm2035  },
+ 
+ 	/* Broadcom BCM43XX */
++	{ "bcm4329",    0x0000, 0x0000, HCI_UART_H4,   115200, 3000000,
++				FLOW_CTL, DISABLE_PM, NULL, bcm4329, NULL  },
++
+ 	{ "bcm43xx",    0x0000, 0x0000, HCI_UART_H4,   115200, 3000000,
+ 				FLOW_CTL, DISABLE_PM, NULL, bcm43xx, NULL  },
+ 
+diff -u a/tools/hciattach.h b/tools/hciattach.h
+--- a/tools/hciattach.h	2015-09-04 03:19:36.000000000 +0200
++++ b/tools/hciattach.h	2016-04-03 08:12:40.000000000 +0200
+@@ -65,4 +65,4 @@
+ int qualcomm_init(int fd, int speed, struct termios *ti, const char *bdaddr);
+ int intel_init(int fd, int init_speed, int *speed, struct termios *ti);
+ int bcm43xx_init(int fd, int def_speed, int speed, struct termios *ti,
+-		const char *bdaddr);
++		const char *bdaddr, int options);
