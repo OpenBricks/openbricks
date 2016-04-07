@@ -1,21 +1,22 @@
-From 7f01d065b792a887bd9d7dc468e4c6429a857faf Mon Sep 17 00:00:00 2001
+From 90353964494e00ea0dfb8b316e6abc53a1d4f51b Mon Sep 17 00:00:00 2001
 From: Rudi <r.ihle@s-t.de>
 Date: Thu, 7 Apr 2016 20:11:41 +0200
 Subject: [PATCH] hdmiaudio: Add 'IEC958 Playback Default' control
 
 This is needed to signal transmission of non-PCM audio to a sink (passthrough mode).
+Also disable sample rates not allowed on HDMI.
 
 Signed-off-by: Rudi <r.ihle@s-t.de>
 ---
- drivers/video/sunxi/hdmi/drv_hdmi.c  |  20 ++++++-
- drivers/video/sunxi/hdmi/hdmi_core.c |  24 +++-----
- drivers/video/sunxi/hdmi/hdmi_core.h |   6 +-
+ drivers/video/sunxi/hdmi/drv_hdmi.c  |  20 +++++--
+ drivers/video/sunxi/hdmi/hdmi_core.c |  24 +++------
+ drivers/video/sunxi/hdmi/hdmi_core.h |   6 +--
  include/linux/drv_hdmi.h             |   1 +
- sound/soc/sunxi/hdmiaudio/sndhdmi.c  | 105 ++++++++++++++++++++++++++++++++++-
- 5 files changed, 131 insertions(+), 25 deletions(-)
+ sound/soc/sunxi/hdmiaudio/sndhdmi.c  | 101 +++++++++++++++++++++++++++++++++--
+ 5 files changed, 127 insertions(+), 25 deletions(-)
 
 diff --git a/drivers/video/sunxi/hdmi/drv_hdmi.c b/drivers/video/sunxi/hdmi/drv_hdmi.c
-index 117119e3..42633f3 100644
+index 117119e3..1f7cdce 100644
 --- a/drivers/video/sunxi/hdmi/drv_hdmi.c
 +++ b/drivers/video/sunxi/hdmi/drv_hdmi.c
 @@ -216,7 +216,8 @@ static __s32 Hdmi_Audio_Enable(__u8 mode, __u8 channel)
@@ -32,10 +33,10 @@ index 117119e3..42633f3 100644
  		      audio_info.channel_num);
  	}
  
-+	cs0 = audio_para->ch_stat[0] | audio_para->ch_stat[1] << 8 |
-+	      audio_para->ch_stat[2] << 16 | audio_para->ch_stat[3] << 24;
-+	cs1 = audio_para->ch_stat[4] | audio_para->ch_stat[5] << 16;
-+	if (cs0 != audio_info.CH_STATUS0 || cs1 != audio_info.CH_STATUS0) {
++	cs0 = audio_para->ch_stat[0] | (audio_para->ch_stat[1] << 8) |
++	      (audio_para->ch_stat[2] << 16) | (audio_para->ch_stat[3] << 24);
++	cs1 = audio_para->ch_stat[4] | (audio_para->ch_stat[5] << 8);
++	if (cs0 != audio_info.CH_STATUS0 || cs1 != audio_info.CH_STATUS1) {
 +		change |= 2;
 +	}
 +
@@ -53,7 +54,7 @@ index 117119e3..42633f3 100644
 +		if (hdmi_state > HDMI_State_Audio_config) {
 +			if (change & 1)
 +				hdmi_state = HDMI_State_Audio_config;
-+			else
++			if (change & 2)
 +				audio_config(true);
 +		}
  
@@ -168,7 +169,7 @@ index e40180d..6bab4f9 100644
  
  typedef struct
 diff --git a/sound/soc/sunxi/hdmiaudio/sndhdmi.c b/sound/soc/sunxi/hdmiaudio/sndhdmi.c
-index 1c306d2..d3b397a 100644
+index 1c306d2..22da1c9 100644
 --- a/sound/soc/sunxi/hdmiaudio/sndhdmi.c
 +++ b/sound/soc/sunxi/hdmiaudio/sndhdmi.c
 @@ -17,6 +17,7 @@
@@ -231,7 +232,7 @@ index 1c306d2..d3b397a 100644
  	switch (params_format(params)) {
  	case SNDRV_PCM_FORMAT_S16_LE:
  		hdmi_para.sample_bit = 16;
-@@ -115,6 +146,72 @@ static int sndhdmi_set_dai_fmt(struct snd_soc_dai *codec_dai, unsigned int fmt)
+@@ -115,6 +146,68 @@ static int sndhdmi_set_dai_fmt(struct snd_soc_dai *codec_dai, unsigned int fmt)
  	return 0;
  }
  
@@ -249,10 +250,8 @@ index 1c306d2..d3b397a 100644
 +static int sndhdmi_iec_get(struct snd_kcontrol *kcontrol,
 +		struct snd_ctl_elem_value *uvalue)
 +{
-+	int i;
-+
-+	for (i = 0; i < ARRAY_SIZE(hdmi_para.ch_stat); i++)
-+		uvalue->value.iec958.status[i] = hdmi_para.ch_stat[i];
++	memcpy(uvalue->value.iec958.status,
++	       hdmi_para.ch_stat, sizeof(hdmi_para.ch_stat));
 +
 +	return 0;
 +}
@@ -260,14 +259,12 @@ index 1c306d2..d3b397a 100644
 +static int sndhdmi_iec_put(struct snd_kcontrol *kcontrol,
 +		struct snd_ctl_elem_value *uvalue)
 +{
-+	int i;
-+
 +	/* Do not allow professional mode */
 +	if (uvalue->value.iec958.status[0] & IEC958_AES0_PROFESSIONAL)
 +		return -EPERM;
 +
-+	for (i = 0; i < ARRAY_SIZE(hdmi_para.ch_stat); i++)
-+		hdmi_para.ch_stat[i] = uvalue->value.iec958.status[i];
++	memcpy(hdmi_para.ch_stat,
++	       uvalue->value.iec958.status, sizeof(hdmi_para.ch_stat));
 +
 +	if (g_hdmi_func.hdmi_set_audio_para)
 +		g_hdmi_func.hdmi_set_audio_para(&hdmi_para);
@@ -304,7 +301,7 @@ index 1c306d2..d3b397a 100644
  /* codec dai operation */
  struct snd_soc_dai_ops sndhdmi_dai_ops = {
  	.startup = sndhdmi_startup,
-@@ -140,6 +237,8 @@ struct snd_soc_dai_driver sndhdmi_dai = {
+@@ -140,6 +233,8 @@ struct snd_soc_dai_driver sndhdmi_dai = {
  	/* pcm operations */
  	.ops = &sndhdmi_dai_ops,
  	.symmetric_rates = 1,
