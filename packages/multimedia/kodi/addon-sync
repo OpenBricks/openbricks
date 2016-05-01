@@ -69,6 +69,33 @@ PKG_LONGDESC="Kodi addon \$ADDON_ID"
 EOF
 }
 
+create_scripts () {
+  cat > $1/build <<EOF
+#! /bin/sh
+
+. config/options
+
+get_meta \$1
+cd \$PKG_BUILD_DIR
+
+do_cmake_build \\
+  -DOVERRIDE_PATHS=1 \\
+  -DCMAKE_MODULE_PATH=\$LIB_PREFIX/lib/kodi
+EOF
+
+  cat > $1/install <<EOF
+#! /bin/sh
+
+. config/options
+get_meta \$1
+
+cd \$PKG_BUILD_DIR
+
+do_install usr/*
+EOF
+
+  chmod +x $1/build $1/install
+}
 
 for d in $ADDON_BASE/depends/common/*platform $ADDON_BASE/addons/*.*; do
   addon=$(basename $d)
@@ -120,8 +147,9 @@ for d in $ADDON_BASE/depends/common/*platform $ADDON_BASE/addons/*.*; do
 
       mkdir -p ${ADDON_PKG_PREFIX}${addon_id}
       create_meta ${ADDON_PKG_PREFIX}${addon_id}
+      create_scripts ${ADDON_PKG_PREFIX}${addon_id}
 
-      sed \ 
+      sed \
         -i ${ADDON_PKG_PREFIX}${addon_id}/meta \
         -e "s%^ADDON_ID=.*%ADDON_ID=\"${addon_id}\"%" \
         -e "s%^ADDON_API=.*%ADDON_API=\"${ADDON_KODIVER}\"%" \
@@ -144,7 +172,7 @@ for d in $ADDON_BASE/depends/common/*platform $ADDON_BASE/addons/*.*; do
 
   [ "$pkg_url_rev" = "$cur_url_rev" ] && continue
 
-  echo "$addon_id $addon_url $addon_ref $pkg_url_rev"
+  echo "$addon_id $addon_url $addon_ref $pkg_url_rev *"
   #continue
 
   #create_meta ${ADDON_PKG_PREFIX}${addon_id}

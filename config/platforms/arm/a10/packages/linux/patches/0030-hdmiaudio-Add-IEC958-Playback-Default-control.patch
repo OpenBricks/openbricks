@@ -1,0 +1,315 @@
+From 90353964494e00ea0dfb8b316e6abc53a1d4f51b Mon Sep 17 00:00:00 2001
+From: Rudi <r.ihle@s-t.de>
+Date: Thu, 7 Apr 2016 20:11:41 +0200
+Subject: [PATCH] hdmiaudio: Add 'IEC958 Playback Default' control
+
+This is needed to signal transmission of non-PCM audio to a sink (passthrough mode).
+Also disable sample rates not allowed on HDMI.
+
+Signed-off-by: Rudi <r.ihle@s-t.de>
+---
+ drivers/video/sunxi/hdmi/drv_hdmi.c  |  20 +++++--
+ drivers/video/sunxi/hdmi/hdmi_core.c |  24 +++------
+ drivers/video/sunxi/hdmi/hdmi_core.h |   6 +--
+ include/linux/drv_hdmi.h             |   1 +
+ sound/soc/sunxi/hdmiaudio/sndhdmi.c  | 101 +++++++++++++++++++++++++++++++++--
+ 5 files changed, 127 insertions(+), 25 deletions(-)
+
+diff --git a/drivers/video/sunxi/hdmi/drv_hdmi.c b/drivers/video/sunxi/hdmi/drv_hdmi.c
+index 117119e3..1f7cdce 100644
+--- a/drivers/video/sunxi/hdmi/drv_hdmi.c
++++ b/drivers/video/sunxi/hdmi/drv_hdmi.c
+@@ -216,7 +216,8 @@ static __s32 Hdmi_Audio_Enable(__u8 mode, __u8 channel)
+ 
+ static __s32 Hdmi_Set_Audio_Para(hdmi_audio_t *audio_para)
+ {
+-	int change = 0;
++	__u8 change = 0;
++	__u32 cs0, cs1;
+ 
+ 	__inf("[Hdmi_Set_Audio_Para]\n");
+ 
+@@ -241,15 +242,28 @@ static __s32 Hdmi_Set_Audio_Para(hdmi_audio_t *audio_para)
+ 		      audio_info.channel_num);
+ 	}
+ 
++	cs0 = audio_para->ch_stat[0] | (audio_para->ch_stat[1] << 8) |
++	      (audio_para->ch_stat[2] << 16) | (audio_para->ch_stat[3] << 24);
++	cs1 = audio_para->ch_stat[4] | (audio_para->ch_stat[5] << 8);
++	if (cs0 != audio_info.CH_STATUS0 || cs1 != audio_info.CH_STATUS1) {
++		change |= 2;
++	}
++
+ 	if (change) {
+ 		mutex_lock(&HDMI_mutex);
+ 	  
+ 		audio_info.sample_bit = audio_para->sample_bit;
+ 		audio_info.sample_rate = audio_para->sample_rate;
+ 		audio_info.channel_num = audio_para->channel_num;
++		audio_info.CH_STATUS0 = cs0;
++		audio_info.CH_STATUS1 = cs1;
+ 	  
+-		if (hdmi_state > HDMI_State_Audio_config)
+-			hdmi_state = HDMI_State_Audio_config;
++		if (hdmi_state > HDMI_State_Audio_config) {
++			if (change & 1)
++				hdmi_state = HDMI_State_Audio_config;
++			if (change & 2)
++				audio_config(true);
++		}
+ 
+ 		mutex_unlock(&HDMI_mutex);
+ 	}
+diff --git a/drivers/video/sunxi/hdmi/hdmi_core.c b/drivers/video/sunxi/hdmi/hdmi_core.c
+index 0f694fd..0ccf244 100644
+--- a/drivers/video/sunxi/hdmi/hdmi_core.c
++++ b/drivers/video/sunxi/hdmi/hdmi_core.c
+@@ -192,7 +192,7 @@ __s32 hdmi_main_task_loop(void)
+ 		hdmi_state = HDMI_State_Audio_config;
+ 
+ 	case HDMI_State_Audio_config:
+-		audio_config();
++		audio_config(false);
+ 		hdmi_state = HDMI_State_Playback;
+ 
+ 	case HDMI_State_Playback:
+@@ -243,38 +243,24 @@ static __s32 get_audio_info(__s32 sample_rate)
+ 	switch (sample_rate) {
+ 	case 32000:
+ 		audio_info.ACR_N = 4096;
+-		audio_info.CH_STATUS0 = (3 << 24);
+-		audio_info.CH_STATUS1 = 0x0000000b;
+ 		break;
+ 	case 44100:
+ 		audio_info.ACR_N = 6272;
+-		audio_info.CH_STATUS0 = (0 << 24);
+-		audio_info.CH_STATUS1 = 0x0000000b;
+ 		break;
+ 	case 48000:
+ 		audio_info.ACR_N = 6144;
+-		audio_info.CH_STATUS0 = (2 << 24);
+-		audio_info.CH_STATUS1 = 0x0000000b;
+ 		break;
+ 	case 88200:
+ 		audio_info.ACR_N = 12544;
+-		audio_info.CH_STATUS0 = (8 << 24);
+-		audio_info.CH_STATUS1 = 0x0000000b;
+ 		break;
+ 	case 96000:
+ 		audio_info.ACR_N = 12288;
+-		audio_info.CH_STATUS0 = (10 << 24);
+-		audio_info.CH_STATUS1 = 0x0000000b;
+ 		break;
+ 	case 176400:
+ 		audio_info.ACR_N = 25088;
+-		audio_info.CH_STATUS0 = (12 << 24);
+-		audio_info.CH_STATUS1 = 0x0000000b;
+ 		break;
+ 	case 192000:
+ 		audio_info.ACR_N = 24576;
+-		audio_info.CH_STATUS0 = (14 << 24);
+-		audio_info.CH_STATUS1 = 0x0000000b;
+ 		break;
+ 	default:
+ 		__wrn("un-support sample_rate,value=%d\n", sample_rate);
+@@ -559,12 +545,18 @@ __s32 video_config(__s32 vic)
+ 	return 0;
+ }
+ 
+-__s32 audio_config(void)
++__s32 audio_config(__bool ch_status_only)
+ {
+ 	__s32 i;
+ 
+ 	__inf("audio_config, sample_rate:%d\n", audio_info.sample_rate);
+ 
++	if (ch_status_only) {
++		writel(audio_info.CH_STATUS0, HDMI_AUDIO_CH_STATUS0);
++		writel(audio_info.CH_STATUS1, HDMI_AUDIO_CH_STATUS1);
++		return 0;
++	}
++
+ 	writel(0x00000000, HDMI_AUDIO_CTRL);
+ 	writel(0x40000000, HDMI_AUDIO_CTRL);
+ 	while (readl(HDMI_AUDIO_CTRL) != 0)
+diff --git a/drivers/video/sunxi/hdmi/hdmi_core.h b/drivers/video/sunxi/hdmi/hdmi_core.h
+index 7f11557..b38f330 100644
+--- a/drivers/video/sunxi/hdmi/hdmi_core.h
++++ b/drivers/video/sunxi/hdmi/hdmi_core.h
+@@ -82,8 +82,8 @@ typedef struct audio_timing {
+ 
+ 	__s32 CTS;
+ 	__s32 ACR_N;
+-	__s32 CH_STATUS0;
+-	__s32 CH_STATUS1;
++	__u32 CH_STATUS0;
++	__u32 CH_STATUS1;
+ 	__u8  sample_bit;
+ 
+ } HDMI_AUDIO_INFO;
+@@ -96,7 +96,7 @@ __s32 hdmi_main_task_loop(void);
+ __s32 Hpd_Check(void);
+ __s32 ParseEDID(void);
+ __s32 video_config(__s32 vic);
+-__s32 audio_config(void);
++__s32 audio_config(__bool ch_status_only);
+ __s32 get_video_info(__s32 vic);
+ 
+ extern __u32 hdmi_pll; /* 0: video pll 0; 1: video pll 1 */
+diff --git a/include/linux/drv_hdmi.h b/include/linux/drv_hdmi.h
+index e40180d..6bab4f9 100644
+--- a/include/linux/drv_hdmi.h
++++ b/include/linux/drv_hdmi.h
+@@ -39,6 +39,7 @@ typedef struct
+ 	__u8    just_pol;
+ 	__u8    channel_num;
+ 	__u8    sample_bit;
++	__u8    ch_stat[6];
+ }hdmi_audio_t;
+ 
+ typedef struct
+diff --git a/sound/soc/sunxi/hdmiaudio/sndhdmi.c b/sound/soc/sunxi/hdmiaudio/sndhdmi.c
+index 1c306d2..22da1c9 100644
+--- a/sound/soc/sunxi/hdmiaudio/sndhdmi.c
++++ b/sound/soc/sunxi/hdmiaudio/sndhdmi.c
+@@ -17,6 +17,7 @@
+ #include <linux/slab.h>
+ #include <sound/pcm.h>
+ #include <sound/pcm_params.h>
++#include <sound/asoundef.h>
+ #include <sound/soc.h>
+ #include <sound/soc-dapm.h>
+ #include <sound/initval.h>
+@@ -43,9 +44,19 @@ void audio_set_hdmi_func(__audio_hdmi_func *hdmi_func)
+ }
+ EXPORT_SYMBOL(audio_set_hdmi_func);
+ 
+-#define SNDHDMI_RATES  (SNDRV_PCM_RATE_8000_192000|SNDRV_PCM_RATE_KNOT)
+-#define SNDHDMI_FORMATS (SNDRV_PCM_FMTBIT_S8 | SNDRV_PCM_FMTBIT_S16_LE | \
+-				SNDRV_PCM_FMTBIT_S32_LE)
++#define SNDHDMI_RATES		(\
++	SNDRV_PCM_RATE_32000	|\
++	SNDRV_PCM_RATE_44100	|\
++	SNDRV_PCM_RATE_48000	|\
++	SNDRV_PCM_RATE_96000	|\
++	SNDRV_PCM_RATE_88200	|\
++	SNDRV_PCM_RATE_96000	|\
++	SNDRV_PCM_RATE_176400	|\
++	SNDRV_PCM_RATE_192000	)
++
++#define SNDHDMI_FORMATS		(\
++	SNDRV_PCM_FMTBIT_S16_LE	|\
++	SNDRV_PCM_FMTBIT_S32_LE	)
+ 
+ static int sndhdmi_mute(struct snd_soc_dai *dai, int mute)
+ {
+@@ -72,8 +83,28 @@ static int sndhdmi_hw_params(struct snd_pcm_substream *substream,
+ 		printk("error:%s,line:%d\n", __func__, __LINE__);
+ 		return -EAGAIN;
+ 	}
++
++	hdmi_para.ch_stat[0] = IEC958_AES0_CON_NOT_COPYRIGHT;
++	hdmi_para.ch_stat[1] = IEC958_AES1_CON_PCM_CODER | IEC958_AES1_CON_ORIGINAL;
++	hdmi_para.ch_stat[2] = IEC958_AES2_CON_SOURCE_UNSPEC | IEC958_AES2_CON_CHANNEL_UNSPEC;
++	hdmi_para.ch_stat[3] = IEC958_AES3_CON_CLOCK_1000PPM;
++	hdmi_para.ch_stat[4] = IEC958_AES4_CON_MAX_WORDLEN_24 | IEC958_AES4_CON_WORDLEN_24_20;
++	hdmi_para.ch_stat[5] = IEC958_AES5_CON_CGMSA_COPYFREELY;
++
+ 	hdmi_para.sample_rate = params_rate(params);
++	switch(hdmi_para.sample_rate) {
++	case  32000:  hdmi_para.ch_stat[3] |= 0x03;  hdmi_para.ch_stat[4] |= 0xc0;  break;
++	case  44100:  hdmi_para.ch_stat[3] |= 0x00;  hdmi_para.ch_stat[4] |= 0xf0;  break;
++	case  48000:  hdmi_para.ch_stat[3] |= 0x02;  hdmi_para.ch_stat[4] |= 0xd0;  break;
++	case  88200:  hdmi_para.ch_stat[3] |= 0x08;  hdmi_para.ch_stat[4] |= 0x70;  break;
++	case  96000:  hdmi_para.ch_stat[3] |= 0x0a;  hdmi_para.ch_stat[4] |= 0x50;  break;
++	case 176400:  hdmi_para.ch_stat[3] |= 0x0c;  hdmi_para.ch_stat[4] |= 0x30;  break;
++	case 192000:  hdmi_para.ch_stat[3] |= 0x0e;  hdmi_para.ch_stat[4] |= 0x10;  break;
++	    default:  return -EINVAL;
++	}
++
+ 	hdmi_para.channel_num = params_channels(params);
++
+ 	switch (params_format(params)) {
+ 	case SNDRV_PCM_FORMAT_S16_LE:
+ 		hdmi_para.sample_bit = 16;
+@@ -115,6 +146,68 @@ static int sndhdmi_set_dai_fmt(struct snd_soc_dai *codec_dai, unsigned int fmt)
+ 	return 0;
+ }
+ 
++
++/* IEC60958 status functions */
++static int sndhdmi_iec_info(struct snd_kcontrol *kcontrol,
++		struct snd_ctl_elem_info *uinfo)
++{
++	uinfo->type = SNDRV_CTL_ELEM_TYPE_IEC958;
++	uinfo->count = 1;
++
++	return 0;
++}
++
++static int sndhdmi_iec_get(struct snd_kcontrol *kcontrol,
++		struct snd_ctl_elem_value *uvalue)
++{
++	memcpy(uvalue->value.iec958.status,
++	       hdmi_para.ch_stat, sizeof(hdmi_para.ch_stat));
++
++	return 0;
++}
++
++static int sndhdmi_iec_put(struct snd_kcontrol *kcontrol,
++		struct snd_ctl_elem_value *uvalue)
++{
++	/* Do not allow professional mode */
++	if (uvalue->value.iec958.status[0] & IEC958_AES0_PROFESSIONAL)
++		return -EPERM;
++
++	memcpy(hdmi_para.ch_stat,
++	       uvalue->value.iec958.status, sizeof(hdmi_para.ch_stat));
++
++	if (g_hdmi_func.hdmi_set_audio_para)
++		g_hdmi_func.hdmi_set_audio_para(&hdmi_para);
++
++	return 0;
++}
++
++static int sndhdmi_probe(struct snd_soc_dai *dai)
++{
++	int ret;
++
++	static struct snd_kcontrol_new sndhdmi_ctrls[] = {
++		/* Status channel control */
++		{
++			.iface = SNDRV_CTL_ELEM_IFACE_PCM,
++			.name = SNDRV_CTL_NAME_IEC958("", PLAYBACK, DEFAULT),
++			.access = SNDRV_CTL_ELEM_ACCESS_READ |
++				SNDRV_CTL_ELEM_ACCESS_WRITE |
++				SNDRV_CTL_ELEM_ACCESS_VOLATILE,
++			.info = sndhdmi_iec_info,
++			.get = sndhdmi_iec_get,
++			.put = sndhdmi_iec_put,
++		},
++	};
++
++	ret = snd_soc_add_dai_controls(dai, sndhdmi_ctrls,
++			ARRAY_SIZE(sndhdmi_ctrls));
++	if (ret)
++		dev_warn(dai->dev, "failed to add dai controls\n");
++
++	return 0;
++}
++
+ /* codec dai operation */
+ struct snd_soc_dai_ops sndhdmi_dai_ops = {
+ 	.startup = sndhdmi_startup,
+@@ -140,6 +233,8 @@ struct snd_soc_dai_driver sndhdmi_dai = {
+ 	/* pcm operations */
+ 	.ops = &sndhdmi_dai_ops,
+ 	.symmetric_rates = 1,
++	.probe = &sndhdmi_probe,
++
+ };
+ EXPORT_SYMBOL(sndhdmi_dai);
+ 
+-- 
+1.9.1
+
