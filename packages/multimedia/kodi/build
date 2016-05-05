@@ -43,13 +43,9 @@ kodi_set_option $1 "sdl"               "sdl"
 kodi_set_option $1 "alsa"               "alsa"
 
 
-# check for nVidia ARM Tegra2 optimizations
-CFG_TEGRA="--disable-tegra"
-
-
 case "$TARGET_PLATFORM" in
   tegra2)
-    CFG_TEGRA="--enable-tegra"
+    EXTRA_CONFIG="$EXTRA_CONFIG --enable-tegra"
     ;;
     
   armada5xx)
@@ -84,12 +80,10 @@ case "$TARGET_MACHINE" in
 esac
 
 
-if [ "$FPU_OPTIMIZATIONS" = "neon" -o  "$FPU_OPTIMIZATIONS" = "neon-vfp4" ]; then
+if [ "$FPU_OPTIMIZATIONS" = "neon" ] || [ "$FPU_OPTIMIZATIONS" = "neon-vfp4" ]; then
   EXTRA_CONFIG="$EXTRA_CONFIG --enable-neon"
 fi
 
-[ "$FPU_OPTIMIZATIONS" = "neon-vfp4" ] && CFLAGS="$CFLAGS -mfpu=vfpv4"
-[ "$FPU_OPTIMIZATIONS" = "neon-vfp4" ] && CXXFLAGS="$CXXFLAGS -mfpu=vfpv4"
 
 export LIBS="$LIBS -lstdc++"
 export LIB_P=$LIB_PREFIX
@@ -113,13 +107,7 @@ if [ ! -f configure ] ; then
   # git version
   echo "$PKG_URL_REV-$PKG_REV" > VERSION
 
-  # build libsquish for target
-#  setup_toolchain target
-#  cd tools/depends/native/libsquish-native
-#  make NATIVEPLATFORM=target NATIVEPREFIX=$LIB_PREFIX
-#  cd -
-
-  # build TexturePacker (and libsquish) for host
+  # build TexturePacker for host
   setup_toolchain host
   cd tools/depends/native/TexturePacker
   make
@@ -139,6 +127,8 @@ if [ ! -f configure ] ; then
   #make
   cd -
 
+  # restore toolchain
+  setup_toolchain target
 fi
 
 ## problem with new glibc ..
@@ -151,26 +141,16 @@ GCC_NO_LTO=1 GCC_NO_GOLD=1 GCC_NO_GRAPHITE=1 GCC_NO_LOOP_TREE=1 \
 do_configure \
   --with-arch=$TARGET_ARCH \
   --with-cpu=$TARGET_CPU \
-  --disable-debug \
-  --enable-optimizations \
-  --disable-vdadecoder \
-  --disable-profiling \
-  --disable-goom \
   --disable-ccache \
+  --disable-debug \
+  --disable-profiling \
+  --enable-optimizations \
   --disable-mid \
-  --disable-hal \
-  --disable-asap-codec \
   --with-ffmpeg=shared \
-  $CFG_TEGRA \
   $EXTRA_CONFIG \
 
 # leaked host includes break the Python components build
 sed -i Makefile.include -e "s:-I$ROOT/$TOOLCHAIN/include::"
-
-# leaked host includes also break libdvdnav
-#sed -i lib/libdvd/libdvdnav/config.mak \
-#    -e "s:^DVDREAD_CFLAGS=.*$:DVDREAD_CFLAGS=-I$LIB_PREFIX/include:" \
-#    -e "s:^DVDREAD_LIBS=.*$:DVDREAD_LIBS=-L$LIB_PREFIX/lib -ldvdread:" \
 
 #export MAKEFLAGS=-j1
 make externals
@@ -191,9 +171,9 @@ if [ "$TARGET_ARCH" = arm ]; then
 fi
 
 # ToDo: Check if this is really needed...
-for i in .install/usr/lib/kodi/system/players/dvdplayer/*.so; do
+for i in .install/usr/lib/kodi/system/players/VideoPlayer/*.so; do
   lib=$(basename $i)
-  ln -sf kodi/system/players/dvdplayer/$lib .install/usr/lib/$lib
+  ln -sf kodi/system/players/VideoPlayer/$lib .install/usr/lib/$lib
 done
 
 cp -P $ROOT/$PACKAGES/$PKG_SECTION/$1/scripts/kodi-default-settings.sh \
