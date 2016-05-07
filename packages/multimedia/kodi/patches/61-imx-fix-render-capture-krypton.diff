@@ -1,0 +1,172 @@
+diff -u a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp
+--- a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp	2016-05-07 10:37:08.000000000 +0200
++++ b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp	2016-05-07 10:35:39.000000000 +0200
+@@ -1310,10 +1310,11 @@
+   , m_bFbIsConfigured(false)
+   , m_g2dHandle(NULL)
+   , m_bufferCapture(NULL)
++  , m_captureState(fail)
+   , m_deviceName("/dev/fb1")
+ {
+-  // Limit queue to 2
+-  m_input.resize(2);
++  // Two tasks for screen blitting + one for capture
++  m_input.resize(3);
+   m_beginInput = m_endInput = m_bufferedInput = 0;
+   m_pageCrops = new CRectInt[m_fbPages];
+   CLog::Log(LOGDEBUG, "iMX : Allocated %d render buffers\n", m_fbPages);
+@@ -1586,9 +1587,12 @@
+ bool CIMXContext::PushCaptureTask(CIMXBuffer *source, CRect *dest)
+ {
+   IPUTask ipu;
+-  m_CaptureDone = false;
++  m_captureState = busy;
+   PrepareTask(ipu, NULL, source, dest);
+-  return PushTask(ipu);
++  if (dest && dest->Width() > 0 && PushTask(ipu))
++    return true;
++  m_captureState = fail;
++  return false;
+ }
+ 
+ bool CIMXContext::ShowPage(int page, bool shift)
+@@ -1784,7 +1788,7 @@
+ void CIMXContext::WaitCapture()
+ {
+   CSingleLock lk(m_monitor);
+-  while (!m_CaptureDone)
++  while (m_captureState == busy && !m_bStop)
+     m_inputNotFull.wait(lk);
+ }
+ 
+@@ -1855,21 +1859,17 @@
+   ipu.task.output.crop.pos.y = iDstRect.y1;
+   ipu.task.output.crop.w     = iDstRect.Width();
+   ipu.task.output.crop.h     = iDstRect.Height();
+-
++    
+   // If dest is set it means we do not want to blit to frame buffer
+   // but to a capture buffer and we state this capture buffer dimensions
+   if (dest)
+   {
+     // Populate partly output block
+-    ipu.task.output.crop.pos.x = 0;
+-    ipu.task.output.crop.pos.y = 0;
+-    ipu.task.output.crop.w     = iDstRect.Width();
+-    ipu.task.output.crop.h     = iDstRect.Height();
+-    ipu.task.output.width  = iDstRect.Width();
+-    ipu.task.output.height = iDstRect.Height();
++    ipu.task.output.width  = ipu.task.output.crop.w;
++    ipu.task.output.height = ipu.task.output.crop.h;
++    return;
+   }
+-  else
+-  {
++
+   // Setup deinterlacing if enabled
+   if (m_currentFieldFmt)
+   {
+@@ -1884,9 +1884,9 @@
+     else
+     */
+       ipu.task.input.deinterlace.motion = HIGH_MOTION;
++    
+     ipu.task.input.deinterlace.field_fmt = m_currentFieldFmt;
+   }
+-  }
+ }
+ 
+ bool CIMXContext::DoTask(IPUTask &ipu, int targetPage)
+@@ -1935,7 +1935,10 @@
+     {
+       m_bufferCapture = g2d_alloc(size, 0);
+       if (m_bufferCapture == NULL)
++      {
+         CLog::Log(LOGERROR, "iMX : Error allocating capture buffer\n");
++        return false;
++      }
+     }
+     ipu.task.output.paddr = m_bufferCapture->buf_paddr;
+     swapColors = true;
+@@ -2059,8 +2062,6 @@
+       // Launch synchronous blit
+       g2d_blit(m_g2dHandle, &src, &dst);
+       g2d_finish(m_g2dHandle);
+-      if ((m_bufferCapture) && (ipu.task.output.paddr == m_bufferCapture->buf_paddr))
+-        m_CaptureDone = true;
+     }
+     ipu.current->EndRender();
+   }
+@@ -2117,7 +2118,7 @@
+ {
+   bool ret;
+ 
+-  // open g2d here to ensure all g2d fucntions are called from the same thread
++  // open g2d here to ensure all g2d functions are called from the same thread
+   if (m_g2dHandle == NULL)
+   {
+     if (g2d_open(&m_g2dHandle) != 0)
+@@ -2140,12 +2141,19 @@
+     if (m_bStop)
+       break;
+ 
++    bool isCapture = (task->task.output.width != 0);
+     ret = DoTask(*task, (1-m_fbCurrentPage) & m_vsync);
+     bool shift = checkIPUStrideOffset(&task->task.input.deinterlace);
+ 
+     // Free resources
+     task->Done();
+ 
++    if (isCapture)
++    {
++      m_captureState = ret ? done : fail;
++      ret = false;
++    }
++
+     {
+       CSingleLock lk(m_monitor);
+       m_beginInput = (m_beginInput+1) % m_input.size();
+@@ -2167,7 +2175,9 @@
+     --m_bufferedInput;
+   }
+ 
+-  // close g2d here to ensure all g2d fucntions are called from the same thread
++  m_captureState = fail;
++
++  // close g2d here to ensure all g2d functions are called from the same thread
+   if (m_bufferCapture)
+   {
+     if (g2d_free(m_bufferCapture))
+diff -u a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h
+--- a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h	2016-05-07 10:37:08.000000000 +0200
++++ b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h	2016-05-07 09:11:13.000000000 +0200
+@@ -140,7 +140,7 @@
+   // the passed overlay. The buffer format is BGRA (4 byte)
+   void CaptureDisplay(unsigned char *buffer, int iWidth, int iHeight);
+   bool PushCaptureTask(CIMXBuffer *source, CRect *dest);
+-  void *GetCaptureBuffer() const { if (m_bufferCapture) return m_bufferCapture->buf_vaddr; else return NULL; }
++  void *GetCaptureBuffer() const { return (m_captureState == done) ? m_bufferCapture->buf_vaddr : NULL; }
+   void WaitCapture();
+ 
+   void OnResetDisplay();
+@@ -218,7 +218,7 @@
+ 
+   void                           *m_g2dHandle;
+   struct g2d_buf                 *m_bufferCapture;
+-  bool                           m_CaptureDone;
++  volatile enum { fail, busy, done } m_captureState;
+   static const int               m_fbPages;
+ 
+   std::string                    m_deviceName;
+diff -u a/xbmc/cores/VideoPlayer/VideoRenderers/RenderCapture.cpp b/xbmc/cores/VideoPlayer/VideoRenderers/RenderCapture.cpp
+--- a/xbmc/cores/VideoPlayer/VideoRenderers/RenderCapture.cpp	2015-10-19 08:31:15.000000000 +0200
++++ b/xbmc/cores/VideoPlayer/VideoRenderers/RenderCapture.cpp	2016-03-08 08:29:53.000000000 +0100
+@@ -91,7 +91,7 @@
+ {
+   g_IMXContext.WaitCapture();
+   m_pixels = reinterpret_cast<uint8_t*>(g_IMXContext.GetCaptureBuffer());
+-  SetState(CAPTURESTATE_DONE);
++  SetState(m_pixels ? CAPTURESTATE_DONE : CAPTURESTATE_FAILED);
+ }
+ 
+ #elif defined(TARGET_RASPBERRY_PI)
