@@ -43,8 +43,19 @@ put_str() {
   printf "$*\n"
 }
 
+# check for rootfs url
+ROOTFS_LINK="rootfs.url"
+if [ -n "$ROOTFS" ] && echo "$ROOTFS" | grep -q "^https\?://.*\.tar\.xz$"; then
+  if curl -Is $ROOTFS | grep -q "^HTTP.*200 OK"; then
+    echo "$ROOTFS" > $ROOTFS_LINK
+    ROOTFS=$ROOTFS_LINK
+  else
+    rm -f $ROOTFS_LINK
+  fi
+fi
+
 if [ ! -f "$ROOTFS" ] && [ ! -d "$ROOTFS" ] || [ -z "$fs_types" ] ; then
-  put_str "Usage: $0 <device|img-file> <rootfs|rootfs-archive> [target-machine]\n"
+  put_str "Usage: $0 <device|img-file> <rootfs|rootfs-archive|rootfs-url> [target-machine]\n"
 
   put_str "Supported target-machine types are:"
   curr=`cat $0`
@@ -187,6 +198,9 @@ fi
 put_msg "#### Copying files..."
 if [ -d "$ROOTFS" ]; then
   cp -PR $ROOTFS/* $mountdir
+elif [ "$ROOTFS" = "$ROOTFS_LINK" ]; then
+  curl -L -k $(cat $ROOTFS) --progress | tar -xJ --no-same-owner -C $mountdir
+  rm -f $ROOTFS
 else
   tar --no-same-owner -xaf $ROOTFS -C $mountdir
 fi
