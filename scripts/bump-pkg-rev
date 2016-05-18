@@ -1,0 +1,44 @@
+#! /bin/sh
+
+
+. config/options
+get_meta $1
+
+dir_pkg_meta=$ROOT/$PACKAGES/$PKG_SECTION/$1/meta
+
+if ! [ -f $dir_pkg_meta ] ; then
+  echo "no meta file for $1"
+  exit 1
+fi
+
+if [ -n "$PKG_REV" ] && grep -q PKG_REV $dir_pkg_meta ; then
+  if [ -n "$PKG_PARENT" ] ; then
+    echo " Please, check manually this package, \$PKG_PARENT is set ..."
+    exit 1
+  fi
+else
+  echo "No variable \$PKG_REV for $1 in meta file ... skipping"
+  exit 1
+fi
+
+next_pkg_rev () {
+  local meta_pkg_rev=$PKG_REV
+  local new_meta_pkg_rev=$(($meta_pkg_rev + 1))
+
+  echo "$new_meta_pkg_rev"
+}
+n=$(next_pkg_rev)
+
+echo "Bumping revision of package $1 from $PKG_REV to $n"
+
+sed -i $dir_pkg_meta \
+    -e "s%^PKG_REV=.*%PKG_REV=\"${n}\"%"
+    
+if [ x"$2" = "xcommit" ] ; then
+  if ! [ x"$3" = x ] ; then
+    git commit $PACKAGES/$PKG_SECTION/$1 -m "$1 : increment PKG_REV, $3"
+  else
+    git commit $PACKAGES/$PKG_SECTION/$1 -m "$1 : increment PKG_REV"
+  fi
+fi
+
