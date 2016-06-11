@@ -11,7 +11,7 @@ isset() {
   return $?
 }
 
-# Usage: value=`valueof <variable>`
+# Usage: value=$(valueof <variable>)
 valueof() {
   local tmp=
   local var="$1"
@@ -22,24 +22,28 @@ valueof() {
 
 if [ -f $SRCCFG ] ; then
   while read i ; do
-    cmd=`echo $i | \
-         grep "setting " | \
-         sed -e 's%<setting id="%%' -e 's%" value%%' -e 's% />.*%%'`
+    cmd=$(echo $i | \
+          grep "setting " | \
+          sed -e 's%.*id="\([^"]*\).*value="\([^"]*\).*%\1="\2"%')
     #[ -n "$cmd" ] && echo $cmd
     [ -n "$cmd" ] && eval $cmd
   done < $SRCCFG
 
-  for key in `cat $DSTCFG | grep -v '^#' | cut -f1 -d=`; do
+  sed_cmd="sed -i $DSTCFG"
+  for key in $(cat $DSTCFG | grep -v '^#' | cut -f1 -d=); do
     if isset ${key}; then
-      val=`valueof ${key}`
-      sed -e "s%^${key}=.*%${key}=\"${val}\"%" -i $DSTCFG
+      val=$(valueof ${key})
+      sed_cmd="${sed_cmd} -e 's%^${key}=.*%${key}=\"${val}\"%'"
     fi
   done
+  #echo "${sed_cmd}"
+  /bin/sh -c "${sed_cmd}"
 
-  for unit in "network-link.service" \
-              "telnetd.socket" "sshd.socket" \
-              "`valueof NETWORK_BACKEND`.service" \
-              "bftpd.service" "lighttpd.service" "smbd.service" "nmbd.service"; do
-    [ -e /lib/systemd/system/$unit ] && systemctl restart $unit
+  for unit in \
+    "network-link.service" \
+    "telnetd.socket" "sshd.socket" \
+    "$(valueof NETWORK_BACKEND).service" \
+    "bftpd.service" "lighttpd.service" "smbd.service" "nmbd.service"; do
+      [ -e /lib/systemd/system/$unit ] && systemctl restart $unit
   done
 fi
