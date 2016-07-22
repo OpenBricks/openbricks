@@ -1,0 +1,59 @@
+From 463971e44a0bfef081ea6150d0d922e5d2641b8e Mon Sep 17 00:00:00 2001
+From: warped-rudi <r.ihle@s-t.de>
+Date: Fri, 22 Jul 2016 08:35:15 +0200
+Subject: [PATCH 2/5] Don't try to interprete JSON nodes that do not represent
+ light IDs.
+
+In case of unauthorized access to a bridge, the JSON reply to a state
+query will only contain an 'error' node. This will cause a crash in
+WavforHue::SaveState(). The fix avoids this by checking that the node
+name can be converted to a number > 0 (light IDs start with 1).
+
+Signed-off-by: warped-rudi <r.ihle@s-t.de>
+---
+ src/WavforHue.cpp | 16 ++++++++++------
+ 1 file changed, 10 insertions(+), 6 deletions(-)
+
+diff --git a/src/WavforHue.cpp b/src/WavforHue.cpp
+index 262bce0..84128a7 100644
+--- a/src/WavforHue.cpp
++++ b/src/WavforHue.cpp
+@@ -156,10 +156,14 @@ void WavforHue::SaveState(std::string json)
+ 
+   if (root.size() > 0) {
+     for (Json::ValueIterator itr = root.begin(); itr != root.end(); itr++) {
++      std::string id = itr.key().asString();
++      if (std::stoul(id) == 0)
++        continue;
++
+       HueData hueData;
+-      hueData.lightIDs.push_back(itr.key().asString());
++      hueData.lightIDs.push_back(id);
+       hueData.numberOfLights = 1;
+-      if (root[itr.key().asString()]["state"]["on"].asString() == "false")
++      if (root[id]["state"]["on"].asString() == "false")
+       {
+         // The light was off.
+         hueData.off = true;
+@@ -172,14 +176,14 @@ void WavforHue::SaveState(std::string json)
+         hueData.on = true;
+         priorStates.push_back(hueData);
+         hueData.on = false;
+-        hueData.bri = root[itr.key().asString()]["state"]["bri"].asInt();
+-        hueData.hue = root[itr.key().asString()]["state"]["hue"].asInt();
+-        hueData.sat = root[itr.key().asString()]["state"]["sat"].asInt();
++        hueData.bri = root[id]["state"]["bri"].asInt();
++        hueData.hue = root[id]["state"]["hue"].asInt();
++        hueData.sat = root[id]["state"]["sat"].asInt();
+         hueData.transitionTime = 15;
+       }
+       
+       priorStates.push_back(hueData);
+-      SendDebug("Saving hue data for light " + itr.key().asString());
++      SendDebug("Saving hue data for light " + id);
+     }
+   }
+   savedTheStates = true;
+-- 
+1.9.1
+

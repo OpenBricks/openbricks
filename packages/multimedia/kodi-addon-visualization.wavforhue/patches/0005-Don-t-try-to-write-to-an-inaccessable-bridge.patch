@@ -1,0 +1,92 @@
+From 5035237ebcd781f8041025562990a1226580d678 Mon Sep 17 00:00:00 2001
+From: warped-rudi <r.ihle@s-t.de>
+Date: Fri, 22 Jul 2016 09:46:39 +0200
+Subject: [PATCH 5/5] Don't try to write to an inaccessable bridge
+
+Consider a bridge that does not resond to initial state query as
+inaccessable and do not attempt to send further requests to it.
+Also don't abort() if the JSON reply to a light state query is not
+parsable or empty.
+
+Signed-off-by: warped-rudi <r.ihle@s-t.de>
+---
+ src/WavforHue.cpp        |  1 -
+ src/WavforHue_Thread.cpp | 12 +++++++++---
+ src/WavforHue_Thread.h   |  1 +
+ 3 files changed, 10 insertions(+), 4 deletions(-)
+
+diff --git a/src/WavforHue.cpp b/src/WavforHue.cpp
+index 84128a7..3ab9866 100644
+--- a/src/WavforHue.cpp
++++ b/src/WavforHue.cpp
+@@ -151,7 +151,6 @@ void WavforHue::SaveState(std::string json)
+     // Report failures and their locations in the document.
+     // Oh I wish I could use debugging in here.
+     SendDebug("Failed to parse JSON " + reader.getFormattedErrorMessages());
+-    abort();
+   }
+ 
+   if (root.size() > 0) {
+diff --git a/src/WavforHue_Thread.cpp b/src/WavforHue_Thread.cpp
+index a6c8dc8..182d46a 100644
+--- a/src/WavforHue_Thread.cpp
++++ b/src/WavforHue_Thread.cpp
+@@ -30,6 +30,7 @@ using namespace ADDON;
+ // -- Constructor ----------------------------------------------------
+ WavforHue_Thread::WavforHue_Thread()
+ {
++  bridgeOk = false;
+   gRunThread = false;
+ }
+ // -- Constructor ----------------------------------------------------
+@@ -103,20 +104,23 @@ void WavforHue_Thread::TransferQueueToMain()
+   SocketData putData;
+   while (!wavforhue.queue.empty())
+   {
+-    putData = wavforhue.queue.front(); wavforhue.queue.pop();
+-    HTTPRequest(putData);
++    putData = wavforhue.queue.front();
++    wavforhue.queue.pop();
++
++    if (bridgeOk)
++      HTTPRequest(putData);
+   }
+ }
+ 
+ void WavforHue_Thread::TransferQueueToThread()
+ {
+   SocketData putData;
+-
+   while (!wavforhue.queue.empty())
+   {
+     putData = wavforhue.queue.front();
+     wavforhue.queue.pop();
+     
++    if (bridgeOk)
+     { 
+       std::lock_guard<std::mutex> lock(gMutex);
+       gQueue.push(putData);
+@@ -310,6 +314,8 @@ void WavforHue_Thread::GetPriorState()
+   wavforhue.SendDebug("Saving the response.");
+   wavforhue.SaveState(response);
+ 
++  // Light states were read from the bridge. So let's assume it's present.
++  bridgeOk = !wavforhue.priorStates.empty();
+ }
+ 
+ void WavforHue_Thread::PutPriorState()
+diff --git a/src/WavforHue_Thread.h b/src/WavforHue_Thread.h
+index 16c785d..cb9930d 100644
+--- a/src/WavforHue_Thread.h
++++ b/src/WavforHue_Thread.h
+@@ -91,6 +91,7 @@ private:
+   std::queue<SocketData> gQueue;
+   std::condition_variable gThreadConditionVariable;
+ 
++  bool bridgeOk;
+   volatile bool gRunThread;
+ 
+ #ifdef USE_PTHREAD
+-- 
+1.9.1
+

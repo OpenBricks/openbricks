@@ -1,0 +1,282 @@
+From 130fc4a94b4f6ce52895fc054e3b77be249c9f54 Mon Sep 17 00:00:00 2001
+From: warped-rudi <r.ihle@s-t.de>
+Date: Fri, 22 Jul 2016 09:27:42 +0200
+Subject: [PATCH 4/5] Cleanup threading, enable optional use of pthread
+ functions
+
+Simplify the threading, queueing and locking logic.
+Also add the possibility to use plain pthread functions instead
+of C++11 std::thread. This is a workaround for a broken libstc++
+on some platforms, leading to a 'pure virtual function called'
+error. The workaround can be enabled by calling CMake with the
+argument '-DUSE_PTHREAD=1'
+
+Signed-off-by: warped-rudi <r.ihle@s-t.de>
+---
+ src/Main.cpp             |  11 ++---
+ src/Main_gles.cpp        |   9 ++---
+ src/WavforHue_Thread.cpp | 103 +++++++++++++++++++++++++----------------------
+ src/WavforHue_Thread.h   |  23 ++++++++---
+ 4 files changed, 79 insertions(+), 67 deletions(-)
+
+diff --git a/src/Main.cpp b/src/Main.cpp
+index a6ae2a9..634ee4f 100644
+--- a/src/Main.cpp
++++ b/src/Main.cpp
+@@ -125,8 +125,9 @@ extern "C" void Start(int iChannels, int iSamplesPerSec, int iBitsPerSample, con
+ 
+   // -- Threading ---------------------------------------------------
+   // Put this/these light request on the thread's queue.
+-  XBMC->Log(LOG_DEBUG, "Transfering queue to main.");
+-  wt.TransferQueueToMain();
++  XBMC->Log(LOG_DEBUG, "Transfering queue to thread.");
++  wt.TransferQueueToThread();
++  wt.StartWorker();
+   // -- Threading ---------------------------------------------------
+ }
+ 
+@@ -152,11 +153,7 @@ extern "C" void ADDON_Stop()
+   // -- Threading ---------------------------------------------------
+   //wt.transferQueueToThread(); // This doesn't work.
+   // Clean up the thread.
+-  wt.gRunThread = false;
+-  while (wt.gWorkerThread.joinable())  // Kill 'em all \m/
+-  {
+-    wt.gWorkerThread.join();
+-  }
++  wt.StopWorker();
+   // -- Threading ---------------------------------------------------
+ 
+   // -- WavforHue function calls -------------------------------------
+diff --git a/src/Main_gles.cpp b/src/Main_gles.cpp
+index 18a94a0..baebae3 100644
+--- a/src/Main_gles.cpp
++++ b/src/Main_gles.cpp
+@@ -104,7 +104,8 @@ extern "C" void Start(int iChannels, int iSamplesPerSec, int iBitsPerSample, con
+ 
+   // -- Threading ---------------------------------------------------
+   // Put this/these light request on the thread's queue.
+-  wt.TransferQueueToMain();
++  wt.TransferQueueToThread();
++  wt.StartWorker();
+   // -- Threading ---------------------------------------------------
+ }
+ 
+@@ -129,11 +130,7 @@ extern "C" void ADDON_Stop()
+   // -- Threading ---------------------------------------------------
+   //wt.transferQueueToThread(); // This doesn't work.
+   // Clean up the thread.
+-  wt.gRunThread = false;
+-  while (wt.gWorkerThread.joinable())  // Kill 'em all \m/
+-  {
+-    wt.gWorkerThread.join();
+-  }
++  wt.StopWorker();
+   // -- Threading ---------------------------------------------------
+ 
+   // -- WavforHue function calls -------------------------------------
+diff --git a/src/WavforHue_Thread.cpp b/src/WavforHue_Thread.cpp
+index 2b5bacd..a6c8dc8 100644
+--- a/src/WavforHue_Thread.cpp
++++ b/src/WavforHue_Thread.cpp
+@@ -30,6 +30,7 @@ using namespace ADDON;
+ // -- Constructor ----------------------------------------------------
+ WavforHue_Thread::WavforHue_Thread()
+ {
++  gRunThread = false;
+ }
+ // -- Constructor ----------------------------------------------------
+ 
+@@ -40,52 +41,68 @@ WavforHue_Thread::~WavforHue_Thread()
+ // -- Destructor ----------------------------------------------------- 
+ 
+ // -- Threading ----------------------------------------------------------
++void WavforHue_Thread::StartWorker()
++{
++  if (!gRunThread)
++  {
++    gRunThread = true;
++
++#ifdef USE_PTHREAD
++    pthread_create(&gWorkerThread, NULL, &WavforHue_Thread::WorkerStub, this);
++#else
++    gWorkerThread = std::thread(&WavforHue_Thread::WorkerThread, this);
++#endif
++  }
++}
++
++void WavforHue_Thread::StopWorker()
++{
++  if (gRunThread)
++  {
++    std::unique_lock<std::mutex> lock(gMutex);  
++    gRunThread = false;
++    gThreadConditionVariable.notify_one();  
++    lock.unlock();
++
++#ifdef USE_PTHREAD
++    pthread_join(gWorkerThread, NULL);
++#else
++    gWorkerThread.join();
++#endif    
++  }
++}
++
+ // This thread keeps cURL from puking all over the waveform, suprising it and
+ // making it jerk away.
+ void WavforHue_Thread::WorkerThread()
+ {
+-  bool isEmpty;
+   SocketData putData;
+-  std::queue<SocketData> mQueue;
+-  // This thread comes alive when AudioData(), Create() or Start() has put an 
+-  // item in the stack. It runs until Destroy() or Stop() sets gRunThread to 
+-  // false and joins it. Or something like that. It's actually magic.
+-  while (gRunThread || !mQueue.empty())
++
++  std::unique_lock<std::mutex> lock(gMutex);
++
++  while (gRunThread || !gQueue.empty())
+   {  
+-    //check that an item is on the stack
+-    {
+-      std::lock_guard<std::mutex> lock(gMutex);
+-      isEmpty = gQueue.empty();
+-    }
+-    if (isEmpty)
++    while (!gQueue.empty())
+     {
+-      //Wait until AudioData() sends data.
+-      std::unique_lock<std::mutex> lock(gMutex);
+-      gThreadConditionVariable.wait(lock, [&]{return gReady; });
+-    }
+-    else
+-    {
+-      // Get everything off the global queue for local processing
+-      std::lock_guard<std::mutex> lock(gMutex);
+-      while (!gQueue.empty())
+-      {
+-        mQueue.push(gQueue.front());
+-        gQueue.pop();
+-      }
+-    }
+-    while (!mQueue.empty())
+-    {
+-      putData = mQueue.front(); mQueue.pop();
++      putData = gQueue.front(); 
++      gQueue.pop();
++      lock.unlock();
++      
+       HTTPRequest(putData);
++      
++      lock.lock();
+     }
+-  }
++
++    if (gRunThread)
++      gThreadConditionVariable.wait(lock);
++  } 
+ }
+ 
+ void WavforHue_Thread::TransferQueueToMain()
+ {
+-	SocketData putData;
+-	while (!wavforhue.queue.empty())
+-	{
++  SocketData putData;
++  while (!wavforhue.queue.empty())
++  {
+     putData = wavforhue.queue.front(); wavforhue.queue.pop();
+     HTTPRequest(putData);
+   }
+@@ -94,28 +111,18 @@ void WavforHue_Thread::TransferQueueToMain()
+ void WavforHue_Thread::TransferQueueToThread()
+ {
+   SocketData putData;
+-  gRunThread = true;
+-  // Check if the thread is alive yet.
+-  if (!gWorkerThread.joinable())
+-  {
+-    gWorkerThread = std::thread(&WavforHue_Thread::WorkerThread, this);
+-  }
++
+   while (!wavforhue.queue.empty())
+   {
+     putData = wavforhue.queue.front();
+     wavforhue.queue.pop();
+-    //if (gQueue.size() < 10)
+-    //{
++    
++    { 
+       std::lock_guard<std::mutex> lock(gMutex);
+       gQueue.push(putData);
+-    //}
+-  }
+-  // Let the thread know to start processing.
+-  {
+-    std::lock_guard<std::mutex> lock(gMutex);
+-    gReady = true;
++      gThreadConditionVariable.notify_one();
++    }
+   }
+-  gThreadConditionVariable.notify_one();
+ }
+ //-- Threading -----------------------------------------------------
+ 
+diff --git a/src/WavforHue_Thread.h b/src/WavforHue_Thread.h
+index 2fba7bc..16c785d 100644
+--- a/src/WavforHue_Thread.h
++++ b/src/WavforHue_Thread.h
+@@ -50,7 +50,6 @@ KS-  <afedchin>: hardyt_ why u want to use cURL you can just use  CHelper_libXBM
+ */
+ // -- cURL works in *nix, but is crap in Windows -------------------
+ 
+-
+ // -- Threading ----------------------------------------------------
+ #include <thread>
+ #include <atomic>
+@@ -73,9 +72,6 @@ KS-  <afedchin>: hardyt_ why u want to use cURL you can just use  CHelper_libXBM
+ class WavforHue_Thread
+ {
+ public:
+-  std::thread gWorkerThread;
+-  std::atomic<bool> gRunThread;
+-
+   WavforHue wavforhue;
+   WavforHue_Thread();
+   ~WavforHue_Thread();
+@@ -85,14 +81,29 @@ public:
+   void TransferQueueToThread();
+   void TransferQueueToMain();
+ 
++  void StartWorker();
++  void StopWorker();
++  
+ private:
+   std::string response;
+   
+   std::mutex gMutex;
++  std::queue<SocketData> gQueue;
+   std::condition_variable gThreadConditionVariable;
++
++  volatile bool gRunThread;
++
++#ifdef USE_PTHREAD
++  static void *WorkerStub(void *arg)
++  {
++    ((WavforHue_Thread *)arg)->WorkerThread();
++    return NULL;
++  }
+   
+-  bool gReady;
+-  std::queue<SocketData> gQueue;
++  pthread_t gWorkerThread;
++#else
++  std::thread gWorkerThread;
++#endif
+ 
+   static size_t WriteCallback(void *contents, size_t size, size_t nmemb, void *userp);
+   void WorkerThread();
+-- 
+1.9.1
+
