@@ -1,0 +1,271 @@
+From 5768b5d419b2425e631c8bc3d600bb644f53f9c6 Mon Sep 17 00:00:00 2001
+From: Rudi <r.ihle@s-t.de>
+Date: Sat, 23 Jul 2016 12:41:18 +0200
+Subject: [PATCH 6/6] Keep worker thread running across songs
+
+Do not stop/restart the worker every time a new track is played.
+Instead, discard all pending transfer requests and start over
+with an empty queue. This should reduce the impact of bridge
+communication on track changes. The worker is finally stopped on
+addon destruction.
+
+Signed-off-by: warped-rudi <r.ihle@s-t.de>
+---
+ src/Main.cpp             | 33 ++++++++++++-----------------
+ src/Main_gles.cpp        | 54 ++++++++++++++----------------------------------
+ src/WavforHue_Thread.cpp | 34 +++++++++++++-----------------
+ src/WavforHue_Thread.h   |  5 ++---
+ 4 files changed, 45 insertions(+), 81 deletions(-)
+
+diff --git a/src/Main.cpp b/src/Main.cpp
+index 634ee4f..11e9007 100644
+--- a/src/Main.cpp
++++ b/src/Main.cpp
+@@ -111,12 +111,17 @@ extern "C" ADDON_STATUS ADDON_Create(void* hdl, void* props)
+ //-----------------------------------------------------------------------------
+ extern "C" void Start(int iChannels, int iSamplesPerSec, int iBitsPerSample, const char* szSongName)
+ {
++  // Remove pending jobs
++  wt.DiscardWorkerJobs();
++
+   // -- WavforHue function calls -------------------------------------
+   // Prepare lights - dimming, turning on, etc.
+   XBMC->Log(LOG_DEBUG, "Preparing lights");
+   if (!wt.wavforhue.savedTheStates)
+   {
+     XBMC->Log(LOG_DEBUG, "No previous states saved.");
++
++    wt.StopWorker();
+     wt.GetPriorState();
+   }
+   XBMC->Log(LOG_DEBUG, "Applying starting light settings.");
+@@ -137,35 +142,20 @@ extern "C" void Start(int iChannels, int iSamplesPerSec, int iBitsPerSample, con
+ //-----------------------------------------------------------------------------
+ extern "C" void ADDON_Stop()
+ {
+-
+-  /* This doesn't work with threading yet.
+   // -- WavforHue function calls -------------------------------------
+   // Change the lights to something acceptable.
+   if (wt.wavforhue.priorState)
+-    wt.PutPriorState();
++    wt.wavforhue.RestoreState();
+   else
+     wt.wavforhue.Stop();
+-  // Put this/these light request on the main queue. 
+-  wt.TransferQueueToMain();
+   // -- WavforHue function calls -------------------------------------
+-  */
+ 
+   // -- Threading ---------------------------------------------------
+-  //wt.transferQueueToThread(); // This doesn't work.
+-  // Clean up the thread.
+-  wt.StopWorker();
++  // Remove pending jobs
++  wt.DiscardWorkerJobs();
++  // Put this/these light request on the thread's queue.
++  wt.TransferQueueToThread();
+   // -- Threading ---------------------------------------------------
+-
+-  // -- WavforHue function calls -------------------------------------
+-  // Change the lights to something acceptable.
+-  if (wt.wavforhue.priorState)
+-    wt.PutPriorState();
+-  else
+-    wt.wavforhue.Stop();
+-  // Put this/these light request on the main queue. This causes delay.
+-  wt.TransferQueueToMain();
+-  // -- WavforHue function calls -------------------------------------
+-
+ }
+ 
+ //-- Detroy -------------------------------------------------------------------
+@@ -174,6 +164,9 @@ extern "C" void ADDON_Stop()
+ //-----------------------------------------------------------------------------
+ extern "C" void ADDON_Destroy()
+ {
++  // -- Threading ---------------------------------------------------
++  wt.StopWorker();
++  // -- Threading ---------------------------------------------------
+ 
+   if (XBMC)
+     SAFE_DELETE(XBMC);
+diff --git a/src/Main_gles.cpp b/src/Main_gles.cpp
+index baebae3..ea13a40 100644
+--- a/src/Main_gles.cpp
++++ b/src/Main_gles.cpp
+@@ -95,10 +95,17 @@ extern "C" ADDON_STATUS ADDON_Create(void* hdl, void* props)
+ //-----------------------------------------------------------------------------
+ extern "C" void Start(int iChannels, int iSamplesPerSec, int iBitsPerSample, const char* szSongName)
+ {
++  // Remove pending jobs
++  wt.DiscardWorkerJobs();
++
+   // -- Wavforhue function calls -------------------------------------
+   // Prepare lights - dimming, turning on, etc.
+   if (!wt.wavforhue.savedTheStates)
++  {
++    wt.StopWorker();
+     wt.GetPriorState();
++  }
++
+   wt.wavforhue.Start();
+   // -- Wavforhue function calls -------------------------------------
+ 
+@@ -115,33 +122,20 @@ extern "C" void Start(int iChannels, int iSamplesPerSec, int iBitsPerSample, con
+ //-----------------------------------------------------------------------------
+ extern "C" void ADDON_Stop()
+ {
+-  /* This doesn't work with threading yet.
+   // -- WavforHue function calls -------------------------------------
+   // Change the lights to something acceptable.
+   if (wt.wavforhue.priorState)
+-    wt.PutPriorState();
++    wt.wavforhue.RestoreState();
+   else
+     wt.wavforhue.Stop();
+-  // Put this/these light request on the main queue. 
+-  wt.TransferQueueToMain();
+   // -- WavforHue function calls -------------------------------------
+-  */
+ 
+   // -- Threading ---------------------------------------------------
+-  //wt.transferQueueToThread(); // This doesn't work.
+-  // Clean up the thread.
+-  wt.StopWorker();
++  // Remove pending jobs
++  wt.DiscardWorkerJobs();
++  // Put this/these light request on the thread's queue.
++  wt.TransferQueueToThread();
+   // -- Threading ---------------------------------------------------
+-
+-  // -- WavforHue function calls -------------------------------------
+-  // Change the lights to something acceptable.
+-  if (wt.wavforhue.priorState)
+-    wt.PutPriorState();
+-  else
+-    wt.wavforhue.Stop();
+-  // Put this/these light request on the main queue. This causes delay.
+-  wt.TransferQueueToMain();
+-  // -- WavforHue function calls -------------------------------------
+ }
+ 
+ //-- Destroy ------------------------------------------------------------------
+@@ -150,30 +144,14 @@ extern "C" void ADDON_Stop()
+ //-----------------------------------------------------------------------------
+ extern "C" void ADDON_Destroy()
+ {
++  // -- Threading ---------------------------------------------------
++  wt.StopWorker();
++  // -- Threading ---------------------------------------------------
++
+ #ifndef ANDROID
+   if (XBMC)
+     SAFE_DELETE(XBMC);
+ #endif
+-  
+-  /*
+-  // -- Wavforhue function calls -------------------------------------
+-  // Change the lights to something acceptable.
+-  wt.wavforhue.Stop();
+-  // -- Wavforhue function calls -------------------------------------
+-
+-  // -- Threading ---------------------------------------------------
+-  // Put this/these light request on the thread's queue.
+-  wt.transferQueue();
+-  // -- Threading ---------------------------------------------------
+-
+-  //-- Threading -----------------------------------------------------
+-  wt.gRunThread = false;
+-  while (wt.gWorkerThread.joinable()) // Kill 'em all \m/
+-  {
+-    wt.gWorkerThread.join();
+-  }
+-  //-- Threading -----------------------------------------------------
+-  */  
+ 
+   // -- Waveform -----------------------------------------------------
+   if (vis_shader)
+diff --git a/src/WavforHue_Thread.cpp b/src/WavforHue_Thread.cpp
+index 182d46a..4ad5550 100644
+--- a/src/WavforHue_Thread.cpp
++++ b/src/WavforHue_Thread.cpp
+@@ -99,22 +99,10 @@ void WavforHue_Thread::WorkerThread()
+   } 
+ }
+ 
+-void WavforHue_Thread::TransferQueueToMain()
+-{
+-  SocketData putData;
+-  while (!wavforhue.queue.empty())
+-  {
+-    putData = wavforhue.queue.front();
+-    wavforhue.queue.pop();
+-
+-    if (bridgeOk)
+-      HTTPRequest(putData);
+-  }
+-}
+-
+ void WavforHue_Thread::TransferQueueToThread()
+ {
+   SocketData putData;
++
+   while (!wavforhue.queue.empty())
+   {
+     putData = wavforhue.queue.front();
+@@ -128,6 +116,19 @@ void WavforHue_Thread::TransferQueueToThread()
+     }
+   }
+ }
++
++void WavforHue_Thread::DiscardWorkerJobs()
++{
++  SocketData putData;
++
++  std::lock_guard<std::mutex> lock(gMutex);
++
++  while (!gQueue.empty())
++  {
++    putData = gQueue.front();
++    gQueue.pop();
++  }
++}
+ //-- Threading -----------------------------------------------------
+ 
+ 
+@@ -317,11 +318,4 @@ void WavforHue_Thread::GetPriorState()
+   // Light states were read from the bridge. So let's assume it's present.
+   bridgeOk = !wavforhue.priorStates.empty();
+ }
+-
+-void WavforHue_Thread::PutPriorState()
+-{
+-  wavforhue.RestoreState();
+-}
+-
+-
+ // -- HTTP functions -----------------------------------------------
+\ No newline at end of file
+diff --git a/src/WavforHue_Thread.h b/src/WavforHue_Thread.h
+index cb9930d..00783e8 100644
+--- a/src/WavforHue_Thread.h
++++ b/src/WavforHue_Thread.h
+@@ -77,12 +77,11 @@ public:
+   ~WavforHue_Thread();
+ 
+   void GetPriorState();
+-  void PutPriorState();
+-  void TransferQueueToThread();
+-  void TransferQueueToMain();
+ 
+   void StartWorker();
+   void StopWorker();
++  void DiscardWorkerJobs();
++  void TransferQueueToThread();
+   
+ private:
+   std::string response;
+-- 
+1.9.1
+
