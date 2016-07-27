@@ -1,0 +1,95 @@
+#!/bin/sh
+
+. config/options
+
+get_meta $1
+unset LD_LIBRARY_PATH
+
+export BUILD_CC=$HOST_CC
+export OBJDUMP_FOR_HOST=objdump
+
+if [ "$TARGET_ARCH" = powerpc ]; then
+  CFLAGS="-mpowerpc"
+elif [ "$TARGET_ARCH" = powerpc64 ]; then
+  CFLAGS="-mpowerpc64"
+elif [ "$TARGET_ARCH" = i386 ]; then
+  CFLAGS="-march=$(echo $TARGET_NAME | cut -d- -f 1) -mtune=generic"
+elif [ "$TARGET_ARCH" = arm ]; then
+  CFLAGS="-mcpu=$TARGET_CPU -mtune=$TARGET_CPU"
+  [ "$FPU_OPTIMIZATIONS" = "neon" ] && CFLAGS="$CFLAGS -mfpu=neon $ARM_FLOAT_ABI"
+  [ "$FPU_OPTIMIZATIONS" = "vfp2" ] && CFLAGS="$CFLAGS -mfpu=vfp $ARM_FLOAT_ABI"
+  [ "$FPU_OPTIMIZATIONS" = "vfp3" ] && CFLAGS="$CFLAGS -mfpu=vfpv3 $ARM_FLOAT_ABI"
+  [ "$FPU_OPTIMIZATIONS" = "vfp3-d16" ] && CFLAGS="$CFLAGS -mfpu=vfpv3-d16 $ARM_FLOAT_ABI"
+  [ "$FPU_OPTIMIZATIONS" = "vfp4" ] && CFLAGS="$CFLAGS -mfpu=vfpv4 $ARM_FLOAT_ABI"
+  [ "$FPU_OPTIMIZATIONS" = "neon-vfp4" ] && CFLAGS="$CFLAGS -mfpu=neon-vfpv4 $ARM_FLOAT_ABI"
+elif [ "$TARGET_ARCH" = mips ]; then
+  CFLAGS="-mtune=$TARGET_CPU"
+else
+  CFLAGS="-mtune=generic"
+fi
+CFLAGS="$CFLAGS -g -O2 -fgnu89-inline"
+
+
+if [ "$DEBUG" = yes ]; then
+  DEBUG_CONFIG="--enable-debug"
+else
+  DEBUG_CONFIG="--disable-debug"
+fi
+
+ASFLAGS=$CFLAGS
+
+NSS_CONF_DIR=$ROOT/$PKG_BUILD_DIR/nss
+
+
+cd $PKG_BUILD_DIR
+mkdir -p objdir-$1
+cd objdir-$1
+
+cat >config.cache <<EOF
+libc_cv_forced_unwind=yes
+libc_cv_c_cleanup=yes
+libc_cv_gnu89_inline=yes
+libc_cv_ssp=no
+libc_cv_slibdir=/lib
+EOF
+
+cat >configparms <<EOF
+slibdir=/lib
+EOF
+
+export ac_cv_path_BASH_SHELL=/bin/sh
+
+
+do_gcc_strip_lto
+do_gcc_strip_linker_plugin
+do_gcc_strip_gold
+
+../configure --host=$TARGET_NAME \
+             --build=$HOST_NAME \
+             --prefix=/usr \
+             --libexecdir=/usr/lib/glibc \
+             --disable-profile \
+             --disable-sanity-checks \
+             --enable-add-ons \
+             --with-tls \
+             --enable-kernel=2.6.0 \
+             --with-__thread \
+             --with-binutils=$ROOT/$TOOLCHAIN/bin \
+             --with-headers=$SYSROOT_PREFIX/usr/include \
+             --cache-file=config.cache \
+             --without-cvs \
+             --without-gd \
+             --enable-obsolete-rpc \
+             $DEBUG_CONFIG
+make
+
+make_install
+
+sed -i 's%bash%sh%g' .install/usr/bin/ldd
+extract_debug_info .install-debuginfo .install/lib/*.so
+do_strip shlib .install/lib/*.so
+
+rm -rf ../.install ../.install-debuginfo
+mv .install .install-debuginfo ..
+ln -sf objdir-glibc/.install-unstripped ../.install-unstripped
+

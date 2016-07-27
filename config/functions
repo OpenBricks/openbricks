@@ -93,13 +93,13 @@ create_stamp() {
 
   . build/config/options
 
-  for i in `sed -n "s/^.*\(^[a-zA-Z0-9_-]*\)=.*$/\1/p" build/config/options`; do
+  for i in $(sed -n "s/^.*\(^[a-zA-Z0-9_-]*\)=.*$/\1/p" build/config/options); do
     eval val=\$$i
     echo "STAMP_$i=\"$val"\" >> $stamp_file
   done
 }
 
-# Usage: value=`valueof <variable>`
+# Usage: value=$(valueof <variable>)
 valueof() {
   local tmp=
   local var="$1"
@@ -112,8 +112,8 @@ valueof() {
 get_meta() {
 
   # clear PKG_* variables
-  for var in `set | grep -E '^PKG_.*$' | cut -f1 -d=`; do
-    [ "$var" != PKG_CONFIG -a "$var" != PKG_CONFIG_PATH -a "$var" != PKG_CONFIG_LIBDIR ] && unset $var
+  for var in $(set | grep -E '^PKG_.*$' | cut -f1 -d=); do
+    [ "$var" != PKG_CONFIG ] && [ "$var" != PKG_CONFIG_PATH ] && [ "$var" != PKG_CONFIG_LIBDIR ] && unset $var
   done
 
   # set default values
@@ -174,7 +174,7 @@ get_meta() {
 
   for use in $PKG_USE; do
     if pkg_uses $PKG_NAME $use; then
-      tmp=`valueof "PKG_BUILD_DEPENDS_${use}"`
+      tmp=$(valueof "PKG_BUILD_DEPENDS_${use}")
       if [ -n "$tmp" ]; then
         if [ -n "$PKG_BUILD_DEPENDS" ]; then
           PKG_BUILD_DEPENDS="$PKG_BUILD_DEPENDS $tmp"
@@ -182,7 +182,7 @@ get_meta() {
           PKG_BUILD_DEPENDS="$tmp"
         fi
       fi
-      tmp=`valueof "PKG_RUN_DEPENDS_${use}"`
+      tmp=$(valueof "PKG_RUN_DEPENDS_${use}")
       if [ -n "$tmp" ]; then
         if [ -n "$PKG_RUN_DEPENDS" ]; then
           PKG_RUN_DEPENDS="$PKG_RUN_DEPENDS $tmp"
@@ -190,7 +190,7 @@ get_meta() {
           PKG_RUN_DEPENDS="$tmp"
         fi
       fi
-      tmp=`valueof "PKG_DEPENDS_${use}"`
+      tmp=$(valueof "PKG_DEPENDS_${use}")
       if [ -n "$tmp" ]; then
         if [ -n "$PKG_DEPENDS" ]; then
           PKG_DEPENDS="$PKG_DEPENDS $tmp"
@@ -201,7 +201,7 @@ get_meta() {
     fi
   done
 
-  if [ -n "$PKG_PARENT" -a "$PKG_NO_PARENT_DEPENDS" != yes ]; then
+  if [ -n "$PKG_PARENT" ] && [ "$PKG_NO_PARENT_DEPENDS" != yes ]; then
     if [ -n "$PKG_BUILD_DEPENDS" ]; then
       PKG_BUILD_DEPENDS="$PKG_BUILD_DEPENDS $PKG_PARENT"
     else
@@ -211,9 +211,9 @@ get_meta() {
 
   if [ -n "$PKG_PARENT" ]; then
     [ "$PKG_VERSION" = "0.0invalid" ] && \
-      PKG_VERSION=`( get_meta $PKG_PARENT; echo $PKG_VERSION )`
+      PKG_VERSION=$( get_meta $PKG_PARENT; echo $PKG_VERSION )
     [ "$PKG_REV" = "0" ] && \
-      PKG_REV=`( get_meta $PKG_PARENT; echo $PKG_REV )`
+      PKG_REV=$( get_meta $PKG_PARENT; echo $PKG_REV )
   fi
 
   PKG_BUILD_DIR="$BUILD/${PKG_NAME}-${PKG_VERSION}"
@@ -236,14 +236,14 @@ get_meta() {
   fi
 
   if [ -n "$PKG_RUN_DEPENDS" ]; then
-    PKG_OPK_DEPENDS=`echo $PKG_RUN_DEPENDS | sed 's/ /, /g'`
+    PKG_OPK_DEPENDS=$(echo $PKG_RUN_DEPENDS | sed 's/ /, /g')
   else
     PKG_OPK_DEPENDS=""
   fi
 
   [ -z "$PKG_DEV_DEPENDS" ] && PKG_DEV_DEPENDS="$PKG_BUILD_DEPENDS"
   if [ -n "$PKG_DEV_DEPENDS" ]; then
-    PKG_OPK_DEV_DEPENDS=`echo $PKG_DEV_DEPENDS | sed 's/ /, /g'`
+    PKG_OPK_DEV_DEPENDS=$(echo $PKG_DEV_DEPENDS | sed 's/ /, /g')
   else
     PKG_OPK_DEV_DEPENDS=""
   fi
@@ -254,7 +254,7 @@ get_meta() {
   PKG_DBG_OPK_DEV="${PKG_NAME}-dbg_${PKG_VERSION}-${PKG_REV}dev${PKG_OPK_ARCH}_${HOST_ARCH}.opk"
 }
 
-# Usage: type=`get_use_type <use_flag>`
+# Usage: type=$(get_use_type <use_flag>)
 get_use_type() {
   local flag=$1
 
@@ -262,7 +262,7 @@ get_use_type() {
     [ "$flag" = "$arch" ] && echo "ARCH"
   done
 
-  for libc in uclibc eglibc; do
+  for libc in uclibc eglibc glibc; do
     [ "$flag" = "$libc" ] && echo "LIBC"
   done
 
@@ -273,14 +273,14 @@ get_use_type() {
 pkg_uses() {
   local pkg="$1"
   local flag="$2"
-  local type=`get_use_type $flag`
+  local type=$(get_use_type $flag)
 
   if [ -n "$type" ]; then
-    [ "`valueof TARGET_$type`" = "$flag" ] && return 0 || return 1
+    [ "$(valueof TARGET_$type)" = "$flag" ] && return 0 || return 1
   else
     # strip dashes from the package name, as they are illegal in environment
     # variable names; cf. do_package in scripts/meta2kconfig
-    local var="`echo $pkg | sed 's/-//g'`_${flag}"
+    local var="$(echo $pkg | sed 's/-//g')_${flag}"
     local tmp
 
     eval tmp="\$$var"
@@ -299,13 +299,13 @@ build_uses() {
   [ "$tmp" = yes ] && return 0 || return 1
 }
 
-# Usage: path=`kernel_path`
+# Usage: path=$(kernel_path)
 kernel_path() {
   get_meta linux
   ls -d $ROOT/$PKG_BUILD_DIR
 }
 
-# Usage: ver=`kernel_version`
+# Usage: ver=$(kernel_version)
 kernel_version() {
   basename $(kernel_path)/.install/lib/modules/*
 }
@@ -313,7 +313,7 @@ kernel_version() {
 # Usage: require_glibc <package>
 require_glibc() {
   if [ "$TARGET_LIBC" = uclibc ]; then
-    echo "$1 requires eglibc, aborting."
+    echo "$1 requires eglibc or glibc, aborting."
     exit 1
   fi
 }
@@ -359,7 +359,7 @@ do_strip() {
         new_rpath=""
         oIFS=$IFS
         IFS=":" 
-        for part in `$PATCHELF --print-rpath $i`; do
+        for part in $($PATCHELF --print-rpath $i); do
           if echo $part | grep -qv "^$ROOT"; then
             [ -n "$new_rpath" ] && new_rpath="$new_rpath:"
             new_rpath="${new_rpath}${part}"
@@ -378,13 +378,13 @@ extract_debug_info() {
   shift
 
   for f in $*; do
-    file_out=`LANG=C file $f 2>&1`
+    file_out=$(LANG=C file $f 2>&1)
     echo $file_out | grep -qv ELF && continue
     echo $file_out | grep -qv "not stripped" && continue
     echo "Extracting debugging symbols for $f"
-    basefile=`echo $f | sed 's/^.*.install//'`
+    basefile=$(echo $f | sed 's/^.*.install//')
     debug_file="$debug_path/$basefile"
-    mkdir -p `dirname $debug_file`
+    mkdir -p $(dirname $debug_file)
     $TARGET_OBJCOPY --only-keep-debug $f $debug_file || cp -P $f $debug_file
     chmod 0644 $debug_file
     $TARGET_OBJCOPY --add-gnu-debuglink="$debug_file" $f || true
@@ -393,7 +393,7 @@ extract_debug_info() {
 
 # Usage: strip_libs <path> [debug_path]
 strip_libs() {
-  local tostrip="`find $1 -type f -readable -writable -name "*.so*" | grep -v \".py$\"`"
+  local tostrip="$(find $1 -type f -readable -writable -name "*.so*" | grep -v \".py$\")"
   local debug_path="$2"
 
   [ -n "$debug_path" ] && extract_debug_info $debug_path $tostrip
@@ -404,7 +404,7 @@ strip_libs() {
 
 # Usage: strip_bins <path> [debug_path]
 strip_bins() {
-  local tostrip="`find $1 -type f -readable -writable -executable`"
+  local tostrip="$(find $1 -type f -readable -writable -executable)"
   local debug_path="$2"
 
   [ -n "$debug_path" ] && extract_debug_info $debug_path $tostrip
@@ -415,7 +415,7 @@ strip_bins() {
 
 # Usage: strip_kmods <path> [debug_path]
 strip_kmods() {
-  local tostrip="`find $1 -type f -readable -writable -name *.ko`"
+  local tostrip="$(find $1 -type f -readable -writable -name *.ko)"
   local debug_path="$2"
 
   [ -n "$debug_path" ] && extract_debug_info $debug_path $tostrip
@@ -430,7 +430,7 @@ xorg_drv_configure_prepend() {
   for f in dri.h sarea.h dristruct.h exa.h damage.h xf86Module.h; do
     incfile="$incdir/$f"
     if [ -f "$incfile" ]; then
-      p=`echo "$incfile" | sed 'y%*+%pp%;s%[^_[:alnum:]]%_%g'`
+      p=$(echo "$incfile" | sed 'y%*+%pp%;s%[^_[:alnum:]]%_%g')
       eval "export ac_cv_file_$p=yes"
     fi
   done
@@ -452,13 +452,13 @@ fix_libs () {
   esac
 
   if [ -d $target_dir/usr/lib ]; then
-    for i in `find $target_dir/usr/lib -name "*.la"`; do
+    for i in $(find $target_dir/usr/lib -name "*.la"); do
       sed -i "s:\(['= ]\)/usr:\\1$prefix_dir:g" $i
     done
   fi
 
   if [ -d $target_dir/usr/lib/pkgconfig ]; then
-    for i in `find $target_dir/usr/lib/pkgconfig -name "*.pc"`; do
+    for i in $(find $target_dir/usr/lib/pkgconfig -name "*.pc"); do
       sed -i "s:\(['= ]\)/usr:\\1$prefix_dir:g" $i
     done
   fi
@@ -480,7 +480,7 @@ make_install () {
   chmod -R u+w .install
   fix_libs "$install_dir" $prefix
   
-  if [ "$prefix" != toolchain -a "$DEVROOTFS" = yes -a "$is_strip" != unstripped ]; then
+  if [ "$prefix" != toolchain ] && [ "$DEVROOTFS" = yes ] && [ "$is_strip" != unstripped ]; then
     echo " Creating unstripped directory"
     mkdir -p "$install_dir_unstripped"
     cp -R $install_dir/* $install_dir_unstripped
@@ -596,13 +596,13 @@ do_installdev () {
 
   [ -z "$file" ] && exit 1
 
-  dir=`echo $(dirname $file) | sed 's/^usr//'`
+  dir=$(echo $(dirname $file) | sed 's/^usr//')
   mkdir -p $target_dir/$dir
-  if [ "$target" != toolchain -a "$DEVROOTFS" = yes ]; then
+  if [ "$target" != toolchain ] && [ "$DEVROOTFS" = yes ]; then
     mkdir -p "$DEVROOT/$dir"
     echo "Installing unstripped files too ..."
     echo "cp -PR .install-unstripped/$file $DEVROOT/$dir"
-    if ! `echo $file | grep mesa -q`; then
+    if ! $(echo $file | grep mesa -q); then
       cp -PR .install-unstripped/$file $DEVROOT/$dir
     fi
   fi
@@ -638,7 +638,7 @@ do_perl_make () {
     export PERL_CMD="$ROOT/$TOOLCHAIN/bin/perl"
     export PERL_SITELIB="usr/lib/perl5/$PERL_V"
 
-    install_dir="`pwd`/.install/$PERL_SITELIB/"
+    install_dir="$(pwd)/.install/$PERL_SITELIB/"
     mkdir -p $install_dir
     if [ -e ./Makefile.PL ]; then
       MAKEFILEPL=Makefile.PL
@@ -657,8 +657,8 @@ do_perl_make () {
     INSTALLPRIVLIB=/$PERL_SITELIB \
     DESTDIR=$install_dir
     . $LIB_PREFIX/lib/perl/config.sh
-    for f in `find -name Makefile.PL`; do
-      f2=`echo $f | sed -e 's/.PL//'`
+    for f in $(find -name Makefile.PL); do
+      f2=$(echo $f | sed -e 's/.PL//')
       sed -i -e "s:\(PERL_ARCHLIB = \).*:\1${PERL_ARCHLIB}:" \
               $f2
     done
@@ -707,14 +707,14 @@ systemctl_enable () {
   [ -z "$target_dir" ] && target_dir=.install
   [ -f "$target_dir/$unit" ] || exit 1
 
-  target=`grep '^WantedBy' $target_dir/$unit | cut -f2 -d=`
+  target=$(grep '^WantedBy' $target_dir/$unit | cut -f2 -d=)
   if [ -n "$target" ]; then
     mkdir -p ${target_dir}/${base_dir}/systemd/system/${target}.wants    
     [ "$base_dir" = "lib" ] && link="../${unit_name}" || link="${unit}"
     ln -sf $link ${target_dir}/${base_dir}/systemd/system/${target}.wants/${unit_name}
   fi
 
-  target=`grep '^Alias' $target_dir/$unit | cut -f2 -d=`
+  target=$(grep '^Alias' $target_dir/$unit | cut -f2 -d=)
   for alias_name in $target; do
     mkdir -p ${target_dir}/${base_dir}/systemd/system
     [ "$base_dir" = "lib" ] && link="${unit_name}" || link="${unit}"
@@ -897,7 +897,7 @@ do_npm_install () {
   export npm_config_arch=arm
   #export npm_config_nodedir=$ROOT/$TOOLCHAIN/lib/node_modules/npm
   export npm_config_nodedir=$ROOT/$TOOLCHAIN/include/node
-  export host_npm=`which npm`
+  export host_npm=$(which npm)
   node "$host_npm" install -g --production --prefix=./.install/usr/
   chmod -R u+w .install
   fix_libs "$install_dir" $prefix
@@ -935,7 +935,7 @@ version_strip_minor() {
 # Usage: apply_series <package> <path/to/series/directory>
 apply_series() {
   if [ -f $2/series ]; then
-    for i in `cat $2/series`; do
+    for i in $(cat $2/series); do
       [ -f $2/$i ] && { apply_patch $1 $2/$i || return 1; }
     done
   else

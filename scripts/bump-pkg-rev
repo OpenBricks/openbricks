@@ -1,0 +1,89 @@
+#! /bin/sh
+
+
+. config/options
+
+put_str() {
+  printf "$*\n"
+}
+
+next_pkg_rev () {
+  local meta_pkg_rev=$PKG_REV
+  local new_meta_pkg_rev=$(($meta_pkg_rev + 1))
+
+  echo "$new_meta_pkg_rev"
+}
+
+get_path () {
+echo $(dirname "$1")
+}
+
+search_meta () {
+ SECTIONS="admin drivers filesystem firmware fonts games host-packages libs misc multimedia nodejs net perl proto python sound system utils x11"
+  local temp_meta=null
+  for section in $SECTIONS ; do
+    [ -r $ROOT/$PACKAGES/$section/$1/meta ] && temp_meta=$ROOT/$PACKAGES/$section/$1/meta
+  done
+  # check for platform-specific package overlay
+  PLATFORM_META="$PLATFORM_PACKAGES/$1/meta"
+  [ -r "$PLATFORM_META" ] && temp_meta="$PLATFORM_META"
+
+  # check for machine-specific package overlay
+  MACHINE_META="$MACHINE_PACKAGES/$1/meta"
+  [ -r "$MACHINE_META" ] && temp_meta="$MACHINE_META"
+
+  # check for flavour-specific package overlay
+  FLAVOUR_META="$FLAVOUR_PACKAGES/$1/meta"
+  [ -r "$FLAVOUR_META" ] && temp_meta="$FLAVOUR_META"
+  
+  echo $temp_meta
+}
+
+if [ x"$1" = "x" ] ; then
+  put_str "Usage: $0 <pkg_name|specific-meta_file> [commit] [commit message]\n"
+  exit 0
+fi
+
+# check if variable is a package
+
+if echo $1 | grep -q meta  ; then
+  dir_pkg_meta=$(get_path "$1")
+  package=$(basename $dir_pkg_meta)
+else
+  dir_pkg_meta=$(get_path $(search_meta "$1"))
+  package=$1
+fi
+
+if ! [ -f $dir_pkg_meta/meta ] ; then
+  put_str "no meta file for $1"
+  exit 1
+fi
+
+. $dir_pkg_meta/meta
+
+if [ -n "$PKG_REV" ] && grep -q PKG_REV $dir_pkg_meta/meta ; then
+  if [ -n "$PKG_PARENT" ] ; then
+    put_str " Please, check manually this package, \$PKG_PARENT is set ..."
+    exit 1
+  fi
+else
+  put_str "No variable \$PKG_REV for $1 in meta file ... skipping"
+  exit 1
+fi
+
+
+n=$(next_pkg_rev)
+
+put_str "Bumping revision of package $package from $PKG_REV to $n"
+
+sed -i $dir_pkg_meta/meta \
+    -e "s%^PKG_REV=.*%PKG_REV=\"${n}\"%"
+    
+if [ x"$2" = "xcommit" ] ; then
+  if ! [ x"$3" = x ] ; then
+    git commit $dir_pkg_meta -m "$package : increment PKG_REV, $3"
+  else
+    git commit $dir_pkg_meta -m "$package : increment PKG_REV"
+  fi
+fi
+

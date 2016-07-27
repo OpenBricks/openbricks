@@ -4,22 +4,27 @@
 
 require_glibc $1
 
-EGLIBC_DIR="$ROOT/$BUILD/`basename $BUILD/eglibc-[0-9]*`"
-export I18NPATH="$EGLIBC_DIR/localedata"
+get_meta ${TARGET_LIBC}
+
+LIBC_DIR=$ROOT/$PKG_BUILD_DIR
+
+get_meta $1
+
+export I18NPATH="$LIBC_DIR/localedata"
 export GCONV_PATH=iconvdata
 export LC_ALL=C
 
-mkdir -p $BUILD/$1
-cd $BUILD/$1
+mkdir -p $PKG_BUILD_DIR
+cd $PKG_BUILD_DIR
 
 mkdir -p usr/local/lib/locale
-cp -f "$EGLIBC_DIR/intl/locale.alias" .
+cp -f "$LIBC_DIR/intl/locale.alias" .
 
 # complete locale names
 SUPPORTED_INCLUDED_LOCALES=""
 for loc in $INCLUDED_LOCALES; do
     [ -n "$SUPPORTED_INCLUDED_LOCALES" ] && SUPPORTED_INCLUDED_LOCALES="$SUPPORTED_INCLUDED_LOCALES "
-    loc_supported=$( grep "^$loc" $EGLIBC_DIR/localedata/SUPPORTED | sed 's/ \\$//g' )
+    loc_supported=$( grep "^$loc" $LIBC_DIR/localedata/SUPPORTED | sed 's/ \\$//g' )
     [ -n "$loc_supported" ] && SUPPORTED_INCLUDED_LOCALES="${SUPPORTED_INCLUDED_LOCALES}${loc_supported}"
 
     if [ -z "$loc_supported" ]; then
@@ -31,7 +36,7 @@ done
 
 if [ -z "$SUPPORTED_INCLUDED_LOCALES" ]; then
   echo "Warning: no locales specified, using all!"
-  SUPPORTED_INCLUDED_LOCALES=$( cat $EGLIBC_DIR/localedata/SUPPORTED | sed 's%^#.*%%' | sed 's%SUPPORTED-LOCALES=.*%%' | sed ':;s/\\\n//;N;T' | sed 's%\\%%' )
+  SUPPORTED_INCLUDED_LOCALES=$( cat $LIBC_DIR/localedata/SUPPORTED | sed 's%^#.*%%' | sed 's%SUPPORTED-LOCALES=.*%%' | sed ':;s/\\\n//;N;T' | sed 's%\\%%' )
 fi
 
 rm -f usr/local/lib/locale/*
@@ -42,10 +47,10 @@ for loc in $SUPPORTED_INCLUDED_LOCALES; do
 
   echo "Building $LOCALE/$CHARSET..."
   $ROOT/$TOOLCHAIN/bin/localedef -c \
-      -f "$EGLIBC_DIR/localedata/charmaps/$CHARSET" \
-      -i "$EGLIBC_DIR/localedata/locales/$INPUT" \
+      -f "$LIBC_DIR/localedata/charmaps/$CHARSET" \
+      -i "$LIBC_DIR/localedata/locales/$INPUT" \
       -A locale.alias \
-      --prefix "$ROOT/$BUILD/$1" \
+      --prefix "$ROOT/$PKG_BUILD_DIR" \
       $LOCALE || echo "Warning: $LOCALE/$CHARSET failed to build, skipping..."
 done
 
