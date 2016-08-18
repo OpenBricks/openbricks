@@ -1,26 +1,27 @@
-diff -u a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp
---- a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp	2016-05-04 16:55:30.000000000 +0200
-+++ b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp	2016-05-05 13:05:15.000000000 +0200
-@@ -415,6 +415,7 @@
-   m_vpuFrameBufferNum = 0;
-   m_dropState = false;
-   m_convert_bitstream = false;
-+  m_forcedWidthDivHeightRatio = 0;
-   m_frameCounter = 0;
-   m_usePTS = true;
-   if (getenv("IMX_NOPTS") != NULL)
-@@ -506,6 +507,8 @@
+--- a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h	2016-08-15 21:22:26.222137237 +0200
++++ b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h	2016-08-15 21:22:26.246137238 +0200
+@@ -394,6 +394,7 @@
+   int                          m_speed;
+   CCriticalSection             m_signalLock;
+   CCriticalSection             m_queuesLock;
++  int                          m_forcedWidthDivHeightRatio; // Aspect ratio when overriden by hint
+ #ifdef DUMP_STREAM
+   FILE                        *m_dump;
+ #endif
+--- a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp	2016-08-15 21:27:17.166149119 +0200
++++ b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp	2016-08-15 21:27:17.190149120 +0200
+@@ -542,6 +542,8 @@
+ #endif
  
    m_warnOnce = true;
-   m_convert_bitstream = false;
 +  m_forcedWidthDivHeightRatio = m_hints.forced_aspect ? (65536 * m_hints.aspect) : 0;
 +
    switch(m_hints.codec)
    {
    case AV_CODEC_ID_MPEG1VIDEO:
-@@ -1111,7 +1114,10 @@
-   pDvdVideoPicture->iWidth = m_frameInfo.pExtInfo->FrmCropRect.nRight - m_frameInfo.pExtInfo->FrmCropRect.nLeft;
-   pDvdVideoPicture->iHeight = m_frameInfo.pExtInfo->FrmCropRect.nBottom - m_frameInfo.pExtInfo->FrmCropRect.nTop;
+@@ -1128,7 +1130,10 @@
+   pDvdVideoPicture->iWidth = pDvdVideoPicture->IMXBuffer->m_pctWidth;
+   pDvdVideoPicture->iHeight = pDvdVideoPicture->IMXBuffer->m_pctHeight;
  
 -  pDvdVideoPicture->iDisplayWidth = ((pDvdVideoPicture->iWidth * m_frameInfo.pExtInfo->nQ16ShiftWidthDivHeightRatio) + 32767) >> 16;
 +  int widthDivHeightRatio = m_forcedWidthDivHeightRatio ?
@@ -29,15 +30,4 @@ diff -u a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp b/xbmc/cor
 +  pDvdVideoPicture->iDisplayWidth = ((pDvdVideoPicture->iWidth * widthDivHeightRatio) + 32767) >> 16;
    pDvdVideoPicture->iDisplayHeight = pDvdVideoPicture->iHeight;
  
-   // Current buffer is locked already -> hot potato
-diff -u a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h
---- a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h	2016-05-04 16:55:30.000000000 +0200
-+++ b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h	2016-05-05 12:58:35.000000000 +0200
-@@ -352,6 +352,7 @@
-   double                       m_previousPts;       // Enable to keep pts when needed
-   bool                         m_frameReported;     // State whether the frame consumed event will be reported by libfslvpu
-   bool                         m_warnOnce;          // Track warning messages to only warn once
-+  int                          m_forcedWidthDivHeightRatio; // Aspect ratio when overriden by hint
- #ifdef DUMP_STREAM
-   FILE                        *m_dump;
- #endif
+   pDvdVideoPicture->pts = pDvdVideoPicture->IMXBuffer->GetPts();
