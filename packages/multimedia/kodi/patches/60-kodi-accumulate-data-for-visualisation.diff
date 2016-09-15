@@ -1,11 +1,12 @@
 --- a/xbmc/cores/AudioEngine/Engines/ActiveAE/ActiveAE.cpp	2015-10-19 08:31:15.000000000 +0200
 +++ b/xbmc/cores/AudioEngine/Engines/ActiveAE/ActiveAE.cpp	2016-02-07 18:32:00.431735589 +0100
-@@ -1315,14 +1315,18 @@
+@@ -1315,15 +1315,19 @@
        if (!m_vizBuffers && !m_audioCallback.empty())
        {
          AEAudioFormat vizFormat = m_internalFormat;
 -        vizFormat.m_channelLayout = AE_CH_LAYOUT_2_0;
 -        vizFormat.m_dataFormat = AE_FMT_FLOAT;
+-        vizFormat.m_sampleRate = 44100;
 +
 +        // accumulate samples for the visualization addon
 +        if (vizFormat.m_frames < 1536)
@@ -19,10 +20,11 @@
          // resample buffers
 +        vizFormat.m_channelLayout = AE_CH_LAYOUT_2_0;
 +        vizFormat.m_dataFormat = AE_FMT_FLOAT;
++        vizFormat.m_sampleRate = 44100;
          m_vizBuffers = new CActiveAEBufferPoolResample(m_internalFormat, vizFormat, m_settings.resampleQuality);
-         // TODO use cache of sync + water level
+         //! @todo use cache of sync + water level
          m_vizBuffers->Create(2000, false, false);
-@@ -2172,18 +2176,33 @@
+@@ -2147,18 +2151,33 @@
                m_vizInitialized = true;
              }
  
@@ -40,7 +42,8 @@
 +
 +              // don't copy more than vizNumSamples
 +              if (samples > 0)
-+              {
+               {
+-                memcpy(viz->pkt->data[i], out->pkt->data[i], bytes);
 +                int bytes = samples * out->pkt->config.channels / out->pkt->planes * out->pkt->bytes_per_sample;
 +                int offset = viz->pkt->nb_samples * out->pkt->config.channels / out->pkt->planes * out->pkt->bytes_per_sample;
 +                for(int i = 0; i < out->pkt->planes; i++)
@@ -50,8 +53,7 @@
 +              // consume complete source packet
 +              viz->pkt->nb_samples += out->pkt->nb_samples;
 +              if (viz->pkt->nb_samples >= viz->pkt->max_nb_samples)
-               {
--                memcpy(viz->pkt->data[i], out->pkt->data[i], bytes);
++              {
 +                // set valid sample count
 +                viz->pkt->nb_samples = vizNumSamples;
 +
@@ -64,7 +66,7 @@
              }
              else
                CLog::Log(LOGWARNING,"ActiveAE::%s - viz ran out of free buffers", __FUNCTION__);
-@@ -2208,7 +2228,12 @@
+@@ -2183,7 +2202,12 @@
              }
            }
            else if (m_vizBuffers)
