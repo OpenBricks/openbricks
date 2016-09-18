@@ -57,8 +57,10 @@ if [ -n "$PKG_PARENT" ] ; then
 fi
 
 if [ -n "$PKG_URL_PROTO" ]; then
-    put_str "Skipping $package,  PKG_URL_PROTO is set"
-    exit 0
+  REPO_BASENAME=$PKG_NAME-$PKG_VERSION
+  FILES=$REPO_BASENAME.tar.bz2
+  #  put_str "Skipping $package,  PKG_URL_PROTO is set"
+  #   exit 0
 else
   [ -f "$PACKAGE_URL" ] && \
     FILES=`sed 's%.*/\(.*\)\$%\1%' $PACKAGE_URL`
