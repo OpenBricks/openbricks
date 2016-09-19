@@ -51,6 +51,12 @@ fi
 
 . $dir_pkg_meta/meta
 
+if [ -z $PKG_NAME ] ; then
+  put_str "setting \$PKG_NAME to $package"
+  PKG_NAME=$package
+  . $dir_pkg_meta/meta
+fi
+
 if [ -n "$PKG_PARENT" ] ; then
   put_str " Please, check manually this package, \$PKG_PARENT is set ..."
   exit 1
@@ -59,8 +65,6 @@ fi
 if [ -n "$PKG_URL_PROTO" ]; then
   REPO_BASENAME=$PKG_NAME-$PKG_VERSION
   FILES=$REPO_BASENAME.tar.bz2
-  #  put_str "Skipping $package,  PKG_URL_PROTO is set"
-  #   exit 0
 else
   [ -f "$PACKAGE_URL" ] && \
     FILES=`sed 's%.*/\(.*\)\$%\1%' $PACKAGE_URL`
