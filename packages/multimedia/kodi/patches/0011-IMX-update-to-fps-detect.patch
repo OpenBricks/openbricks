@@ -1,0 +1,260 @@
+From e2ac3ebc6bebd2dfdf4ad7d3bea5d5c629e85189 Mon Sep 17 00:00:00 2001
+From: Matus Kral <matuskral@me.com>
+Date: Fri, 26 Aug 2016 00:56:03 +0200
+Subject: [PATCH 11/37] [IMX] update to fps detect
+
+---
+ .../DVDCodecs/Video/DVDVideoCodecIMX.cpp           | 27 +++++---
+ xbmc/linux/imx/IMX.cpp                             | 80 ++++++++++------------
+ xbmc/linux/imx/IMX.h                               | 16 ++---
+ 3 files changed, 62 insertions(+), 61 deletions(-)
+
+diff --git a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp
+index 6b31ca5..bfb9a3f 100644
+--- a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp
++++ b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp
+@@ -744,21 +744,23 @@ int CIMXCodec::Decode(BYTE *pData, int iSize, double dts, double pts)
+   int ret = 0;
+   if (!g_IMXCodec->IsRunning())
+   {
+-    if ((!m_decInput.full() || !ptrn.Recalc()) && m_decInput.size() < 40)
++    if (!m_decInput.full())
+     {
+-      if (m_decInput.full())
+-        m_decInput.setquotasize(m_decInput.getquotasize()+1);
+-
+-      if (dts != DVD_NOPTS_VALUE)
+-        ptrn.Add(dts);
+-      else if (pts != DVD_NOPTS_VALUE)
++      if (pts != DVD_NOPTS_VALUE)
+         ptrn.Add(pts);
++      else if (dts != DVD_NOPTS_VALUE)
++        ptrn.Add(dts);
+ 
+       ret |= VC_BUFFER;
+     }
+     else
+     {
+-      m_fps = DVD_TIME_BASE / ptrn.GetFrameDuration();
++      double fd = ptrn.GetFrameDuration(true);
++      if (!fd && m_hints.fpsscale)
++        m_fps = (double)m_hints.fpsrate / m_hints.fpsscale;
++      else if (fd)
++        m_fps = DVD_TIME_BASE / fd;
++
+       m_decOpenParam.nMapType = 1;
+ 
+       ptrn.Flush();
+@@ -940,9 +942,12 @@ void CIMXCodec::Process()
+           m_decOpenParam.nMapType = 0;
+           Dispose();
+           VpuOpen();
+-          m_fps /= 2;
+           continue;
+         }
++
++        if (m_initInfo.nInterlace && m_fps <= 30)
++          m_fps *= 2;
++
+         m_processInfo->SetVideoFps(m_fps);
+ 
+         CLog::Log(LOGDEBUG, "%s - VPU Init Stream Info : %dx%d (interlaced : %d - Minframe : %d)"\
+@@ -1277,7 +1282,7 @@ bool CIMXContext::AdaptScreen(bool allocate)
+   m_fbVar.xoffset = 0;
+   m_fbVar.yoffset = 0;
+ 
+-  if (!allocate && (fbVar.bits_per_pixel == 16 || m_currentFieldFmt || (m_fbHeight >= 1080 && m_fps >= 49)))
++  if (!allocate && (fbVar.bits_per_pixel == 16 || m_fps >= 49))
+   {
+     m_fbVar.nonstd = _4CC('Y', 'U', 'Y', 'V');
+     m_fbVar.bits_per_pixel = 16;
+@@ -1724,7 +1729,7 @@ bool CIMXContext::TileTask(IPUTaskPtr &ipu)
+   }
+ 
+   // Use band mode directly to FB, as no transformations needed (eg cropping)
+-  if (m_fps >= 49 && m_fbWidth == 1920 && ipu->task.input.width == 1920 && !ipu->task.input.deinterlace.enable)
++  if (m_fps > 51 && m_fbWidth == 1920 && ipu->task.input.width == 1920 && !ipu->task.input.deinterlace.enable)
+   {
+     m_zoomAllowed = false;
+     ipu->task.output.crop.pos.x = ipu->task.input.crop.pos.x = 0;
+diff --git a/xbmc/linux/imx/IMX.cpp b/xbmc/linux/imx/IMX.cpp
+index e4284ac..ee4e60a 100644
+--- a/xbmc/linux/imx/IMX.cpp
++++ b/xbmc/linux/imx/IMX.cpp
+@@ -36,14 +36,10 @@
+ #include "windowing/WindowingFactory.h"
+ #include "utils/log.h"
+ #include "guilib/GraphicContext.h"
+-#include "utils/MathUtils.h"
+-#include "DVDClock.h"
+ #include "cores/VideoPlayer/DVDCodecs/DVDCodecUtils.h"
+-
+-#include <algorithm>
++#include "utils/StringUtils.h"
+ 
+ #define  DCIC_DEVICE    "/dev/mxc_dcic0"
+-#define  FB_DEVICE      "/dev/fb0"
+ 
+ CIMX::CIMX(void) : CThread("CIMX")
+   , m_change(true)
+@@ -162,7 +158,6 @@ void CIMX::OnResetDisplay()
+   m_change = true;
+ }
+ 
+-
+ bool CIMXFps::Recalc()
+ {
+   double prev = DVD_NOPTS_VALUE;
+@@ -175,54 +170,57 @@ bool CIMXFps::Recalc()
+   m_hgraph.clear();
+   for (auto d : m_ts)
+   {
+-    if (d != 0.0 && prev != DVD_NOPTS_VALUE)
+-      m_hgraph[MathUtils::round_int(d - prev)]++;
++    if (prev != DVD_NOPTS_VALUE)
++    {
++      frameDuration = CDVDCodecUtils::NormalizeFrameduration((d - prev), &hasMatch);
++      if (fabs(frameDuration - rint(frameDuration)) < 0.01)
++        frameDuration = rint(frameDuration);
++
++      m_hgraph[(unsigned long)(frameDuration * 100)]++;
++    }
+     prev = d;
+   }
+ 
+-  unsigned int patternLength = 0;
+   for (auto it = m_hgraph.begin(); it != m_hgraph.end();)
+   {
+-    if (it->second > 1)
++    if (it->second > 2)
+     {
+-      count += it->second;
+-      frameDuration += it->first * it->second;
++      double duration = CDVDCodecUtils::NormalizeFrameduration((double)it->first / 100, &hasMatch);
++
+       ++it;
+     }
+     else
++    {
++      for (auto iti = m_hgraph.begin(); it != iti; iti++)
++      {
++        if (!iti->first)
++          continue;
++        int dv = it->first / iti->first;
++        if (dv * iti->first == it->first)
++        {
++          m_hgraph[it->first] += dv;
++          break;
++        }
++      }
+       m_hgraph.erase(it++);
++    }
+   }
+ 
+-  if (count)
+-    frameDuration /= count;
+-
+-  double frameNorm = CDVDCodecUtils::NormalizeFrameduration(frameDuration, &hasMatch);
+-
+-  if (hasMatch && !patternLength)
+-    m_patternLength = 1;
+-  else
+-    m_patternLength = patternLength;
+-
+-  if (!m_hasPattern && hasMatch)
+-    m_frameDuration = frameNorm;
+-
+-  if ((m_ts.size() == DIFFRINGSIZE && !m_hasPattern && hasMatch))
+-    m_hasPattern = true;
+-
+-  if (m_hasPattern)
+-    m_ptscorrection = (m_ts.size() - 1) * m_frameDuration + m_ts.front() - m_ts.back();
+-
+-  if (m_hasPattern && m_ts.size() == DIFFRINGSIZE && m_ptscorrection > m_frameDuration / 4)
++  frameDuration = 0.0;
++  for (auto h : m_hgraph)
+   {
+-    m_hasPattern = false;
+-    m_frameDuration = DVD_NOPTS_VALUE;
++    count += h.second;
++    frameDuration += h.first * h.second;
+   }
+ 
+-  return m_hgraph.size() <= 2;
+-  bool ret = m_hgraph.size() <= 2;
+-  if (!m_hasPattern && ret)
+-    m_frameDuration = frameNorm;
+-  return ret;
++  if (count)
++    frameDuration /= (100 * count);
++
++  frameDuration = CDVDCodecUtils::NormalizeFrameduration(frameDuration, &hasMatch);
++
++  if (hasMatch)
++    m_frameDuration = frameDuration;
++  return true;
+ }
+ 
+ void CIMXFps::Add(double tm)
+@@ -235,8 +233,6 @@ void CIMXFps::Add(double tm)
+ 
+ void CIMXFps::Flush()
+ {
++  m_frameDuration = DVD_NOPTS_VALUE;
+   m_ts.clear();
+-  m_frameDuration = 0.0;
+-  m_ptscorrection = 0.0;
+-  m_hasPattern = false;
+ }
+diff --git a/xbmc/linux/imx/IMX.h b/xbmc/linux/imx/IMX.h
+index 1c5f15e..c0a13cd 100644
+--- a/xbmc/linux/imx/IMX.h
++++ b/xbmc/linux/imx/IMX.h
+@@ -24,6 +24,7 @@
+ #include "threads/Thread.h"
+ #include "guilib/DispResource.h"
+ #include "utils/log.h"
++#include "cores/VideoPlayer/DVDClock.h"
+ 
+ #include <mutex>
+ #include <queue>
+@@ -32,9 +33,12 @@
+ #include <atomic>
+ #include <thread>
+ #include <map>
++#include <string>
+ 
+ #define DIFFRINGSIZE 60
+ 
++#define FB_DEVICE "/dev/fb0"
++
+ class CIMX;
+ extern CIMX g_IMX;
+ 
+@@ -189,19 +193,15 @@ protected:
+ class CIMXFps
+ {
+   public:
+-    CIMXFps()       { Flush(); }
++    CIMXFps()  { Flush(); }
+     void   Add(double pts);
+     void   Flush(); //flush the saved pattern and the ringbuffer
+-
+-    double GetFrameDuration() { return m_frameDuration;             }
+-    bool   HasFullBuffer()    { return m_ts.size() == DIFFRINGSIZE; }
+-
++    double GetFrameDuration(bool raw = false) { return m_frameDuration; }
+     bool   Recalc();
+ 
+   private:
++    std::string          GetPatternStr();
++    std::map<unsigned long,int>  m_hgraph;
+     std::deque<double>   m_ts;
+-    std::map<double,int> m_hgraph;
+     double               m_frameDuration;
+-    bool                 m_hasPattern;
+-    double               m_ptscorrection;
+ };
+-- 
+1.9.1
+

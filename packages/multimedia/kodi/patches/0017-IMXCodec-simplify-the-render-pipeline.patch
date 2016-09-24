@@ -1,0 +1,114 @@
+From dbf5c69707b589308a168291030e25360398e783 Mon Sep 17 00:00:00 2001
+From: Matus Kral <matuskral@me.com>
+Date: Thu, 1 Sep 2016 04:00:43 +0200
+Subject: [PATCH 17/37] [IMXCodec] simplify the render pipeline
+
+---
+ .../DVDCodecs/Video/DVDVideoCodecIMX.cpp           | 22 +++++++++++++++-------
+ .../VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h | 12 +++++++-----
+ 2 files changed, 22 insertions(+), 12 deletions(-)
+
+diff --git a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp
+index f371f9d..c96b91b 100644
+--- a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp
++++ b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp
+@@ -1228,6 +1228,7 @@ CIMXContext::CIMXContext()
+   , m_vsync(true)
+   , m_pageCrops(NULL)
+   , m_bFbIsConfigured(false)
++  , m_processThread(this, "iMX BLK")
+   , m_g2dHandle(NULL)
+   , m_bufferCapture(NULL)
+   , m_deviceName("/dev/fb1")
+@@ -1235,8 +1236,6 @@ CIMXContext::CIMXContext()
+   m_waitVSync.Reset();
+   m_onStartup.Reset();
+   m_waitFlip.Reset();
+-  m_flip.clear();
+-  m_flip.resize(m_fbPages);
+   m_pageCrops = new CRectInt[m_fbPages];
+   CLog::Log(LOGDEBUG, "iMX : Allocated %d render buffers\n", m_fbPages);
+ }
+@@ -1312,10 +1311,11 @@ bool CIMXContext::AdaptScreen(bool allocate)
+ 
+   MemMap(&fb_fix);
+ 
+-  if (m_fbVar.bits_per_pixel == 16 || !RENDER_USE_G2D)
+-    m_ipuHandle = open("/dev/mxc_ipu", O_RDWR, 0);
++  m_ipuHandle = open("/dev/mxc_ipu", O_RDWR, 0);
+ 
+   Unblank();
++  if (!allocate)
++    m_processThread.Create(false);
+ 
+   return true;
+ 
+@@ -1434,13 +1434,21 @@ bool CIMXContext::Blank()
+   return ioctl(m_fbHandle, FBIOBLANK, 1) == 0;
+ }
+ 
++void CIMXContext::Run()
++{
++  unsigned long curBlank = FB_BLANK_NORMAL;
++  while (curBlank &&
++        !ioctl(open(FB_DEVICE, O_RDONLY, 0), MXCFB_GET_FB_BLANK, &curBlank))
++    Sleep(10);
++
++  m_bFbIsConfigured = !curBlank;
++}
++
+ bool CIMXContext::Unblank()
+ {
+   if (!m_fbHandle) return false;
+ 
+-  int ret = ioctl(m_fbHandle, FBIOBLANK, FB_BLANK_UNBLANK);
+-  m_bFbIsConfigured = true;
+-  return ret == 0;
++  return ioctl(m_fbHandle, FBIOBLANK, FB_BLANK_UNBLANK) == 0;
+ }
+ 
+ bool CIMXContext::SetVSync(bool enable)
+diff --git a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h
+index 066adb9..a550adc 100644
+--- a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h
++++ b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h
+@@ -93,7 +93,7 @@ enum RENDER_TASK
+ 
+ // iMX context class that handles all iMX hardware
+ // related stuff
+-class CIMXContext : private CThread, IDispResource
++class CIMXContext : private CThread, IDispResource, public IRunnable
+ {
+ public:
+   CIMXContext();
+@@ -175,14 +175,13 @@ private:
+   virtual void OnStartup();
+   virtual void OnExit();
+   virtual void Process();
++  virtual void Run() override;
+ 
+ private:
+-  lkFIFO<IPUTaskPtr>             m_input;
+-  std::vector<bool>              m_flip;
++  unsigned char                  m_flip;
+ 
+   int                            m_fbHandle;
+-  std::atomic<int>               m_fbCurrentPage;
+-  int                            m_pg;
++  int                            m_fbCurrentPage;
+   int                            m_fbWidth;
+   int                            m_fbHeight;
+   int                            m_fbLineLength;
+@@ -203,6 +202,9 @@ private:
+ 
+   bool                           m_zoomAllowed;
+   CCriticalSection               m_pageSwapLock;
++
++  CThread                        m_processThread;
++
+ public:
+   void                          *m_g2dHandle;
+   struct g2d_buf                *m_bufferCapture;
+-- 
+1.9.1
+

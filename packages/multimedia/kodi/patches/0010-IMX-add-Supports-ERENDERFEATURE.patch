@@ -1,0 +1,97 @@
+From 5d60b324b6297b0f3355000cd65c10015c18798a Mon Sep 17 00:00:00 2001
+From: Matus Kral <matuskral@me.com>
+Date: Thu, 25 Aug 2016 21:52:39 +0200
+Subject: [PATCH 10/37] [IMX] add Supports(ERENDERFEATURE)
+
+---
+ xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp  |  3 ++-
+ xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h    |  2 ++
+ .../VideoPlayer/VideoRenderers/HwDecRender/RendererIMX.cpp   | 12 ++++++++++++
+ .../VideoPlayer/VideoRenderers/HwDecRender/RendererIMX.h     |  1 +
+ 4 files changed, 17 insertions(+), 1 deletion(-)
+
+diff --git a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp
+index 4aae4c3..6b31ca5 100644
+--- a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp
++++ b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp
+@@ -1709,6 +1709,7 @@ void CIMXContext::PrepareTask(IPUTaskPtr &ipu, CIMXBuffer *source_p, CIMXBuffer
+ bool CIMXContext::TileTask(IPUTaskPtr &ipu)
+ {
+   int pad = ipu->task.input.height == 1080 && ipu->current->iHeight>ipu->task.input.height ? 16*ipu->current->iWidth : 0;
++  m_zoomAllowed = true;
+ 
+   if (ipu->current->iFormat != _4CC('T', 'N', 'V', 'F') && ipu->current->iFormat != _4CC('T', 'N', 'V', 'P'))
+   {
+@@ -1725,13 +1726,13 @@ bool CIMXContext::TileTask(IPUTaskPtr &ipu)
+   // Use band mode directly to FB, as no transformations needed (eg cropping)
+   if (m_fps >= 49 && m_fbWidth == 1920 && ipu->task.input.width == 1920 && !ipu->task.input.deinterlace.enable)
+   {
++    m_zoomAllowed = false;
+     ipu->task.output.crop.pos.x = ipu->task.input.crop.pos.x = 0;
+     ipu->task.output.crop.pos.y = ipu->task.input.crop.pos.y = 0;
+     ipu->task.output.crop.h     = ipu->task.input.height     = ipu->task.input.crop.h = ipu->current->iHeight;
+     ipu->task.output.paddr     += m_fbLineLength * (m_fbHeight - ipu->task.input.crop.h)/2;
+     return true;
+   }
+-
+   // rasterize from tile (frame)
+   struct ipu_task    vdoa;
+ 
+diff --git a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h
+index bde21ac..9b9f068 100644
+--- a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h
++++ b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h
+@@ -116,6 +116,7 @@ public:
+   void SetVideoPixelFormat(CProcessInfo *m_pProcessInfo);
+ 
+   void SetBlitRects(const CRect &srcRect, const CRect &dstRect);
++  bool IsZoomAllowed() const { return m_zoomAllowed; }
+ 
+   // Blits a buffer to a particular page (-1 for auto page)
+   // source_p (previous buffer) is required for de-interlacing
+@@ -212,6 +213,7 @@ private:
+   CEvent                         m_waitFlip;
+   CProcessInfo                  *m_processInfo;
+ 
++  bool                           m_zoomAllowed;
+   CCriticalSection               m_pageSwapLock;
+ public:
+   void                          *m_g2dHandle;
+diff --git a/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererIMX.cpp b/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererIMX.cpp
+index 73fc323..01272ff 100644
+--- a/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererIMX.cpp
++++ b/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererIMX.cpp
+@@ -80,6 +80,18 @@ bool CRendererIMX::IsGuiLayer()
+   return false;
+ }
+ 
++bool CRendererIMX::Supports(ERENDERFEATURE feature)
++{
++  if (!g_IMXContext.IsZoomAllowed())
++    return false;
++
++  if (feature == RENDERFEATURE_PIXEL_RATIO ||
++      feature == RENDERFEATURE_ZOOM)
++    return true;
++
++  return false;
++}
++
+ bool CRendererIMX::Supports(EINTERLACEMETHOD method)
+ {
+   if(method == VS_INTERLACEMETHOD_AUTO)
+diff --git a/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererIMX.h b/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererIMX.h
+index 440badb..e2582a6 100644
+--- a/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererIMX.h
++++ b/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererIMX.h
+@@ -44,6 +44,7 @@ public:
+   // Feature support
+   virtual bool Supports(EINTERLACEMETHOD method);
+   virtual bool Supports(ESCALINGMETHOD method);
++  virtual bool Supports(ERENDERFEATURE feature);
+ 
+   virtual bool WantsDoublePass() override;
+ 
+-- 
+1.9.1
+

@@ -1,0 +1,115 @@
+From 021323daae52363a8c62bbded00c45ebff373208 Mon Sep 17 00:00:00 2001
+From: Matus Kral <matuskral@me.com>
+Date: Mon, 5 Sep 2016 03:05:21 +0200
+Subject: [PATCH 30/37] prevent audio init during egl init (when being blanked)
+
+---
+ xbmc/windowing/egl/EGLNativeTypeIMX.cpp |  3 +++
+ xbmc/windowing/egl/WinSystemEGL.cpp     | 33 ++++++++++++++++++---------------
+ xbmc/windowing/egl/WinSystemEGL.h       |  4 ++++
+ 3 files changed, 25 insertions(+), 15 deletions(-)
+
+diff --git a/xbmc/windowing/egl/EGLNativeTypeIMX.cpp b/xbmc/windowing/egl/EGLNativeTypeIMX.cpp
+index d8c0983..4098f63 100644
+--- a/xbmc/windowing/egl/EGLNativeTypeIMX.cpp
++++ b/xbmc/windowing/egl/EGLNativeTypeIMX.cpp
+@@ -97,6 +97,7 @@ void CEGLNativeTypeIMX::Initialize()
+     }
+   }
+ 
++  g_Windowing.old();
+   ShowWindow(false);
+ 
+   fd = open("/dev/fb0",O_RDWR);
+@@ -132,6 +133,8 @@ void CEGLNativeTypeIMX::Initialize()
+   m_sar = GetMonitorSAR();
+   g_IMXContext.create();
+   ShowWindow(true);
++
++  g_Windowing.ord();
+ #endif
+   return;
+ }
+diff --git a/xbmc/windowing/egl/WinSystemEGL.cpp b/xbmc/windowing/egl/WinSystemEGL.cpp
+index 852f337..e76737b 100644
+--- a/xbmc/windowing/egl/WinSystemEGL.cpp
++++ b/xbmc/windowing/egl/WinSystemEGL.cpp
+@@ -264,6 +264,21 @@ bool CWinSystemEGL::DestroyWindowSystem()
+   return true;
+ }
+ 
++void CWinSystemEGL::old()
++{
++  CSingleLock lock(m_resourceSection);
++  for (std::vector<IDispResource *>::iterator i = m_resources.begin(); i != m_resources.end(); ++i)
++    (*i)->OnLostDisplay();
++}
++
++void CWinSystemEGL::ord()
++{
++  CSingleLock lock(m_resourceSection);
++  // tell any shared resources
++  for (std::vector<IDispResource *>::iterator i = m_resources.begin(); i != m_resources.end(); ++i)
++    (*i)->OnResetDisplay();
++}
++
+ bool CWinSystemEGL::CreateNewWindow(const std::string& name, bool fullScreen, RESOLUTION_INFO& res, PHANDLE_EVENT_FUNC userFunction)
+ {
+   RESOLUTION_INFO current_resolution;
+@@ -294,11 +309,7 @@ bool CWinSystemEGL::CreateNewWindow(const std::string& name, bool fullScreen, RE
+     m_dispResetTimer.Set(delay * 100);
+   }
+ 
+-  {
+-    CSingleLock lock(m_resourceSection);
+-    for (std::vector<IDispResource *>::iterator i = m_resources.begin(); i != m_resources.end(); ++i)
+-      (*i)->OnLostDisplay();
+-  }
++  old();
+ 
+   m_stereo_mode = stereo_mode;
+   m_bFullScreen   = fullScreen;
+@@ -315,12 +326,7 @@ bool CWinSystemEGL::CreateNewWindow(const std::string& name, bool fullScreen, RE
+   }
+ 
+   if (!m_delayDispReset)
+-  {
+-    CSingleLock lock(m_resourceSection);
+-    // tell any shared resources
+-    for (std::vector<IDispResource *>::iterator i = m_resources.begin(); i != m_resources.end(); ++i)
+-      (*i)->OnResetDisplay();
+-  }
++    ord(); 
+ 
+   Show();
+   return true;
+@@ -457,10 +463,7 @@ void CWinSystemEGL::PresentRenderImpl(bool rendered)
+   if (m_delayDispReset && m_dispResetTimer.IsTimePast())
+   {
+     m_delayDispReset = false;
+-    CSingleLock lock(m_resourceSection);
+-    // tell any shared resources
+-    for (std::vector<IDispResource *>::iterator i = m_resources.begin(); i != m_resources.end(); ++i)
+-      (*i)->OnResetDisplay();
++    ord();
+   }
+   if (!rendered)
+     return;
+diff --git a/xbmc/windowing/egl/WinSystemEGL.h b/xbmc/windowing/egl/WinSystemEGL.h
+index c24bb35..910b156 100644
+--- a/xbmc/windowing/egl/WinSystemEGL.h
++++ b/xbmc/windowing/egl/WinSystemEGL.h
+@@ -69,6 +69,10 @@ public:
+ 
+   EGLDisplay    GetEGLDisplay();
+   EGLContext    GetEGLContext();
++
++  void          old();
++  void          ord();
++
+ protected:
+   virtual void  PresentRenderImpl(bool rendered);
+   virtual void  SetVSyncImpl(bool enable);
+-- 
+1.9.1
+

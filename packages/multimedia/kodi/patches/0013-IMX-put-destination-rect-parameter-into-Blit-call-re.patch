@@ -1,0 +1,168 @@
+From feebd022dfdab5b1ede13eaad48c387a8bbd04c8 Mon Sep 17 00:00:00 2001
+From: Matus Kral <matuskral@me.com>
+Date: Fri, 26 Aug 2016 07:53:08 +0200
+Subject: [PATCH 13/37] [IMX] put destination rect parameter into Blit() call,
+ refactor IPUTask prep
+
+---
+ .../DVDCodecs/Video/DVDVideoCodecIMX.cpp           | 32 +++++++++-------------
+ .../VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h | 17 +++---------
+ .../VideoRenderers/HwDecRender/RendererIMX.cpp     |  4 +--
+ 3 files changed, 18 insertions(+), 35 deletions(-)
+
+diff --git a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp
+index bfb9a3f..09e07bb 100644
+--- a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp
++++ b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp
+@@ -1240,8 +1240,6 @@ CIMXContext::CIMXContext()
+   m_pageCrops = new CRectInt[m_fbPages];
+   CLog::Log(LOGDEBUG, "iMX : Allocated %d render buffers\n", m_fbPages);
+ 
+-  SetBlitRects(CRectInt(), CRectInt());
+-
+   g2dOpenDevices();
+ }
+ 
+@@ -1470,12 +1468,6 @@ bool CIMXContext::SetVSync(bool enable)
+   return true;
+ }
+ 
+-void CIMXContext::SetBlitRects(const CRect &srcRect, const CRect &dstRect)
+-{
+-  m_srcRect = srcRect;
+-  m_dstRect = dstRect;
+-}
+-
+ inline
+ void CIMXContext::SetFieldData(uint8_t fieldFmt, double fps)
+ {
+@@ -1529,7 +1521,8 @@ int setIPUMotion(bool hasPrev, EINTERLACEMETHOD imethod)
+   return HIGH_MOTION;
+ }
+ 
+-void CIMXContext::Blit(CIMXBuffer *source_p, CIMXBuffer *source, uint8_t fieldFmt, int page)
++void CIMXContext::Blit(CIMXBuffer *source_p, CIMXBuffer *source, const CRect &srcRect,
++                       const CRect &dstRect, uint8_t fieldFmt, int page)
+ {
+   if (page == RENDER_TASK_AUTOPAGE)
+     page = m_pg;
+@@ -1542,12 +1535,20 @@ void CIMXContext::Blit(CIMXBuffer *source_p, CIMXBuffer *source, uint8_t fieldFm
+   ipu->page = page;
+ 
+   SetFieldData(fieldFmt, source->m_fps);
+-  PrepareTask(ipu, source_p, source);
++  PrepareTask(ipu, srcRect, dstRect);
+ 
+ #ifdef IMX_PROFILE_BUFFERS
+   unsigned long long before = XbmcThreads::SystemClockMillis();
+ #endif
+-  DoTask(ipu);
++  SetFieldData(fieldFmt, source->m_fps);
++  PrepareTask(ipu, srcRect, dstRect);
++
++  if (!DoTask(ipu))
++    return;
++
++  m_flip = ipu->page | checkIPUStrideOffset(&ipu->task.input.deinterlace) << 4;
++  m_pingFlip.Set();
++
+ #ifdef IMX_PROFILE_BUFFERS
+   unsigned long long after = XbmcThreads::SystemClockMillis();
+   CLog::Log(LOGDEBUG, "+P 0x%x@%d  %d\n", ((CDVDVideoCodecIMXBuffer*)ipu->current)->GetIdx(), ipu->page, (int)(after-before));
+@@ -1640,15 +1641,8 @@ void CIMXContext::Clear(int page)
+   SetVideoPixelFormat(m_processInfo);
+ }
+ 
+-void CIMXContext::PrepareTask(IPUTaskPtr &ipu, CIMXBuffer *source_p, CIMXBuffer *source)
++void CIMXContext::PrepareTask(IPUTaskPtr &ipu, CRect srcRect, CRect dstRect)
+ {
+-  // Fill with zeros
+-  ipu->Zero();
+-  ipu->Assign(source_p, source);
+-
+-  CRect srcRect = m_srcRect;
+-  CRect dstRect = m_dstRect;
+-
+   CRectInt iSrcRect, iDstRect;
+ 
+   float srcWidth = srcRect.Width();
+diff --git a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h
+index 9b9f068..5a9d634 100644
+--- a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h
++++ b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h
+@@ -115,13 +115,12 @@ public:
+   bool IsDoubleRate() const { return m_currentFieldFmt & IPU_DEINTERLACE_RATE_EN; }
+   void SetVideoPixelFormat(CProcessInfo *m_pProcessInfo);
+ 
+-  void SetBlitRects(const CRect &srcRect, const CRect &dstRect);
+   bool IsZoomAllowed() const { return m_zoomAllowed; }
+ 
+   // Blits a buffer to a particular page (-1 for auto page)
+   // source_p (previous buffer) is required for de-interlacing
+   // modes LOW_MOTION and MED_MOTION.
+-  void Blit(CIMXBuffer *source_p, CIMXBuffer *source,
++  void Blit(CIMXBuffer *source_p, CIMXBuffer *source, const CRect &srcRect, const CRect &dstRect,
+             uint8_t fieldFmt = 0, int targetPage = RENDER_TASK_AUTOPAGE);
+ 
+   // Shows a page vsynced
+@@ -145,15 +144,9 @@ public:
+ private:
+   struct IPUTask
+   {
+-    void Assign(CIMXBuffer *buffer_p, CIMXBuffer *buffer)
++    IPUTask(CIMXBuffer *buffer_p, CIMXBuffer *buffer, int p = 0)
++      : previous(buffer_p), current(buffer), page(p)
+     {
+-      previous = buffer_p;
+-      current = buffer;
+-    }
+-
+-    void Zero()
+-    {
+-      current = previous = NULL;
+       memset(&task, 0, sizeof(task));
+     }
+ 
+@@ -172,7 +165,7 @@ private:
+ 
+   bool GetFBInfo(const std::string &fbdev, struct fb_var_screeninfo *fbVar);
+ 
+-  void PrepareTask(IPUTaskPtr &ipu, CIMXBuffer *source_p, CIMXBuffer *source);
++  void PrepareTask(IPUTaskPtr &ipu, CRect srcRect, CRect dstRect);
+   bool DoTask(IPUTaskPtr &ipu, CRect *dest = nullptr);
+   bool TileTask(IPUTaskPtr &ipu);
+ 
+@@ -204,8 +197,6 @@ private:
+   int                            m_ipuHandle;
+   uint8_t                        m_currentFieldFmt;
+   bool                           m_vsync;
+-  CRect                          m_srcRect;
+-  CRect                          m_dstRect;
+   CRectInt                      *m_pageCrops;
+   bool                           m_bFbIsConfigured;
+   CEvent                         m_waitVSync;
+diff --git a/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererIMX.cpp b/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererIMX.cpp
+index 01272ff..64d88f8 100644
+--- a/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererIMX.cpp
++++ b/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererIMX.cpp
+@@ -199,8 +199,6 @@ bool CRendererIMX::RenderUpdateVideoHook(bool clear, DWORD flags, DWORD alpha)
+     }
+ 
+     //CLog::Log(LOGDEBUG, "BLIT RECTS: source x1 %f x2 %f y1 %f y2 %f dest x1 %f x2 %f y1 %f y2 %f", srcRect.x1, srcRect.x2, srcRect.y1, srcRect.y2, dstRect.x1, dstRect.x2, dstRect.y1, dstRect.y2);
+-    g_IMXContext.SetBlitRects(srcRect, dstRect);
+-
+     uint8_t fieldFmt = flags & RENDER_FLAG_FIELDMASK;
+ 
+     if (!g_graphicsContext.IsFullScreenVideo())
+@@ -220,7 +218,7 @@ bool CRendererIMX::RenderUpdateVideoHook(bool clear, DWORD flags, DWORD alpha)
+     }
+ 
+     CDVDVideoCodecIMXBuffer *buffer_p = m_bufHistory.front();
+-    g_IMXContext.Blit(buffer_p == buffer ? nullptr : buffer_p, buffer, fieldFmt);
++    g_IMXContext.Blit(buffer_p == buffer ? nullptr : buffer_p, buffer, srcRect, dstRect, fieldFmt);
+   }
+ 
+ #if 0
+-- 
+1.9.1
+

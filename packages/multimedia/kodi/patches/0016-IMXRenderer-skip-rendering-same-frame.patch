@@ -1,0 +1,39 @@
+From b4086e7c8fb8dc2aec408cac53917a620cb23d6e Mon Sep 17 00:00:00 2001
+From: Matus Kral <matuskral@me.com>
+Date: Tue, 30 Aug 2016 22:25:34 +0200
+Subject: [PATCH 16/37] [IMXRenderer] skip rendering same frame
+
+---
+ .../cores/VideoPlayer/VideoRenderers/HwDecRender/RendererIMX.cpp | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererIMX.cpp b/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererIMX.cpp
+index 64d88f8..4262970 100644
+--- a/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererIMX.cpp
++++ b/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererIMX.cpp
+@@ -150,6 +150,7 @@ bool CRendererIMX::RenderHook(int index)
+ 
+ bool CRendererIMX::RenderUpdateVideoHook(bool clear, DWORD flags, DWORD alpha)
+ {
++  static DWORD flagsPrev;
+ #if 0
+   static unsigned long long previous = 0;
+   unsigned long long current = XbmcThreads::SystemClockMillis();
+@@ -164,6 +165,14 @@ bool CRendererIMX::RenderUpdateVideoHook(bool clear, DWORD flags, DWORD alpha)
+       buffer->Lock();
+       m_bufHistory.push_back(buffer);
+     }
++    else if (!m_bufHistory.empty() && m_bufHistory.back() == buffer && flagsPrev == flags)
++    {
++      g_IMX.WaitVsync();
++      return true;
++    }
++
++    flagsPrev = flags;
++
+     if (m_bufHistory.size() > 2)
+     {
+       m_bufHistory.front()->Release();
+-- 
+1.9.1
+
