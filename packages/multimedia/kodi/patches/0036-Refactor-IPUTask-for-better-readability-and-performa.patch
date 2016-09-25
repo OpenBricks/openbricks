@@ -1,15 +1,15 @@
-From f46fe2d731139680e5d276af5f807307110cc1de Mon Sep 17 00:00:00 2001
+From 3c7ee4e10ab3bab6fc3dd0ad8f375b9112d9093f Mon Sep 17 00:00:00 2001
 From: Rudi <r.ihle@s-t.de>
 Date: Sat, 24 Sep 2016 16:13:51 +0200
-Subject: [PATCH 36/37] Refactor IPUTask
+Subject: [PATCH 36/37] Refactor IPUTask for better readability and performance
 
 ---
  .../DVDCodecs/Video/DVDVideoCodecIMX.cpp           | 144 ++++++++++-----------
- .../VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h |  18 +--
- 2 files changed, 78 insertions(+), 84 deletions(-)
+ .../VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h |  26 ++--
+ 2 files changed, 82 insertions(+), 88 deletions(-)
 
 diff --git a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp
-index 1ea4922..24ecdad 100644
+index 1ea4922..3535c09 100644
 --- a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp
 +++ b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp
 @@ -1547,24 +1547,24 @@ void CIMXContext::Blit(CIMXBuffer *source_p, CIMXBuffer *source, const CRect &sr
@@ -32,13 +32,13 @@ index 1ea4922..24ecdad 100644
      return;
  
 -  m_flip = ipu->page | checkIPUStrideOffset(&ipu->task.input.deinterlace) << 4;
-+  m_flip = task.page | checkIPUStrideOffset(&task.input.deinterlace) << 4;
++  m_flip = task.targetPage | checkIPUStrideOffset(&task.input.deinterlace) << 4;
    m_waitFlip.Set();
  
  #ifdef IMX_PROFILE_BUFFERS
    unsigned long long after = XbmcThreads::SystemClockMillis();
 -  CLog::Log(LOGDEBUG, "+P 0x%x@%d  %d\n", ((CDVDVideoCodecIMXBuffer*)ipu->current)->GetIdx(), ipu->page, (int)(after-before));
-+  CLog::Log(LOGDEBUG, "+P 0x%x@%d  %d\n", ((CDVDVideoCodecIMXBuffer*)task.current)->GetIdx(), task.page, (int)(after-before));
++  CLog::Log(LOGDEBUG, "+P 0x%x@%d  %d\n", ((CDVDVideoCodecIMXBuffer*)task.currBuf)->GetIdx(), task.targetPage, (int)(after-before));
  #endif
  }
  
@@ -75,7 +75,7 @@ index 1ea4922..24ecdad 100644
  
    // Setup deinterlacing if enabled
 -  if (m_currentFieldFmt && ipu->previous)
-+  if (m_currentFieldFmt && task.previous)
++  if (m_currentFieldFmt && task.prevBuf)
    {
 -    ipu->task.input.deinterlace.enable = 1;
 -    ipu->task.input.deinterlace.motion = m_motion;
@@ -90,11 +90,11 @@ index 1ea4922..24ecdad 100644
 +bool CIMXContext::TileTask(IPUTask &task)
  {
 -  int pad = ipu->task.input.height == 1080 && ipu->current->iHeight>ipu->task.input.height ? 16*ipu->current->iWidth : 0;
-+  int pad = task.input.height == 1080 && task.current->iHeight>task.input.height ? 16*task.current->iWidth : 0;
++  int pad = task.input.height == 1080 && task.currBuf->iHeight>task.input.height ? 16*task.currBuf->iWidth : 0;
    m_zoomAllowed = true;
  
 -  if (ipu->current->iFormat != _4CC('T', 'N', 'V', 'F') && ipu->current->iFormat != _4CC('T', 'N', 'V', 'P'))
-+  if (task.current->iFormat != _4CC('T', 'N', 'V', 'F') && task.current->iFormat != _4CC('T', 'N', 'V', 'P'))
++  if (task.currBuf->iFormat != _4CC('T', 'N', 'V', 'F') && task.currBuf->iFormat != _4CC('T', 'N', 'V', 'P'))
    {
 -    if (ipu->task.input.deinterlace.enable && ipu->task.input.deinterlace.motion != HIGH_MOTION)
 +    if (task.input.deinterlace.enable && task.input.deinterlace.motion != HIGH_MOTION)
@@ -102,7 +102,7 @@ index 1ea4922..24ecdad 100644
 -      ipu->task.input.paddr_n = ipu->task.input.paddr;
 -      ipu->task.input.paddr   = ipu->previous->pPhysAddr + pad;
 +      task.input.paddr_n = task.input.paddr;
-+      task.input.paddr   = task.previous->pPhysAddr + pad;
++      task.input.paddr   = task.prevBuf->pPhysAddr + pad;
      }
      else
 -      ipu->task.input.paddr  += pad;
@@ -121,7 +121,7 @@ index 1ea4922..24ecdad 100644
 -    ipu->task.output.paddr     += m_fbLineLength * (m_fbHeight - ipu->task.input.crop.h)/2;
 +    task.output.crop.pos.x = task.input.crop.pos.x = 0;
 +    task.output.crop.pos.y = task.input.crop.pos.y = 0;
-+    task.output.crop.h     = task.input.height     = task.input.crop.h = task.current->iHeight;
++    task.output.crop.h     = task.input.height     = task.input.crop.h = task.currBuf->iHeight;
 +    task.output.paddr     += m_fbLineLength * (m_fbHeight - task.input.crop.h)/2;
      return true;
    }
@@ -133,24 +133,24 @@ index 1ea4922..24ecdad 100644
 -  vdoa.input.height  = vdoa.output.height = ipu->current->iHeight;
 -  vdoa.input.format  = ipu->current->iFormat;
 +  memset(&vdoa, 0, sizeof(vdoa));
-+  vdoa.input.width   = vdoa.output.width  = task.current->iWidth;
-+  vdoa.input.height  = vdoa.output.height = task.current->iHeight;
-+  vdoa.input.format  = task.current->iFormat;
++  vdoa.input.width   = vdoa.output.width  = task.currBuf->iWidth;
++  vdoa.input.height  = vdoa.output.height = task.currBuf->iHeight;
++  vdoa.input.format  = task.currBuf->iFormat;
  
    // check for 3-field deinterlace (no HIGH_MOTION allowed) from tile field format
 -  if (ipu->previous && ipu->current->iFormat == _4CC('T', 'N', 'V', 'F'))
-+  if (task.previous && task.current->iFormat == _4CC('T', 'N', 'V', 'F'))
++  if (task.prevBuf && task.currBuf->iFormat == _4CC('T', 'N', 'V', 'F'))
    {
 -    memcpy(&vdoa.input.deinterlace, &ipu->task.input.deinterlace, sizeof(ipu->task.input.deinterlace));
 -    memset(&ipu->task.input.deinterlace, 0, sizeof(ipu->task.input.deinterlace));
 -    vdoa.input.paddr_n = ipu->current->pPhysAddr;
 +    memcpy(&vdoa.input.deinterlace, &task.input.deinterlace, sizeof(task.input.deinterlace));
 +    memset(&task.input.deinterlace, 0, sizeof(task.input.deinterlace));
-+    vdoa.input.paddr_n = task.current->pPhysAddr;
++    vdoa.input.paddr_n = task.currBuf->pPhysAddr;
    }
  
 -  struct g2d_buf *conv = g2d_alloc(ipu->current->iWidth *ipu->current->iHeight * 3, 0);
-+  struct g2d_buf *conv = g2d_alloc(task.current->iWidth *task.current->iHeight * 3, 0);
++  struct g2d_buf *conv = g2d_alloc(task.currBuf->iWidth * task.currBuf->iHeight * 3, 0);
    if (!conv)
    {
      CLog::Log(LOGERROR, "iMX: can't allocate crop buffer");
@@ -158,10 +158,10 @@ index 1ea4922..24ecdad 100644
    }
  
 -  ((CDVDVideoCodecIMXBuffer*)ipu->current)->m_convBuffer = conv;
-+  ((CDVDVideoCodecIMXBuffer*)task.current)->m_convBuffer = conv;
++  ((CDVDVideoCodecIMXBuffer*)task.currBuf)->m_convBuffer = conv;
  
 -  vdoa.input.paddr   = vdoa.input.paddr_n ? ipu->previous->pPhysAddr : ipu->current->pPhysAddr;
-+  vdoa.input.paddr   = vdoa.input.paddr_n ? task.previous->pPhysAddr : task.current->pPhysAddr;
++  vdoa.input.paddr   = vdoa.input.paddr_n ? task.prevBuf->pPhysAddr : task.currBuf->pPhysAddr;
    vdoa.output.format = m_fbVar.bits_per_pixel == 16 ? _4CC('Y', 'U', 'Y', 'V') : _4CC('N', 'V', '1', '2');
    vdoa.output.paddr  = conv->buf_paddr;
  
@@ -179,12 +179,12 @@ index 1ea4922..24ecdad 100644
 -    ipu->task.input.paddr_n = ipu->task.input.paddr;
 -    ipu->task.input.paddr   = ipu->previous->pPhysAddr + pad;
 +    task.input.paddr_n = task.input.paddr;
-+    task.input.paddr   = task.previous->pPhysAddr + pad;
++    task.input.paddr   = task.prevBuf->pPhysAddr + pad;
    }
 -  ipu->current->iFormat   = vdoa.output.format;
 -  ipu->current->pPhysAddr = vdoa.output.paddr;
-+  task.current->iFormat   = vdoa.output.format;
-+  task.current->pPhysAddr = vdoa.output.paddr;
++  task.currBuf->iFormat   = vdoa.output.format;
++  task.currBuf->pPhysAddr = vdoa.output.paddr;
  
    return true;
  }
@@ -205,10 +205,10 @@ index 1ea4922..24ecdad 100644
 -  ipu->task.input.height  = std::min(ipu->current->iHeight, (unsigned int)1080);
 -  ipu->task.input.format  = ipu->current->iFormat;
 -  ipu->task.input.paddr   = ipu->current->pPhysAddr;
-+  task.input.width   = task.current->iWidth;
-+  task.input.height  = std::min(task.current->iHeight, (unsigned int)1080);
-+  task.input.format  = task.current->iFormat;
-+  task.input.paddr   = task.current->pPhysAddr;
++  task.input.width   = task.currBuf->iWidth;
++  task.input.height  = std::min(task.currBuf->iHeight, (unsigned int)1080);
++  task.input.format  = task.currBuf->iFormat;
++  task.input.paddr   = task.currBuf->pPhysAddr;
  
 -  ipu->task.output.width  = m_fbWidth;
 -  ipu->task.output.height = m_fbHeight;
@@ -217,15 +217,15 @@ index 1ea4922..24ecdad 100644
 +  task.output.width  = m_fbWidth;
 +  task.output.height = m_fbHeight;
 +  task.output.format = m_fbVar.nonstd;
-+  task.output.paddr  = m_fbPhysAddr + task.page*m_fbPageSize;
++  task.output.paddr  = m_fbPhysAddr + task.targetPage * m_fbPageSize;
  
 -  if (m_pageCrops[ipu->page] != dstRect)
-+  if (m_pageCrops[task.page] != dstRect)
++  if (m_pageCrops[task.targetPage] != dstRect)
    {
 -    m_pageCrops[ipu->page] = dstRect;
 -    Clear(ipu->page);
-+    m_pageCrops[task.page] = dstRect;
-+    Clear(task.page);
++    m_pageCrops[task.targetPage] = dstRect;
++    Clear(task.targetPage);
    }
  
 -  if ((ipu->task.input.crop.w <= 0) || (ipu->task.input.crop.h <= 0)
@@ -276,7 +276,7 @@ index 1ea4922..24ecdad 100644
        CLog::Log(LOGERROR, "IPU task failed: %s at #%d\n", strerror(errno), __LINE__);
    }
 diff --git a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h
-index 69a74fe..124d1b8 100644
+index 69a74fe..88aa06f 100644
 --- a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h
 +++ b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h
 @@ -137,32 +137,26 @@ public:
@@ -286,23 +286,27 @@ index 69a74fe..124d1b8 100644
 -  struct IPUTask
 +  struct IPUTask : public ipu_task
    {
-     IPUTask(CIMXBuffer *buffer_p, CIMXBuffer *buffer, int p = 0)
-       : previous(buffer_p), current(buffer), page(p)
+-    IPUTask(CIMXBuffer *buffer_p, CIMXBuffer *buffer, int p = 0)
+-      : previous(buffer_p), current(buffer), page(p)
++    IPUTask(CIMXBuffer *buffer_p, CIMXBuffer *buffer, int page)
++      : prevBuf(buffer_p), currBuf(buffer), targetPage(page)
      {
 -      memset(&task, 0, sizeof(task));
 +      memset(this, 0, sizeof(ipu_task));
      }
  
      // Kept for reference
-     CIMXBuffer *previous;
-     CIMXBuffer *current;
+-    CIMXBuffer *previous;
+-    CIMXBuffer *current;
++    CIMXBuffer *prevBuf;
++    CIMXBuffer *currBuf;
  
 -    // The actual task
 -    struct ipu_task task;
 -
 -    unsigned int page;
 -    int shift = true;
-+    int page;
++    int targetPage;
    };
  
 -  typedef std::shared_ptr<struct IPUTask> IPUTaskPtr;
