@@ -1,0 +1,171 @@
+From 31b9656b805995e8d03b4dc66cc6961423d23942 Mon Sep 17 00:00:00 2001
+From: Rudi <r.ihle@s-t.de>
+Date: Sun, 2 Oct 2016 17:18:30 +0200
+Subject: [PATCH] Cleanup CDVDVideoCodecIMXBuffer
+
+---
+ .../DVDCodecs/Video/DVDVideoCodecIMX.cpp           | 35 ++++++++++++----------
+ .../VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h | 12 ++++----
+ xbmc/linux/imx/IMX.h                               |  2 --
+ 3 files changed, 26 insertions(+), 23 deletions(-)
+
+diff --git a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp
+index 3535c09..a3d993b 100644
+--- a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp
++++ b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp
+@@ -1111,48 +1111,49 @@ void CIMXCodec::ExitError(const char *msg, ...)
+ 
+ bool CIMXCodec::GetPicture(DVDVideoPicture* pDvdVideoPicture)
+ {
+-  pDvdVideoPicture->IMXBuffer = m_decOutput.pop();
+-  assert(pDvdVideoPicture->IMXBuffer);
++  CDVDVideoCodecIMXBuffer *pIMXBuffer = m_decOutput.pop();
++  assert(pIMXBuffer);
+ 
+ #ifdef IMX_PROFILE
+   static unsigned int previous = 0;
+   unsigned int current;
+ 
+   current = XbmcThreads::SystemClockMillis();
+-  CLog::Log(LOGDEBUG, "+G 0x%x %f/%f tm:%03d : Interlaced 0x%x\n", pDvdVideoPicture->IMXBuffer->GetIdx(),
+-                            recalcPts(pDvdVideoPicture->IMXBuffer->GetDts()), recalcPts(pDvdVideoPicture->IMXBuffer->GetPts()), current - previous,
+-                            m_initInfo.nInterlace ? pDvdVideoPicture->IMXBuffer->GetFieldType() : 0);
++  CLog::Log(LOGDEBUG, "+G 0x%x %f/%f tm:%03d : Interlaced 0x%x\n", pIMXBuffer->GetIdx(),
++                            recalcPts(pIMXBuffer->GetDts()), recalcPts(pIMXBuffer->GetPts()), current - previous,
++                            m_initInfo.nInterlace ? pIMXBuffer->GetFieldType() : 0);
+   previous = current;
+ #endif
+ 
+-  pDvdVideoPicture->iFlags = m_dropRequest ? DVP_FLAG_DROPPED : pDvdVideoPicture->IMXBuffer->GetFlags();
++  pDvdVideoPicture->iFlags = m_dropRequest ? DVP_FLAG_DROPPED : pIMXBuffer->GetFlags();
+ 
+   if (m_initInfo.nInterlace)
+   {
+-    if (pDvdVideoPicture->IMXBuffer->GetFieldType() == VPU_FIELD_NONE && m_warnOnce)
++    if (pIMXBuffer->GetFieldType() == VPU_FIELD_NONE && m_warnOnce)
+     {
+       m_warnOnce = false;
+       CLog::Log(LOGWARNING, "Interlaced content reported by VPU, but full frames detected - Please turn off deinterlacing manually.");
+     }
+-    else if (pDvdVideoPicture->IMXBuffer->GetFieldType() == VPU_FIELD_TB || pDvdVideoPicture->IMXBuffer->GetFieldType() == VPU_FIELD_TOP)
++    else if (pIMXBuffer->GetFieldType() == VPU_FIELD_TB || pIMXBuffer->GetFieldType() == VPU_FIELD_TOP)
+       pDvdVideoPicture->iFlags |= DVP_FLAG_TOP_FIELD_FIRST;
+ 
+     pDvdVideoPicture->iFlags |= DVP_FLAG_INTERLACED;
+   }
+ 
+   pDvdVideoPicture->format = RENDER_FMT_IMXMAP;
+-  pDvdVideoPicture->iWidth = pDvdVideoPicture->IMXBuffer->m_pctWidth;
+-  pDvdVideoPicture->iHeight = pDvdVideoPicture->IMXBuffer->m_pctHeight;
++  pDvdVideoPicture->iWidth = pIMXBuffer->GetPictureWidth();
++  pDvdVideoPicture->iHeight = pIMXBuffer->GetPictureHeight();
+ 
+   pDvdVideoPicture->iDisplayWidth = ((pDvdVideoPicture->iWidth * m_frameInfo.pExtInfo->nQ16ShiftWidthDivHeightRatio) + 32767) >> 16;
+   pDvdVideoPicture->iDisplayHeight = pDvdVideoPicture->iHeight;
+ 
+-  pDvdVideoPicture->pts = pDvdVideoPicture->IMXBuffer->GetPts();
+-  pDvdVideoPicture->dts = pDvdVideoPicture->IMXBuffer->GetDts();
++  pDvdVideoPicture->pts = pIMXBuffer->GetPts();
++  pDvdVideoPicture->dts = pIMXBuffer->GetDts();
+ 
+   if (pDvdVideoPicture->iFlags & DVP_FLAG_DROPPED)
+-    SAFE_RELEASE(pDvdVideoPicture->IMXBuffer);
++    SAFE_RELEASE(pIMXBuffer);
+ 
++  pDvdVideoPicture->IMXBuffer = pIMXBuffer;
+   return true;
+ }
+ 
+@@ -1198,15 +1199,18 @@ CDVDVideoCodecIMXBuffer::CDVDVideoCodecIMXBuffer(VpuDecOutFrameInfo *frameInfo,
+ 
+ void CDVDVideoCodecIMXBuffer::Lock()
+ {
+-  long count = ++m_iRefs;
+ #ifdef TRACE_FRAMES
++  long count = ++m_iRefs;
+   CLog::Log(LOGDEBUG, "R+ 0x%x  -  ref : %ld  (VPU)\n", m_idx, count);
++#else
++  ++m_iRefs;
+ #endif
+ }
+ 
+ long CDVDVideoCodecIMXBuffer::Release()
+ {
+   long count = --m_iRefs;
++
+ #ifdef TRACE_FRAMES
+   CLog::Log(LOGDEBUG, "R- 0x%x  -  ref : %ld  (VPU)\n", m_idx, count);
+ #endif
+@@ -1215,6 +1219,7 @@ long CDVDVideoCodecIMXBuffer::Release()
+     return count;
+ 
+   CIMXCodec::ReleaseFramebuffer(m_frameBuffer);
++
+   if (m_convBuffer)
+     g2d_free(m_convBuffer);
+ 
+@@ -1758,7 +1763,7 @@ bool CIMXContext::TileTask(IPUTask &task)
+     return false;
+   }
+ 
+-  ((CDVDVideoCodecIMXBuffer*)task.currBuf)->m_convBuffer = conv;
++  ((CDVDVideoCodecIMXBuffer*)task.currBuf)->SetConvBuffer(conv);
+ 
+   vdoa.input.paddr   = vdoa.input.paddr_n ? task.prevBuf->pPhysAddr : task.currBuf->pPhysAddr;
+   vdoa.output.format = m_fbVar.bits_per_pixel == 16 ? _4CC('Y', 'U', 'Y', 'V') : _4CC('N', 'V', '1', '2');
+diff --git a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h
+index 88aa06f..5165e4a 100644
+--- a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h
++++ b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h
+@@ -237,8 +237,6 @@ public:
+ // Base class of IMXVPU and IMXIPU buffer
+ class CDVDVideoCodecIMXBuffer : public CIMXBuffer
+ {
+-friend class CIMXCodec;
+-friend class CIMXContext;
+ public:
+   CDVDVideoCodecIMXBuffer(VpuDecOutFrameInfo *frameInfo, double fps, int map);
+   virtual ~CDVDVideoCodecIMXBuffer();
+@@ -261,11 +259,15 @@ public:
+ #endif
+   VpuFieldType          GetFieldType() const    { return m_fieldType; }
+ 
+-protected:
++  unsigned int          GetPictureWidth()       { return m_pctWidth; }
++  unsigned int          GetPictureHeight()      { return m_pctHeight; }
++
++  void                  SetConvBuffer(struct g2d_buf *b) { m_convBuffer = b; }
++
++private:
+   unsigned int             m_pctWidth;
+   unsigned int             m_pctHeight;
+ 
+-private:
+   double                   m_pts;
+   double                   m_dts;
+   VpuFieldType             m_fieldType;
+@@ -275,8 +277,6 @@ private:
+   unsigned char            m_idx;
+   static unsigned char     i;
+ #endif
+-
+-public:
+   struct g2d_buf          *m_convBuffer;
+ };
+ 
+diff --git a/xbmc/linux/imx/IMX.h b/xbmc/linux/imx/IMX.h
+index 7363409..c548633 100644
+--- a/xbmc/linux/imx/IMX.h
++++ b/xbmc/linux/imx/IMX.h
+@@ -178,8 +178,6 @@ public:
+   virtual void Lock() = 0;
+   virtual long Release() = 0;
+ 
+-  int          GetFormat()  { return iFormat; }
+-
+ public:
+   uint32_t     iWidth;
+   uint32_t     iHeight;
+-- 
+1.9.1
+
