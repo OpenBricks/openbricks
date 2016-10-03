@@ -1,0 +1,49 @@
+From 8542fadfce7bfa1c7691403029a81682c389c8c2 Mon Sep 17 00:00:00 2001
+From: Rudi <r.ihle@s-t.de>
+Date: Mon, 3 Oct 2016 18:08:34 +0200
+Subject: [PATCH] Honour forced aspect ratio hint
+
+---
+ xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp | 6 +++++-
+ xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h   | 1 +
+ 2 files changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp
+index 74f4ae4..155710a 100644
+--- a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp
++++ b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp
+@@ -544,6 +544,8 @@ bool CIMXCodec::Open(CDVDStreamInfo &hints, CDVDCodecOptions &options, std::stri
+ #endif
+ 
+   m_warnOnce = true;
++  m_forcedWidthHeightRatio = m_hints.forced_aspect ? (65536 * m_hints.aspect) : 0;
++
+   switch(m_hints.codec)
+   {
+   case AV_CODEC_ID_MPEG1VIDEO:
+@@ -1155,7 +1157,9 @@ bool CIMXCodec::GetPicture(DVDVideoPicture* pDvdVideoPicture)
+   pDvdVideoPicture->iWidth = pIMXBuffer->GetPictureWidth();
+   pDvdVideoPicture->iHeight = pIMXBuffer->GetPictureHeight();
+ 
+-  pDvdVideoPicture->iDisplayWidth = ((pDvdVideoPicture->iWidth * pIMXBuffer->GetWidthHeightRatio()) + 32767) >> 16;
++  int ratio = m_forcedWidthHeightRatio ? m_forcedWidthHeightRatio : pIMXBuffer->GetWidthHeightRatio();
++
++  pDvdVideoPicture->iDisplayWidth = ((pDvdVideoPicture->iWidth * ratio) + 32767) >> 16;
+   pDvdVideoPicture->iDisplayHeight = pDvdVideoPicture->iHeight;
+ 
+   pDvdVideoPicture->pts = pIMXBuffer->GetPts();
+diff --git a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h
+index 22b34d7..b91cdc2 100644
+--- a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h
++++ b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h
+@@ -386,6 +386,7 @@ protected:
+   int                          m_speed;
+   CCriticalSection             m_signalLock;
+   CCriticalSection             m_queuesLock;
++  int                          m_forcedWidthHeightRatio;
+ #ifdef DUMP_STREAM
+   FILE                        *m_dump;
+ #endif
+-- 
+1.9.1
+
