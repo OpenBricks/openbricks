@@ -1,0 +1,69 @@
+From ef53ad5223f2993a3f4e59c62c3c3980052bf240 Mon Sep 17 00:00:00 2001
+From: Rudi <r.ihle@s-t.de>
+Date: Sat, 5 Nov 2016 00:44:04 +0100
+Subject: [PATCH] MXC-CEC: Fix message length while keeping compatibility with
+ old userland
+
+---
+ drivers/mxc/hdmi-cec/mxc_hdmi-cec.c | 18 +++++++++++++-----
+ 1 file changed, 13 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/mxc/hdmi-cec/mxc_hdmi-cec.c b/drivers/mxc/hdmi-cec/mxc_hdmi-cec.c
+index 476667f..aabf645 100644
+--- a/drivers/mxc/hdmi-cec/mxc_hdmi-cec.c
++++ b/drivers/mxc/hdmi-cec/mxc_hdmi-cec.c
+@@ -47,7 +47,7 @@
+ #include "mxc_hdmi-cec.h"
+ 
+ 
+-#define MAX_MESSAGE_LEN			17
++#define MAX_MESSAGE_LEN			16
+ 
+ #define MESSAGE_TYPE_RECEIVE_SUCCESS	1
+ #define MESSAGE_TYPE_NOACK		2
+@@ -95,6 +95,7 @@ struct hdmi_cec_event {
+ 	int event_type;
+ 	int msg_len;
+ 	u8 msg[MAX_MESSAGE_LEN];
++	u8 padding[4];		/* compatibility with old userland */
+ 	struct list_head list;
+ };
+ 
+@@ -360,15 +361,21 @@ static int hdmi_cec_open(struct inode *inode, struct file *filp)
+ static ssize_t hdmi_cec_read(struct file *file, char __user *buf, size_t count,
+ 			    loff_t *ppos)
+ {
+-	ssize_t len;
++	ssize_t len = 0;
+ 	struct hdmi_cec_event *event;
+ 
+ 	pr_debug("function : %s\n", __func__);
+ 
+ 	mutex_lock(&hdmi_cec_data.lock);
+-	if (!hdmi_cec_data.cec_state) {
++
++	if (!hdmi_cec_data.cec_state)
++		len = -EACCES;
++	else if (count < offsetof(struct hdmi_cec_event, padding))
++		len = -EINVAL;
++
++	if (len < 0) {
+ 		mutex_unlock(&hdmi_cec_data.lock);
+-		return -EACCES;
++		return len;
+ 	}
+ 
+ 	if (list_empty(&ev_pending)) {
+@@ -385,7 +392,8 @@ static ssize_t hdmi_cec_read(struct file *file, char __user *buf, size_t count,
+ 		} while (list_empty(&ev_pending));
+ 	}
+ 
+-	len = offsetof(struct hdmi_cec_event, list);
++	/* Hack: older versions of libcec attempt to read more bytes than we provide */
++	len = min(count, offsetof(struct hdmi_cec_event, list));
+ 	event = list_first_entry(&ev_pending, struct hdmi_cec_event, list);
+ 	if (copy_to_user(buf, event, len))
+ 		len = -EFAULT;
+-- 
+1.9.1
+
