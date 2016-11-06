@@ -1,0 +1,59 @@
+From 1e29766dedf1f88fb9200809101be7903099cd8d Mon Sep 17 00:00:00 2001
+From: Rudi <r.ihle@s-t.de>
+Date: Sun, 6 Nov 2016 19:30:02 +0100
+Subject: [PATCH] iMX6: Fix write error handling, return firmware version 1
+
+---
+ .../adapter/IMX/IMXCECAdapterCommunication.cpp      | 21 +++++++++++----------
+ 1 file changed, 11 insertions(+), 10 deletions(-)
+
+diff --git a/src/libcec/adapter/IMX/IMXCECAdapterCommunication.cpp b/src/libcec/adapter/IMX/IMXCECAdapterCommunication.cpp
+index 0f872ab..0b66be4 100644
+--- a/src/libcec/adapter/IMX/IMXCECAdapterCommunication.cpp
++++ b/src/libcec/adapter/IMX/IMXCECAdapterCommunication.cpp
+@@ -145,10 +145,8 @@ std::string CIMXCECAdapterCommunication::GetError(void) const
+ cec_adapter_message_state CIMXCECAdapterCommunication::Write(
+   const cec_command &data, bool &UNUSED(bRetry), uint8_t UNUSED(iLineTimeout), bool UNUSED(bIsReply))
+ {
+-  //cec_frame frame;
++  int error, msg_len = 1;
+   unsigned char message[MAX_CEC_MESSAGE_LEN];
+-  int msg_len = 1;
+-  cec_adapter_message_state rc = ADAPTER_MESSAGE_STATE_ERROR;
+ 
+   if ((size_t)data.parameters.size + data.opcode_set + 1 > sizeof(message))
+   {
+@@ -166,20 +164,23 @@ cec_adapter_message_state CIMXCECAdapterCommunication::Write(
+   }
+ 
+   if (m_dev->Write(message, msg_len) == msg_len)
+-  {
+-    rc = ADAPTER_MESSAGE_STATE_SENT_ACKED;
+-  }
+-    else
+-      LIB_CEC->AddLog(CEC_LOG_ERROR, "%s: sent command error !", __func__);
++    return ADAPTER_MESSAGE_STATE_SENT_ACKED;
++
++  error = m_dev->GetErrorNumber();
++  if (error == EIO)
++    return ADAPTER_MESSAGE_STATE_SENT_NOT_ACKED;
+ 
+-  return rc;
++  if (error != EAGAIN)
++    LIB_CEC->AddLog(CEC_LOG_ERROR, "%s: write error %d", __func__, error);
++
++  return ADAPTER_MESSAGE_STATE_ERROR;
+ }
+ 
+ 
+ uint16_t CIMXCECAdapterCommunication::GetFirmwareVersion(void)
+ {
+   /* FIXME add ioctl ? */
+-  return 0;
++  return 1;
+ }
+ 
+ 
+-- 
+1.9.1
+
