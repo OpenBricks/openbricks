@@ -1,0 +1,41 @@
+From 78f8d8afc561c2f4aaa3d1771fcdcb9d7f48dbf5 Mon Sep 17 00:00:00 2001
+From: Rudi <r.ihle@s-t.de>
+Date: Sun, 6 Nov 2016 20:35:13 +0100
+Subject: [PATCH] MXC-CEC: Change return codes for write function
+
+---
+ drivers/mxc/hdmi-cec/mxc_hdmi-cec.c | 15 ++++++---------
+ 1 file changed, 6 insertions(+), 9 deletions(-)
+
+diff --git a/drivers/mxc/hdmi-cec/mxc_hdmi-cec.c b/drivers/mxc/hdmi-cec/mxc_hdmi-cec.c
+index aabf645..9a58179 100644
+--- a/drivers/mxc/hdmi-cec/mxc_hdmi-cec.c
++++ b/drivers/mxc/hdmi-cec/mxc_hdmi-cec.c
+@@ -444,18 +444,15 @@ static ssize_t hdmi_cec_write(struct file *file, const char __user *buf,
+ 	ret = wait_event_interruptible_timeout(
+ 		tx_queue, hdmi_cec_data.tx_answer != CEC_TX_INPROGRESS, HZ);
+ 
+-	if (ret < 0) {
++	if (ret < 0)
+ 		ret = -ERESTARTSYS;
+-		goto tx_out;
+-	}
+-
+-	if (hdmi_cec_data.tx_answer & HDMI_IH_CEC_STAT0_DONE)
+-		/* msg correctly sent */
+-		ret = msg_len;
++	else if (hdmi_cec_data.tx_answer & HDMI_IH_CEC_STAT0_DONE)
++		ret = msg_len;	/* msg sent, ACK received */
++	else if (hdmi_cec_data.tx_answer & HDMI_IH_CEC_STAT0_NACK)
++		ret = -EIO;	/* msg sent, NACK received */
+ 	else
+-		ret = -EIO;
++		ret = -EPIPE;	/* other error */
+ 
+-tx_out:
+ 	hdmi_cec_data.tx_answer = CEC_TX_AVAIL;
+ 	return ret;
+ }
+-- 
+1.9.1
+
