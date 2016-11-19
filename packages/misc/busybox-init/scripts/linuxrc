@@ -95,7 +95,7 @@ EOF
 
 }
 
-# do_cache file 
+# do_cache file
 do_cache () {
   mkdir -p /cache
   dbg_echo " ... copying $1 to ram ..."
@@ -112,7 +112,7 @@ export PATH=/sbin:/bin
 # mount required filesystems
 busybox mount -t proc none /proc
 busybox mount -t sysfs none /sys
-busybox mount -t tmpfs /run
+busybox mount -t tmpfs tmpfs /run
 
 # prepare /dev
 mount -t devtmpfs devtmpfs /dev
@@ -125,8 +125,16 @@ udevadm settle
 
 
 # splash
-if [ -f /bin/ply-image ] ; then 
+echo -en "\x1b[2J"
+if [ -e /dev/fb0 ] && [ -f /bin/ply-image ] ; then
   /bin/ply-image /plymouth/splash.png
+else
+  echo "   ____                ____             "
+  echo "  / ___| ___  _____  _| __ )  _____  __ "
+  echo " | |  _ / _ \/ _ \ \/ /  _ \ / _ \ \/ / "
+  echo " | |_| |  __/  __/>  <| |_) | (_) >  <  "
+  echo "  \____|\___|\___/_/\_\____/ \___/_/\_\   loading..."
+  echo "                                        "
 fi
 
 # parse kernel cmdline
@@ -208,12 +216,12 @@ if [ -n "$ROOT" ]; then
         break
       elif [ "$EXTERNAL_PERSISTENT" = 1 ] ; then
         FSTYPE=`grep "$ROOT" /proc/mounts | cut -d" " -f3`
-        do_cache $ROOTFS       
+        do_cache $ROOTFS
         external_persistent $ROOT $FSTYPE "rw,noatime" $PERSISTENT
         ROOTFS=/rootfs
         mount -r /mnt
         umount /mnt || umount -l /mnt
-        mount --move /cache /mnt         
+        mount --move /cache /mnt
         mount -t squashfs /mnt/$ROOTFS /squashfs >/dev/null 2>&1
         dbg_echo "found."
         FOUND_ROOTFS=yes
@@ -253,10 +261,10 @@ if [ -n "$SMBROOT" -o -n "$NFSROOT" ] ; then
     NET=$NFSROOT
     OP="-o nolock,$ROOT_MODE_PART"
   fi
-  
+
   dbg_echo "Trying $NET as requested..."
   ROOT=/mnt
-  
+
   if mount $NET $OP /mnt >/dev/null 2>&1; then
     dbg_echo " ... $NET is mounted ..."
     do_cache $ROOTFS
@@ -371,7 +379,7 @@ else
   mount --move /squashfs /newroot/.squashfs
   mount --move /mnt /newroot/.root
   mkdir -p /newroot/dev
-  mkdir -p /newroot/run/initramfs/bin /newroot/run/initramfs/sbin /newroot/run/initramfs/lib 
+  mkdir -p /newroot/run/initramfs/bin /newroot/run/initramfs/sbin /newroot/run/initramfs/lib
   cp -P /bin/busybox /bin/sh /newroot/run/initramfs/bin/
   cp -P /bin/shutdown /newroot/run/initramfs/
   cp -Pr /lib/* /newroot/run/initramfs/lib
