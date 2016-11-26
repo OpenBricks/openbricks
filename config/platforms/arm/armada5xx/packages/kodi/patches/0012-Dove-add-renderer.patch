@@ -1,0 +1,1334 @@
+From aaddf92d9430a2c7a5007a8f3f1cdb7e55ee6670 Mon Sep 17 00:00:00 2001
+From: Rudi <r.ihle@s-t.de>
+Date: Sat, 17 May 2014 13:08:58 +0200
+Subject: [PATCH 15/26] Dove: add renderer
+
+---
+ xbmc/cores/VideoRenderers/DoveOverlayRenderer.cpp |  551 +++++++++++++++++++++
+ xbmc/cores/VideoRenderers/DoveOverlayRenderer.h   |  208 ++++++++
+ xbmc/cores/VideoRenderers/dovefb.h                |  517 +++++++++++++++++++
+ xbmc/cores/dvdplayer/DVDPlayerVideo.cpp           |    1 +
+ 4 files changed, 1277 insertions(+)
+ create mode 100644 xbmc/cores/VideoRenderers/DoveOverlayRenderer.cpp
+ create mode 100644 xbmc/cores/VideoRenderers/DoveOverlayRenderer.h
+ create mode 100644 xbmc/cores/VideoRenderers/dovefb.h
+
+diff --git a/xbmc/cores/VideoRenderers/DoveOverlayRenderer.cpp b/xbmc/cores/VideoRenderers/DoveOverlayRenderer.cpp
+new file mode 100644
+index 0000000..813319c
+--- /dev/null
++++ b/xbmc/cores/VideoRenderers/DoveOverlayRenderer.cpp
+@@ -0,0 +1,551 @@
++/*
++ *      Copyright (C) 2012 Team XBMC
++ *      http://www.solid-run.com
++ *
++ *  This Program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; either version 2, or (at your option)
++ *  any later version.
++ *
++ *  This Program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with XBMC; see the file COPYING.  If not, write to
++ *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
++ *  http://www.gnu.org/copyleft/gpl.html
++ *
++ * Original Dove Overlay Renderer written by Rabeeh Khoury from Solid-Run <support@solid-run.com>
++ *
++ */
++
++#include "system.h"
++#if (defined HAVE_CONFIG_H) && (!defined WIN32)
++#include "config.h"
++#endif
++
++#if defined(HAS_MARVELL_DOVE)
++
++#include <GLES/gl.h>
++
++#undef COLOR_KEY_BLACK
++#define COLOR_KEY_ALPHA
++#include "DoveOverlayRenderer.h"
++#include "utils/log.h"
++#include <stdlib.h>
++#include <malloc.h>
++#include "guilib/GraphicContext.h"
++
++#if defined(CLASSNAME)
++#undef CLASSNAME
++#endif
++
++#define CLASSNAME "CDoveOverlayRenderer"
++
++
++// missing in dovefb.h
++#define DOVEFB_INTERPOLATION_NONE       0
++#define DOVEFB_INTERPOLATION_BILINEAR   3
++
++
++
++CDoveOverlayRenderer::CDoveOverlayRenderer()
++{
++  memset(m_SoftPicture, 0, sizeof(OutputBuffer) * NUM_BUFFERS);
++
++  m_DllMiscGen        = new DllLibMiscGen();
++  m_DllVMETA          = new DllLibVMETA();
++  m_overlayfd         = -1;
++  m_enabled           = 0;
++
++  UnInit();
++}
++
++
++CDoveOverlayRenderer::~CDoveOverlayRenderer()
++{
++  UnInit();
++
++  m_DllVMETA->Unload();
++  m_DllMiscGen->Unload();
++
++  delete m_DllMiscGen;
++  delete m_DllVMETA;
++}
++
++
++void CDoveOverlayRenderer::ManageDisplay(bool first)
++{
++  CRect view;
++  int interpolation = m_interpolation;
++  struct _sOvlySurface overlaySurface = m_overlaySurface;
++
++  view.x1 = (float)g_settings.m_ResInfo[m_resolution].Overscan.left;
++  view.y1 = (float)g_settings.m_ResInfo[m_resolution].Overscan.top;
++  view.x2 = (float)g_settings.m_ResInfo[m_resolution].Overscan.right;
++  view.y2 = (float)g_settings.m_ResInfo[m_resolution].Overscan.bottom;
++
++  m_sourceRect.x1 = (float)g_settings.m_currentVideoSettings.m_CropLeft;
++  m_sourceRect.y1 = (float)g_settings.m_currentVideoSettings.m_CropTop;
++  m_sourceRect.x2 = (float)m_sourceWidth - g_settings.m_currentVideoSettings.m_CropRight;
++  m_sourceRect.y2 = (float)m_sourceHeight - g_settings.m_currentVideoSettings.m_CropBottom;
++
++  CalcNormalDisplayRect(view.x1, view.y1,
++                        view.Width(), view.Height(),
++                        GetAspectRatio() * g_settings.m_fPixelRatio,
++                        g_settings.m_fZoomAmount, g_settings.m_fVerticalShift);
++
++  OutputBuffer &currPict = m_SoftPicture[m_currentBuffer];
++
++  if (m_format == RENDER_FMT_YUV420P)
++  {
++    m_overlaySurface.videoMode = DOVEFB_VMODE_YUV420PLANAR;
++    if (currPict.lineSize[0] && currPict.lineSize[1])
++    {
++      m_overlaySurface.viewPortInfo.ycPitch = currPict.lineSize[0];
++      m_overlaySurface.viewPortInfo.uvPitch = currPict.lineSize[1];
++    }
++    else
++    {
++      m_overlaySurface.viewPortInfo.ycPitch = m_sourceRect.x2 - m_sourceRect.x1;
++      m_overlaySurface.viewPortInfo.uvPitch = (m_sourceRect.x2 - m_sourceRect.x1) / 2;
++    }
++  }
++  else /*if (m_format == RENDER_FMT_VMETA || m_format == RENDER_FMT_UYVY422)*/
++  {
++    m_overlaySurface.videoMode = DOVEFB_VMODE_YUV422PACKED_SWAPYUorV;
++    if (currPict.lineSize[0])
++      m_overlaySurface.viewPortInfo.ycPitch = currPict.lineSize[0];
++    else
++      m_overlaySurface.viewPortInfo.ycPitch = (m_sourceRect.x2 - m_sourceRect.x1) * 2;
++    m_overlaySurface.viewPortInfo.uvPitch = 0;
++  }
++
++  m_overlaySurface.viewPortInfo.srcWidth  = m_sourceRect.x2 - m_sourceRect.x1;
++  m_overlaySurface.viewPortInfo.srcHeight = m_sourceRect.y2 - m_sourceRect.y1;
++  m_overlaySurface.viewPortInfo.zoomXSize = m_destRect.x2 - m_destRect.x1;
++  // Hack to avoid flickering line on bottom of screen with some MPEG1 videos
++  m_overlaySurface.viewPortInfo.zoomYSize = m_destRect.y2 - m_destRect.y1 - 1;
++
++  m_overlaySurface.viewPortOffset.xOffset = m_destRect.x1;
++  m_overlaySurface.viewPortOffset.yOffset = m_destRect.y1;
++
++  if (first || (overlaySurface.videoMode != m_overlaySurface.videoMode))
++  {
++    if (ioctl(m_overlayfd, DOVEFB_IOCTL_SET_VIDEO_MODE, &m_overlaySurface.videoMode) == -1)
++      CLog::Log(LOGERROR, "%s::%s - Failed to setup video mode", CLASSNAME, __func__);
++  }
++
++  if (first || memcmp (&overlaySurface.viewPortInfo, &m_overlaySurface.viewPortInfo, sizeof (struct _sViewPortInfo)))
++  {
++    CLog::Log(LOGDEBUG, "m_sourceRect.x1 %f m_sourceRect.x2 %f m_sourceRect.y1 %f m_sourceRect.y2 %f m_sourceFrameRatio %f",
++        m_sourceRect.x1, m_sourceRect.x2, m_sourceRect.y1, m_sourceRect.y2, m_sourceFrameRatio);
++    CLog::Log(LOGDEBUG, "m_destRect.x1 %f m_destRect.x2 %f m_destRect.y1 %f m_destRect.y2 %f",
++        m_destRect.x1, m_destRect.x2, m_destRect.y1, m_destRect.y2);
++    CLog::Log(LOGDEBUG, "%s::%s - Setting ycPitch to %d, uvPitch to %d", CLASSNAME, __func__,
++        m_overlaySurface.viewPortInfo.ycPitch ,m_overlaySurface.viewPortInfo.uvPitch);
++
++    if (ioctl(m_overlayfd, DOVEFB_IOCTL_SET_VIEWPORT_INFO, &m_overlaySurface.viewPortInfo) != 0)
++      CLog::Log(LOGERROR, "%s::%s - Failed to setup video port", CLASSNAME, __func__);
++  }
++
++  if (first || memcmp (&overlaySurface.viewPortOffset, &m_overlaySurface.viewPortOffset, sizeof (struct _sVideoBufferAddr)))
++  {
++    if (ioctl(m_overlayfd, DOVEFB_IOCTL_SET_VID_OFFSET, &m_overlaySurface.viewPortOffset) != 0)
++      CLog::Log(LOGERROR, "%s::%s - Failed to setup video port offset", CLASSNAME, __func__);
++  }
++
++  /* Rabeeh said: Scaler is set differently when using graphics scaler */
++  m_interpolation = (g_graphicsContext.getGraphicsScale() == GR_SCALE_100 &&
++                      g_settings.m_currentVideoSettings.m_ScalingMethod != VS_SCALINGMETHOD_NEAREST) ?
++                        DOVEFB_INTERPOLATION_BILINEAR : DOVEFB_INTERPOLATION_NONE;
++  if (first || interpolation != m_interpolation)
++  {
++    if (ioctl(m_overlayfd, DOVEFB_IOCTL_SET_INTERPOLATION_MODE, &m_interpolation) != 0)
++      CLog::Log(LOGERROR, "%s::%s - Failed to setup video interpolation mode", CLASSNAME, __func__);
++  }
++
++  if (first) 
++  {
++    int srcMode = SHM_VMETA;
++    if (ioctl(m_overlayfd, DOVEFB_IOCTL_SET_SRC_MODE, &srcMode) != 0)
++      CLog::Log(LOGERROR, "%s::%s - Failed to set source mode", CLASSNAME, __func__);
++  }
++}
++
++
++bool CDoveOverlayRenderer::Configure(
++  unsigned int width, unsigned int height, unsigned int d_width, unsigned int d_height,
++  float fps, unsigned int flags, ERenderFormat format, unsigned extended_format, unsigned int orientation)
++{
++  m_bConfigured   = false;
++  m_enabled       = 0;
++  m_currentBuffer = 0;
++
++  memset (&m_overlaySurface, 0, sizeof(m_overlaySurface));
++
++  if (format != RENDER_FMT_VMETA && format != RENDER_FMT_UYVY422 && format != RENDER_FMT_YUV420P)
++  {
++    CLog::Log(LOGERROR, "%s::%s - Unknown format 0x%x", CLASSNAME, __func__, format);
++
++    m_format = RENDER_FMT_NONE;
++    return false;
++  }
++
++  m_sourceWidth   = width;
++  m_sourceHeight  = height;
++  m_iFlags        = flags;
++  m_format        = format;
++
++  // Calculate the input frame aspect ratio.
++  CalculateFrameAspectRatio(d_width, d_height);
++  ChooseBestResolution(fps);
++  SetViewMode(g_settings.m_currentVideoSettings.m_ViewMode);
++
++  /* Open the video overlay */
++  m_overlayfd = open("/dev/fb1", O_RDWR);
++  if (m_overlayfd == -1)
++  {
++    CLog::Log(LOGERROR, "%s::%s - Failed to open framebuffer", CLASSNAME, __func__);
++    return false;
++  }
++
++  int srcMode = SHM_NORMAL;
++  if (ioctl(m_overlayfd, DOVEFB_IOCTL_SET_SRC_MODE, &srcMode) == -1)
++  {
++    CLog::Log(LOGERROR, "%s::%s - Failed to set source mode", CLASSNAME, __func__);
++    return false;
++  }
++
++  int interpolation = DOVEFB_INTERPOLATION_NONE;
++  if (ioctl(m_overlayfd, DOVEFB_IOCTL_SET_INTERPOLATION_MODE, &interpolation) == -1)
++  {
++    CLog::Log(LOGERROR, "%s::%s - Failed to setup video interpolation mode", CLASSNAME, __func__);
++    return false;
++  }
++
++  struct _sColorKeyNAlpha alpha;
++
++  memset (&alpha, 0, sizeof(alpha));
++
++  alpha.mode = DOVEFB_ENABLE_RGB_COLORKEY_MODE;
++  alpha.alphapath = DOVEFB_GRA_PATH_ALPHA;
++  alpha.config = 0xff;//c0;
++#ifdef COLOR_KEY_ALPHA
++  alpha.Y_ColorAlpha = 0x02020200;
++  alpha.U_ColorAlpha = 0x05050500;
++  alpha.V_ColorAlpha = 0x07070700;
++#endif
++#ifdef COLOR_KEY_BLACK
++  alpha.Y_ColorAlpha = 0x0;
++  alpha.U_ColorAlpha = 0x0;
++  alpha.V_ColorAlpha = 0x0;
++#endif
++
++  if (ioctl(m_overlayfd, DOVEFB_IOCTL_SET_COLORKEYnALPHA, &alpha) == -1)
++  {
++    CLog::Log(LOGERROR, "%s::%s - Failed to configure alpha", CLASSNAME, __func__);
++    return false;
++  }
++
++  CLog::Log(LOGDEBUG, "%s::%s - Proper format, continuing", CLASSNAME, __func__);
++
++  m_bConfigured = true;
++  return m_bConfigured;
++}
++
++
++unsigned int CDoveOverlayRenderer::PreInit()
++{
++  if(!m_DllVMETA->Load() || !m_DllMiscGen->Load())
++    return false;
++
++  UnInit();
++
++  m_resolution = g_guiSettings.m_LookAndFeelResolution;
++  if ( m_resolution == RES_WINDOW )
++    m_resolution = RES_DESKTOP;
++
++  return true;
++}
++
++
++void CDoveOverlayRenderer::FlipPage(int source)
++{
++  bool next_frame_present = false;
++  OutputBuffer &currPict = m_SoftPicture[m_currentBuffer];
++
++  if (!m_bConfigured)
++    return;
++
++  ManageDisplay(!m_enabled);
++
++  m_overlaySurface.videoBufferAddr.frameID = 0;
++
++  if (currPict.phyBuf[0])
++  {
++    m_overlaySurface.videoBufferAddr.startAddr = (unsigned char *)currPict.phyBuf[0];
++    m_overlaySurface.videoBufferAddr.length    = currPict.nBufSize;
++  }
++  else
++  {
++    m_overlaySurface.videoBufferAddr.startAddr = NULL;
++    m_overlaySurface.videoBufferAddr.length    = 0;
++  }
++
++  if (m_format == RENDER_FMT_VMETA || m_format == RENDER_FMT_UYVY422 || m_format == RENDER_FMT_YUV420P)
++  {
++    //ioctl by Solid-Run not in marvel kernel
++    if(ioctl(m_overlayfd, DOVEFB_IOCTL_NEXT_FRAME_PRESENT, currPict.phyBuf) != 0)
++      CLog::Log(LOGERROR, "%s::%s - Error flipping", CLASSNAME, __func__);
++    next_frame_present = true;
++  }
++  else if (ioctl(m_overlayfd, DOVEFB_IOCTL_FLIP_VID_BUFFER, &m_overlaySurface) != 0)
++  {
++      CLog::Log(LOGERROR, "%s::%s - Error flipping", CLASSNAME, __func__);
++  }
++
++  if (m_enabled == 0)
++  {
++    m_enabled = 1;
++
++    if (ioctl(m_overlayfd, DOVEFB_IOCTL_SWITCH_VID_OVLY, &m_enabled) == -1)
++      CLog::Log(LOGERROR, "%s::%s - Failed to enable video overlay", CLASSNAME, __func__);
++  }
++
++  /*
++   * Is only needed for DOVEFB_IOCTL_NEXT_FRAME_PRESENT
++   */
++  if (next_frame_present)
++  {
++    if (ioctl(m_overlayfd, DOVEFB_IOCTL_WAIT_VSYNC, 0) != 0)
++      CLog::Log(LOGERROR, "%s::%s - Error waiting for vsync", CLASSNAME, __func__);
++  }
++
++  if( source >= 0 && source < NUM_BUFFERS )
++    m_currentBuffer = source;
++  else
++    m_currentBuffer = (m_currentBuffer + 1) % NUM_BUFFERS;
++}
++
++
++void CDoveOverlayRenderer::Reset()
++{
++  CLog::Log(LOGNOTICE, "%s::%s - Not implemented", CLASSNAME, __func__);
++}
++
++
++void CDoveOverlayRenderer::Update(bool bPauseDrawing)
++{
++  if (!m_bConfigured)
++    return;
++
++  ManageDisplay(false);
++}
++
++
++void CDoveOverlayRenderer::RenderUpdate(bool clear, DWORD flags, DWORD alpha)
++{
++  if (!m_bConfigured)
++    return;
++
++#ifdef COLOR_KEY_ALPHA
++  glEnable(GL_SCISSOR_TEST);
++  glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
++  glClear(GL_COLOR_BUFFER_BIT);
++#endif
++}
++
++
++bool CDoveOverlayRenderer::RenderCapture(CRenderCapture* capture)
++{
++  CLog::Log(LOGNOTICE, "%s::%s - Not implemented", CLASSNAME, __func__);
++  return true;
++}
++
++
++bool CDoveOverlayRenderer::DrawSlice(DVDVideoPicture *pDvdVideoPicture)
++{
++  OutputBuffer &currPict = m_SoftPicture[m_currentBuffer];
++
++  if (pDvdVideoPicture->format != m_format)
++      return false;
++
++  // from vMeta ?
++  if (m_format == RENDER_FMT_VMETA)
++  {
++    // switched from other format...
++    if(currPict.nFlag & PBF_ALLOCATED)
++      m_DllVMETA->vdec_os_api_dma_free(currPict.pBuf);
++
++    // Decoder allocated buffer
++    currPict.nFlag       = PBF_IMPORTED;
++    currPict.pBuf        = pDvdVideoPicture->vmeta->pBuf;
++    currPict.nBufSize    = pDvdVideoPicture->vmeta->nBufSize;
++    currPict.phyBuf[0]   = pDvdVideoPicture->vmeta->nPhyAddr;
++    currPict.lineSize[0] = pDvdVideoPicture->vmeta->pic.picPlaneStep[0];
++
++    currPict.phyBuf[1]   = currPict.phyBuf[2] = 0;
++    currPict.lineSize[1] = currPict.lineSize[2] = 0;
++  }
++  else
++  {
++    unsigned int nBufSize = pDvdVideoPicture->iLineSize[0] * pDvdVideoPicture->iHeight;
++
++    // Software decoding. Allocate buffer for ouput
++    if (m_format == RENDER_FMT_YUV420P)
++    {
++      nBufSize += (pDvdVideoPicture->iLineSize[1] * pDvdVideoPicture->iHeight / 2) +
++                  (pDvdVideoPicture->iLineSize[2] * pDvdVideoPicture->iHeight / 2);
++    }
++    else if (m_format != RENDER_FMT_UYVY422)
++    {
++      return false;
++    }
++
++    // Check for size change ...
++    if((currPict.nFlag & PBF_ALLOCATED) && currPict.nBufSize < nBufSize)
++    {
++      m_DllVMETA->vdec_os_api_dma_free(currPict.pBuf);
++      currPict.nFlag = PBF_UNUSED;
++    }
++
++    // Allocate, if necessary
++    if(!(currPict.nFlag & PBF_ALLOCATED))
++    {
++      currPict.pBuf = (Ipp8u*)m_DllVMETA->vdec_os_api_dma_alloc_cached(
++                                nBufSize, VMETA_DIS_BUF_ALIGN, &currPict.phyBuf[0]);
++      currPict.nBufSize = nBufSize;
++      currPict.nFlag    = PBF_ALLOCATED;
++    }
++
++    if(!currPict.pBuf)
++    {
++      currPict.nFlag    = PBF_UNUSED;
++      CLog::Log(LOGERROR, "%s::%s - Failed to alloc memory", CLASSNAME, __func__);
++      return false;
++    }
++
++    unsigned char *dst = currPict.pBuf;
++    memcpy( dst, pDvdVideoPicture->data[0], pDvdVideoPicture->iLineSize[0] * pDvdVideoPicture->iHeight );
++    currPict.lineSize[0] = pDvdVideoPicture->iLineSize[0];
++
++    if (m_format == RENDER_FMT_YUV420P)
++    {
++      currPict.phyBuf[1] = currPict.phyBuf[0] + (pDvdVideoPicture->iLineSize[0] * pDvdVideoPicture->iHeight);
++      currPict.phyBuf[2] = currPict.phyBuf[1] + (pDvdVideoPicture->iLineSize[1] * pDvdVideoPicture->iHeight / 2);
++
++      dst += pDvdVideoPicture->iLineSize[0] * pDvdVideoPicture->iHeight;
++      memcpy( dst, pDvdVideoPicture->data[1], pDvdVideoPicture->iLineSize[1] * pDvdVideoPicture->iHeight / 2 );
++      currPict.lineSize[1] = pDvdVideoPicture->iLineSize[1];
++
++      dst += pDvdVideoPicture->iLineSize[1] * pDvdVideoPicture->iHeight / 2;
++      memcpy( dst, pDvdVideoPicture->data[2], pDvdVideoPicture->iLineSize[2] * pDvdVideoPicture->iHeight / 2 );
++      currPict.lineSize[2] = pDvdVideoPicture->iLineSize[2];
++    }
++    else
++    {
++      currPict.phyBuf[1] = currPict.phyBuf[2] = 0;
++      currPict.lineSize[1] = currPict.lineSize[2] = 0;
++    }
++  }
++
++  return true;
++}
++
++
++void CDoveOverlayRenderer::UnInit()
++{
++  CLog::Log(LOGDEBUG, "%s::%s", CLASSNAME, __func__);
++
++  memset(m_FreeBufAddr, 0, MAX_QUEUE_NUM * sizeof(m_FreeBufAddr[0]));
++
++  if(m_overlayfd != -1)
++  {
++    ioctl(m_overlayfd, DOVEFB_IOCTL_GET_FREELIST, &m_FreeBufAddr);
++
++    if(m_enabled)
++    {
++      m_enabled = 0;
++
++      if (ioctl(m_overlayfd, DOVEFB_IOCTL_WAIT_VSYNC, 0) != 0)
++        CLog::Log(LOGERROR, "%s::%s - Error waiting for vsync", CLASSNAME, __func__);
++
++      if(ioctl(m_overlayfd, DOVEFB_IOCTL_SWITCH_VID_OVLY, &m_enabled) == -1)
++        CLog::Log(LOGERROR, "%s::%s Failed to disable video overlay", CLASSNAME, __func__);
++    }
++
++    close(m_overlayfd);
++    m_overlayfd = -1;
++  }
++
++  for(int i = 0; i < NUM_BUFFERS; i++)
++  {
++    OutputBuffer &currPict = m_SoftPicture[i];
++
++    if(currPict.nFlag & PBF_ALLOCATED)
++      m_DllVMETA->vdec_os_api_dma_free(currPict.pBuf);
++  }
++  memset(m_SoftPicture, 0, sizeof(OutputBuffer) * NUM_BUFFERS);
++
++  m_bConfigured             = false;
++  m_currentBuffer           = 0;
++  m_iFlags                  = 0;
++  m_sourceWidth             = 0;
++  m_sourceHeight            = 0;
++  m_interpolation           = DOVEFB_INTERPOLATION_NONE;
++
++  memset(&m_overlaySurface, 0, sizeof(struct _sOvlySurface));
++}
++
++
++bool CDoveOverlayRenderer::Supports(EDEINTERLACEMODE mode)
++{
++  return false;
++}
++
++
++bool CDoveOverlayRenderer::Supports(ERENDERFEATURE feature)
++{
++  if( feature == RENDERFEATURE_STRETCH 
++      || feature == RENDERFEATURE_ZOOM
++      || feature == RENDERFEATURE_PIXEL_RATIO
++//      || feature == RENDERFEATURE_VERTICAL_SHIFT
++//      || feature == RENDERFEATURE_NONLINSTRETCH
++//      || feature == RENDERFEATURE_CROP
++    )
++    return true;
++
++  return false;
++}
++
++
++bool CDoveOverlayRenderer::SupportsMultiPassRendering()
++{
++  return false;
++}
++
++
++bool CDoveOverlayRenderer::Supports(EINTERLACEMETHOD method)
++{
++  return false;
++}
++
++
++bool CDoveOverlayRenderer::Supports(ESCALINGMETHOD method)
++{
++  if(method == VS_SCALINGMETHOD_NEAREST || method == VS_SCALINGMETHOD_LINEAR)
++    return true;
++
++  return false;
++}
++
++
++EINTERLACEMETHOD CDoveOverlayRenderer::AutoInterlaceMethod()
++{
++  return VS_INTERLACEMETHOD_NONE;
++}
++
++#endif
+diff --git a/xbmc/cores/VideoRenderers/DoveOverlayRenderer.h b/xbmc/cores/VideoRenderers/DoveOverlayRenderer.h
+new file mode 100644
+index 0000000..39a12ea
+--- /dev/null
++++ b/xbmc/cores/VideoRenderers/DoveOverlayRenderer.h
+@@ -0,0 +1,206 @@
++/*
++ *      Copyright (C) 2012 Team XBMC
++ *      http://xbmc.org
++ *
++ *  This Program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; either version 2, or (at your option)
++ *  any later version.
++ *
++ *  This Program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with XBMC; see the file COPYING.  If not, write to
++ *  the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
++ *  http://www.gnu.org/copyleft/gpl.html
++ *
++ */
++
++#pragma once
++
++#if defined(HAS_MARVELL_DOVE)
++
++#undef __u8
++#undef byte
++
++#include "../../settings/VideoSettings.h"
++#include "../dvdplayer/DVDCodecs/Video/DVDVideoCodec.h"
++#include "../dvdplayer/DVDCodecs/Video/DllVMETA.h"
++#include "RenderFlags.h"
++#include "BaseRenderer.h"
++#include "settings/GUISettings.h"
++#include "settings/Settings.h"
++
++class CRenderCapture;
++class CBaseTexture;
++
++#define AUTOSOURCE -1
++
++#define IMAGE_FLAG_WRITING   0x01 /* image is in use after a call to GetImage, caller may be reading or writing */
++#define IMAGE_FLAG_READING   0x02 /* image is in use after a call to GetImage, caller is only reading */
++#define IMAGE_FLAG_DYNAMIC   0x04 /* image was allocated due to a call to GetImage */
++#define IMAGE_FLAG_RESERVED  0x08 /* image is reserved, must be asked for specifically used to preserve images */
++#define IMAGE_FLAG_READY     0x16 /* image is ready to be uploaded to texture memory */
++#define IMAGE_FLAG_INUSE (IMAGE_FLAG_WRITING | IMAGE_FLAG_READING | IMAGE_FLAG_RESERVED)
++
++extern "C"
++{
++#include <sys/ioctl.h>
++#include <linux/fb.h>
++#include "dovefb.h"
++}
++
++struct DRAWRECT
++{
++  float left;
++  float top;
++  float right;
++  float bottom;
++};
++
++/*enum EFIELDSYNC
++{
++  FS_NONE,
++  FS_TOP, // FS_ODD,
++  FS_BOT  // FS_EVEN
++};*/
++
++struct YUVRANGE
++{
++  int y_min, y_max;
++  int u_min, u_max;
++  int v_min, v_max;
++};
++
++struct YUVCOEF
++{
++  float r_up, r_vp;
++  float g_up, g_vp;
++  float b_up, b_vp;
++};
++
++/*
++enum RenderMethod
++{
++  RENDER_GLSL=0x01,
++  RENDER_SW=0x04,
++  RENDER_POT=0x10
++};
++
++enum RenderQuality
++{
++  RQ_LOW=1,
++  RQ_SINGLEPASS,
++  RQ_MULTIPASS,
++  RQ_SOFTWARE
++};
++*/
++
++#define PLANE_Y 0
++#define PLANE_U 1
++#define PLANE_V 2
++
++#define FIELD_FULL 0
++#define FIELD_ODD 1
++#define FIELD_EVEN 2
++
++#define MAX_QUEUE_NUM 60
++
++extern YUVRANGE yuv_range_lim;
++extern YUVRANGE yuv_range_full;
++extern YUVCOEF yuv_coef_bt601;
++extern YUVCOEF yuv_coef_bt709;
++extern YUVCOEF yuv_coef_ebu;
++extern YUVCOEF yuv_coef_smtp240m;
++
++typedef struct _OutputBuffer
++{
++  unsigned      nFlag;          // see PBF_xxx
++  unsigned char *pBuf;
++  unsigned      nBufSize;
++
++  unsigned      phyBuf[3];
++  unsigned      lineSize[3];
++} OutputBuffer;
++
++#define PBF_UNUSED      0x00    // empty
++#define PBF_IMPORTED    0x01    // owned by decoder (vMeta)
++#define PBF_ALLOCATED   0x02    // owned by renderer
++
++class CDoveOverlayRenderer : public CBaseRenderer
++{
++public:
++  CDoveOverlayRenderer();
++  virtual ~CDoveOverlayRenderer();
++
++  virtual void Update(bool bPauseDrawing);
++  virtual void SetupScreenshot() {};
++
++  bool RenderCapture(CRenderCapture* capture);
++
++  // Player functions
++  virtual bool Configure(unsigned int width, unsigned int height,
++                         unsigned int d_width, unsigned int d_height,
++                         float fps, unsigned int flags, ERenderFormat format,
++                         unsigned extended_format, unsigned int orientation);
++  virtual bool IsConfigured() { return m_bConfigured; }
++  virtual int          GetImage(YV12Image *image, int source = AUTOSOURCE, bool readonly = false) { return -1; }
++  virtual void         ReleaseImage(int source, bool preserve = false) {};
++  virtual void         FlipPage(int source);
++  virtual unsigned int PreInit();
++  virtual void         UnInit();
++  virtual void         Reset(); /* resets renderer after seek for example */
++
++  virtual void RenderUpdate(bool clear, DWORD flags = 0, DWORD alpha = 255);
++
++  // Re-implemented CBaseRenderer function(s)
++  virtual bool AddVideoPicture(DVDVideoPicture* picture)
++  {
++    DrawSlice(picture);
++    return true;
++  }
++
++  // Feature support
++  virtual bool SupportsMultiPassRendering();
++  virtual bool Supports(ERENDERFEATURE feature);
++  virtual bool Supports(EDEINTERLACEMODE mode);
++  virtual bool Supports(EINTERLACEMETHOD method);
++  virtual bool Supports(ESCALINGMETHOD method);
++
++  virtual EINTERLACEMETHOD AutoInterlaceMethod();
++
++private:
++  void          ManageDisplay(bool first);
++  bool          DrawSlice(DVDVideoPicture *pDvdVideoPicture);
++
++  bool                  m_bConfigured;
++  ERenderFormat         m_format;
++
++  int                   m_overlayfd;
++  int                   m_enabled;
++  struct _sOvlySurface  m_overlaySurface;
++  int                   m_interpolation;
++
++  DllLibMiscGen         *m_DllMiscGen;
++  DllLibVMETA           *m_DllVMETA;
++
++  unsigned int          m_currentBuffer;
++  OutputBuffer          m_SoftPicture[NUM_BUFFERS];
++
++  unsigned char         *m_FreeBufAddr[MAX_QUEUE_NUM];
++};
++
++inline int NP2( unsigned x )
++{
++  --x;
++  x |= x >> 1;
++  x |= x >> 2;
++  x |= x >> 4;
++  x |= x >> 8;
++  x |= x >> 16;
++  return ++x;
++}
++#endif
+diff --git a/xbmc/cores/VideoRenderers/dovefb.h b/xbmc/cores/VideoRenderers/dovefb.h
+new file mode 100644
+index 0000000..573679e
+--- /dev/null
++++ b/xbmc/cores/VideoRenderers/dovefb.h
+@@ -0,0 +1,517 @@
++/*
++ * linux/include/video/dovefb.h -- Marvell frame buffer for DOVE
++ *
++ *
++ * Copyright (C) Marvell Semiconductor Company.  All rights reserved.
++ *
++ * Written by Green Wan <gwan@marvell.com>
++ *
++ * Adapted from:  linux/drivers/video/skeletonfb.c
++ *
++ * This file is subject to the terms and conditions of the GNU General Public
++ * License. See the file COPYING in the main directory of this archive for
++ * more details.
++ *
++ */
++#ifndef _DOVEFB_H_
++#define _DOVEFB_H_
++
++/* ---------------------------------------------- */
++/*              Header Files                      */
++/* ---------------------------------------------- */
++#include <linux/fb.h>
++
++/* ---------------------------------------------- */
++/*              IOCTL Definition                  */
++/* ---------------------------------------------- */
++#define DOVEFB_IOC_MAGIC			'm'
++#define DOVEFB_IOCTL_CONFIG_CURSOR		_IO(DOVEFB_IOC_MAGIC, 0)
++#define DOVEFB_IOCTL_DUMP_REGS			_IO(DOVEFB_IOC_MAGIC, 1)
++#define DOVEFB_IOCTL_CLEAR_IRQ			_IO(DOVEFB_IOC_MAGIC, 2)
++
++/*
++ * There are many video mode supported.
++ */
++#define DOVEFB_IOCTL_SET_VIDEO_MODE		_IO(DOVEFB_IOC_MAGIC, 3)
++#define DOVEFB_IOCTL_GET_VIDEO_MODE		_IO(DOVEFB_IOC_MAGIC, 4)
++/* Request a new video buffer from driver. User program needs to free
++ * this memory.
++ */
++#define DOVEFB_IOCTL_CREATE_VID_BUFFER		_IO(DOVEFB_IOC_MAGIC, 5)
++
++/* Configure viewport in driver. */
++#define DOVEFB_IOCTL_SET_VIEWPORT_INFO		_IO(DOVEFB_IOC_MAGIC, 6)
++#define DOVEFB_IOCTL_GET_VIEWPORT_INFO		_IO(DOVEFB_IOC_MAGIC, 7)
++
++/* Flip the video buffer from user mode. Vide buffer can be separated into:
++ * a. Current-used buffer - user program put any data into it. It will be
++ *    displayed immediately.
++ * b. Requested from driver but not current-used - user programe can put any
++ *    data into it. It will be displayed after calling
++ *    DOVEFB_IOCTL_FLIP_VID_BUFFER.
++ *    User program should free this memory when they don't use it any more.
++ * c. User program alloated - user program can allocated a contiguos DMA
++ *    buffer to store its video data. And flip it to driver. Notices that
++ *    this momory should be free by user programs. Driver won't take care of
++ *    this.
++ */
++#define DOVEFB_IOCTL_FLIP_VID_BUFFER		_IO(DOVEFB_IOC_MAGIC, 8)
++
++/* Get the current buffer information. User program could use it to display
++ * anything directly. If developer wants to allocate multiple video layers,
++ * try to use DOVEFB_IOCTL_CREATE_VID_BUFFER  to request a brand new video
++ * buffer.
++ */
++#define DOVEFB_IOCTL_GET_BUFF_ADDR		_IO(DOVEFB_IOC_MAGIC, 9)
++
++/* Get/Set offset position of screen */
++#define DOVEFB_IOCTL_SET_VID_OFFSET		_IO(DOVEFB_IOC_MAGIC, 10)
++#define DOVEFB_IOCTL_GET_VID_OFFSET		_IO(DOVEFB_IOC_MAGIC, 11)
++
++/* Turn on the memory toggle function to improve the frame rate while playing
++ * movie.
++ */
++#define DOVEFB_IOCTL_SET_MEMORY_TOGGLE		_IO(DOVEFB_IOC_MAGIC, 12)
++
++/* Turn on the memory toggle function to improve the frame rate while playing
++ * movie.
++ */
++#define DOVEFB_IOCTL_SET_COLORKEYnALPHA		_IO(DOVEFB_IOC_MAGIC, 13)
++#define DOVEFB_IOCTL_GET_COLORKEYnALPHA		_IO(DOVEFB_IOC_MAGIC, 14)
++#define DOVEFB_IOCTL_SWITCH_GRA_OVLY		_IO(DOVEFB_IOC_MAGIC, 15)
++#define DOVEFB_IOCTL_SWITCH_VID_OVLY		_IO(DOVEFB_IOC_MAGIC, 16)
++
++/* For Vmeta integration */
++#define DOVEFB_IOCTL_GET_FREELIST		_IO(DOVEFB_IOC_MAGIC, 17)
++
++/* Wait for vsync happen. */
++#define DOVEFB_IOCTL_WAIT_VSYNC			_IO(DOVEFB_IOC_MAGIC, 18)
++
++/* for xv+vmeta/sw decoder w/o memory move. */
++#define DOVEFB_IOCTL_GET_FBPA			_IO(DOVEFB_IOC_MAGIC, 19)
++#define DOVEFB_IOCTL_GET_FBID			_IO(DOVEFB_IOC_MAGIC, 20)
++#define DOVEFB_IOCTL_SET_SRC_MODE		_IO(DOVEFB_IOC_MAGIC, 21)
++#define DOVEFB_IOCTL_GET_SRC_MODE		_IO(DOVEFB_IOC_MAGIC, 22)
++
++/* Dynamic get EDID data */
++#define DOVEFB_IOCTL_GET_EDID_INFO		_IO(DOVEFB_IOC_MAGIC, 23)
++#define DOVEFB_IOCTL_GET_EDID_DATA		_IO(DOVEFB_IOC_MAGIC, 24)
++#define DOVEFB_IOCTL_SET_EDID_INTERVAL		_IO(DOVEFB_IOC_MAGIC, 25)
++
++/* Video overlay ioctls */
++#define DOVEFB_IOCTL_NEXT_FRAME_PRESENT		_IO(DOVEFB_IOC_MAGIC, 26)
++#define DOVEFB_IOCTL_SET_INTERPOLATION_MODE	_IO(DOVEFB_IOC_MAGIC, 27)
++
++/* clear framebuffer: Makes resolution or color space changes look nicer */
++#define FBIO_CLEAR_FRAMEBUFFER			_IO(FB_IOC_MAGIC, 19)
++
++/* Global alpha blend controls - Maintaining compatibility with existing
++   user programs. */
++#define FBIOPUT_VIDEO_ALPHABLEND            0xeb
++#define FBIOPUT_GLOBAL_ALPHABLEND           0xe1
++#define FBIOPUT_GRAPHIC_ALPHABLEND          0xe2
++
++/* color swapping */
++#define FBIOPUT_SWAP_GRAPHIC_RED_BLUE       0xe3
++#define FBIOPUT_SWAP_GRAPHIC_U_V            0xe4
++#define FBIOPUT_SWAP_GRAPHIC_Y_UV           0xe5
++#define FBIOPUT_SWAP_VIDEO_RED_BLUE         0xe6
++#define FBIOPUT_SWAP_VIDEO_U_V              0xe7
++#define FBIOPUT_SWAP_VIDEO_Y_UV             0xe8
++
++/* colorkey compatibility */
++#define FBIOGET_CHROMAKEYS                  0xe9
++#define FBIOPUT_CHROMAKEYS                  0xea
++
++#define DOVEFB_VMODE_RGB565			0x100
++#define DOVEFB_VMODE_BGR565			0x101
++#define DOVEFB_VMODE_RGB1555			0x102
++#define DOVEFB_VMODE_BGR1555			0x103
++#define DOVEFB_VMODE_RGB888PACK			0x104
++#define DOVEFB_VMODE_BGR888PACK			0x105
++#define DOVEFB_VMODE_RGB888UNPACK		0x106
++#define DOVEFB_VMODE_BGR888UNPACK		0x107
++#define DOVEFB_VMODE_RGBA888			0x108
++#define DOVEFB_VMODE_BGRA888			0x109
++
++#define	DOVEFB_VMODE_YUV422PACKED		0x0
++#define	DOVEFB_VMODE_YUV422PACKED_SWAPUV	0x1
++#define	DOVEFB_VMODE_YUV422PACKED_SWAPYUorV	0x2
++#define	DOVEFB_VMODE_YUV422PLANAR		0x3
++#define	DOVEFB_VMODE_YUV422PLANAR_SWAPUV	0x4
++#define	DOVEFB_VMODE_YUV422PLANAR_SWAPYUorV	0x5
++#define	DOVEFB_VMODE_YUV420PLANAR		0x6
++#define	DOVEFB_VMODE_YUV420PLANAR_SWAPUV	0x7
++#define	DOVEFB_VMODE_YUV420PLANAR_SWAPYUorV	0x8
++
++#define	DOVEFB_HWCMODE_1BITMODE			0x0
++#define	DOVEFB_HWCMODE_2BITMODE			0x1
++
++#define	DOVEFB_DISABLE_COLORKEY_MODE		0x0
++#define	DOVEFB_ENABLE_Y_COLORKEY_MODE		0x1
++#define	DOVEFB_ENABLE_U_COLORKEY_MODE		0x2
++#define	DOVEFB_ENABLE_V_COLORKEY_MODE		0x4
++#define	DOVEFB_ENABLE_RGB_COLORKEY_MODE		0x3
++#define	DOVEFB_ENABLE_R_COLORKEY_MODE		0x5
++#define	DOVEFB_ENABLE_G_COLORKEY_MODE		0x6
++#define	DOVEFB_ENABLE_B_COLORKEY_MODE		0x7
++
++#define DOVEFB_VID_PATH_ALPHA               0x0
++#define DOVEFB_GRA_PATH_ALPHA               0x1
++#define DOVEFB_CONFIG_ALPHA                 0x2
++
++#define DOVEFB_SYNC_COLORKEY_TO_CHROMA          1
++#define DOVEFB_SYNC_CHROMA_TO_COLORKEY          2
++
++/* Compatible to pxa168. */
++#define FB_IOCTL_SET_COLORKEYnALPHA            _IO(FB_IOC_MAGIC, 13)
++#define FB_IOCTL_GET_COLORKEYnALPHA            _IO(FB_IOC_MAGIC, 14)
++#define FB_VID_PATH_ALPHA               0x0
++#define FB_GRA_PATH_ALPHA               0x1
++#define FB_CONFIG_ALPHA                 0x2
++
++#define FB_SYNC_COLORKEY_TO_CHROMA          1
++#define FB_SYNC_CHROMA_TO_COLORKEY          2
++
++#define DOVEFB_FB_NUM		2
++
++/* ---------------------------------------------- */
++/*              Data Structure                    */
++/* ---------------------------------------------- */
++struct _sEdidInfo {
++	int connect;		/* is monitor connected */
++				/* =0, monitor is disconnected.
++				   =1, monitor is connected and EDID is ready.
++				   =2, return fake EDID.
++				   =3, monitor is connected, but EDID failed. */
++	int change;		/* is edid data changed */
++	int extension;		/* the number of extension edid block */
++	int interval;		/* the interval to check edid */
++};
++/*
++ * The follow structures are used to pass data from
++ * user space into the kernel for the creation of
++ * overlay surfaces and setting the video mode.
++ */
++
++#define DOVEFBVideoMode signed int
++
++struct _sViewPortInfo {
++	unsigned short srcWidth;	/* video source size */
++	unsigned short srcHeight;
++	unsigned short zoomXSize;	/* size after zooming */
++	unsigned short zoomYSize;
++	unsigned short ycPitch;
++	unsigned short uvPitch;
++};
++
++struct _sViewPortOffset {
++	unsigned short xOffset;		/* position on screen */
++	unsigned short yOffset;
++};
++
++struct _sVideoBufferAddr {
++	unsigned char	frameID;	/* which frame wants */
++	unsigned char *startAddr;	/* new buffer (PA) */
++	unsigned char *inputData;	/* input buf address (VA) */
++	unsigned int length;		/* input data's length */
++};
++
++struct dovefb_chroma {
++        u_char     mode;
++        u_char     y_alpha;
++        u_char     y;
++        u_char     y1;
++        u_char     y2;
++        u_char     u_alpha;
++        u_char     u;
++        u_char     u1;
++        u_char     u2;
++        u_char     v_alpha;
++        u_char     v;
++        u_char     v1;
++        u_char     v2;
++};
++
++struct _sColorKeyNAlpha {
++        unsigned int mode;
++        unsigned int alphapath;
++        unsigned int config;
++        unsigned int Y_ColorAlpha;
++        unsigned int U_ColorAlpha;
++        unsigned int V_ColorAlpha;
++};
++
++struct _sOvlySurface {
++	DOVEFBVideoMode videoMode;
++	struct _sViewPortInfo viewPortInfo;
++	struct _sViewPortOffset viewPortOffset;
++	struct _sVideoBufferAddr videoBufferAddr;
++};
++
++struct _sCursorConfig {
++	unsigned char	enable;		/* enable cursor or not */
++	unsigned char	mode;		/* 1bit or 2bit mode */
++	unsigned int color1;		/* foreground color */
++	unsigned int color2;		/* background color */
++	unsigned short xoffset;
++	unsigned short yoffset;
++	unsigned short	width;
++	unsigned short height;
++	unsigned char *pBuffer;		/* cursor data */
++};
++
++#define SHM_NORMAL		0x01
++#define SHM_VMETA		0x02
++#define SHM_SOFTWARE_MAP	0x04
++
++struct shm_private_info {
++	unsigned int method;
++	unsigned int fbid;
++	unsigned int format;
++	unsigned int width;
++	unsigned int height;
++	unsigned long fb_pa;
++};
++
++/* MAX bytes per yuv pixel. */
++#define MAX_YUV_PIXEL	2
++
++/* Dumb interface */
++#define DOVEFB_PINS_DUMB_24		0
++#define DOVEFB_PINS_DUMB_18_SPI		1
++#define DOVEFB_PINS_DUMB_18_GPIO	2
++#define DOVEFB_PINS_DUMB_16_SPI		3
++#define DOVEFB_PINS_DUMB_16_GPIO	4
++#define DOVEFB_PINS_DUMB_12_SPI_GPIO	5
++#define DOVEFB_PINS_SMART_18_SPI	6
++#define DOVEFB_PINS_SMART_16_SPI	7
++#define DOVEFB_PINS_SMART_8_SPI_GPIO	8
++
++/* Dumb interface pin allocation */
++#define DOVEFB_DUMB_PANEL_RGB565	0
++#define DOVEFB_DUMB_PANEL_RGB565_UPPER	1
++#define DOVEFB_DUMB_PANEL_RGB666	2
++#define DOVEFB_DUMB_PANEL_RGB666_UPPER	3
++#define DOVEFB_DUMB_PANEL_RGB444	4
++#define DOVEFB_DUMB_PANEL_RGB444_UPPER	5
++#define DOVEFB_DUMB_PANEL_RGB888	6
++
++/* Max fb buffer. 2048x2048-32bits */
++#define DEFAULT_FB_SIZE	(2048 * 2048 * 4)
++
++/*
++ * Buffer pixel format
++ * bit0 is for rb swap.
++ * bit12 is for Y UorV swap
++ */
++/*
++#define PIX_FMT_RGB565		0
++#define PIX_FMT_BGR565		1
++#define PIX_FMT_RGB1555		2
++#define PIX_FMT_BGR1555		3
++#define PIX_FMT_RGB888PACK	4
++#define PIX_FMT_BGR888PACK	5
++#define PIX_FMT_RGB888UNPACK	6
++#define PIX_FMT_BGR888UNPACK	7
++#define PIX_FMT_RGBA888		8
++#define PIX_FMT_BGRA888		9
++#define PIX_FMT_YUV422PACK	10
++#define PIX_FMT_YVU422PACK	11
++#define PIX_FMT_YUV422PLANAR	12
++#define PIX_FMT_YVU422PLANAR	13
++#define PIX_FMT_YUV420PLANAR	14
++#define PIX_FMT_YVU420PLANAR	15
++#define PIX_FMT_PSEUDOCOLOR	20
++#define PIX_FMT_UYVY422PACK	(0x1000|PIX_FMT_YUV422PACK)
++*/
++
++#ifdef __KERNEL__
++#include <linux/interrupt.h>
++
++enum dovefb_type {
++	DOVEFB_GFX_PLANE,
++	DOVEFB_OVLY_PLANE
++};
++
++#define MRVL_AXI_CLK		0
++#define MRVL_EXT_CLK0	1
++#define MRVL_PLL_CLK		2
++#define MRVL_EXT_CLK1	3
++
++struct dovefb_layer_info {
++	struct device		*dev;
++	enum dovefb_type	type;
++	struct dovefb_info	*info;
++	struct fb_info		*fb_info;
++
++	void			*reg_base;
++
++	unsigned long		new_addr;
++	dma_addr_t		fb_start_dma;
++	void			*fb_start;
++	int			fb_size;
++	atomic_t		w_intr;
++	wait_queue_head_t	w_intr_wq;
++	struct mutex		access_ok;
++	struct _sOvlySurface	surface;
++	struct _sColorKeyNAlpha ckey_alpha;
++	/* Following used to bypass vide frame queuing */
++	unsigned int		vid_ovly_phys_addr_y;
++	unsigned int		vid_ovly_phys_addr_u;
++	unsigned int		vid_ovly_phys_addr_v;
++
++	unsigned char		*hwc_buf;
++	unsigned int		pseudo_palette[16];
++	struct tasklet_struct	tasklet;
++	char			*mode_option;
++
++	int			ddc_polling_disable;
++	struct timer_list	get_edid_timer;
++	unsigned char*		raw_edid;
++	struct _sEdidInfo	edid_info;
++	struct work_struct      work_queue;
++
++	int			pix_fmt;
++	unsigned		is_blanked:1;
++	unsigned		cursor_enabled:1;
++	unsigned		cursor_cfg:1;
++	unsigned		active:1;
++	unsigned		enabled:1;
++	unsigned                checkbuf_timer_exist:1;
++
++	/*
++	 * 0: DMA mem is from DMA region.
++	 * 1: DMA mem is from normal region.
++	 */
++	unsigned		mem_status:1;
++
++	/*
++	 * current frame id for mapping to user.
++	 */
++	int			cur_fbid;
++	int			src_mode;
++
++	unsigned int		reserved;
++};
++
++/*
++ * Dove LCD controller private state.
++ */
++struct dovefb_info {
++	struct device			*dev;
++	int				id;
++
++	void				*reg_base;
++	struct dovefb_layer_info	*gfx_plane;
++	struct dovefb_layer_info	*vid_plane;
++
++	struct fb_videomode		dft_vmode;
++	struct fb_videomode		out_vmode;
++	int				fixed_output;
++
++	char				*mode_option;
++	struct clk			*clk;
++	int				clk_src;
++	int				io_pin_allocation;
++
++	int			pix_fmt;
++	unsigned		edid:1;
++	unsigned		panel_rbswap:1;
++	unsigned		edid_en:1;
++
++        /* Hardware cursor related registers */
++	unsigned int LCD_SPU_HWC_HPXL_VLN_saved_value;
++	unsigned int LCD_SPU_ALPHA_COLOR1_saved_value;
++	unsigned int LCD_SPU_ALPHA_COLOR2_saved_value;
++
++	/* Colorkey related registers */
++	unsigned int LCD_SPU_COLORKEY_Y_saved_value;
++	unsigned int LCD_SPU_COLORKEY_U_saved_value;
++	unsigned int LCD_SPU_COLORKEY_V_saved_value;
++	unsigned int LCD_SPU_DMA_CTRL1_saved_value;
++	unsigned int LCD_SPU_ADV_REG_saved_value;
++};
++
++/*
++ * Dove fb machine information
++ */
++struct dovefb_mach_info {
++	char		id_gfx[16];
++	char		id_ovly[16];
++	int		clk_src;
++	int		accurate_clk;
++	char		*clk_name;
++	int		num_modes;
++	struct fb_videomode *modes;
++
++	/*
++	 * Pix_fmt
++	 */
++	unsigned	pix_fmt;
++
++	/*
++	 * I/O pin allocation.
++	 */
++	unsigned	io_pin_allocation:4;
++
++	/*
++	 * auto poll EDID data periodically
++	 */
++	unsigned ddc_polling_disable:1;
++
++	/*
++	 * Monitor sense
++	 */
++	int (*mon_sense)(int *connect_status);
++
++	/*
++	 * I2C bus and address to read DDC data through. -1 not available
++	 */
++	int		ddc_i2c_adapter;
++	int		ddc_i2c_address;
++
++	/*
++	 * secondary i2c pair for two display on same LCD.
++	 */
++	int		secondary_ddc_mode;
++	int		ddc_i2c_adapter_2nd;
++	int		ddc_i2c_address_2nd;
++
++	/*
++	 * Dumb panel -- assignment of R/G/B component info to the 24
++	 * available external data lanes.
++	 */
++	unsigned	panel_rgb_type:4;
++	unsigned	panel_rgb_reverse_lanes:1;
++
++	/*
++	 * Dumb panel -- GPIO output data.
++	 */
++	unsigned	gpio_output_mask:8;
++	unsigned	gpio_output_data:8;
++
++	/*
++	 * Dumb panel -- configurable output signal polarity.
++	 */
++	unsigned	invert_composite_blank:1;
++	unsigned	invert_pix_val_ena:1;
++	unsigned	invert_pixclock:1;
++	unsigned	invert_vsync:1;
++	unsigned	invert_hsync:1;
++	unsigned	panel_rbswap:1;
++	unsigned	active:1;
++	unsigned	enable_lcd0:1;
++};
++
++struct dovebl_platform_data;
++
++int clcd_platform_init(struct dovefb_mach_info *lcd0_dmi_data,
++		       struct dovefb_mach_info *lcd0_vid_dmi_data,
++		       struct dovefb_mach_info *lcd1_dmi_data,
++		       struct dovefb_mach_info *lcd1_vid_dmi_data,
++		       struct dovebl_platform_data *backlight_data);
++
++
++#endif /* _KERNEL_ */
++#endif /* _DOVEFB_H_ */
+diff --git a/xbmc/cores/dvdplayer/DVDPlayerVideo.cpp b/xbmc/cores/dvdplayer/DVDPlayerVideo.cpp
+index 99b3155..028df6e 100644
+--- a/xbmc/cores/dvdplayer/DVDPlayerVideo.cpp
++++ b/xbmc/cores/dvdplayer/DVDPlayerVideo.cpp
+@@ -929,6 +929,7 @@
+     case RENDER_FMT_BYPASS:    return "BYPASS";
+     case RENDER_FMT_MEDIACODEC:return "MEDIACODEC";
+     case RENDER_FMT_MEDIACODECSURFACE:return "MEDIACODECSURFACE";
++    case RENDER_FMT_VMETA:     return "VMETA";
+     case RENDER_FMT_IMXMAP:    return "IMXMAP";
+     case RENDER_FMT_MMAL:      return "MMAL";
+     case RENDER_FMT_NONE:      return "NONE";
+diff --git a/xbmc/cores/VideoRenderers/RenderFormats.h b/xbmc/cores/VideoRenderers/RenderFormats.h
+index f15e80d..dbae684 100644
+--- a/xbmc/cores/VideoRenderers/RenderFormats.h
++++ b/xbmc/cores/VideoRenderers/RenderFormats.h
+@@ -43,6 +43,7 @@
+   RENDER_FMT_MEDIACODECSURFACE,
+   RENDER_FMT_IMXMAP,
+   RENDER_FMT_MMAL,
++  RENDER_FMT_VMETA,
+ };
+ 
+ struct CRenderInfo
+-- 
+1.7.9.5
+

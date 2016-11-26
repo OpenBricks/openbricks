@@ -1,0 +1,81 @@
+From 1a879abe96b2cbd6a08174b46bb405b5ec29646f Mon Sep 17 00:00:00 2001
+From: Rudi <r.ihle@s-t.de>
+Date: Sat, 17 May 2014 12:53:08 +0200
+Subject: [PATCH 14/26] Dove: modify windowing
+
+---
+ xbmc/windowing/X11/WinSystemX11.cpp     |    2 +-
+ xbmc/windowing/X11/WinSystemX11GLES.cpp |   12 ++++++++++--
+ 2 files changed, 11 insertions(+), 3 deletions(-)
+
+diff --git a/xbmc/windowing/X11/WinSystemX11.cpp b/xbmc/windowing/X11/WinSystemX11.cpp
+index 54379ea..db73998 100644
+--- a/xbmc/windowing/X11/WinSystemX11.cpp
++++ b/xbmc/windowing/X11/WinSystemX11.cpp
+@@ -48,6 +48,14 @@
+ 
+ #define EGL_NO_CONFIG (EGLConfig)0
+ 
++/* Dove GL engine doesn't like the following. Probably EGL_NO_CONTEXT flag */
++#ifndef HAS_MARVELL_DOVE
++  #define eglRelease(disp, ctx) eglMakeCurrent(disp, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)
++#else
++  #define eglRelease(disp, ctx) eglMakeCurrent(disp, EGL_NO_SURFACE, EGL_NO_SURFACE, ctx)
++#endif
++
++
+ CWinSystemX11::CWinSystemX11() : CWinSystemBase()
+ {
+   m_eWindowSystem = WINDOW_SYSTEM_X11;
+@@ -126,7 +134,8 @@
+   {
+     if (m_eglContext != EGL_NO_CONTEXT)
+     {
+-      eglMakeCurrent(m_eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
++      eglRelease(m_eglDisplay, m_eglContext);
++      eglDestroyContext(m_eglDisplay, m_eglContext);
+       m_eglContext = EGL_NO_CONTEXT;
+     }
+   }
+@@ -161,7 +169,7 @@
+   if (m_eglContext)
+   {
+     glFinish();
+-    eglMakeCurrent(m_eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
++    eglRelease(m_eglDisplay, m_eglContext);
+   }
+ #endif
+ 
+@@ -606,7 +614,7 @@
+   if (m_eglContext && !force)
+   {
+     CLog::Log(LOGDEBUG, "CWinSystemX11::RefreshGlxContext: refreshing context");
+-    eglMakeCurrent(m_eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
++    eglRelease(m_eglDisplay, m_eglContext);
+     eglMakeCurrent(m_eglDisplay, m_eglSurface, m_eglSurface, m_eglContext);
+     return true;
+   }
+@@ -686,7 +694,7 @@
+ #if defined(HAS_EGL)
+     if (m_eglContext)
+     {
+-      eglMakeCurrent(m_eglContext, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
++      eglRelease(m_eglDisplay, m_eglContext);
+       eglDestroyContext(m_eglDisplay, m_eglContext);
+       m_eglContext = EGL_NO_CONTEXT;
+       eglDestroySurface(m_eglDisplay, m_eglSurface);
+--- a/xbmc/windowing/X11/WinSystemX11.h	2016-11-20 21:02:12.390400323 +0100
++++ b/xbmc/windowing/X11/WinSystemX11.h	2016-11-20 21:02:57.474402164 +0100
+@@ -31,6 +31,12 @@
+ 
+ #if defined(HAS_EGL)
+ #include <EGL/egl.h>
++
++#ifdef HAS_MARVELL_DOVE
++#define Status XStatus
++#define Always XAlways
++#endif
++
+ #endif
+ 
+ #include "windowing/WinSystem.h"

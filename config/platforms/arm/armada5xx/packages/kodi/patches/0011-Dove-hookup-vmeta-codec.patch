@@ -1,0 +1,84 @@
+From 56859f375c28077a018cd0641af496c31d9b48d8 Mon Sep 17 00:00:00 2001
+From: Rudi <r.ihle@s-t.de>
+Date: Sat, 17 May 2014 12:27:12 +0200
+Subject: [PATCH 12/26] Dove: hookup vmeta codec
+
+---
+ xbmc/cores/dvdplayer/DVDCodecs/DVDFactoryCodec.cpp |   10 ++++++++++
+ .../dvdplayer/DVDCodecs/Video/DVDVideoCodec.h      |    4 ++++
+ xbmc/cores/dvdplayer/DVDCodecs/Video/Makefile.in   |    4 ++++
+ 3 files changed, 18 insertions(+)
+
+diff --git a/xbmc/cores/dvdplayer/DVDCodecs/DVDFactoryCodec.cpp b/xbmc/cores/dvdplayer/DVDCodecs/DVDFactoryCodec.cpp
+index 14ad038..53ac53f 100644
+--- a/xbmc/cores/dvdplayer/DVDCodecs/DVDFactoryCodec.cpp
++++ b/xbmc/cores/dvdplayer/DVDCodecs/DVDFactoryCodec.cpp
+@@ -37,6 +37,9 @@
+ #include "Video/DVDVideoCodecFFmpeg.h"
+ #include "Video/DVDVideoCodecOpenMax.h"
+ #include "Video/DVDVideoCodecLibMpeg2.h"
++#if defined(HAS_MARVELL_DOVE)
++#include "Video/DVDVideoCodecVMETA.h"
++#endif
+ #if defined(HAS_IMXVPU)
+ #include "Video/DVDVideoCodecIMX.h"
+ #endif
+@@ -199,6 +202,11 @@
+ #else
+   hwSupport += "MMAL:no ";
+ #endif
++#if defined(HAS_MARVELL_DOVE)
++  hwSupport += "VMETA:yes ";
++#else
++  hwSupport += "VMETA:no ";
++#endif
+   CLog::Log(LOGDEBUG, "CDVDFactoryCodec: compiled in hardware support: %s", hwSupport.c_str());
+ 
+   if (hint.stills && (hint.codec == AV_CODEC_ID_MPEG2VIDEO || hint.codec == AV_CODEC_ID_MPEG1VIDEO))
+@@ -226,6 +234,13 @@
+   }
+ #endif
+ 
++#if defined(HAS_MARVELL_DOVE)
++  if (!hint.software)
++  {
++    if ( (pCodec = OpenCodec(new CDVDVideoCodecVMETA(), hint, options)) ) return pCodec;
++  }
++#endif
++
+ #if defined(HAS_IMXVPU)
+   if (!hint.software)
+   {
+diff --git a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodec.h b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodec.h
+index f6751f4..e0410dc 100644
+--- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodec.h
++++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodec.h
+@@ -103,6 +103,10 @@
+       CMMALVideoBuffer *MMALBuffer;
+     };
+ 
++    struct {
++      struct _IppVideoPicture *vmeta;
++    };
++
+   };
+ 
+   unsigned int iFlags;
+diff --git a/xbmc/cores/dvdplayer/DVDCodecs/Video/Makefile.in b/xbmc/cores/dvdplayer/DVDCodecs/Video/Makefile.in
+index 8a97889..c034bfd 100644
+--- a/xbmc/cores/dvdplayer/DVDCodecs/Video/Makefile.in
++++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/Makefile.in
+@@ -29,6 +29,10 @@ SRCS += DVDVideoCodecAmlogic.cpp
+ INCLUDES += -I$(prefix)/include/amcodec
+ INCLUDES += -I$(prefix)/include/amplayer
+ endif
++ifeq (@USE_MARVELL_DOVE@,1)
++SRCS += DVDVideoCodecVMETA.cpp
++endif
++
+ 
+ ifeq (@USE_ANDROID@,1)
+ SRCS += DVDVideoCodecAndroidMediaCodec.cpp
+-- 
+1.7.9.5
+
