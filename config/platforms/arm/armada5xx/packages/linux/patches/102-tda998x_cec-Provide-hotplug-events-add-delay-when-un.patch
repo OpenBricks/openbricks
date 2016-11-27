@@ -1,0 +1,147 @@
+From dfe8d491728fd656572540138638914fa26a56d4 Mon Sep 17 00:00:00 2001
+From: Rudi <r.ihle@s-t.de>
+Date: Sun, 27 Nov 2016 16:46:50 +0100
+Subject: [PATCH] tda998x_cec: Provide hotplug events, add delay when
+ unregistering logical address
+
+Signed-off-by: Rudi <r.ihle@s-t.de>
+---
+ drivers/video/dovefb/nxp_hdmi/tda998x_cec.c   | 72 +++++++++++++++++++--------
+ drivers/video/dovefb/nxp_hdmi/tda998x_ioctl.h |  1 +
+ 2 files changed, 51 insertions(+), 22 deletions(-)
+
+diff --git a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c
+index 9e096a3..61df31a 100755
+--- a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c
++++ b/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c
+@@ -44,6 +44,8 @@
+ #include "tda998x_ioctl.h"
+ #include "tda998x_exports.h"
+ 
++static void eventCallbackCEC(tmdlHdmiCecEvent_t event, unsigned char *data, unsigned char length);
++
+ /*
+  *
+  * DEFINITION
+@@ -520,6 +522,14 @@ static int cec_listen_single(cec_instance *this, unsigned char rx_addr)
+ 
+    LOG(KERN_INFO,"logAddr set to 0x%x\n", rx_addr);
+ 
++   if (rx_addr != this->cec.rx_addr &&
++       rx_addr == CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST)
++   {
++     LOG(KERN_INFO,"Unregistering logical address 0x%x\n", this->cec.rx_addr);
++     msleep(500);
++   }
++
++   TRY(tmdlHdmiCecSetRetry(this->cec.inst, 2));
+    TRY(tmdlHdmiCecSetLogicalAddress(this->cec.inst, rx_addr));
+ 
+    this->cec.rx_addr = rx_addr;
+@@ -580,6 +590,9 @@ static void cec_interrupt(struct work_struct *dummy)
+ /*                                        this->cec.initiator,     \ */
+ /*                                        this->cec.phy_addr)); */
+       cec_standby(this);
++
++      if (this->driver.raw_mode)
++         eventCallbackCEC(TMDL_HDMICEC_CALLBACK_STATUS, NULL, 0);
+    }
+    else if (display_active && (this->cec.power == tmPowerStandby)) {
+       /* send active msg when hdmi has been abled */
+@@ -588,6 +601,9 @@ static void cec_interrupt(struct work_struct *dummy)
+ #ifndef GUI_OVER_HDMI
+       this->cec.source_status = CEC_POWER_STATUS_ON;
+ #endif
++
++      if (this->driver.raw_mode)
++         eventCallbackCEC(TMDL_HDMICEC_CALLBACK_STATUS, NULL, 0);
+    }
+    /* new phy addr means new EDID, mean HPD ! */
+    else if ((this->cec.phy_addr != new_phy_addr) &&
+@@ -595,19 +611,17 @@ static void cec_interrupt(struct work_struct *dummy)
+       LOG(KERN_INFO,"New physical address %04x\n",new_phy_addr);
+       this->cec.phy_addr = new_phy_addr;
+ 
+-      if( !this->param.passive) {
+-         if (!this->driver.raw_mode) {
+-            if (this->cec.phy_addr != 0xFFFF) {
+-               this->cec.rx_addr = get_next_logical_addr(
+-                  this->cec.device_type, CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST);
+-               TRY(tmdlHdmiCecPollingMessage(this->cec.inst, this->cec.rx_addr));
+-            }
+-            else {
+-               this->cec.rx_addr = CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST;
+-            }
+-         } 
++      if (this->driver.raw_mode) {
++         eventCallbackCEC(TMDL_HDMICEC_CALLBACK_STATUS, NULL, 0);
++      }
++      else if( !this->param.passive) {
++         if (this->cec.phy_addr != 0xFFFF) {
++            this->cec.rx_addr = get_next_logical_addr(
++               this->cec.device_type, CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST);
++            TRY(tmdlHdmiCecPollingMessage(this->cec.inst, this->cec.rx_addr));
++         }
+          else {
+-            // Todo: how to notify libCEC about this ??
++            this->cec.rx_addr = CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST;
+          }
+       }
+    }
+@@ -782,17 +796,31 @@ static void eventCallbackCEC(tmdlHdmiCecEvent_t event, unsigned char *data, unsi
+       } else if (event == TMDL_HDMICEC_CALLBACK_STATUS) {
+ 
+          if (new_tail != this->driver.read_queue_head) {
+-            frame->size    = length + 2;		/* sizeof(size) + sizeof(service) */
+-            frame->service = CEC_ACK_PKT;		/* this is an ACK/NAK packet */
+-            frame->addr    = data[0];			/* AddressByte */
+-            memcpy(frame->data, &data[1], length - 1);	/* DataBytes[], length - sizeof(addr) */
+ 
+-            initiator = (frame->addr >> 4) & 0x0F;
+-            receiver  = frame->addr & 0x0F;
+-            opcode    = frame->data[0];
+-            LOG(KERN_INFO,"hdmicec:ACK:[%x--->%x] %s length:%d [%02x %02x %02x %02x]\n",
+-              initiator,receiver,cec_rxstatus(opcode),length, 
+-              frame->data[0], frame->data[1], frame->data[2], frame->data[3]);
++            if (data) {
++              frame->size    = length + 2;		/* sizeof(size) + sizeof(service) */
++              frame->service = CEC_ACK_PKT;		/* this is an ACK/NAK packet */
++              frame->addr    = data[0];			/* AddressByte */
++              memcpy(frame->data, &data[1], length - 1);/* DataBytes[], length - sizeof(addr) */
++
++              initiator = (frame->addr >> 4) & 0x0F;
++              receiver  = frame->addr & 0x0F;
++              opcode    = frame->data[0];
++              LOG(KERN_INFO,"hdmicec:ACK:[%x--->%x] %s length:%d [%02x %02x %02x %02x]\n",
++                initiator,receiver,cec_rxstatus(opcode),length,
++                frame->data[0], frame->data[1], frame->data[2], frame->data[3]);
++            }
++            else {
++              frame->size    = 4 + 2;			/* sizeof(size) + sizeof(service) */
++              frame->service = CEC_HPD_PKT;		/* this is a hotplug packet */
++              frame->addr    = 0xff;
++              frame->data[0] = this->cec.source_status;	/* 0:connected, 1:disconnected */
++              frame->data[1] = (this->cec.phy_addr >> 0) & 0xff;
++              frame->data[2] = (this->cec.phy_addr >> 8) & 0xff;
++
++              LOG(KERN_INFO,"hdmicec:HPD: %d, PHY_ADDR: %x.%x.%x.%x\n", frame->data[0],
++                frame->data[2] >> 4, frame->data[2] & 0xf, frame->data[1] >> 4, frame->data[1] & 0xf);
++            }
+ 
+             this->driver.read_queue_tail = new_tail;
+          }
+diff --git a/drivers/video/dovefb/nxp_hdmi/tda998x_ioctl.h b/drivers/video/dovefb/nxp_hdmi/tda998x_ioctl.h
+index da07a83..243f20a 100755
+--- a/drivers/video/dovefb/nxp_hdmi/tda998x_ioctl.h
++++ b/drivers/video/dovefb/nxp_hdmi/tda998x_ioctl.h
+@@ -825,6 +825,7 @@ typedef tmdlHdmiCECDeviceType_t cec_device_type;
+ enum {
+    CEC_RX_PKT  = 0x01,
+    CEC_ACK_PKT = 0x02,
++   CEC_HPD_PKT = 0x03,
+ 
+    CEC_WAITING = 0x80,
+    CEC_RELEASE,
+-- 
+1.9.1
+

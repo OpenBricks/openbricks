@@ -1,0 +1,156 @@
+From d45fa616ac0f61c6adb43ac4db50d8ee8dc25464 Mon Sep 17 00:00:00 2001
+From: Rudi <r.ihle@s-t.de>
+Date: Sat, 17 May 2014 16:32:34 +0200
+Subject: [PATCH 21/26] Dove: use new settings model
+
+---
+ xbmc/cores/VideoRenderers/DoveOverlayRenderer.cpp  |   29 +++++++++++---------
+ xbmc/cores/VideoRenderers/DoveOverlayRenderer.h    |   13 +++++----
+ .../DVDCodecs/Video/DVDVideoCodecVMETA.cpp         |    9 ++++--
+ 3 files changed, 30 insertions(+), 21 deletions(-)
+
+diff --git a/xbmc/cores/VideoRenderers/DoveOverlayRenderer.cpp b/xbmc/cores/VideoRenderers/DoveOverlayRenderer.cpp
+index 813319c..4ddb3a2 100644
+--- a/xbmc/cores/VideoRenderers/DoveOverlayRenderer.cpp
++++ b/xbmc/cores/VideoRenderers/DoveOverlayRenderer.cpp
+@@ -81,21 +81,24 @@ void CDoveOverlayRenderer::ManageDisplay(bool first)
+   CRect view;
+   int interpolation = m_interpolation;
+   struct _sOvlySurface overlaySurface = m_overlaySurface;
++  const CDisplaySettings& dispInfo = CDisplaySettings::GetInstance();
++  const RESOLUTION_INFO& resInfo = dispInfo.GetCurrentResolutionInfo();
++  const CVideoSettings& vidInfo = CMediaSettings::GetInstance().GetCurrentVideoSettings();
+ 
+-  view.x1 = (float)g_settings.m_ResInfo[m_resolution].Overscan.left;
+-  view.y1 = (float)g_settings.m_ResInfo[m_resolution].Overscan.top;
+-  view.x2 = (float)g_settings.m_ResInfo[m_resolution].Overscan.right;
+-  view.y2 = (float)g_settings.m_ResInfo[m_resolution].Overscan.bottom;
++  view.x1 = (float)resInfo.Overscan.left;
++  view.y1 = (float)resInfo.Overscan.top;
++  view.x2 = (float)resInfo.Overscan.right;
++  view.y2 = (float)resInfo.Overscan.bottom;
+ 
+-  m_sourceRect.x1 = (float)g_settings.m_currentVideoSettings.m_CropLeft;
+-  m_sourceRect.y1 = (float)g_settings.m_currentVideoSettings.m_CropTop;
+-  m_sourceRect.x2 = (float)m_sourceWidth - g_settings.m_currentVideoSettings.m_CropRight;
+-  m_sourceRect.y2 = (float)m_sourceHeight - g_settings.m_currentVideoSettings.m_CropBottom;
++  m_sourceRect.x1 = 0.0;
++  m_sourceRect.y1 = 0.0;
++  m_sourceRect.x2 = (float)m_sourceWidth;
++  m_sourceRect.y2 = (float)m_sourceHeight;
+ 
+   CalcNormalDisplayRect(view.x1, view.y1,
+                         view.Width(), view.Height(),
+-                        GetAspectRatio() * g_settings.m_fPixelRatio,
+-                        g_settings.m_fZoomAmount, g_settings.m_fVerticalShift);
++                        GetAspectRatio() * dispInfo.GetPixelRatio(),
++                        dispInfo.GetZoomAmount(), dispInfo.GetVerticalShift());
+ 
+   OutputBuffer &currPict = m_SoftPicture[m_currentBuffer];
+ 
+@@ -159,7 +162,7 @@ void CDoveOverlayRenderer::ManageDisplay(bool first)
+ 
+   /* Rabeeh said: Scaler is set differently when using graphics scaler */
+   m_interpolation = (g_graphicsContext.getGraphicsScale() == GR_SCALE_100 &&
+-                      g_settings.m_currentVideoSettings.m_ScalingMethod != VS_SCALINGMETHOD_NEAREST) ?
++                      vidInfo.m_ScalingMethod != VS_SCALINGMETHOD_NEAREST) ?
+                         DOVEFB_INTERPOLATION_BILINEAR : DOVEFB_INTERPOLATION_NONE;
+   if (first || interpolation != m_interpolation)
+   {
+@@ -202,7 +205,7 @@ bool CDoveOverlayRenderer::Configure(
+   // Calculate the input frame aspect ratio.
+   CalculateFrameAspectRatio(d_width, d_height);
+   ChooseBestResolution(fps);
+-  SetViewMode(g_settings.m_currentVideoSettings.m_ViewMode);
++  SetViewMode(CMediaSettings::GetInstance().GetCurrentVideoSettings().m_ViewMode);
+ 
+   /* Open the video overlay */
+   m_overlayfd = open("/dev/fb1", O_RDWR);
+@@ -264,7 +267,7 @@ unsigned int CDoveOverlayRenderer::PreInit()
+ 
+   UnInit();
+ 
+-  m_resolution = g_guiSettings.m_LookAndFeelResolution;
++  m_resolution = CDisplaySettings::GetInstance().GetCurrentResolution();
+   if ( m_resolution == RES_WINDOW )
+     m_resolution = RES_DESKTOP;
+ 
+diff --git a/xbmc/cores/VideoRenderers/DoveOverlayRenderer.h b/xbmc/cores/VideoRenderers/DoveOverlayRenderer.h
+index 39a12ea..4198bcd 100644
+--- a/xbmc/cores/VideoRenderers/DoveOverlayRenderer.h
++++ b/xbmc/cores/VideoRenderers/DoveOverlayRenderer.h
+@@ -26,13 +26,13 @@
+ #undef __u8
+ #undef byte
+ 
+-#include "../../settings/VideoSettings.h"
+-#include "../dvdplayer/DVDCodecs/Video/DVDVideoCodec.h"
+-#include "../dvdplayer/DVDCodecs/Video/DllVMETA.h"
+ #include "RenderFlags.h"
+ #include "BaseRenderer.h"
+-#include "settings/GUISettings.h"
+ #include "settings/Settings.h"
++#include "settings/MediaSettings.h"
++#include "settings/DisplaySettings.h"
++#include "../dvdplayer/DVDCodecs/Video/DVDVideoCodec.h"
++#include "../dvdplayer/DVDCodecs/Video/DllVMETA.h"
+ 
+ class CRenderCapture;
+ class CBaseTexture;
+@@ -138,7 +138,7 @@ public:
+   CDoveOverlayRenderer();
+   virtual ~CDoveOverlayRenderer();
+ 
+-  virtual void Update(bool bPauseDrawing);
++  virtual void Update(bool bPauseDrawing = false);
+   virtual void SetupScreenshot() {};
+ 
+   bool RenderCapture(CRenderCapture* capture);
+@@ -159,8 +159,9 @@ public:
+   virtual void RenderUpdate(bool clear, DWORD flags = 0, DWORD alpha = 255);
+ 
+   // Re-implemented CBaseRenderer function(s)
+-  virtual bool AddVideoPicture(DVDVideoPicture* picture)
++  virtual bool AddVideoPicture(DVDVideoPicture* picture, int index)
+   {
++    (void)index;
+     DrawSlice(picture);
+     return true;
+   }
+diff --git a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp
+index b925c71..3451548 100644
+--- a/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp
++++ b/xbmc/cores/dvdplayer/DVDCodecs/Video/DVDVideoCodecVMETA.cpp
+@@ -31,6 +31,8 @@
+ #include "DynamicDll.h"
+ 
+ #include "threads/SingleLock.h"
++#include "settings/Settings.h"
++#include "guilib/Resolution.h"
+ #include "utils/log.h"
+ #include "DVDClock.h"
+ 
+@@ -44,7 +46,6 @@
+ #define CLASSNAME "CDVDVideoCodecVMETA"
+ 
+ #include "utils/BitstreamConverter.h"
+-#include "settings/GUISettings.h"
+ #include "DVDCodecs/DVDCodecs.h"
+ 
+ 
+@@ -108,7 +109,11 @@ CDVDVideoCodecVMETA::CDVDVideoCodecVMETA()
+   m_low_delay         = -1;
+   m_codec_species     = -1;
+ 
+-  DllLibVMETA::SetHardwareClock(g_guiSettings.GetInt("videoscreen.vmeta_clk") == VMETA_CLK_667);
++#if 0
++  DllLibVMETA::SetHardwareClock(CSettings::GetInstance().GetInt("videoscreen.vmeta_clk") == VMETA_CLK_667);
++#else
++  DllLibVMETA::SetHardwareClock(true);
++#endif
+ }
+ 
+ 
+-- 
+1.7.9.5
+
