@@ -1,0 +1,43 @@
+#! /bin/sh
+
+PLATFORM=$(grep -o "i.MX6\|BCM[0-9]*\|OMAP4" /proc/cpuinfo)
+
+case "$PLATFORM" in
+  "i.MX6")
+       MMCDEV="mmc1 mmc0"; TTY="/dev/ttymxc3"; RATE="3000000"
+       ;;
+  "BCM2709")
+       if grep -q "=ttyAMA0" /proc/cmdline; then
+         MMCDEV="mmc1"; TTY="/dev/ttyS0"; RATE="115200"
+       else
+         MMCDEV="mmc1"; TTY="/dev/ttyAMA0"; RATE="921600"
+       fi
+       ;;
+  "OMAP4")
+       MMCDEV="mmc1"; TTY="/dev/ttyO1"; RATE="115200";
+       ;;
+  *) echo "Unsupported platform: $PLATFORM";;
+esac
+
+if [ -e "$TTY" ]; then
+  for mmc in $MMCDEV; do
+    CHIP_ID=$(cat /sys/class/mmc_host/$mmc/$mmc\:0001/$mmc\:0001\:1/device 2>/dev/null)
+    VEND_ID=$(cat /sys/class/mmc_host/$mmc/$mmc\:0001/$mmc\:0001\:1/vendor 2>/dev/null)
+    [ -n "$VEND_ID" ] && [ -n "$CHIP_ID" ] && break;
+  done
+
+  case "$VEND_ID:$CHIP_ID" in
+    "0x02d0:0x4329") MODE="bcm4329 $RATE flow";;
+    "0x02d0:0x4330") MODE="bcm43xx $RATE flow";;
+    "0x02d0:0xa9a6") MODE="bcm43xx-3wire $RATE noflow";;
+    "0x0097:0x4076") MODE="texas $RATE flow";;
+    "0x104c:0x9066") MODE="texas $RATE flow";;
+                 "") echo "No device found."; exit 0;;
+                  *) echo "Unknown device: $VEND_ID:$CHIP_ID"; exit 1;;
+  esac
+
+  echo "Found bluetooth chip: $VEND_ID:$CHIP_ID"
+  hciattach $TTY $MODE -
+fi
+
+exit 0

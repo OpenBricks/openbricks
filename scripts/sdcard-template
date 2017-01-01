@@ -120,11 +120,11 @@ create_mkfs_command () {
   echo "$mkfs_cmd"
 }
 
-# Create initial file for img file if needed
+# create empty image file and attach to loop device
 if [ -n "$IMG" ] ; then
   put_msg "#### Creating image file"
   dd if=/dev/zero of=$IMG bs=1M count=$IMGSIZE
-  losetup -d $DEVICE || true
+  losetup -d $DEVICE 2>/dev/null || true
   losetup $DEVICE $IMG
 fi
 
@@ -162,7 +162,7 @@ if [ $part_count -lt 2 ] ; then
 else
   fdisk_input="o\nn\np\n1\n2048\n+${boot_part_size}\nt\n${boot_part_type}\nn\np\n2\n\n\na\n1\nw\n"
 fi
-fdisk_cmd="echo -e \"$fdisk_input\" | fdisk $DEVICE"
+fdisk_cmd="/bin/echo -e \"$fdisk_input\" | fdisk $DEVICE"
 
 put_msg "#### Creating partion(s)..."
 if [ -z "$IMG" ] ; then
@@ -170,7 +170,7 @@ if [ -z "$IMG" ] ; then
   dd if=/dev/zero of=$DEVICE bs=512 count=2048 > /dev/null
   sh -c "$fdisk_cmd" > /dev/null
 else
-  sh -c "$fdisk_cmd" > /dev/null || true
+  sh -c "$fdisk_cmd" > /dev/null 2>&1 || true
   partprobe $DEVICE
 fi
 fdisk -l $DEVICE
