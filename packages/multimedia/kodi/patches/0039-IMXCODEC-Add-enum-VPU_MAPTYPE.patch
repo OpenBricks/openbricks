@@ -1,0 +1,87 @@
+From 951095cdf14af35d0d2aefcd4122da1699075616 Mon Sep 17 00:00:00 2001
+From: Rudi <r.ihle@s-t.de>
+Date: Sun, 1 Jan 2017 11:32:11 +0100
+Subject: [PATCH] IMXCODEC: Add enum VPU_MAPTYPE
+
+---
+ .../cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp | 14 +++++++-------
+ xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h  |  9 ++++++++-
+ 2 files changed, 15 insertions(+), 8 deletions(-)
+
+diff --git a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp
+index ee7178a..3e77132 100644
+--- a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp
++++ b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp
+@@ -780,7 +780,7 @@ int CIMXCodec::Decode(BYTE *pData, int iSize, double dts, double pts)
+       else
+         m_fps = 60;
+ 
+-      m_decOpenParam.nMapType = 1;
++      m_decOpenParam.nMapType = MAPTYPE_TILED_FRAME;
+ 
+       ptrn.Flush();
+       g_IMXCodec->Create();
+@@ -968,9 +968,9 @@ void CIMXCodec::Process()
+         if (!VpuFreeBuffers(false) || !VpuAllocFrameBuffers())
+           ExitError("VPU error while registering frame buffers");
+ 
+-        if (m_initInfo.nInterlace && m_fps >= 49 && m_decOpenParam.nMapType == 1)
++        if (m_initInfo.nInterlace && m_fps >= 49 && m_decOpenParam.nMapType == MAPTYPE_TILED_FRAME)
+         {
+-          m_decOpenParam.nMapType = 0;
++          m_decOpenParam.nMapType = MAPTYPE_LINEAR_FRAME;
+           Dispose();
+           VpuOpen();
+           continue;
+@@ -1188,7 +1188,7 @@ bool CIMXCodec::IsCurrentThread() const
+ }
+ 
+ /*******************************************/
+-CDVDVideoCodecIMXBuffer::CDVDVideoCodecIMXBuffer(VpuDecOutFrameInfo *frameInfo, double fps, int map)
++CDVDVideoCodecIMXBuffer::CDVDVideoCodecIMXBuffer(VpuDecOutFrameInfo *frameInfo, double fps, int mapType)
+   : m_dts(DVD_NOPTS_VALUE)
+   , m_fieldType(frameInfo->eFieldType)
+   , m_frameBuffer(frameInfo->pDisplayFrameBuf)
+@@ -1209,9 +1209,9 @@ CDVDVideoCodecIMXBuffer::CDVDVideoCodecIMXBuffer(VpuDecOutFrameInfo *frameInfo,
+ #ifdef IMX_INPUT_FORMAT_I420
+   iFormat     = _4CC('I', '4', '2', '0');
+ #else
+-  iFormat     = map == 1 ? _4CC('T', 'N', 'V', 'P'):
+-                map == 0 ? _4CC('N', 'V', '1', '2'):
+-                           _4CC('T', 'N', 'V', 'F');
++  iFormat     = mapType == MAPTYPE_TILED_FRAME  ? _4CC('T', 'N', 'V', 'P'):
++                mapType == MAPTYPE_LINEAR_FRAME ? _4CC('N', 'V', '1', '2'):
++                                                  _4CC('T', 'N', 'V', 'F');
+ #endif
+   m_fps       = fps;
+ #if defined(IMX_PROFILE) || defined(IMX_PROFILE_BUFFERS) || defined(TRACE_FRAMES)
+diff --git a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h
+index aeb1692..22da54d 100644
+--- a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h
++++ b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.h
+@@ -84,6 +84,13 @@ enum RENDER_TASK
+   RENDER_TASK_CAPTURE  = -2,
+ };
+ 
++enum VPU_MAPTYPE
++{
++  MAPTYPE_LINEAR_FRAME = 0,
++  MAPTYPE_TILED_FRAME  = 1,
++  MAPTYPE_TILED_FIELD  = 2,
++};
++
+ #define CLASS_PICTURE   (VPU_DEC_OUTPUT_DIS     | VPU_DEC_OUTPUT_MOSAIC_DIS)
+ #define CLASS_NOBUF     (VPU_DEC_OUTPUT_NODIS   | VPU_DEC_NO_ENOUGH_BUF | VPU_DEC_OUTPUT_REPEAT)
+ #define CLASS_FORCEBUF  (VPU_DEC_OUTPUT_EOS     | VPU_DEC_NO_ENOUGH_INBUF)
+@@ -244,7 +251,7 @@ class CDVDVideoCodecIMXBuffer : public CIMXBuffer
+ friend class CIMXCodec;
+ friend class CIMXContext;
+ public:
+-  CDVDVideoCodecIMXBuffer(VpuDecOutFrameInfo *frameInfo, double fps, int map);
++  CDVDVideoCodecIMXBuffer(VpuDecOutFrameInfo *frameInfo, double fps, int mapType);
+   virtual ~CDVDVideoCodecIMXBuffer();
+ 
+   // reference counting
+-- 
+1.9.1
+
