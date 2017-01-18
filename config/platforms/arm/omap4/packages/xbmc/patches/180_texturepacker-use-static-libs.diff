@@ -1,0 +1,41 @@
+--- a/lib/libsquish/Makefile.in	2017-01-14 10:47:35.900272969 +0100
++++ b/lib/libsquish/Makefile.in	2017-01-14 10:53:08.053621314 +0100
+@@ -16,7 +16,7 @@
+ LIB=libsquish.a
+ 
+ ifeq (@USE_TEXTUREPACKER_NATIVE@,1)
+-NATIVE_LIB=libsquish-native.so
++NATIVE_LIB=libsquish-native.a
+ CLEAN_FILES+=$(NATIVE_LIB)
+ 
+ ifeq ($(findstring Darwin,$(shell uname -s)),Darwin)
+@@ -29,7 +29,8 @@
+ ifeq ($(findstring Darwin,$(shell uname -s)),Darwin)
+ 	g++ $(NATIVE_ARCH) -I. $(SRCS) -dynamiclib -install_name `pwd`/libsquish-native.so -o $@
+ else
+-	g++ -I. $(SRCS) -shared -fPIC -Wl,-soname,`pwd`/libsquish-native.so -o $@
++	$(foreach f,$(SRCS),g++ -c $(f) -I. -fPIC -o $(patsubst %.cpp,%-native.o,$(f));)
++	ar rcs $(NATIVE_LIB) $(patsubst %.cpp,%-native.o,$(SRCS))
+ endif
+ endif
+ 
+--- a/tools/TexturePacker/Makefile.in	2017-01-14 19:48:33.797705764 +0100
++++ b/tools/TexturePacker/Makefile.in	2017-01-14 19:48:42.485632125 +0100
+@@ -26,7 +26,7 @@
+                   -I@abs_top_srcdir@/xbmc/linux
+ NATIVE_LIBS    += -L$(NATIVE_ROOT_PATH)/lib
+ endif
+-NATIVE_LIBS    += -lSDL_image -lSDL -llzo2
++NATIVE_LIBS    += -lSDL_image -lSDL -llzo2 -ljpeg -lpng -lz
+ NATIVE_LIBS    += -L@abs_top_srcdir@/lib/libsquish -lsquish-native
+ else
+ LIBS    += -L@abs_top_srcdir@/lib/libsquish -lsquish
+@@ -50,7 +50,7 @@
+ ifeq (@USE_TEXTUREPACKER_NATIVE@,1)
+ # TexturePacker run native on build system, build it with native tools
+ $(TARGET): $(SRCS) @abs_top_srcdir@/xbmc/guilib/XBTF.h
+-	g++ $(DEFINES) $(NATIVE_ARCH) $(NATIVE_CXXFLAGS) $(SRCS) $(NATIVE_LIBS) $(RPATH) -o $(TARGET)
++	g++ $(DEFINES) $(NATIVE_ARCH) $(NATIVE_CXXFLAGS) $(SRCS) $(NATIVE_LIBS) -static-libstdc++ $(RPATH) -o $(TARGET)
+ clean:
+ 	rm -f $(TARGET)
+ else
