@@ -1,0 +1,308 @@
+From 9a5d59299b909c14a2ec7a7b8cf5b08ee7c6cdfd Mon Sep 17 00:00:00 2001
+From: Rudi <r.ihle@s-t.de>
+Date: Fri, 17 Feb 2017 19:45:04 +0100
+Subject: [PATCH] Video: tmbslTDA9989_Edid: Ignore unknown 'Vendor Specific
+ Data'
+
+Ignore data when IEEE registration identifier (OUI) is not 0x000c03
+(HDMI Licensing, LLC). This fixes mis-interpretation when connected
+to a HDMI 2.x port.
+
+Signed-off-by: Rudi <r.ihle@s-t.de>
+---
+ .../comps/tmbslTDA9989/src/tmbslTDA9989_Edid.c     | 256 ++++++++++-----------
+ 1 file changed, 119 insertions(+), 137 deletions(-)
+
+diff --git a/drivers/video/dovefb/nxp_hdmi/comps/tmbslTDA9989/src/tmbslTDA9989_Edid.c b/drivers/video/dovefb/nxp_hdmi/comps/tmbslTDA9989/src/tmbslTDA9989_Edid.c
+index ab28d2a..2879a51 100755
+--- a/drivers/video/dovefb/nxp_hdmi/comps/tmbslTDA9989/src/tmbslTDA9989_Edid.c
++++ b/drivers/video/dovefb/nxp_hdmi/comps/tmbslTDA9989/src/tmbslTDA9989_Edid.c
+@@ -1044,9 +1044,12 @@ parseEdidBlock
+                 dtdFound = storeMonitorDescriptor(pDis, blockPtr);
+             }
+         }
++
++        /* assume DVI mode */
++        pDis->EdidSinkType = HDMITX_SINK_DVI;
+     }
+     else if (blockNumber >= 1)
+-    {   
++    {
+        switch (pDis->EdidBlock[0])
+        {
+           /* CEA EXTENSION */
+@@ -1114,156 +1117,135 @@ parseEdidBlock
+                          break;
+                       case E_CEA_VSDB:         /* We have a VSDB */
+                          /* 5 bytes expected, but this is EDID land so double check*/
+-                         if (blockLength >= 5)
++                         if ((blockLength >= 5) &&
++                             ((blockPtr) < (EDID_BLOCK_SIZE - 5)) &&
++                             (pDis->EdidBlock[blockPtr + 1] == 0x03) &&
++                             (pDis->EdidBlock[blockPtr + 2] == 0x0C) &&
++                             (pDis->EdidBlock[blockPtr + 3] == 0x00))
+                          {
+-                            if ((blockPtr) < (EDID_BLOCK_SIZE - 5))
+-                            {
+-                            if ((pDis->EdidBlock[blockPtr + 1] == 0x03) &&
+-                                (pDis->EdidBlock[blockPtr + 2] == 0x0C) &&
+-                                (pDis->EdidBlock[blockPtr + 3] == 0x00))
+-                            {
+-                               pDis->EdidSinkType = HDMITX_SINK_HDMI;
+-                                   if ((blockPtr) < (EDID_BLOCK_SIZE - 5))
+-                                   {
+-                               pDis->EdidSourceAddress = 
+-                                  ((UInt16)pDis->EdidBlock[blockPtr + 4] << 8) +
+-                                  pDis->EdidBlock[blockPtr + 5];
+-                            }
+-                            else
+-                            {
+-                                /* do nothing */
+-                                   }
++                            pDis->EdidSinkType = HDMITX_SINK_HDMI;
++                            pDis->EdidSourceAddress =
++                                    ((UInt16)pDis->EdidBlock[blockPtr + 4] << 8) +
++                                                    pDis->EdidBlock[blockPtr + 5];
++
++                            if (blockLength >= 6)   /* Space for byte with AI flag */
++                            {   /* Mask AI bit */
++                                if ((blockPtr ) < (EDID_BLOCK_SIZE - 6))
++                                {
++                                if((pDis->EdidBlock[blockPtr + 6] & 0x80) == 0x80)
++                                {
++                                pDis->EdidSinkAi = True;
+                                 }
++                            }
+                                 else
+                                 {
+-                               pDis->EdidSinkType = HDMITX_SINK_DVI;
+-                            }
+-                         }
+-                            else
+-                            {
+                                 /* do nothing */
++                                }
+                             }
+-                         }
+ 
+-                         if (blockLength >= 6)   /* Space for byte with AI flag */
+-                         {   /* Mask AI bit */
+-                            if ((blockPtr ) < (EDID_BLOCK_SIZE - 6))
+-                            {
+-                            if((pDis->EdidBlock[blockPtr + 6] & 0x80) == 0x80)
+-                            {
+-                               pDis->EdidSinkAi = True;
+-                            }
+-                         }
++                            /* Read Max_TMDS_Clock */
++                            if (blockLength >= 7)
++                                pDis->EdidExtraVsdbData.maxTmdsClock = pDis->EdidBlock[blockPtr + 7];
+                             else
+-                            {
+-                              /* do nothing */
++                                pDis->EdidExtraVsdbData.maxTmdsClock = 0;
++
++
++                            /* latency, HDMI Video present and content type fields */
++                            if (blockLength >= 8) {
++                                if ((blockPtr) < (EDID_BLOCK_SIZE - 10))
++                                {
++                                /* Read CNC0~3 */
++                                pDis->EdidExtraVsdbData.cnc0 = pDis->EdidBlock[blockPtr + 8] & 0x01;  /* 1=True, 0=False */
++                                pDis->EdidExtraVsdbData.cnc1 = (pDis->EdidBlock[blockPtr + 8] & 0x02) >> 1;
++                                pDis->EdidExtraVsdbData.cnc2 = (pDis->EdidBlock[blockPtr + 8] & 0x04) >> 2;
++                                pDis->EdidExtraVsdbData.cnc3 = (pDis->EdidBlock[blockPtr + 8] & 0x08) >> 3;
++
++                                if( (pDis->EdidBlock[blockPtr + 8] & 0xC0) == 0xC0 ) {
++                                    /* Read video_latency, audio_latency, I_video_latency, I_audio_latency */
++
++                                        if ((blockPtr) < (EDID_BLOCK_SIZE - 12))
++                                        {
++                                    pDis->EdidLatency.Edidvideo_latency = pDis->EdidBlock[blockPtr + 9];
++                                    pDis->EdidLatency.Edidaudio_latency = pDis->EdidBlock[blockPtr + 10];
++                                    pDis->EdidLatency.EdidIvideo_latency = pDis->EdidBlock[blockPtr + 11];
++                                    pDis->EdidLatency.EdidIaudio_latency = pDis->EdidBlock[blockPtr + 12];
++
++                                    pDis->EdidLatency.latency_available = True;
++                                    pDis->EdidLatency.Ilatency_available = True;
++
++                                    offset3D = 13;  /* offset to the '3D_present' field */
++
++                                        }
++                                        else
++                                        {
++                                            /* do nothing */
++                                        }
++                                }
++                                else if ((pDis->EdidBlock[blockPtr + 8] & 0x80) == 0x80) {
++                                    /* Read video_latency, audio_latency */
++
++                                    pDis->EdidLatency.Edidvideo_latency = pDis->EdidBlock[blockPtr + 9];
++                                    pDis->EdidLatency.Edidaudio_latency = pDis->EdidBlock[blockPtr + 10];
++
++                                    pDis->EdidLatency.latency_available = True;
++
++                                    offset3D = 11;
++                                }
++                                else {
++                                    pDis->EdidLatency.latency_available = False;
++                                    pDis->EdidLatency.Ilatency_available = False;
++                                    offset3D = 9;
++                                }
++
++                                /* Read HDMI_Video_present */
++                                pDis->EdidExtraVsdbData.hdmiVideoPresent = (pDis->EdidBlock[blockPtr + 8] & 0x20) >> 5;
++
++                                }
++                                else
++                                {
++                                    /* do nothing */
++                                }
++                            }
++                            else {
++                                pDis->EdidLatency.latency_available      = False;
++                                pDis->EdidLatency.Ilatency_available     = False;
++                                pDis->EdidExtraVsdbData.hdmiVideoPresent = False;
++                                pDis->EdidExtraVsdbData.cnc0 = False;
++                                pDis->EdidExtraVsdbData.cnc1 = False;
++                                pDis->EdidExtraVsdbData.cnc2 = False;
++                                pDis->EdidExtraVsdbData.cnc3 = False;
+                             }
+-                         }
+ 
+-                         /* Read Max_TMDS_Clock */
+-                         if (blockLength >= 7)  
+-                             pDis->EdidExtraVsdbData.maxTmdsClock = pDis->EdidBlock[blockPtr + 7];
+-                         else
+-                             pDis->EdidExtraVsdbData.maxTmdsClock = 0;
+-
+-
+-                         /* latency, HDMI Video present and content type fields */
+-                         if (blockLength >= 8) {
+-                             if ((blockPtr) < (EDID_BLOCK_SIZE - 10))
+-                             {
+-                             /* Read CNC0~3 */
+-                             pDis->EdidExtraVsdbData.cnc0 = pDis->EdidBlock[blockPtr + 8] & 0x01;  /* 1=True, 0=False */
+-                             pDis->EdidExtraVsdbData.cnc1 = (pDis->EdidBlock[blockPtr + 8] & 0x02) >> 1;
+-                             pDis->EdidExtraVsdbData.cnc2 = (pDis->EdidBlock[blockPtr + 8] & 0x04) >> 2;
+-                             pDis->EdidExtraVsdbData.cnc3 = (pDis->EdidBlock[blockPtr + 8] & 0x08) >> 3;
+-                                                          
+-                             if( (pDis->EdidBlock[blockPtr + 8] & 0xC0) == 0xC0 ) {
+-                                 /* Read video_latency, audio_latency, I_video_latency, I_audio_latency */
+-
+-                                     if ((blockPtr) < (EDID_BLOCK_SIZE - 12))
+-                                     {
+-                                 pDis->EdidLatency.Edidvideo_latency = pDis->EdidBlock[blockPtr + 9];
+-                                 pDis->EdidLatency.Edidaudio_latency = pDis->EdidBlock[blockPtr + 10];
+-                                 pDis->EdidLatency.EdidIvideo_latency = pDis->EdidBlock[blockPtr + 11];
+-                                 pDis->EdidLatency.EdidIaudio_latency = pDis->EdidBlock[blockPtr + 12];
+-
+-                                 pDis->EdidLatency.latency_available = True;
+-                                 pDis->EdidLatency.Ilatency_available = True;
+-
+-                                 offset3D = 13;  /* offset to the '3D_present' field */
+-
+-                                     }
+-                                     else
+-                                     {
+-                                        /* do nothing */
+-                                     }									 
+-                             }
+-                             else if ((pDis->EdidBlock[blockPtr + 8] & 0x80) == 0x80) {
+-                                 /* Read video_latency, audio_latency */
+-
+-                                 pDis->EdidLatency.Edidvideo_latency = pDis->EdidBlock[blockPtr + 9];
+-                                 pDis->EdidLatency.Edidaudio_latency = pDis->EdidBlock[blockPtr + 10];
+-
+-                                 pDis->EdidLatency.latency_available = True;
+-
+-                                 offset3D = 11;
+-                             }
+-                             else {
+-                                pDis->EdidLatency.latency_available = False;
+-                                pDis->EdidLatency.Ilatency_available = False;
+-                                offset3D = 9;
+-                             }
+-
+-                             /* Read HDMI_Video_present */
+-                             pDis->EdidExtraVsdbData.hdmiVideoPresent = (pDis->EdidBlock[blockPtr + 8] & 0x20) >> 5;
+-
+-                             }
+-                             else
+-                             {
+-                                 /* do nothing */
+-                             }
+-                         }
+-                         else {
+-                             pDis->EdidLatency.latency_available      = False;
+-                             pDis->EdidLatency.Ilatency_available     = False;
+-                             pDis->EdidExtraVsdbData.hdmiVideoPresent = False;
+-                             pDis->EdidExtraVsdbData.cnc0 = False;
+-                             pDis->EdidExtraVsdbData.cnc1 = False;
+-                             pDis->EdidExtraVsdbData.cnc2 = False;
+-                             pDis->EdidExtraVsdbData.cnc3 = False;
+-                         }
+ 
++                            /* 3D data fields according to HDMI 1.4a standard */
++                            if (pDis->EdidExtraVsdbData.hdmiVideoPresent) {
+ 
+-                         /* 3D data fields according to HDMI 1.4a standard */
+-                         if (pDis->EdidExtraVsdbData.hdmiVideoPresent) {
+-
+-                             /* read 3D_present */
+-                             pDis->EdidExtraVsdbData.h3DPresent = (pDis->EdidBlock[blockPtr + offset3D] & 0x80) >> 7;
+-                             /* read 3D_Multi_present */
+-                             pDis->EdidExtraVsdbData.h3DMultiPresent = (pDis->EdidBlock[blockPtr + offset3D] & 0x60) >> 5;
+-                             /* read image_Size */
+-                             pDis->EdidExtraVsdbData.imageSize = (pDis->EdidBlock[blockPtr + offset3D] & 0x18) >> 3;
+-                             
+-                             /* read HDMI_3D_LEN and HDMI_XX_LEN */
+-                             offset3D += 1;
+-                             pDis->EdidExtraVsdbData.hdmi3DLen  = pDis->EdidBlock[blockPtr + offset3D] & 0x1F;
+-                             pDis->EdidExtraVsdbData.hdmiVicLen = (pDis->EdidBlock[blockPtr + offset3D] & 0xE0) >> 5;
+-
+-                             if((pDis->EdidExtraVsdbData.hdmi3DLen + pDis->EdidExtraVsdbData.hdmiVicLen) > 0)
+-                             {
+-                                 /* copy the rest of the bytes*/
+-                                 lmemcpy(pDis->EdidExtraVsdbData.ext3DData, &(pDis->EdidBlock[blockPtr + offset3D + 1]), blockLength-offset3D);
+-                             }
+-                         }
+-                         else {
+-                             pDis->EdidExtraVsdbData.h3DPresent       = False;
+-                             pDis->EdidExtraVsdbData.h3DMultiPresent  = 0;
+-                             pDis->EdidExtraVsdbData.imageSize        = 0;
+-                             pDis->EdidExtraVsdbData.hdmi3DLen        = 0;
+-                             pDis->EdidExtraVsdbData.hdmiVicLen       = 0;
+-                         }
++                                /* read 3D_present */
++                                pDis->EdidExtraVsdbData.h3DPresent = (pDis->EdidBlock[blockPtr + offset3D] & 0x80) >> 7;
++                                /* read 3D_Multi_present */
++                                pDis->EdidExtraVsdbData.h3DMultiPresent = (pDis->EdidBlock[blockPtr + offset3D] & 0x60) >> 5;
++                                /* read image_Size */
++                                pDis->EdidExtraVsdbData.imageSize = (pDis->EdidBlock[blockPtr + offset3D] & 0x18) >> 3;
+ 
++                                /* read HDMI_3D_LEN and HDMI_XX_LEN */
++                                offset3D += 1;
++                                pDis->EdidExtraVsdbData.hdmi3DLen  = pDis->EdidBlock[blockPtr + offset3D] & 0x1F;
++                                pDis->EdidExtraVsdbData.hdmiVicLen = (pDis->EdidBlock[blockPtr + offset3D] & 0xE0) >> 5;
+ 
++                                if((pDis->EdidExtraVsdbData.hdmi3DLen + pDis->EdidExtraVsdbData.hdmiVicLen) > 0)
++                                {
++                                    /* copy the rest of the bytes*/
++                                    lmemcpy(pDis->EdidExtraVsdbData.ext3DData, &(pDis->EdidBlock[blockPtr + offset3D + 1]), blockLength-offset3D);
++                                }
++                            }
++                            else {
++                                pDis->EdidExtraVsdbData.h3DPresent       = False;
++                                pDis->EdidExtraVsdbData.h3DMultiPresent  = 0;
++                                pDis->EdidExtraVsdbData.imageSize        = 0;
++                                pDis->EdidExtraVsdbData.hdmi3DLen        = 0;
++                                pDis->EdidExtraVsdbData.hdmiVicLen       = 0;
++                            }
++                         }
+                          break;
+ 
+ 
+-- 
+2.7.4
+
