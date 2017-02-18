@@ -1,4 +1,4 @@
-From 79db2872408f55408fae354f90f76fbb2abb5a6d Mon Sep 17 00:00:00 2001
+From ef25c9b2f6d3ac66f5a3b319d8e64d19f925270e Mon Sep 17 00:00:00 2001
 From: warped-rudi <r.ihle@s-t.de>
 Date: Fri, 17 Feb 2017 11:21:20 +0100
 Subject: [PATCH] video: mxc_edid: Ignore unknown 'Vendor Specific Data'
@@ -9,11 +9,11 @@ to a HDMI 2.x port.
 
 Signed-off-by: warped-rudi <r.ihle@s-t.de>
 ---
- drivers/video/mxc/mxc_edid.c |   43 +++++++++++++++++++++++++-----------------
- 1 file changed, 26 insertions(+), 17 deletions(-)
+ drivers/video/mxc/mxc_edid.c | 43 +++++++++++++++++++++++++++----------------
+ 1 file changed, 27 insertions(+), 16 deletions(-)
 
 diff --git a/drivers/video/mxc/mxc_edid.c b/drivers/video/mxc/mxc_edid.c
-index 1aaaa68..8ba837d 100644
+index 1aaaa68..e0d230e 100644
 --- a/drivers/video/mxc/mxc_edid.c
 +++ b/drivers/video/mxc/mxc_edid.c
 @@ -363,7 +363,7 @@ int mxc_edid_parse_ext_blk(unsigned char *edid,
@@ -25,7 +25,7 @@ index 1aaaa68..8ba837d 100644
  					unsigned char deep_color;
  					unsigned char latency_present;
  					unsigned char I_latency_present;
-@@ -372,23 +372,31 @@ int mxc_edid_parse_ext_blk(unsigned char *edid,
+@@ -372,24 +372,33 @@ int mxc_edid_parse_ext_blk(unsigned char *edid,
  					unsigned char hdmi_3d_multi_present;
  					unsigned char hdmi_vic_len;
  					unsigned char hdmi_3d_len;
@@ -42,6 +42,8 @@ index 1aaaa68..8ba837d 100644
 +						index += blklen;
 +						break;
 +					}
++
++					DPRINTK("VSD block HDMI 1.x 'HDMI Licensing, LLC' present\n");
  
 -					IEEE_reg_iden[0] = edid[index+1];
 -					IEEE_reg_iden[1] = edid[index+2];
@@ -50,14 +52,13 @@ index 1aaaa68..8ba837d 100644
 -					cfg->physical_address[1] = (edid[index+4] & 0x0f);
 -					cfg->physical_address[2] = (edid[index+5] & 0xf0) >> 4;
 -					cfg->physical_address[3] = (edid[index+5] & 0x0f);
-+					DPRINTK("VSD block HDMI 1.x 'HDMI Licensing, LLC' present\n");
-+					cfg->hdmi_cap = 1;
- 
+-
 -					if ((IEEE_reg_iden[0] == 0x03) &&
 -							(IEEE_reg_iden[1] == 0x0c) &&
 -							(IEEE_reg_iden[2] == 0x00))
--						cfg->hdmi_cap = 1;
 +					if (blklen > 4) {
+ 						cfg->hdmi_cap = 1;
+ 
 +						cfg->physical_address[0] = edid[index+4] >> 4;
 +						cfg->physical_address[1] = edid[index+4] & 0x0f;
 +						cfg->physical_address[2] = edid[index+5] >> 4;
@@ -67,18 +68,11 @@ index 1aaaa68..8ba837d 100644
 +							cfg->physical_address[0], cfg->physical_address[1],
 +							cfg->physical_address[2], cfg->physical_address[3]);
 +					}
- 
++
  					if (blklen > 5) {
  						deep_color = edid[index+6];
-@@ -406,7 +414,6 @@ int mxc_edid_parse_ext_blk(unsigned char *edid,
- 							cfg->vsd_dvi_dual = true;
- 					}
- 
--					DPRINTK("VSD hdmi capability %d\n", cfg->hdmi_cap);
- 					DPRINTK("VSD support ai %d\n", cfg->vsd_support_ai);
- 					DPRINTK("VSD support deep color 48bit %d\n", cfg->vsd_dc_48bit);
- 					DPRINTK("VSD support deep color 36bit %d\n", cfg->vsd_dc_36bit);
-@@ -440,6 +447,7 @@ int mxc_edid_parse_ext_blk(unsigned char *edid,
+ 						if (deep_color & 0x80)
+@@ -440,6 +449,7 @@ int mxc_edid_parse_ext_blk(unsigned char *edid,
  						break;
  					}
  
@@ -86,7 +80,7 @@ index 1aaaa68..8ba837d 100644
  					index += 9;
  
  					/*latency present */
-@@ -482,6 +490,8 @@ int mxc_edid_parse_ext_blk(unsigned char *edid,
+@@ -482,6 +492,8 @@ int mxc_edid_parse_ext_blk(unsigned char *edid,
  						}
  
  						if (hdmi_3d_len > 0) {
@@ -95,7 +89,7 @@ index 1aaaa68..8ba837d 100644
  							if (hdmi_3d_present) {
  								if (hdmi_3d_multi_present == 0x1) {
  									cfg->hdmi_3d_struct_all = (edid[index] << 8) | edid[index+1];
-@@ -490,8 +500,7 @@ int mxc_edid_parse_ext_blk(unsigned char *edid,
+@@ -490,8 +502,7 @@ int mxc_edid_parse_ext_blk(unsigned char *edid,
  									cfg->hdmi_3d_struct_all = (edid[index] << 8) | edid[index+1];
  									cfg->hdmi_3d_mask_all = (edid[index+2] << 8) | edid[index+3];
  									index_inc = 4;
@@ -106,5 +100,5 @@ index 1aaaa68..8ba837d 100644
  
  							DPRINTK("HDMI 3d struct all =0x%x\n", cfg->hdmi_3d_struct_all);
 -- 
-1.7.9.5
+2.7.4
 
