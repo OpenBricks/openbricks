@@ -1,20 +1,42 @@
-From 04fc31e22d7b52d854775562a4d28de6385495be Mon Sep 17 00:00:00 2001
-From: Rudi <r.ihle@s-t.de>
-Date: Sat, 17 May 2014 14:46:01 +0200
-Subject: [PATCH 16/26] Dove: support graphics scaling
+From b32f9891096429b7c1bae3a7f3f76870f0ad0029 Mon Sep 17 00:00:00 2001
+From: warped-rudi <r.ihle@s-t.de>
+Date: Thu, 16 Mar 2017 09:30:42 +0100
+Subject: [PATCH] Dove: Support graphics scaling option
 
 ---
- xbmc/guilib/GraphicContext.cpp |   23 +++++++++++++++++-
- xbmc/guilib/GraphicContext.h   |    4 ++++
- xbmc/windowing/X11/XRandR.cpp  |   50 ++++++++++++++++++++++++++++++++++++++++
- xbmc/windowing/X11/XRandR.h    |    3 +++
- 4 files changed, 79 insertions(+), 1 deletion(-)
+ xbmc/cores/VideoRenderers/OverlayRenderer.cpp |    9 ++++++
+ xbmc/guilib/GraphicContext.cpp                |   23 +++++++++++++-
+ xbmc/guilib/GraphicContext.h                  |    4 +++
+ xbmc/windowing/X11/WinSystemX11.cpp           |    5 +++
+ xbmc/windowing/X11/XRandR.cpp                 |   42 +++++++++++++++++++++++++
+ xbmc/windowing/X11/XRandR.h                   |    5 +++
+ 6 files changed, 87 insertions(+), 1 deletion(-)
 
+diff --git a/xbmc/cores/VideoRenderers/OverlayRenderer.cpp b/xbmc/cores/VideoRenderers/OverlayRenderer.cpp
+index a1d1fa7..bb6febb 100644
+--- a/xbmc/cores/VideoRenderers/OverlayRenderer.cpp
++++ b/xbmc/cores/VideoRenderers/OverlayRenderer.cpp
+@@ -301,6 +301,15 @@ void CRenderer::Render(COverlay* o, float adjust_height)
+   state.x += GetStereoscopicDepth();
+   state.y += adjust_height;
+ 
++#ifdef HAS_MARVELL_DOVE
++  GRAPHICS_SCALING scale = g_graphicsContext.getGraphicsScale();
++
++  state.x = (state.x * 100) / scale;
++  state.y = (state.y * 100) / scale;
++  state.width = (state.width * 100) /scale;
++  state.height = (state.height *100) /scale;
++#endif
++
+   o->Render(state);
+ }
+ 
 diff --git a/xbmc/guilib/GraphicContext.cpp b/xbmc/guilib/GraphicContext.cpp
-index 38f17a7..dd197e3 100644
+index a1b8812..b623ab4 100644
 --- a/xbmc/guilib/GraphicContext.cpp
 +++ b/xbmc/guilib/GraphicContext.cpp
-@@ -767,19 +767,40 @@
+@@ -767,19 +767,40 @@ void CGraphicContext::SetResInfo(RESOLUTION res, const RESOLUTION_INFO& info)
    }
  }
  
@@ -57,7 +79,7 @@ index 38f17a7..dd197e3 100644
        g_guiSkinzoom = (CSettingInt*)CSettings::GetInstance().GetSetting(CSettings::SETTING_LOOKANDFEEL_SKINZOOM);
  
 diff --git a/xbmc/guilib/GraphicContext.h b/xbmc/guilib/GraphicContext.h
-index 6c2dcd4..56d4529 100644
+index c04386e..c011087 100644
 --- a/xbmc/guilib/GraphicContext.h
 +++ b/xbmc/guilib/GraphicContext.h
 @@ -126,6 +126,10 @@ public:
@@ -71,50 +93,27 @@ index 6c2dcd4..56d4529 100644
    /* \brief Get UI scaling information from a given resolution to the screen resolution.
     Takes account of overscan and UI zooming.
     \param res the resolution to scale from.
-diff --git a/xbmc/cores/VideoRenderers/OverlayRenderer.cpp b/xbmc/cores/VideoRenderers/OverlayRenderer.cpp
-index e6a2d81..8e73056 100644
---- a/xbmc/cores/VideoRenderers/OverlayRenderer.cpp
-+++ b/xbmc/cores/VideoRenderers/OverlayRenderer.cpp
-@@ -301,6 +301,15 @@
-   state.x += GetStereoscopicDepth();
-   state.y += adjust_height;
+diff --git a/xbmc/windowing/X11/WinSystemX11.cpp b/xbmc/windowing/X11/WinSystemX11.cpp
+index b081c53..f3c4962 100644
+--- a/xbmc/windowing/X11/WinSystemX11.cpp
++++ b/xbmc/windowing/X11/WinSystemX11.cpp
+@@ -313,6 +313,11 @@ bool CWinSystemX11::SetFullScreen(bool fullScreen, RESOLUTION_INFO& res, bool bl
+     }
+   }
  
 +#ifdef HAS_MARVELL_DOVE
-+  GRAPHICS_SCALING scale = g_graphicsContext.getGraphicsScale();
-+
-+  state.x = (state.x * 100) / scale;
-+  state.y = (state.y * 100) / scale;
-+  state.width = (state.width * 100) /scale;
-+  state.height = (state.height *100) /scale;
++  if (m_mainWindow)
++    g_xrandr.SetGraphicsScaler(g_graphicsContext.getGraphicsScale());
 +#endif
 +
-   o->Render(state);
- }
+   if (!SetWindow(res.iWidth, res.iHeight, fullScreen, m_userOutput))
+     return false;
  
---- a/xbmc/windowing/X11/XRandR.h
-+++ b/xbmc/windowing/X11/XRandR.h
-@@ -29,6 +29,8 @@
- #include <vector>
- #include <map>
- 
-+#include "guilib/Resolution.h"
-+
- class XMode
- {
- public:
-@@ -117,6 +119,9 @@
-   //bool Has1080p();
-   //bool Has720p();
-   //bool Has480p();
-+#ifdef TARGET_MARVELL_DOVE
-+  void SetGraphicsScaler(enum GRAPHICS_SCALING scale);
-+#endif
- 
- private:
-   bool m_bInit;
+diff --git a/xbmc/windowing/X11/XRandR.cpp b/xbmc/windowing/X11/XRandR.cpp
+index 71b2800..bc7e1b0 100644
 --- a/xbmc/windowing/X11/XRandR.cpp
 +++ b/xbmc/windowing/X11/XRandR.cpp
-@@ -504,6 +508,48 @@
+@@ -504,6 +504,48 @@ int CXRandR::GetCrtc(int x, int y, float &hz)
    return crtc;
  }
  
@@ -163,19 +162,29 @@ index e6a2d81..8e73056 100644
  CXRandR g_xrandr;
  
  #endif // HAVE_X11
---- a/xbmc/windowing/X11/WinSystemX11.cpp	2016-11-26 16:14:40.521596123 +0100
-+++ b/xbmc/windowing/X11/WinSystemX11.cpp	2016-11-26 16:16:32.257600686 +0100
-@@ -313,6 +313,11 @@
-     }
-   }
+diff --git a/xbmc/windowing/X11/XRandR.h b/xbmc/windowing/X11/XRandR.h
+index 3d54108..0cb96e1 100644
+--- a/xbmc/windowing/X11/XRandR.h
++++ b/xbmc/windowing/X11/XRandR.h
+@@ -29,6 +29,8 @@
+ #include <vector>
+ #include <map>
  
-+#ifdef HAS_MARVELL_DOVE
-+  if (m_mainWindow)
-+    g_xrandr.SetGraphicsScaler(g_graphicsContext.getGraphicsScale());
-+#endif
++#include "guilib/Resolution.h"
 +
-   if (!SetWindow(res.iWidth, res.iHeight, fullScreen, m_userOutput))
-     return false;
+ class XMode
+ {
+ public:
+@@ -117,6 +119,9 @@ public:
+   //bool Has1080p();
+   //bool Has720p();
+   //bool Has480p();
++#ifdef TARGET_MARVELL_DOVE
++  void SetGraphicsScaler(enum GRAPHICS_SCALING scale);
++#endif
  
+ private:
+   bool m_bInit;
 -- 
 1.7.9.5
+

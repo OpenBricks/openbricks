@@ -1,36 +1,17 @@
-From 5c3b57b25c25200aa768e3dd5ebc0e8fb416e094 Mon Sep 17 00:00:00 2001
-From: Rudi <r.ihle@s-t.de>
-Date: Sun, 25 May 2014 10:34:24 +0200
-Subject: [PATCH 24/25] Dove: hookup hardware JPEG decoding
+From 1e27ac3867a91524b4d1638b9d2a6bafd6914235 Mon Sep 17 00:00:00 2001
+From: warped-rudi <r.ihle@s-t.de>
+Date: Thu, 16 Mar 2017 09:30:43 +0100
+Subject: [PATCH] Dove: Enable hardware JPEG decoding build
 
 ---
- xbmc/guilib/JpegIO.cpp |  122 ++++++++++++++++++++++++++++++++++++++++++++++--
- xbmc/guilib/JpegIO.h   |    5 ++
- 2 files changed, 122 insertions(+), 5 deletions(-)
+ xbmc/guilib/JpegIO.cpp |   52 ++++++++++++++++++++++++++++++++++++------------
+ xbmc/guilib/JpegIO.h   |    5 +++++
+ 2 files changed, 44 insertions(+), 13 deletions(-)
 
---- a/xbmc/guilib/JpegIO.h	2016-04-26 09:59:06.000000000 +0200
-+++ b/xbmc/guilib/JpegIO.h	2016-11-25 14:19:13.663810361 +0100
-@@ -29,6 +29,8 @@
- #include <jpeglib.h>
- #include "iimage.h"
- 
-+class CJpegHwDec;
-+
- class CJpegIO : public IImage
- {
- 
-@@ -53,6 +55,9 @@
- 
-   static unsigned int   GetExifOrientation(unsigned char* exif_data, unsigned int exif_data_size);
- 
-+  CJpegHwDec     *m_hwDec;
-+  unsigned int   m_headerSize;
-+
-   unsigned char  *m_inputBuff;
-   unsigned int   m_inputBuffSize;
-   struct         jpeg_decompress_struct m_cinfo;
---- a/xbmc/guilib/JpegIO.cpp	2016-11-25 09:55:11.260339980 +0100
-+++ b/xbmc/guilib/JpegIO.cpp	2016-11-25 14:38:44.483373804 +0100
+diff --git a/xbmc/guilib/JpegIO.cpp b/xbmc/guilib/JpegIO.cpp
+index effa200..0fc4357 100644
+--- a/xbmc/guilib/JpegIO.cpp
++++ b/xbmc/guilib/JpegIO.cpp
 @@ -26,6 +26,7 @@
  #include "utils/log.h"
  #include "XBTF.h"
@@ -39,7 +20,7 @@ Subject: [PATCH 24/25] Dove: hookup hardware JPEG decoding
  #include "utils/StringUtils.h"
  #include <setjmp.h>
  
-@@ -229,8 +230,10 @@
+@@ -229,8 +230,10 @@ static void x_jpeg_mem_dest (j_compress_ptr cinfo,
  
  CJpegIO::CJpegIO()
  {
@@ -50,7 +31,7 @@ Subject: [PATCH 24/25] Dove: hookup hardware JPEG decoding
    m_orientation = 0;
    m_inputBuffSize = 0;
    m_inputBuff = NULL;
-@@ -241,11 +244,12 @@
+@@ -241,11 +244,12 @@ CJpegIO::CJpegIO()
  CJpegIO::~CJpegIO()
  {
    Close();
@@ -64,7 +45,7 @@ Subject: [PATCH 24/25] Dove: hookup hardware JPEG decoding
    m_inputBuff = NULL;
    m_inputBuffSize = 0;
    ReleaseThumbnailBuffer();
-@@ -256,14 +260,7 @@
+@@ -256,14 +260,7 @@ bool CJpegIO::Open(const std::string &texturePath, unsigned int minx, unsigned i
    Close();
  
    m_texturePath = texturePath;
@@ -80,7 +61,7 @@ Subject: [PATCH 24/25] Dove: hookup hardware JPEG decoding
  
    return Read(m_inputBuff, m_inputBuffSize, minx, miny);
  }
-@@ -318,13 +315,13 @@
+@@ -318,13 +315,13 @@ bool CJpegIO::Read(unsigned char* buffer, unsigned int bufSize, unsigned int min
      m_cinfo.scale_denom = 8;
      m_cinfo.out_color_space = JCS_RGB;
      unsigned int maxtexsize = g_Windowing.GetMaxTextureSize();
@@ -96,7 +77,7 @@ Subject: [PATCH 24/25] Dove: hookup hardware JPEG decoding
          break;
        }
        if (m_cinfo.output_width >= minx && m_cinfo.output_height >= miny)
-@@ -336,6 +333,8 @@
+@@ -336,6 +333,8 @@ bool CJpegIO::Read(unsigned char* buffer, unsigned int bufSize, unsigned int min
  
      if (m_cinfo.marker_list)
        m_orientation = GetExifOrientation(m_cinfo.marker_list->data, m_cinfo.marker_list->data_length);
@@ -105,14 +86,14 @@ Subject: [PATCH 24/25] Dove: hookup hardware JPEG decoding
      return true;
    }
  }
-@@ -343,9 +342,35 @@
+@@ -343,9 +342,35 @@ bool CJpegIO::Read(unsigned char* buffer, unsigned int bufSize, unsigned int min
  bool CJpegIO::Decode(unsigned char* const pixels, unsigned int width, unsigned int height, unsigned int pitch, unsigned int format)
  {
    unsigned char *dst = (unsigned char*)pixels;
 -  unsigned int copyWidth = std::min(m_width, width);
 -  unsigned int copyHeight = std::min(m_height, height);
 +  unsigned int featureFlags = 0;
- 
++
 +  if (m_cinfo.progressive_mode)
 +    featureFlags |= CJpegHwDec::ffProgressive;
 +  if (m_cinfo.arith_code)
@@ -138,19 +119,12 @@ Subject: [PATCH 24/25] Dove: hookup hardware JPEG decoding
 +      return true;
 +    }
 +  }
-+
+ 
 +  unsigned int copyHeight = std::min(m_height, height);
    struct my_error_mgr jerr;
    m_cinfo.err = jpeg_std_error(&jerr.pub);
    jerr.pub.error_exit = jpeg_error_exit;
-@@ -371,12 +396,13 @@
-     {
- #ifdef JCS_ALPHA_EXTENSIONS
-       m_cinfo.out_color_space = JCS_EXT_BGRA;
--      while (m_cinfo.output_scanline < m_height)
-+      while (m_cinfo.output_scanline < copyHeight)
-       {
-         jpeg_read_scanlines(&m_cinfo, &dst, 1);
+@@ -377,6 +402,7 @@ bool CJpegIO::Decode(unsigned char* const pixels, unsigned int width, unsigned i
          dst += pitch;
        }
  #else
@@ -158,6 +132,29 @@ Subject: [PATCH 24/25] Dove: hookup hardware JPEG decoding
        unsigned char* row = new unsigned char[m_width * 3];
        while (m_cinfo.output_scanline < copyHeight)
        {
+diff --git a/xbmc/guilib/JpegIO.h b/xbmc/guilib/JpegIO.h
+index f154547..3af86dc 100644
+--- a/xbmc/guilib/JpegIO.h
++++ b/xbmc/guilib/JpegIO.h
+@@ -29,6 +29,8 @@
+ #include <jpeglib.h>
+ #include "iimage.h"
+ 
++class CJpegHwDec;
++
+ class CJpegIO : public IImage
+ {
+ 
+@@ -53,6 +55,9 @@ protected:
+ 
+   static unsigned int   GetExifOrientation(unsigned char* exif_data, unsigned int exif_data_size);
+ 
++  CJpegHwDec     *m_hwDec;
++  unsigned int   m_headerSize;
++
+   unsigned char  *m_inputBuff;
+   unsigned int   m_inputBuffSize;
+   struct         jpeg_decompress_struct m_cinfo;
 -- 
 1.7.9.5
 
