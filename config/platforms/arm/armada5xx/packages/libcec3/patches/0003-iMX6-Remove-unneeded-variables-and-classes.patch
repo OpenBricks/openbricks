@@ -1,0 +1,234 @@
+From 9480e291e667c0a6a9ee02179827fae605ba87d5 Mon Sep 17 00:00:00 2001
+From: Rudi <r.ihle@s-t.de>
+Date: Sun, 6 Nov 2016 09:09:00 +0100
+Subject: [PATCH] iMX6: Remove unneeded variables and classes
+
+---
+ src/libcec/CMakeLists.txt                          |   1 -
+ src/libcec/adapter/IMX/AdapterMessageQueue.h       | 135 ---------------------
+ .../adapter/IMX/IMXCECAdapterCommunication.cpp     |   7 +-
+ .../adapter/IMX/IMXCECAdapterCommunication.h       |   4 -
+ 4 files changed, 1 insertion(+), 146 deletions(-)
+ delete mode 100644 src/libcec/adapter/IMX/AdapterMessageQueue.h
+
+diff --git a/src/libcec/CMakeLists.txt b/src/libcec/CMakeLists.txt
+index a134b01..2d8b443 100644
+--- a/src/libcec/CMakeLists.txt
++++ b/src/libcec/CMakeLists.txt
+@@ -100,7 +100,6 @@ set(CEC_HEADERS devices/CECRecordingDevice.h
+                 adapter/RPi/RPiCECAdapterMessageQueue.h
+                 adapter/RPi/RPiCECAdapterCommunication.h
+                 adapter/RPi/RPiCECAdapterDetection.h
+-                adapter/IMX/AdapterMessageQueue.h
+                 adapter/IMX/IMXCECAdapterCommunication.h
+                 adapter/IMX/IMXCECAdapterDetection.h
+                 CECInputBuffer.h
+diff --git a/src/libcec/adapter/IMX/AdapterMessageQueue.h b/src/libcec/adapter/IMX/AdapterMessageQueue.h
+deleted file mode 100644
+index f4d5708..0000000
+--- a/src/libcec/adapter/IMX/AdapterMessageQueue.h
++++ /dev/null
+@@ -1,135 +0,0 @@
+-#pragma once
+-/*
+- * This file is part of the libCEC(R) library.
+- *
+- * libCEC(R) is Copyright (C) 2011-2013 Pulse-Eight Limited.  All rights reserved.
+- * libCEC(R) is an original work, containing original code.
+- *
+- * libCEC(R) is a trademark of Pulse-Eight Limited.
+- *
+- * This program is dual-licensed; you can redistribute it and/or modify
+- * it under the terms of the GNU General Public License as published by
+- * the Free Software Foundation; either version 2 of the License, or
+- * (at your option) any later version.
+- *
+- * This program is distributed in the hope that it will be useful,
+- * but WITHOUT ANY WARRANTY; without even the implied warranty of
+- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+- * GNU General Public License for more details.
+- *
+- * You should have received a copy of the GNU General Public License
+- * along with this program; if not, write to the Free Software
+- * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+- *
+- *
+- * Alternatively, you can license this library under a commercial license,
+- * please contact Pulse-Eight Licensing for more information.
+- *
+- * For more information contact:
+- * Pulse-Eight Licensing       <license@pulse-eight.com>
+- *     http://www.pulse-eight.com/
+- *     http://www.pulse-eight.net/
+- */
+-
+-#include "env.h"
+-#include "p8-platform/threads/mutex.h"
+-
+-namespace CEC
+-{
+-  using namespace P8PLATFORM;
+-
+-  class CAdapterMessageQueueEntry
+-  {
+-  public:
+-    CAdapterMessageQueueEntry(const cec_command &command)
+-       : m_bWaiting(true), m_retval((uint32_t)-1), m_bSucceeded(false)
+-    {
+-      m_hash = hashValue(
+-        uint32_t(command.opcode_set ? command.opcode : CEC_OPCODE_NONE),
+-        command.initiator, command.destination);
+-    }
+-
+-    virtual ~CAdapterMessageQueueEntry(void) {}
+-
+-    /*!
+-     * @brief Query result from worker thread
+-     */
+-    uint32_t Result() const
+-    {
+-      return m_retval;
+-    }
+-
+-    /*!
+-     * @brief Signal waiting threads
+-     */
+-    void Broadcast(void)
+-    {
+-      CLockObject lock(m_mutex);
+-      m_condition.Broadcast();
+-    }
+-
+-    /*!
+-     * @brief Signal waiting thread(s) when message matches this entry
+-     */
+-    bool CheckMatch(uint32_t opcode, cec_logical_address initiator, 
+-                    cec_logical_address destination, uint32_t response)
+-    {
+-      uint32_t hash = hashValue(opcode, initiator, destination);
+-
+-      if (hash == m_hash)
+-      {
+-        CLockObject lock(m_mutex);
+-
+-        m_retval = response;
+-        m_bSucceeded = true;
+-        m_condition.Signal();
+-        return true;
+-      }
+-
+-      return false;
+-    }
+-
+-    /*!
+-     * @brief Wait for a response to this command.
+-     * @param iTimeout The timeout to use while waiting.
+-     * @return True when a response was received before the timeout passed, false otherwise.
+-     */
+-    bool Wait(uint32_t iTimeout)
+-    {
+-      CLockObject lock(m_mutex);
+-
+-      bool bReturn = m_bSucceeded ? true : m_condition.Wait(m_mutex, m_bSucceeded, iTimeout);
+-      m_bWaiting = false;
+-      return bReturn;
+-    }
+-
+-    /*!
+-     * @return True while a thread is waiting for a signal or isn't waiting yet, false otherwise.
+-     */
+-    bool IsWaiting(void)
+-    {
+-      CLockObject lock(m_mutex);
+-      return m_bWaiting;
+-    }
+-
+-    /*!
+-     * @return Hash value for given cec_command
+-     */
+-    static uint32_t hashValue(uint32_t opcode,
+-                              cec_logical_address initiator,
+-                              cec_logical_address destination)
+-    {
+-      return 1 | ((uint32_t)initiator << 8) |
+-             ((uint32_t)destination << 16) | ((uint32_t)opcode << 16);
+-    }
+-
+-  private:
+-    bool                         m_bWaiting;     /**< true while a thread is waiting or when it hasn't started waiting yet */
+-    P8PLATFORM::CCondition<bool>   m_condition;    /**< the condition to wait on */
+-    P8PLATFORM::CMutex             m_mutex;        /**< mutex for changes to this class */
+-    uint32_t                  	 m_hash;
+-    uint32_t                     m_retval;
+-    bool                         m_bSucceeded;
+-  };
+-
+-};
+diff --git a/src/libcec/adapter/IMX/IMXCECAdapterCommunication.cpp b/src/libcec/adapter/IMX/IMXCECAdapterCommunication.cpp
+index 147a87e..0f872ab 100644
+--- a/src/libcec/adapter/IMX/IMXCECAdapterCommunication.cpp
++++ b/src/libcec/adapter/IMX/IMXCECAdapterCommunication.cpp
+@@ -62,8 +62,6 @@ using namespace std;
+ using namespace CEC;
+ using namespace P8PLATFORM;
+ 
+-#include "AdapterMessageQueue.h"
+-
+ #define LIB_CEC m_callback->GetLib()
+ 
+ // these are defined in nxp private header file
+@@ -78,13 +76,11 @@ using namespace P8PLATFORM;
+ 
+ 
+ CIMXCECAdapterCommunication::CIMXCECAdapterCommunication(IAdapterCommunicationCallback *callback) :
+-    IAdapterCommunication(callback)/*,
+-    m_bLogicalAddressChanged(false)*/
++    IAdapterCommunication(callback)
+ {
+   CLockObject lock(m_mutex);
+ 
+   m_iNextMessage = 0;
+-  //m_logicalAddresses.Clear();
+   m_logicalAddress = CECDEVICE_UNKNOWN;
+   m_bLogicalAddressRegistered = false;
+   m_bInitialised = false;
+@@ -277,7 +273,6 @@ void *CIMXCECAdapterCommunication::Process(void)
+   hdmi_cec_event event;
+   int ret;
+ 
+-  //uint32_t opcode, status;
+   cec_logical_address initiator, destination;
+ 
+   while (!IsStopped())
+diff --git a/src/libcec/adapter/IMX/IMXCECAdapterCommunication.h b/src/libcec/adapter/IMX/IMXCECAdapterCommunication.h
+index 2aaeb7d..7862656 100644
+--- a/src/libcec/adapter/IMX/IMXCECAdapterCommunication.h
++++ b/src/libcec/adapter/IMX/IMXCECAdapterCommunication.h
+@@ -47,8 +47,6 @@ namespace P8PLATFORM
+ 
+ namespace CEC
+ {
+-  class CAdapterMessageQueueEntry;
+-
+   class CIMXCECAdapterCommunication : public IAdapterCommunication, public P8PLATFORM::CThread
+   {
+   public:
+@@ -101,7 +99,6 @@ namespace CEC
+ 
+     std::string                 m_strError; /**< current error message */
+ 
+-    //cec_logical_addresses     m_logicalAddresses;
+     cec_logical_address         m_logicalAddress;
+ 
+     P8PLATFORM::CMutex          m_mutex;
+@@ -111,7 +108,6 @@ namespace CEC
+ 
+     P8PLATFORM::CMutex          m_messageMutex;
+     uint32_t                    m_iNextMessage;
+-    std::map<uint32_t, CAdapterMessageQueueEntry *> m_messages;
+   };
+ 
+ };
+-- 
+1.9.1
+

@@ -1,0 +1,245 @@
+From 3a71553a31dcc768f76ecce71f988a5ae0bda613 Mon Sep 17 00:00:00 2001
+From: Rudi <r.ihle@s-t.de>
+Date: Sun, 6 Nov 2016 09:07:27 +0100
+Subject: [PATCH] iMX6: Adapt to mainline updates
+
+---
+ src/libcec/CMakeLists.txt                          |  3 +++
+ src/libcec/adapter/AdapterFactory.cpp              |  2 +-
+ src/libcec/adapter/IMX/AdapterMessageQueue.h       |  9 +++++----
+ .../adapter/IMX/IMXCECAdapterCommunication.cpp     | 13 +++++--------
+ .../adapter/IMX/IMXCECAdapterCommunication.h       | 22 +++++++++++-----------
+ src/libcec/cmake/CheckPlatformSupport.cmake        | 13 +++++++++++++
+ src/libcec/cmake/DisplayPlatformSupport.cmake      |  6 ++++++
+ src/libcec/env.h.in                                |  3 +++
+ 8 files changed, 47 insertions(+), 24 deletions(-)
+
+diff --git a/src/libcec/CMakeLists.txt b/src/libcec/CMakeLists.txt
+index a494533..a134b01 100644
+--- a/src/libcec/CMakeLists.txt
++++ b/src/libcec/CMakeLists.txt
+@@ -100,6 +100,9 @@ set(CEC_HEADERS devices/CECRecordingDevice.h
+                 adapter/RPi/RPiCECAdapterMessageQueue.h
+                 adapter/RPi/RPiCECAdapterCommunication.h
+                 adapter/RPi/RPiCECAdapterDetection.h
++                adapter/IMX/AdapterMessageQueue.h
++                adapter/IMX/IMXCECAdapterCommunication.h
++                adapter/IMX/IMXCECAdapterDetection.h
+                 CECInputBuffer.h
+                 platform/util/baudrate.h
+                 platform/util/edid.h
+diff --git a/src/libcec/adapter/AdapterFactory.cpp b/src/libcec/adapter/AdapterFactory.cpp
+index eef7703..1f87b4d 100644
+--- a/src/libcec/adapter/AdapterFactory.cpp
++++ b/src/libcec/adapter/AdapterFactory.cpp
+@@ -144,7 +144,7 @@ int8_t CAdapterFactory::DetectAdapters(cec_adapter_descriptor *deviceList, uint8
+   }
+ #endif
+ 
+-#if !defined(HAVE_RPI_API) && !defined(HAVE_P8_USB) && !defined(HAVE_TDA995X_API) && !defined(HAVE_IMX_API)
++#if !defined(HAVE_RPI_API) && !defined(HAVE_P8_USB) && !defined(HAVE_TDA995X_API) && !defined(HAVE_EXYNOS_API) && !defined(HAVE_IMX_API)
+ #error "libCEC doesn't have support for any type of adapter. please check your build system or configuration"
+ #endif
+ 
+diff --git a/src/libcec/adapter/IMX/AdapterMessageQueue.h b/src/libcec/adapter/IMX/AdapterMessageQueue.h
+index 45907c4..f4d5708 100644
+--- a/src/libcec/adapter/IMX/AdapterMessageQueue.h
++++ b/src/libcec/adapter/IMX/AdapterMessageQueue.h
+@@ -31,11 +31,12 @@
+  *     http://www.pulse-eight.net/
+  */
+ 
+-#include "lib/platform/threads/mutex.h"
++#include "env.h"
++#include "p8-platform/threads/mutex.h"
+ 
+ namespace CEC
+ {
+-  using namespace PLATFORM;
++  using namespace P8PLATFORM;
+ 
+   class CAdapterMessageQueueEntry
+   {
+@@ -124,8 +125,8 @@ namespace CEC
+ 
+   private:
+     bool                         m_bWaiting;     /**< true while a thread is waiting or when it hasn't started waiting yet */
+-    PLATFORM::CCondition<bool>   m_condition;    /**< the condition to wait on */
+-    PLATFORM::CMutex             m_mutex;        /**< mutex for changes to this class */
++    P8PLATFORM::CCondition<bool>   m_condition;    /**< the condition to wait on */
++    P8PLATFORM::CMutex             m_mutex;        /**< mutex for changes to this class */
+     uint32_t                  	 m_hash;
+     uint32_t                     m_retval;
+     bool                         m_bSucceeded;
+diff --git a/src/libcec/adapter/IMX/IMXCECAdapterCommunication.cpp b/src/libcec/adapter/IMX/IMXCECAdapterCommunication.cpp
+index 85136c3..147a87e 100644
+--- a/src/libcec/adapter/IMX/IMXCECAdapterCommunication.cpp
++++ b/src/libcec/adapter/IMX/IMXCECAdapterCommunication.cpp
+@@ -30,11 +30,9 @@
+ #if defined(HAVE_IMX_API)
+ #include "IMXCECAdapterCommunication.h"
+ 
+-#include "lib/CECTypeUtils.h"
+-#include "lib/LibCEC.h"
+-#include "lib/platform/sockets/cdevsocket.h"
+-#include "lib/platform/util/StdString.h"
+-#include "lib/platform/util/buffer.h"
++#include "p8-platform/sockets/cdevsocket.h"
++#include "CECTypeUtils.h"
++#include "LibCEC.h"
+ 
+ /*
+  * Ioctl definitions from kernel header
+@@ -62,7 +60,7 @@ typedef struct hdmi_cec_event{
+ 
+ using namespace std;
+ using namespace CEC;
+-using namespace PLATFORM;
++using namespace P8PLATFORM;
+ 
+ #include "AdapterMessageQueue.h"
+ 
+@@ -276,11 +274,10 @@ bool CIMXCECAdapterCommunication::SetLogicalAddresses(const cec_logical_addresse
+ 
+ void *CIMXCECAdapterCommunication::Process(void)
+ {
+-  bool bHandled;
+   hdmi_cec_event event;
+   int ret;
+ 
+-  uint32_t opcode, status;
++  //uint32_t opcode, status;
+   cec_logical_address initiator, destination;
+ 
+   while (!IsStopped())
+diff --git a/src/libcec/adapter/IMX/IMXCECAdapterCommunication.h b/src/libcec/adapter/IMX/IMXCECAdapterCommunication.h
+index 6111c5f..2aaeb7d 100644
+--- a/src/libcec/adapter/IMX/IMXCECAdapterCommunication.h
++++ b/src/libcec/adapter/IMX/IMXCECAdapterCommunication.h
+@@ -28,10 +28,10 @@
+ 
+ #if defined(HAVE_IMX_API)
+ 
+-#include "lib/platform/threads/mutex.h"
+-#include "lib/platform/threads/threads.h"
+-#include "lib/platform/sockets/socket.h"
+-#include "lib/adapter/AdapterCommunication.h"
++#include "p8-platform/threads/mutex.h"
++#include "p8-platform/threads/threads.h"
++#include "p8-platform/sockets/socket.h"
++#include "adapter/AdapterCommunication.h"
+ #include <map>
+ 
+ #define IMX_ADAPTER_VID 0x0471 /*FIXME TBD*/
+@@ -39,7 +39,7 @@
+ 
+ 
+ 
+-namespace PLATFORM
++namespace P8PLATFORM
+ {
+   class CCDevSocket;
+ };
+@@ -49,7 +49,7 @@ namespace CEC
+ {
+   class CAdapterMessageQueueEntry;
+ 
+-  class CIMXCECAdapterCommunication : public IAdapterCommunication, public PLATFORM::CThread
++  class CIMXCECAdapterCommunication : public IAdapterCommunication, public P8PLATFORM::CThread
+   {
+   public:
+     /*!
+@@ -90,7 +90,7 @@ namespace CEC
+     bool RegisterLogicalAddress(const cec_logical_address address);
+     ///}
+ 
+-    /** @name PLATFORM::CThread implementation */
++    /** @name P8PLATFORM::CThread implementation */
+     ///{
+     void *Process(void);
+     ///}
+@@ -101,15 +101,15 @@ namespace CEC
+ 
+     std::string                 m_strError; /**< current error message */
+ 
+-    //cec_logical_addresses       m_logicalAddresses;
++    //cec_logical_addresses     m_logicalAddresses;
+     cec_logical_address         m_logicalAddress;
+ 
+-    PLATFORM::CMutex            m_mutex;
+-    PLATFORM::CCDevSocket       *m_dev;	/**< the device connection */
++    P8PLATFORM::CMutex          m_mutex;
++    P8PLATFORM::CCDevSocket     *m_dev;	/**< the device connection */
+     bool                        m_bLogicalAddressRegistered;
+     bool                        m_bInitialised;
+ 
+-    PLATFORM::CMutex            m_messageMutex;
++    P8PLATFORM::CMutex          m_messageMutex;
+     uint32_t                    m_iNextMessage;
+     std::map<uint32_t, CAdapterMessageQueueEntry *> m_messages;
+   };
+diff --git a/src/libcec/cmake/CheckPlatformSupport.cmake b/src/libcec/cmake/CheckPlatformSupport.cmake
+index 2461c96..5f1d32b 100644
+--- a/src/libcec/cmake/CheckPlatformSupport.cmake
++++ b/src/libcec/cmake/CheckPlatformSupport.cmake
+@@ -9,6 +9,7 @@
+ #       HAVE_RPI_API              ON if Raspberry Pi is supported
+ #       HAVE_TDA995X_API          ON if TDA995X is supported
+ #       HAVE_EXYNOS_API           ON if Exynos is supported
++#       HAVE_IMX_API              ON if iMX.6 is supported
+ #       HAVE_P8_USB               ON if Pulse-Eight devices are supported
+ #       HAVE_P8_USB_DETECT        ON if Pulse-Eight devices can be auto-detected
+ #       HAVE_DRM_EDID_PARSER      ON if DRM EDID parsing is supported
+@@ -134,6 +135,18 @@ else()
+     source_group("Source Files\\adapter\\Exynos" FILES ${CEC_SOURCES_ADAPTER_EXYNOS})
+     list(APPEND CEC_SOURCES ${CEC_SOURCES_ADAPTER_EXYNOS})
+   endif()
++
++  # i.MX6
++  if (${HAVE_IMX_API})
++    set(LIB_INFO "${LIB_INFO}, 'i.MX6'")
++    set(HAVE_IMX_API 1)
++    set(CEC_SOURCES_ADAPTER_IMX adapter/IMX/IMXCECAdapterCommunication.cpp
++                                adapter/IMX/IMXCECAdapterDetection.cpp)
++    source_group("Source Files\\adapter\\IMX" FILES ${CEC_SOURCES_ADAPTER_IMX})
++    list(APPEND CEC_SOURCES ${CEC_SOURCES_ADAPTER_IMX})
++  else()
++    set(HAVE_IMX_API 0)
++  endif()
+ endif()
+ 
+ # rt
+diff --git a/src/libcec/cmake/DisplayPlatformSupport.cmake b/src/libcec/cmake/DisplayPlatformSupport.cmake
+index 9dcaacf..1568184 100644
+--- a/src/libcec/cmake/DisplayPlatformSupport.cmake
++++ b/src/libcec/cmake/DisplayPlatformSupport.cmake
+@@ -44,6 +44,12 @@ else()
+   message(STATUS "DRM support:                            no")
+ endif()
+ 
++if (HAVE_IMX_API)
++  message(STATUS "i.MX6 support:                          yes")
++else()
++  message(STATUS "i.MX6 support:                          no")
++endif()
++
+ if (HAVE_PYTHON)
+   message(STATUS "Python support:                         version ${PYTHONLIBS_VERSION_STRING} (${PYTHON_VERSION})")
+ else()
+diff --git a/src/libcec/env.h.in b/src/libcec/env.h.in
+index 0496aa0..58f9878 100644
+--- a/src/libcec/env.h.in
++++ b/src/libcec/env.h.in
+@@ -69,6 +69,9 @@
+ /* Define to 1 for TDA995x support */
+ #cmakedefine HAVE_TDA995X_API @HAVE_TDA995X_API@
+ 
++/* Define to 1 for IMX support */
++#cmakedefine HAVE_IMX_API @HAVE_IMX_API@
++
+ /* Define to 1 for Exynos support */
+ #cmakedefine HAVE_EXYNOS_API @HAVE_EXYNOS_API@
+ 
+-- 
+1.9.1
+
