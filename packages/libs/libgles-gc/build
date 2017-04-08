@@ -2,17 +2,29 @@
 
 . config/options
 
-cd $BUILD/$1*
+get_meta $1
+cd $PKG_BUILD_DIR
 
-mkdir -p .install/lib .install/include
+out_dir=.install
+
+rm -rf $out_dir
+mkdir -p $out_dir/include $out_dir/lib/pkgconfig
+
+for f in $ROOT/$PACKAGES/$PKG_SECTION/$1/config/*.pc; do
+  sed -e "s%=/usr%=$LIB_PREFIX%" $f > $out_dir/lib/pkgconfig/$(basename $f)
+done
 
 if [ "$ARM_HARDFLOAT_ABI" = yes ] ; then 
-  cp -P lib-hard/*.so* .install/lib
+  cp -P lib-hard/*.so* $out_dir/lib
 else
-  cp -P lib-soft/*.so* .install/lib
+  cp -P lib-soft/*.so* $out_dir/lib
 fi
 
-ln -sf libGLESv2x.so.1 .install/lib/libGLESv2.so
-cp -R include/* .install/include
+ln -sf libGLESv2x.so.1 $out_dir/lib/libGLESv2.so
+cp -R include/* $out_dir/include
 
-ln -sf .install .install-unstripped
+strip_libs $out_dir/lib
+
+if [ "$DEVROOTFS" = yes ] ; then
+  ln -sf .install .install-unstripped
+fi
