@@ -7,16 +7,13 @@ $SCRIPTS/installdev make
 $SCRIPTS/installdev sed
 
 do_unselect_opt () {
-  sed -i "s%^CONFIG_$1=.*%# CONFIG_$1 is not set%" $LINUX/.config
+  sed -i "s%^CONFIG_$1=.*%# CONFIG_$1 is not set%" $PKG_BUILD_DIR/.config
 }
 
 do_unselect () {
   pkg_uses $1 $2 || \
-    sed -i "s%^CONFIG_$3=.*%# CONFIG_$3 is not set%" $LINUX/.config
+    sed -i "s%^CONFIG_$3=.*%# CONFIG_$3 is not set%" $PKG_BUILD_DIR/.config
 }
-
-#LINUX=`ls -d $ROOT/$BUILD/$1-[0-9]*`
-LINUX=`ls -d $ROOT/$BUILD/${PKG_NAME}-${PKG_VERSION}`
 
 case $TARGET_ARCH in
   i386|x86_64)
@@ -62,9 +59,9 @@ sed -i -e "s|^HOSTCC[[:space:]]*=.*$|HOSTCC = $HOST_CC|" \
        -e "s|^HOSTCXX[[:space:]]*=.*$|HOSTCXX = $HOST_CXX|" \
        -e "s|^ARCH[[:space:]]*?=.*$|ARCH = $TARGET_LINUX_ARCH|" \
        -e "s|^CROSS_COMPILE[[:space:]]*?=.*$|CROSS_COMPILE = $TARGET_PREFIX|" \
-       $LINUX/Makefile
+       $PKG_BUILD_DIR/Makefile
 
-$ROOT/$PACKAGES/$PKG_SECTION/$1/scripts/merge_config.sh -m -O $LINUX $KERNEL_CFG_FILE
+$ROOT/$PACKAGES/$PKG_SECTION/$1/scripts/merge_config.sh -m -O $PKG_BUILD_DIR $KERNEL_CFG_FILE
 
 # conditionally unselect some components
 do_unselect $1 alsa       SND
@@ -114,6 +111,15 @@ elif [ "$COMPRESSION_METHOD" = gzip ]; then
   do_unselect_opt XZ_DEC
 fi
 
-yes '
-' | make -C $LINUX oldconfig
-make -C $LINUX prepare1
+# Fixup old kernels to compile with gcc versions >= 5
+v=$(grep "^VERSION " $PKG_BUILD_DIR/Makefile)
+if [ "${v##* }" -lt 4 ]; then
+  echo "Replacing 'include/linux/compiler-gccX.h' with a recent version"
+  mkdir -p $PKG_BUILD_DIR/include/linux/_gccX.orig
+  mv $PKG_BUILD_DIR/include/linux/compiler-gcc* $PKG_BUILD_DIR/include/linux/_gccX.orig
+  cp $ROOT/$PACKAGES/$PKG_SECTION/$1/patches/compiler-gcc.h $PKG_BUILD_DIR/include/linux
+fi
+
+yes "" | make -C $PKG_BUILD_DIR oldconfig
+
+make -C $PKG_BUILD_DIR prepare1

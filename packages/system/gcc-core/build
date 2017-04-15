@@ -3,6 +3,12 @@
 . config/options
 
 $SCRIPTS/unpack gcc-$TOOLCHAIN_TYPE
+get_meta gcc-$TOOLCHAIN_TYPE
+
+cd $PKG_BUILD_DIR
+rm -rf objdir-$1
+mkdir -p objdir-$1
+cd objdir-$1
 
 setup_toolchain host
 
@@ -43,10 +49,6 @@ case "$FPU_OPTIMIZATIONS" in
     ;;
 esac
 
-cd $BUILD/gcc-${TOOLCHAIN_TYPE}-?.*
-mkdir -p objdir-$1
-cd objdir-$1
-
 if [ "$TARGET_LIBC" = "glibc" ] ; then
   export gcc_cv_libc_provides_ssp=yes
 fi
@@ -86,10 +88,12 @@ fi
              $EXTRA_FLAGS
 make all-gcc all-target-libgcc
 
-mkdir -p "$ROOT/$BUILD/$1/.install"
-make install-gcc install-target-libgcc DESTDIR="$ROOT/$BUILD/$1/.install"
+out_dir=$ROOT/$BUILD/$1/.install
+rm -rf $out_dir
+mkdir -p $out_dir
+make install-gcc install-target-libgcc DESTDIR="$out_dir"
+
 # uClibc insists on linking against libgcc_eh which isn't compiled because of --disable-shared
 # Simply link libgcc_eh.a to libgcc.a
-get_meta gcc-$TOOLCHAIN_TYPE
-ln -sf libgcc.a "$ROOT/$BUILD/$1/.install/usr/lib/gcc/$TARGET_NAME/$GCC_VERSION/libgcc_eh.a"
-fix_libs "$ROOT/$BUILD/$1/.install" toolchain
+ln -sf libgcc.a "$out_dir/usr/lib/gcc/$TARGET_NAME/$GCC_VERSION/libgcc_eh.a"
+fix_libs "$out_dir" toolchain
