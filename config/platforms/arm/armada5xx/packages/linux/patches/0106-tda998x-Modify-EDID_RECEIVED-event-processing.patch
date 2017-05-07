@@ -1,0 +1,57 @@
+From 56847589f168ec87b33d95b9b690a04bebeac285 Mon Sep 17 00:00:00 2001
+From: Rudi <r.ihle@s-t.de>
+Date: Sun, 7 May 2017 08:43:32 +0200
+Subject: [PATCH] tda998x: Modify EDID_RECEIVED event processing
+
+Signed-off-by: Rudi <r.ihle@s-t.de>
+---
+ drivers/video/dovefb/nxp_hdmi/tda998x.c | 15 ++++++++++-----
+ 1 file changed, 10 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/video/dovefb/nxp_hdmi/tda998x.c b/drivers/video/dovefb/nxp_hdmi/tda998x.c
+index d5b1c52..d4d52d7 100755
+--- a/drivers/video/dovefb/nxp_hdmi/tda998x.c
++++ b/drivers/video/dovefb/nxp_hdmi/tda998x.c
+@@ -929,8 +929,13 @@ static void eventCallbackTx(tmdlHdmiTxEvent_t event)
+ 
+    switch (event) {
+    case TMDL_HDMITX_EDID_RECEIVED:
+-      TRY(tmdlHdmiTxGetEdidSourceAddress(this->tda.instance,        \
+-                                         &new_addr));
++      /*
++        /!\ WARNING /!                                              \
++        This callback may arrive even though the EDID is not yet ready
++      */
++      msleep(150);
++
++      TRY(tmdlHdmiTxGetEdidSourceAddress(this->tda.instance, &new_addr));
+       LOG(KERN_INFO,"phy.@:%x\n",new_addr);
+ 
+       if (new_addr == this->tda.src_address)
+@@ -942,6 +947,7 @@ static void eventCallbackTx(tmdlHdmiTxEvent_t event)
+ #if defined (TMFL_TDA19989) || defined (TMFL_TDA9984) 
+       tda_spy(this->param.verbose>=1);
+ #endif
++
+       /* 
+          Customer may add stuff to analyse EDID (see tda_spy())
+          and select automatically some video/audio settings.
+@@ -952,13 +958,12 @@ static void eventCallbackTx(tmdlHdmiTxEvent_t event)
+       if (edid_work_item)
+          queue_work(hdmi_work_queue, edid_work_item);
+ 
+-      TRY(tmdlHdmiTxGetEdidSinkType(this->tda.instance,     \
+-                                    &this->tda.setio.sink));
++      TRY(tmdlHdmiTxGetEdidSinkType(this->tda.instance, &this->tda.setio.sink));
++
+       if (TMDL_HDMITX_SINK_HDMI != this->tda.setio.sink) {
+          printk(KERN_INFO "/!\\ CAUTION /!\\ sink is not HDMI but %s\n",tda_spy_sink(this->tda.setio.sink));
+       }
+       
+-      msleep(100);
+       /*
+         /!\ WARNING /!                                              \
+         the core driver does not send any HPD nor RXSENS when HDMI was plugged after at boot time
+-- 
+2.7.4
+

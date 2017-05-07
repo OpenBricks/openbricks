@@ -1,0 +1,184 @@
+From c0cc698f33bb2671143b4a8ed4d2f30bdfb5ebe0 Mon Sep 17 00:00:00 2001
+From: Rudi <r.ihle@s-t.de>
+Date: Sat, 6 May 2017 16:51:10 +0200
+Subject: [PATCH] tda998x_cec: Change 'write_pending' state handling, add new
+ dump function
+
+Signed-off-by: Rudi <r.ihle@s-t.de>
+---
+ drivers/video/dovefb/nxp_hdmi/tda998x_cec.c | 89 +++++++++++++++++++----------
+ 1 file changed, 58 insertions(+), 31 deletions(-)
+
+diff --git a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c
+index 61df31a..1db0c55 100755
+--- a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c
++++ b/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c
+@@ -427,6 +427,38 @@ static int device_type(int type)
+ }
+ 
+ 
++static void dump_frame(const char *text, const cec_frame *frame)
++{
++   int  i, o;
++   char buffer[256];
++   static const char *srvc[2][4] = {
++     { "TX",   "RX",      "ACK",     "HPD"     },
++     { "WAIT", "RELEASE", "RX_DONE", "TX_DONE" },
++   };
++
++   o = sprintf(buffer, "%s: %s [%x -> %x] ", text,
++               srvc[(frame->service >> 7) & 1][frame->service & 3],
++               (frame->addr >> 4) & 0xf, frame->addr & 0xf);
++
++   if (frame->service == CEC_HPD_PKT)
++      o += sprintf(buffer + o, "physAddr %04x %sconnected [",
++         (frame->data[2] << 8) | frame->data[1], frame->data[0] ? "dis" : "");
++   else if (frame->service == CEC_ACK_PKT)
++      o += sprintf(buffer + o, "%s %s [",
++         (frame->size > 4) ? cec_opcode(frame->data[1]) : (frame->size == 4) ? "POLL" : "NULL",
++         cec_rxstatus(frame->data[0]));
++   else
++      o += sprintf(buffer + o, "%s [",
++         (frame->size > 3) ? cec_opcode(frame->data[0]) : (frame->size == 3) ? "POLL" : "NULL" );
++
++   for (i = 0; i < frame->size - 3; i++)
++      o += sprintf(buffer + o, "%s%02x", (i == 0) ? "" : " ", frame->data[i]);
++   sprintf(buffer + o, "]\n");
++
++   printk(KERN_ERR "%s", buffer);
++}
++
++
+ /*
+  *
+  * PROCESSING
+@@ -603,7 +635,10 @@ static void cec_interrupt(struct work_struct *dummy)
+ #endif
+ 
+       if (this->driver.raw_mode)
++      {
++         this->cec.phy_addr = new_phy_addr;
+          eventCallbackCEC(TMDL_HDMICEC_CALLBACK_STATUS, NULL, 0);
++      }
+    }
+    /* new phy addr means new EDID, mean HPD ! */
+    else if ((this->cec.phy_addr != new_phy_addr) &&
+@@ -781,13 +816,7 @@ static void eventCallbackCEC(tmdlHdmiCecEvent_t event, unsigned char *data, unsi
+             frame->addr    = data[0];			/* AddressByte */
+             memcpy(frame->data, &data[1], length - 1);	/* DataBytes[], length - sizeof(addr) */
+ 
+-            initiator = (frame->addr >> 4) & 0x0F;
+-            receiver  = frame->addr & 0x0F;
+-            opcode    = frame->data[0];
+-            LOG(KERN_INFO,"hdmicec:Rx:[%x--->%x] %s length:%d [%02x %02x %02x %02x]\n",
+-               initiator,receiver,length > 1 ? cec_opcode(opcode) : "POLL",length, 
+-               frame->data[0], frame->data[1], frame->data[2], frame->data[3]);
+-
++            //dump_frame(__func__, frame);
+             this->driver.read_queue_tail = new_tail;
+          }
+ 
+@@ -802,26 +831,18 @@ static void eventCallbackCEC(tmdlHdmiCecEvent_t event, unsigned char *data, unsi
+               frame->service = CEC_ACK_PKT;		/* this is an ACK/NAK packet */
+               frame->addr    = data[0];			/* AddressByte */
+               memcpy(frame->data, &data[1], length - 1);/* DataBytes[], length - sizeof(addr) */
+-
+-              initiator = (frame->addr >> 4) & 0x0F;
+-              receiver  = frame->addr & 0x0F;
+-              opcode    = frame->data[0];
+-              LOG(KERN_INFO,"hdmicec:ACK:[%x--->%x] %s length:%d [%02x %02x %02x %02x]\n",
+-                initiator,receiver,cec_rxstatus(opcode),length,
+-                frame->data[0], frame->data[1], frame->data[2], frame->data[3]);
++							/* data[0]: error_code, data[1]: opcode */
+             }
+             else {
+               frame->size    = 4 + 2;			/* sizeof(size) + sizeof(service) */
+               frame->service = CEC_HPD_PKT;		/* this is a hotplug packet */
+-              frame->addr    = 0xff;
++              frame->addr    = 0xff;			/* AddressByte (invalid) */
+               frame->data[0] = this->cec.source_status;	/* 0:connected, 1:disconnected */
+-              frame->data[1] = (this->cec.phy_addr >> 0) & 0xff;
+-              frame->data[2] = (this->cec.phy_addr >> 8) & 0xff;
+-
+-              LOG(KERN_INFO,"hdmicec:HPD: %d, PHY_ADDR: %x.%x.%x.%x\n", frame->data[0],
+-                frame->data[2] >> 4, frame->data[2] & 0xf, frame->data[1] >> 4, frame->data[1] & 0xf);
++              frame->data[1] = (this->cec.phy_addr >> 0) & 0xff;	/* phys. addr lo */
++              frame->data[2] = (this->cec.phy_addr >> 8) & 0xff;	/* phys. addr hi */
+             }
+ 
++            //dump_frame(__func__, frame);
+             this->driver.read_queue_tail = new_tail;
+          }
+ 
+@@ -841,22 +862,17 @@ static void eventCallbackCEC(tmdlHdmiCecEvent_t event, unsigned char *data, unsi
+ 
+ 
+    if (event == TMDL_HDMICEC_CALLBACK_MESSAGE_AVAILABLE) {
+-
+       this->cec.frame.size = length + 2;
+       this->cec.frame.addr = data[0]; /* .AddressByte */
++      memcpy(&this->cec.frame.data,&data[1],length-1); /* .DataBytes[], length - siezof(length,addr,ack) */
++      this->cec.frame.service = CEC_RX_DONE;
++
+       initiator = (this->cec.frame.addr >> 4) & 0x0F;
+       this->cec.initiator = initiator;
+       receiver = this->cec.frame.addr & 0x0F;
+-      memcpy(&this->cec.frame.data,&data[1],length-1); /* .DataBytes[], length - siezof(length,addr,ack) */
+       opcode=this->cec.frame.data[0];
+-      LOG(KERN_INFO,"hdmicec:Rx:[%x--->%x] %s length:%d addr:%d %02x%02x%02x%02x\n",initiator,receiver,cec_opcode(opcode), \
+-          length,
+-          this->cec.frame.addr,
+-          this->cec.frame.data[0],                                      \
+-          this->cec.frame.data[1],                                      \
+-          this->cec.frame.data[2],                                      \
+-          this->cec.frame.data[3]);
+-      this->cec.frame.service = CEC_RX_DONE;
++
++      dump_frame("hdmicec:Rx", &this->cec.frame);
+ 
+       msleep(20);
+ 
+@@ -2104,6 +2120,9 @@ static ssize_t this_cdev_read(struct file *pFile, char *buffer, size_t length, l
+       this->driver.read_queue_head = 
+         (this->driver.read_queue_head + 1) % ARRAY_SIZE(this->driver.read_queue);
+ 
++      if (this->param.verbose)
++        dump_frame(__func__, (cec_frame *)(buffer + bytes_returned));
++
+       bytes_returned += sizeof(cec_frame);
+    }
+ 
+@@ -2133,11 +2152,15 @@ static ssize_t this_cdev_write(struct file *pFile, const char *buffer, size_t le
+       return -EAGAIN;
+    }
+ 
++   this->driver.write_pending = 1;
++
+    if (this->cec.rx_addr == CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST ||
+        (frame->addr & 0xf0) != (CEC_LOGICAL_ADDRESS_UNREGISTRED_BROADCAST << 4)) {
+       TRY(tmdlHdmiCecSendMessage(this->cec.inst, (UInt8 *)&frame->addr, frame->size - 2));
+-      this->driver.write_pending = 1;
+       bytes_written += length;
++
++      if (this->param.verbose)
++         dump_frame(__func__, frame);
+    }
+    else {
+       LOG(KERN_ERR,"initiator 'Broadcast' is not supported !\n");
+@@ -2145,9 +2168,13 @@ static ssize_t this_cdev_write(struct file *pFile, const char *buffer, size_t le
+    }
+ 
+    up(&this->driver.sem);
++
++   msleep(20);
++
+    return bytes_written;
+ 
+  TRY_DONE:
++   this->driver.write_pending = 0;
+    up(&this->driver.sem);
+    return -EINVAL;
+ }
+-- 
+2.7.4
+
