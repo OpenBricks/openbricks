@@ -5,96 +5,6 @@ dbg_echo () {
   return
 }
 
-# external_persistent "device/share" "fstype" "mount option" "casper-rw file"
-external_persistent () {
-  dbg_echo " ... External persistent enabled  ..."
-  [ -z $4 ] && CASPER=geexbox || CASPER="$4"
-
-  # create directory
-  mkdir /persistent
-  mount -t tmpfs tmpfs /persistent
-  mkdir /persistent/persistent /persistent/data /persistent/etc
-
-  if [ "$2" = "cifs" -o "$2" = "nfs" ] ; then
-    PERSISTENT_TMP=/mnt/geexbox
-    MNT_OPTION_PERSISTENT="bind"
-    MNT_TYPE_PERSISTENT="none"
-  else
-    # ntfs
-    PERSISTENT_TMP=/persistent-tmp
-    MNT_OPTION_PERSISTENT="rw,noatime"
-    MNT_TYPE_PERSISTENT="ext2"
-    mkdir /persistent-tmp
-    mount -t ext2 -o rw,noatime /mnt/$4 /persistent-tmp
-  fi
-
-  # create our own directory
-  for d in bin boot root etc firmware lib sbin sys usr var video ; do
-    mkdir -p $PERSISTENT_TMP/$d
-  done
-
-  # restore
-  for d in bin boot etc firmware lib sbin sys usr var ; do
-    cp -R $PERSISTENT_TMP/$d /persistent
-  done
-
-  # create *.mount files
-
-   mkdir -p /persistent/lib/systemd/system
-   mkdir -p /persistent/etc/systemd/system/remote-fs.target.wants
-   cat > /persistent/lib/systemd/system/data.mount << EOF
-[Unit]
-Description=Mount data
-
-[Mount]
-What=$1
-Where=/data
-Type=$2
-Options=$3
-
-[Install]
-WantedBy=remote-fs.target
-EOF
-
-  cat > /persistent/lib/systemd/system/persistent.mount << EOF
-[Unit]
-Description=Mount persistent
-After=data.mount
-
-[Mount]
-What=/data/$CASPER
-Where=/persistent
-Type=$MNT_TYPE_PERSISTENT
-Options=$MNT_OPTION_PERSISTENT
-
-[Install]
-WantedBy=remote-fs.target
-EOF
-
-  cat > /persistent/lib/systemd/system/root.mount << EOF
-[Unit]
-Description=Mount root
-After=persistent.mount
-
-[Mount]
-What=/persistent/root
-Where=/root
-Type=none
-Options=bind
-
-[Install]
-WantedBy=remote-fs.target
-EOF
-
-  ln -s /lib/systemd/system/data.mount /persistent/etc/systemd/system/remote-fs.target.wants/data.mount
-  ln -s /lib/systemd/system/persistent.mount /persistent/etc/systemd/system/remote-fs.target.wants/persistent.mount
-  ln -s /lib/systemd/system/root.mount /persistent/etc/systemd/system/remote-fs.target.wants/root.mount
-
-  # umount /persistent-tmp if needed
-  [ "$2" = "ntfs" ] && sync && umount /persistent-tmp
-
-}
-
 # do_cache file
 do_cache () {
   mkdir -p /cache
@@ -179,9 +89,6 @@ for arg in $(cat /proc/cmdline); do
     ip=*)
     IP="${arg#ip=}"
       ;;
-    external-persistent)
-      EXTERNAL_PERSISTENT=1
-      ;;
     initshell)
       echo "Dropping to shell as requested"
       exec sh
@@ -211,18 +118,6 @@ if [ -n "$ROOT" ]; then
     dbg_echo -n "[$i] Trying root=$ROOT as requested..."
     if mount -o $ROOT_MODE $ROOT /mnt >/dev/null 2>&1; then
       if [ "$ROOTFS" = flat ]; then
-        dbg_echo "found."
-        FOUND_ROOTFS=yes
-        break
-      elif [ "$EXTERNAL_PERSISTENT" = 1 ] ; then
-        FSTYPE=`grep "$ROOT" /proc/mounts | cut -d" " -f3`
-        do_cache $ROOTFS
-        external_persistent $ROOT $FSTYPE "rw,noatime" $PERSISTENT
-        ROOTFS=/rootfs
-        mount -r /mnt
-        umount /mnt || umount -l /mnt
-        mount --move /cache /mnt
-        mount -t squashfs /mnt/$ROOTFS /squashfs >/dev/null 2>&1
         dbg_echo "found."
         FOUND_ROOTFS=yes
         break
@@ -267,14 +162,9 @@ if [ -n "$SMBROOT" -o -n "$NFSROOT" ] ; then
 
   if mount $NET $OP /mnt >/dev/null 2>&1; then
     dbg_echo " ... $NET is mounted ..."
-    do_cache $ROOTFS
-    if [ "$EXTERNAL_PERSISTENT" = 1 -a "$ROOT_MODE" = rw ] ; then
-      [ -n "$NFSROOT" ] && external_persistent $NFSROOT nfs "nolock,rw"
-      [ -n "$SMBROOT" -a -n "$OP" ] && external_persistent $s cifs "iocharset=utf8,user=$u,password=$p"
-      [ -n "$SMBROOT" -a -z "$OP" ] && external_persistent $s cifs "iocharset=utf8"
-    fi
-    umount /mnt
-    mount --move /cache /mnt
+#    do_cache $ROOTFS
+#    umount /mnt
+#    mount --move /cache /mnt
     if mount -t squashfs /mnt/rootfs /squashfs >/dev/null 2>&1; then
       dbg_echo "found."
       FOUND_ROOTFS=yes
@@ -340,12 +230,12 @@ fi
 
 [ -z "$INIT" ] && INIT=/sbin/init
 
-if [ "$ROOTFS" = flat ]; then
+if [ "$ROOTFS" = flat -o -n "$NFSROOT" ]; then
   if [ ! -x /mnt/$INIT ]; then
     echo "Cannot find a valid root filesystem, dropping to shell"
     exec sh
   fi
-  mount --move /mnt /newroot
+   mount --move /mnt /newroot
 else
   if [ ! -x /squashfs/$INIT ]; then
     echo "Cannot find a valid root filesystem, dropping to shell"
@@ -353,7 +243,7 @@ else
   fi
 
   # setup aufs
-  if [ -n "$PERSISTENT" -a -z "$EXTERNAL_PERSISTENT" ]; then
+  if [ -n "$PERSISTENT" ]; then
    DATA=/mnt/$PERSISTENT
    PERSISTENT_OPT="-o loop -t ext2"
    [ ! -f "$DATA" ] && unset DATA && unset PERSISTENT_OPT
@@ -364,8 +254,7 @@ else
       unset DATA
     fi
   fi
-  [ -z "$DATA" -a -z "$EXTERNAL_PERSISTENT" ] && mount -t tmpfs none /rw
-  [ "$EXTERNAL_PERSISTENT" = 1 ] && mount --move /persistent /rw
+  [ -z "$DATA" ] && mount -t tmpfs none /rw
   if ! mount -t aufs -o br=/rw:/squashfs none /newroot; then
     echo "Cannot mount aufs, dropping to shell"
     exec sh
