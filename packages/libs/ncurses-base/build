@@ -1,0 +1,92 @@
+#!/bin/sh
+
+. config/options
+
+get_meta $1
+cd $PKG_BUILD_DIR
+
+# build host tools
+setup_toolchain host
+mkdir -p objdir-host
+cd objdir-host
+../configure --without-shared --without-debug --without-manpages
+make -C include
+make -C progs tic
+cd ..
+
+# build terminal database
+rm -rf .install
+mkdir -p .install/usr/share/terminfo
+TERMINFO=$PWD/.install/usr/share/terminfo \
+  ./objdir-host/progs/tic -x ./misc/terminfo.src
+
+rm -rf objdir-host/.install
+mkdir -p objdir-host/.install/usr/share/terminfo objdir-host/.install/usr/lib
+for n in "linux" "ansi" "dumb" "vt[1|2|3]??" "xterm" "xterm?" "xterm-vt[1|2|3]??" "xterm-r?" "xterm-*color"; do
+  for ti in $(find .install/usr/share/terminfo -name "$n"); do
+    d=objdir-host/$(dirname $ti)
+    mkdir -p $d
+    mv $ti $d
+  done
+done
+
+cp -PR ./misc/tabset objdir-host/.install/usr/share
+ln -sf ../share/terminfo objdir-host/.install/usr/lib/terminfo
+
+
+# build targets
+setup_toolchain target
+
+CONFIG_ARGS="\
+  --host=$TARGET_NAME \
+  --build=$HOST_NAME \
+  --prefix=/usr \
+  --with-build-cc=$HOST_CC \
+  --with-build-cppflags=\"$HOST_CPPFLAGS -P -I../include\" \
+  --with-build-cflags=\"$HOST_CFLAGS\" \
+  --with-build-ldflags=\"$HOST_LDFLAGS\" \
+  --without-cxx \
+  --without-cxx-binding \
+  --without-ada \
+  --without-progs \
+  --with-shared \
+  --without-normal \
+  --without-debug \
+  --without-profile \
+  --without-manpages \
+  --disable-rpath \
+  --enable-overwrite \
+  --enable-const \
+  --enable-echo \
+  --disable-warnings \
+  --disable-assertions \
+  --enable-pc-files \
+  --enable-termcap \
+  --disable-db-install \
+  --with-pkg-config-libdir=/usr/lib/pkgconfig \
+"
+
+# build regular version
+mkdir -p objdir-targetn
+cd objdir-targetn
+sh -c "../configure $CONFIG_ARGS --disable-widec"
+make
+make_install
+sed -i "s%^prefix=.*%prefix=$LIB_PREFIX%" .install/usr/bin/ncurses6-config
+ln -sf libncurses.so .install/usr/lib/libtinfo.so
+cd ..
+
+# build wide-char version
+mkdir -p objdir-targetw
+cd objdir-targetw
+sh -c "../configure $CONFIG_ARGS --enable-widec"
+make
+make_install
+sed -i "s%^prefix=.*%prefix=$LIB_PREFIX%" .install/usr/bin/ncursesw6-config
+ln -sf libncursesw.so .install/usr/lib/libtinfow.so
+
+# update directory structure for wide-char version
+rm -rf .install/usr/include/ncursesw
+mkdir -p .install/usr/include/ncursesw
+mv .install/usr/include/*.h .install/usr/include/ncursesw
+sed -i 's%-I${prefix}/include%-I${prefix}/include/ncursesw%g' .install/usr/bin/ncursesw6-config
