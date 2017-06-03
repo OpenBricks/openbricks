@@ -1,0 +1,72 @@
+#!/bin/sh
+# usage save_space pkg_name
+
+. config/options
+
+get_overlay() {
+  local pkg_name="$1"
+  local file_name="$2"
+  local overlay_name
+  if [ -r $PACKAGES/$PKG_SECTION/$pkg_name/$file_name ] ; then
+   overlay_name=$PACKAGES/$PKG_SECTION/$pkg_name/$file_name
+  else
+    overlay_name="$PACKAGES/$pkg_name/$file_name"
+  fi
+  local name_ends_with=`expr substr $file_name ${#file_name} 1`
+  local temp_name=""
+
+  # check for platform-specific package overlay
+  temp_name="$PLATFORM_PACKAGES/$pkg_name/$file_name"
+  if [ $name_ends_with = "/" ] ; then
+    [ -d "$temp_name" ] && overlay_name="$temp_name"
+  else
+    [ -r "$temp_name" ] && overlay_name="$temp_name"
+  fi
+
+  # check for machine-specific package overlay
+  temp_name="$MACHINE_PACKAGES/$pkg_name/$file_name"
+  if [ $name_ends_with = "/" ] ; then
+    [ -d "$temp_name" ] && overlay_name="$temp_name"
+  else
+    [ -r "$temp_name" ] && overlay_name="$temp_name"
+  fi
+
+  # check for flavour-specific package overlay
+  temp_name="$FLAVOUR_PACKAGES/$pkg_name/$file_name"
+  if [ $name_ends_with = "/" ] ; then
+    [ -d "$temp_name" ] && overlay_name="$temp_name"
+  else
+    [ -r "$temp_name" ] && overlay_name="$temp_name"
+  fi
+
+  echo $overlay_name
+}
+
+
+get_meta $1
+
+if [ x"$SAVE_SPACE" = "xyes" ] ; then
+ if [ x"$PKG_SAVE_SPACE" = "xno" ] ; then
+   echo "         Can't delete sources for $1 (meta option)"
+ else
+   if [ -d $PKG_BUILD_DIR ] ; then
+     del_src=true
+     INSTALL_RULE=`get_overlay "$1" "install"`
+     INSTALLDEV_RULE=`get_overlay "$1" "installdev"`
+     if [ -f $INSTALLDEV_RULE ] ; then
+       if [ ! -f $PKG_BUILD_DIR/opk_dev_ok ] ; then
+         del_src=false
+       fi
+     fi
+     if [ -f $INSTALL_RULE ] ; then
+       if [ ! -f $PKG_BUILD_DIR/opk_ok ] ; then
+         del_src=false
+       fi
+     fi
+     if [ "$del_src" = "true" ] ; then
+       echo "         removing $PKG_BUILD_DIR ..."
+       rm -rf $PKG_BUILD_DIR
+     fi
+   fi
+ fi
+fi
