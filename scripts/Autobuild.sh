@@ -17,19 +17,23 @@ echo "Restoring build.host..."
 cp -r /project/build.host/ build/
 
 # Just to see...
+echo "Content of build/build.host"
 ls -al build/build.host
+echo "Content of build/build.host/.cache"
 ls -al build/build.host/.cache
+echo "Content of /project/sources"
 ls -al /project/sources
+echo "Content of /project"
 ls -al /project
 
 
 echo "######################"
 echo "# Starting the build #"
 echo "######################"
-./scripts/loadcfg $1
+./scripts/loadcfg $1 || exit 1
 # Build with the maximum speed (maybe we should try too without MAKECFLAGS set)
 echo DOOZER_CONCURRENCY_MAKE_LEVEL=$2 >> build/config/options-doozer
-make
+make || exit 1
 
 # keep build.host
 if [ -n "$(ls -A /project/build.host)" ] ; then 
