@@ -36,7 +36,7 @@ echo DOOZER_CONCURRENCY_MAKE_LEVEL=$2 >> build/config/options-doozer
 make || exit 1
 
 # keep build.host
-if [ -n "$(ls -A /project/build.host)" ] ; then 
+if [ -n "$(ls -A /project/build.host/.cache)" ] ; then 
   echo "Nothing to save in /project/build.host"
 else
  echo "Copying build/build.host to /project"
