@@ -1,7 +1,6 @@
 #!/bin/sh
 
 # $1 is target
-# $2 is DOOZER_CONCURRENCY_MAKE_LEVEL
 
 # In case it's the first time we try the build
 mkdir -p /project/sources /project/stamps /project/build.host/.cache build/build.host build/config /project/.ccache
@@ -32,7 +31,9 @@ echo "# Starting the build #"
 echo "######################"
 ./scripts/loadcfg $1 || exit 1
 # Build with the maximum speed (maybe we should try too without MAKECFLAGS set)
-echo DOOZER_CONCURRENCY_MAKE_LEVEL=$2 >> build/config/options-doozer
+DOOZER_CONCURRENCY_MAKE_LEVEL=$(echo $MAKEFLAGS |cut -d, -f2)
+echo "Using DOOZER_CONCURRENCY_MAKE_LEVEL=$DOOZER_CONCURRENCY_MAKE_LEVEL : MAKEFLAGS was $MAKEFLAGS"
+echo DOOZER_CONCURRENCY_MAKE_LEVEL=$DOOZER_CONCURRENCY_MAKE_LEVEL >> build/config/options-doozer
 make || exit 1
 
 # keep build.host
