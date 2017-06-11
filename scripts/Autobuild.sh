@@ -97,7 +97,7 @@ mv binaries/binaries.* /project/$REPONAME/$CONFNAME/$DATE
 
 (cd /project/$REPONAME/$CONFNAME/$DATE/binaries.*; create_img)
 
-scp $ssh_opt -i /project/.ssh/id_rsa -v -r /project/$REPONAME buildbot@geexbox.org:/data/snapshots/data
+scp $ssh_opt -i /project/.ssh/id_rsa -v -r /project/$REPONAME buildbot@geexbox.org:/data-snapshots/doozer-buildbot
 
 rm -rf /project/$REPONAME/$CONFNAME/$DATE
 
