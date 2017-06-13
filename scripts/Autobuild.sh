@@ -5,6 +5,14 @@
 # In case it's the first time we try the build
 mkdir -p /project/sources /project/stamps build/config /project/.ccache-$1 /project/.ssh
 
+if [ -d /project/build.host ] ; then
+  rm -rf /project/build.host
+fi
+
+if [ -d /project/.ccache ] ; then 
+ rm -rf /project/.ccache
+fi
+
 create_img () {
   local name=`basename *.tar.xz .tar.xz`
   if [ -f make-sdcard ]; then
