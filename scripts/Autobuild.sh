@@ -13,16 +13,6 @@ if [ -d /project/.ccache ] ; then
  rm -rf /project/.ccache
 fi
 
-create_img () {
-  local name=`basename *.tar.xz .tar.xz`
-  if [ -f make-sdcard ]; then
-    sudo rm -f /tmp/$CONFNAME.img*
-    sudo ./make-sdcard /tmp/$CONFNAME.img $name.tar.xz
-    sudo chown --reference=$name.tar.xz /tmp/$CONFNAME.img*
-    [ -f /tmp/$CONFNAME.img.xz ] && mv /tmp/$CONFNAME.img.xz ./$name.img.xz
-    rm -f /tmp/$CONFNAME.img*
-  fi
-}
 REPONAME=openbricks
 REPO=/project/repo/checkout
 CONFNAME=$1
@@ -92,8 +82,6 @@ rm -rf /project/$REPONAME/$CONFNAME/$DATE/*
 
 echo "Moving files to /project/$REPONAME/$CONFNAME/$DATE"
 mv binaries/binaries.* /project/$REPONAME/$CONFNAME/$DATE
-
-(cd /project/$REPONAME/$CONFNAME/$DATE/binaries.*; create_img)
 
 scp $ssh_opt -i /project/.ssh/id_rsa -v -r /project/$REPONAME buildbot@geexbox.org:/data-snapshots/doozer-buildbot
 
