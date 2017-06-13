@@ -3,7 +3,7 @@
 # $1 is target
 
 # In case it's the first time we try the build
-mkdir -p /project/sources /project/stamps /project/build.host/.cache build/build.host build/config /project/.ccache /project/.ssh
+mkdir -p /project/sources /project/stamps /project/build.host/.cache build/build.host build/config /project/.ccache-$1 /project/.ssh
 
 create_img () {
   local name=`basename *.tar.xz .tar.xz`
@@ -61,6 +61,8 @@ echo "######################"
 DOOZER_CONCURRENCY_MAKE_LEVEL=$(echo $MAKEFLAGS |cut -d, -f2)
 echo "Using DOOZER_CONCURRENCY_MAKE_LEVEL=$DOOZER_CONCURRENCY_MAKE_LEVEL : MAKEFLAGS was $MAKEFLAGS"
 echo DOOZER_CONCURRENCY_MAKE_LEVEL=$DOOZER_CONCURRENCY_MAKE_LEVEL >> build/config/options-doozer
+echo "DOOZER_TARGET_CCACHE=/project/.ccache-$1" >> build/config/options-doozer
+
 
 if grep -q 'CONFIG_OPT_TARGET_FLAT=y' $CONFFILE; then
   sed \
