@@ -57,17 +57,23 @@ echo DOOZER_CONCURRENCY_MAKE_LEVEL=$DOOZER_CONCURRENCY_MAKE_LEVEL >> build/confi
 echo "DOOZER_TARGET_CCACHE=/project/.ccache-$1" >> build/config/options-doozer
 
 
+dot_config=$(ls -d build/build.host/kconfig-frontends-*)/.config
+
+# enable tarball, disable flat output
 if grep -q 'CONFIG_OPT_TARGET_FLAT=y' $CONFFILE; then
-  sed \
+  sed $CONFFILE > $dot_config \
       -e 's:CONFIG_OPT_TARGET_FLAT=y:# CONFIG_OPT_TARGET_FLAT is not set:' \
-      -e 's:# CONFIG_OPT_TARGET_TARBALL is not set:CONFIG_OPT_TARGET_TARBALL=y:' \
-       < $CONFFILE > `ls -d build/build.host/kconfig-frontends-*`/.config
+      -e 's:# CONFIG_OPT_TARGET_TARBALL is not set:CONFIG_OPT_TARGET_TARBALL=y:'
 else
-  cp -P $CONFFILE `ls -d build/build.host/kconfig-frontends-*`/.config
+  cp -P $CONFFILE $dot_config
 fi
 
-make silentoldconfig
+# enforce disk space saving options
+sed -i $dot_config \
+    -e 's:.*CONFIG_OPT_SAVE_SPACE.*:CONFIG_OPT_SAVE_SPACE=y:' \
+    -e 's:.*CONFIG_OPT_USE_CCACHE.*:CONFIG_OPT_USE_CCACHE=y:'
 
+make silentoldconfig
 
 make || exit 1
 
