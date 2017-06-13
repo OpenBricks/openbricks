@@ -3,7 +3,7 @@
 # $1 is target
 
 # In case it's the first time we try the build
-mkdir -p /project/sources /project/stamps /project/build.host/.cache build/build.host build/config /project/.ccache-$1 /project/.ssh
+mkdir -p /project/sources /project/stamps build/config /project/.ccache-$1 /project/.ssh
 
 create_img () {
   local name=`basename *.tar.xz .tar.xz`
@@ -36,11 +36,6 @@ echo "######## Public key #########"
 ln -s /project/sources sources
 ln -s /project/stamps .stamps
 
-# Nothing for ccache, already embedded in our scripts
-
-# Restore build.host, it saves 6-7 min 
-echo "Restoring build.host..."
-cp -r /project/build.host/ build/
 
 # Just to see...
 # echo "Content of build/build.host"
@@ -78,13 +73,6 @@ make silentoldconfig
 
 make || exit 1
 
-# keep build.host
-if [ -n "$(ls -A /project/build.host/.cache)" ] ; then 
-  echo "Nothing to save in /project/build.host"
-else
- echo "Copying build/build.host to /project"
- cp -r build/build.host /project/
-fi
 
 ########################### Sending our files now #########################
 # Clean packages
