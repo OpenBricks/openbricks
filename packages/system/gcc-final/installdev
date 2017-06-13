@@ -15,21 +15,23 @@ do_installdev usr/lib/libstdc++*
 do_installdev usr/libexec toolchain
 do_installdev usr/$TARGET_NAME toolchain
 
-# Fabricate a fixed time stamp for the compilers used in conjunction with ccache
-DATE="0501`echo $GCC_VERSION | sed 's/\([0-9]\)/0\1/g' | sed 's/\.//g'`"
+if [ x"$USE_CCACHE" = "xyes" ]; then
+  # Fabricate a fixed time stamp for the compilers used in conjunction with ccache
+  DATE="0501$(echo $GCC_VERSION | sed 's/\([0-9]\)/0\1/g' | sed 's/\.//g')"
 
-# Use ccache for our compilers
-for tool in "gcc" "g++" "c++"; do
-  SHIM_TOOL=$INSTALL/bin/$TARGET_NAME-$tool
-  REAL_TOOL=$SHIM_TOOL-$GCC_VERSION
-  [ ! -f $REAL_TOOL ] && mv $SHIM_TOOL $REAL_TOOL
-  cat > $SHIM_TOOL <<EOF
+  # Use ccache for our compilers
+  for tool in "gcc" "g++" "c++"; do
+    SHIM_TOOL=$INSTALL/bin/$TARGET_NAME-$tool
+    REAL_TOOL=$SHIM_TOOL-$GCC_VERSION
+    [ ! -f $REAL_TOOL ] && mv $SHIM_TOOL $REAL_TOOL
+    cat > $SHIM_TOOL <<EOF
 #!/bin/sh
 $ROOT/$TOOLCHAIN/bin/ccache $ROOT/$TOOLCHAIN/bin/$TARGET_NAME-$tool-$GCC_VERSION "\$@"
 EOF
-  chmod +x $SHIM_TOOL
-  # Set timestamp of the real tool to avoid ccache trashing
-  touch -c -t $DATE $REAL_TOOL
-done
+    chmod +x $SHIM_TOOL
+    # Set timestamp of the real tool to avoid ccache trashing
+    touch -c -t $DATE $REAL_TOOL
+  done
+fi
 
 exit 0
