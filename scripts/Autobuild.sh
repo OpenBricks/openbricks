@@ -49,13 +49,16 @@ ln -s /project/stamps .stamps
 echo "######################"
 echo "# Starting the build #"
 echo "######################"
-./scripts/loadcfg $1 || exit 1
+
 # Build with the maximum speed (maybe we should try too without MAKECFLAGS set)
 DOOZER_CONCURRENCY_MAKE_LEVEL=$(echo $MAKEFLAGS |cut -d, -f2)
 echo "Using DOOZER_CONCURRENCY_MAKE_LEVEL=$DOOZER_CONCURRENCY_MAKE_LEVEL : MAKEFLAGS was $MAKEFLAGS"
 echo DOOZER_CONCURRENCY_MAKE_LEVEL=$DOOZER_CONCURRENCY_MAKE_LEVEL >> build/config/options-doozer
+echo "NO_DEBUG_PKG=yes" >> build/config/options-doozer
 echo "DOOZER_TARGET_CCACHE=/project/.ccache-$1" >> build/config/options-doozer
 
+
+./scripts/loadcfg $1 || exit 1
 
 dot_config=$(ls -d build/build.host/kconfig-frontends-*)/.config
 
