@@ -56,6 +56,7 @@ echo "Using DOOZER_CONCURRENCY_MAKE_LEVEL=$DOOZER_CONCURRENCY_MAKE_LEVEL : MAKEF
 echo DOOZER_CONCURRENCY_MAKE_LEVEL=$DOOZER_CONCURRENCY_MAKE_LEVEL >> build/config/options-doozer
 echo "NO_DEBUG_PKG=yes" >> build/config/options-doozer
 echo "DOOZER_TARGET_CCACHE=/project/.ccache-$1" >> build/config/options-doozer
+echo "DO_NOT_SET_ROOT=yes" >> build/config/options-doozer
 
 
 ./scripts/loadcfg $1 || exit 1
