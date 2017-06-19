@@ -3,28 +3,50 @@
 . config/options
 
 get_meta $1
-
 cd $PKG_BUILD_DIR
 
-mkdir -p objdir-target 
-cd objdir-target
-
 ARCH=$TARGET_ARCH
+[ "$TARGET_ARCH" = arm ]    && ARCH="arm"
+[ "$TARGET_ARCH" = i386 ]   && ARCH="x86,r600"
+[ "$TARGET_ARCH" = x86_64 ] && ARCH="x86_64,r600"
 
-if [ "$TARGET_ARCH" = i386 ] ; then 
-  ARCH="x86,r600"
-fi
+cd autoconf
+aclocal --force --verbose -I m4
+autoconf -v -f -I m4 -o ../configure
+cd ..
 
-if [ "$TARGET_ARCH" = x86_64 ] ; then
-  ARCH="x86_64,r600"
-fi
+rm -rf objdir-target
+mkdir -p objdir-target/BuildTools
+cd objdir-target/BuildTools
 
-if [ "$TARGET_ARCH" = arm ] ; then
-  ARCH="arm"
-fi
+do_configure host \
+             --disable-polly \
+             --enable-optimized \
+             --disable-profiling \
+             --disable-assertions \
+             --disable-expensive-checks \
+             --disable-debug-runtime \
+             --disable-debug-symbols \
+             --enable-jit \
+             --disable-docs \
+             --disable-doxygen \
+             --enable-threads \
+             --enable-pthreads \
+             --enable-pic \
+             --enable-shared \
+             --enable-embed-stdcxx \
+             --enable-timestamps \
+             --disable-libffi \
+             --enable-ltdl-install \
+             --disable-zlib
+
+make BUILD_DIRS_ONLY=1 CFLAGS= CXXFLAGS=
+
+cd ..
 
 GCC_NO_GRAPHITE=1 GCC_NO_LTO=1 GCC_NO_ATOM=1 \
-do_configure --enable-polly \
+do_configure target \
+             --enable-polly \
              --enable-optimized \
              --disable-profiling \
              --disable-assertions \
@@ -43,7 +65,7 @@ do_configure --enable-polly \
              --enable-targets=$ARCH \
              --disable-libffi \
              --disable-ltdl-install \
-
+             --enable-zlib
 
 make
 make_install

@@ -1,3 +1,5 @@
+#!/bin/sh
+
 set -e
 
 #################################
@@ -51,15 +53,20 @@ STAMPS_NOARCH=.stamps
 DOCS=DOCS
 ROOT="/tmp/openbricks"
 REAL_ROOT=$(pwd)
-if [ "x${ROOT_SET}" = "x" ] && [ -h "$ROOT" ] && [ "x$(readlink $ROOT)" != "x${REAL_ROOT}" ]; then
-  echo "Deleting symlink: $ROOT -> $(readlink $ROOT)"
-  rm $ROOT
-fi
-if ! [ -d "$ROOT" ] ; then
-  echo "Creating symlink: $ROOT -> $REAL_ROOT"
-  ln -s $REAL_ROOT $ROOT
-#else
-#  echo "$ROOT already exists"
+
+if [ -n "$DO_NOT_SET_ROOT" ] ; then
+  ROOT=$REAL_ROOT
+else
+  if [ "x${ROOT_SET}" = "x" ] && [ -h "$ROOT" ] && [ "x$(readlink $ROOT)" != "x${REAL_ROOT}" ]; then
+    echo "Deleting symlink: $ROOT -> $(readlink $ROOT)"
+    rm $ROOT
+  fi
+  if ! [ -d "$ROOT" ] ; then
+    echo "Creating symlink: $ROOT -> $REAL_ROOT"
+    ln -s $REAL_ROOT $ROOT
+  #else
+  #  echo "$ROOT already exists"
+  fi
 fi
 
 if [ "$REAL_ROOT" != "$ROOT" ]; then
@@ -73,11 +80,11 @@ fi
 ######################
 # Toolchain Settings #
 ######################
-
 NUM_PROCESSORS=$(grep -c processor /proc/cpuinfo)
 [ -z "$CONCURRENCY_MAKE_LEVEL" ] && CONCURRENCY_MAKE_LEVEL=0
 [ $CONCURRENCY_MAKE_LEVEL -lt 1 ] || [ $CONCURRENCY_MAKE_LEVEL -gt $NUM_PROCESSORS ] && \
   CONCURRENCY_MAKE_LEVEL=$NUM_PROCESSORS
+[ -n "$DOOZER_CONCURRENCY_MAKE_LEVEL" ] && CONCURRENCY_MAKE_LEVEL=$DOOZER_CONCURRENCY_MAKE_LEVEL
 
 . config/toolchain
 
@@ -85,6 +92,7 @@ TOOLCHAIN_LANGUAGES=c
 [ "$TOOLCHAIN_CXX" = yes ] && TOOLCHAIN_LANGUAGES=${TOOLCHAIN_LANGUAGES},c++
 
 set_ccache
+
 export MAKEFLAGS=-j$CONCURRENCY_MAKE_LEVEL
 
 if [ -z "$PATH" ] || [ "$PATH" = "${PATH#$ROOT/$TOOLCHAIN/bin:}" ]; then
