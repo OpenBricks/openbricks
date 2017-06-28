@@ -5,17 +5,17 @@
 # In case it's the first time we try the build
 mkdir -p /project/sources /project/stamps build/config /project/.ccache-$1 /project/.ssh
 
-if [ -d /project/build.host ] ; then
-  rm -rf /project/build.host
-fi
+#if [ -d /project/build.host ] ; then
+#  rm -rf /project/build.host
+#fi
 
-if [ -d /project/.ccache ] ; then 
- rm -rf /project/.ccache
-fi
+#if [ -d /project/.ccache ] ; then 
+# rm -rf /project/.ccache
+#fi
 
-for prj in libcmrt flexget couchpotato libtorrent rtorrent libgdiplus libva-intel-hybrid; do
-  rm /project/stamps/$prj/*
-done
+#for prj in libcmrt flexget couchpotato libtorrent rtorrent libgdiplus libva-intel-hybrid; do
+#  rm /project/stamps/$prj/*
+#done
 
 REPONAME=openbricks
 REPO=/project/repo/checkout
