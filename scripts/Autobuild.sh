@@ -35,7 +35,7 @@ ln -s /project/sources sources
 ln -s /project/stamps .stamps
 
 for prj in libcmrt flexget couchpotato libtorrent rtorrent libgdiplus libva-intel-hybrid; do
-  rm -f .stamps/$prj/* sources/$prj/*
+  rm -rf .stamps/$prj
 done
 
 
