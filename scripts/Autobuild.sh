@@ -13,10 +13,6 @@ mkdir -p /project/sources /project/stamps build/config /project/.ccache-$1 /proj
 # rm -rf /project/.ccache
 #fi
 
-#for prj in libcmrt flexget couchpotato libtorrent rtorrent libgdiplus libva-intel-hybrid; do
-#  rm /project/stamps/$prj/*
-#done
-
 REPONAME=openbricks
 REPO=/project/repo/checkout
 CONFNAME=$1
@@ -37,6 +33,10 @@ echo "######## Public key #########"
 # Do not download if we have already the sources
 ln -s /project/sources sources
 ln -s /project/stamps .stamps
+
+for prj in libcmrt flexget couchpotato libtorrent rtorrent libgdiplus libva-intel-hybrid; do
+  rm -f .stamps/$prj/* sources/$prj/*
+done
 
 
 # Just to see...
