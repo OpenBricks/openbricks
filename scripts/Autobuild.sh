@@ -13,6 +13,10 @@ if [ -d /project/.ccache ] ; then
  rm -rf /project/.ccache
 fi
 
+for prj in libcmrt flexget couchpotato libtorrent rtorrent libgdiplus libva-intel-hybrid; do
+  rm /project/stamps/$prj/*
+done
+
 REPONAME=openbricks
 REPO=/project/repo/checkout
 CONFNAME=$1
@@ -30,7 +34,7 @@ echo "######## Public key #########"
 cat /project/.ssh/id_rsa.pub
 echo "######## Public key #########"
 
-# Do not dowmnload if we have already the sources
+# Do not download if we have already the sources
 ln -s /project/sources sources
 ln -s /project/stamps .stamps
 
