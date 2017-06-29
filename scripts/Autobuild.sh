@@ -5,14 +5,6 @@
 # In case it's the first time we try the build
 mkdir -p /project/sources /project/stamps build/config /project/.ccache-$1 /project/.ssh
 
-#if [ -d /project/build.host ] ; then
-#  rm -rf /project/build.host
-#fi
-
-#if [ -d /project/.ccache ] ; then 
-# rm -rf /project/.ccache
-#fi
-
 REPONAME=openbricks
 REPO=/project/repo/checkout
 CONFNAME=$1
@@ -33,10 +25,6 @@ echo "######## Public key #########"
 # Do not download if we have already the sources
 ln -s /project/sources sources
 ln -s /project/stamps .stamps
-
-for prj in libcmrt flexget couchpotato libtorrent rtorrent libgdiplus libva-intel-hybrid; do
-  rm -rf .stamps/$prj
-done
 
 
 # Just to see...
