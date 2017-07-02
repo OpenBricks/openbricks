@@ -5,14 +5,6 @@
 # In case it's the first time we try the build
 mkdir -p /project/sources /project/stamps build/config /project/.ccache-$1 /project/.ssh
 
-if [ -d /project/build.host ] ; then
-  rm -rf /project/build.host
-fi
-
-if [ -d /project/.ccache ] ; then 
- rm -rf /project/.ccache
-fi
-
 REPONAME=openbricks
 REPO=/project/repo/checkout
 CONFNAME=$1
@@ -30,7 +22,7 @@ echo "######## Public key #########"
 cat /project/.ssh/id_rsa.pub
 echo "######## Public key #########"
 
-# Do not dowmnload if we have already the sources
+# Do not download if we have already the sources
 ln -s /project/sources sources
 ln -s /project/stamps .stamps
 
@@ -86,6 +78,7 @@ make || exit 1
 # Clean packages
 echo "Cleaning binaries/binaries.*"
 find binaries/binaries.* -name "*-dbg_*.opk" -delete
+./scripts/index
 
 mkdir -p /project/$REPONAME/$CONFNAME/$DATE
 rm -rf /project/$REPONAME/$CONFNAME/$DATE/*
