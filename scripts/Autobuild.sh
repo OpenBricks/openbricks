@@ -5,6 +5,13 @@
 # In case it's the first time we try the build
 mkdir -p /project/sources /project/stamps build/config /project/.ccache-$1 /project/.ssh
 
+# Remove old files
+#rm -rf /project/build.host
+#rm -rf /project/.ccache
+
+# !!! disc space low !!!
+rm -rf /project/.ccache-$1/*
+
 REPONAME=openbricks
 REPO=/project/repo/checkout
 CONFNAME=$1
@@ -78,7 +85,6 @@ make || exit 1
 # Clean packages
 echo "Cleaning binaries/binaries.*"
 find binaries/binaries.* -name "*-dbg_*.opk" -delete
-./scripts/index
 
 mkdir -p /project/$REPONAME/$CONFNAME/$DATE
 rm -rf /project/$REPONAME/$CONFNAME/$DATE/*
