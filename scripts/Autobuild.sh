@@ -85,6 +85,7 @@ make || exit 1
 # Clean packages
 echo "Cleaning binaries/binaries.*"
 find binaries/binaries.* -name "*-dbg_*.opk" -delete
+./scripts/index
 
 mkdir -p /project/$REPONAME/$CONFNAME/$DATE
 rm -rf /project/$REPONAME/$CONFNAME/$DATE/*
