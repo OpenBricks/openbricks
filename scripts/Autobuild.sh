@@ -74,7 +74,7 @@ fi
 # enforce disk space saving options
 sed -i $dot_config \
     -e 's:.*CONFIG_OPT_SAVE_SPACE.*:CONFIG_OPT_SAVE_SPACE=y:' \
-    -e 's:.*CONFIG_OPT_USE_CCACHE.*:CONFIG_OPT_USE_CCACHE=y:'
+    -e 's:.*CONFIG_OPT_USE_CCACHE.*:# CONFIG_OPT_USE_CCACHE is not set:'
 
 make silentoldconfig
 
