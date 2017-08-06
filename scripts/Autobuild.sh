@@ -5,6 +5,13 @@
 # In case it's the first time we try the build
 mkdir -p /project/sources /project/stamps build/config /project/.ccache-$1 /project/.ssh
 
+# Remove old files
+#rm -rf /project/build.host
+#rm -rf /project/.ccache
+
+# !!! disc space low !!!
+rm -rf /project/.ccache-$1/*
+
 REPONAME=openbricks
 REPO=/project/repo/checkout
 CONFNAME=$1
@@ -67,7 +74,7 @@ fi
 # enforce disk space saving options
 sed -i $dot_config \
     -e 's:.*CONFIG_OPT_SAVE_SPACE.*:CONFIG_OPT_SAVE_SPACE=y:' \
-    -e 's:.*CONFIG_OPT_USE_CCACHE.*:CONFIG_OPT_USE_CCACHE=y:'
+    -e 's:.*CONFIG_OPT_USE_CCACHE.*:# CONFIG_OPT_USE_CCACHE is not set:'
 
 make silentoldconfig
 

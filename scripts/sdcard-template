@@ -9,7 +9,10 @@ DEFAULT_TARGET="(undefined)"
 
 # define target machine
 TARGET=$DEFAULT_TARGET
-[ -n "$3" ] && TARGET="$3"
+[ -n "$3" ] && [ ! "$3" = "default" ] && TARGET="$3"
+
+# set root partition size
+[ -n "$4" ] && root_part_size="$4"
 
 # check target machine
 fs_types=""
@@ -57,7 +60,7 @@ if [ -n "$ROOTFS" ] && echo "$ROOTFS" | grep -q "^https\?://.*\.tar\.xz$"; then
 fi
 
 if [ ! -f "$ROOTFS" ] && [ ! -d "$ROOTFS" ] || [ -z "$fs_types" ] ; then
-  put_str "Usage: $0 <device|img-file> <rootfs|rootfs-archive|rootfs-url> [target-machine]\n"
+  put_str "Usage: $0 <device|img-file> <rootfs|rootfs-archive|rootfs-url> [[target-machine|'default'] root-partition-size]\n"
 
   put_str "Supported target-machine types are:"
   curr=$(cat $0)
@@ -115,7 +118,7 @@ create_mkfs_command () {
   local mkfs_fat32="mkfs.vfat -F 32 -n $2 $3"
   local mkfs_ext2="mkfs.ext2 -L $2 $3"
   local mkfs_ext3="mkfs.ext3 -L $2 $3"
-  local mkfs_ext4="mkfs.ext4 -L $2 $3"
+  local mkfs_ext4="mkfs.ext4 -O '^64bit' -L $2 $3"
   local mkfs_xfs="mkfs.xfs -L $2 $3"
 
   eval mkfs_cmd=\$mkfs_$1
@@ -157,12 +160,14 @@ echo $DEVICE | grep -q loop && OPT=p
 partition_0=${DEVICE}${OPT}1 ; label_0="BOOT"
 partition_1=${DEVICE}${OPT}2 ; label_1="GEEXBOX"
 
+[ -n "$root_part_size" ] && root_part_size="+$root_part_size"
+
 if [ $part_count -lt 2 ] ; then
-  fdisk_input="o\nn\np\n1\n${boot_part_align}\n\nt\n${boot_part_type}\na\n1\nw\n"
+  fdisk_input="o\nn\np\n1\n${boot_part_align}\n${root_part_size}\nt\n${boot_part_type}\na\n1\nw\n"
   partition_1=$partition_0
   label_0=$label_1
 else
-  fdisk_input="o\nn\np\n1\n${boot_part_align}\n+${boot_part_size}\nt\n${boot_part_type}\nn\np\n2\n${boot_part_align}\n\n\na\n1\nw\n"
+  fdisk_input="o\nn\np\n1\n${boot_part_align}\n+${boot_part_size}\nt\n${boot_part_type}\nn\np\n2\n${boot_part_align}\n\n${root_part_size}\na\n1\nw\n"
 fi
 fdisk_cmd="/bin/echo -e \"$fdisk_input\" | fdisk $DEVICE"
 
