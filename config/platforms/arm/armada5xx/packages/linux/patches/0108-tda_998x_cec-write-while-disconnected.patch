@@ -1,0 +1,44 @@
+--- a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c	2017-06-08 03:15:10.000000000 +0200
++++ b/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c	2017-08-05 09:28:52.513019995 +0200
+@@ -630,15 +630,15 @@
+       /* send active msg when hdmi has been abled */
+       cec_on(this);
+ 
+-#ifndef GUI_OVER_HDMI
+-      this->cec.source_status = CEC_POWER_STATUS_ON;
+-#endif
+-
+-      if (this->driver.raw_mode)
+-      {
++      if (this->driver.raw_mode) {
+          this->cec.phy_addr = new_phy_addr;
++         this->cec.source_status = CEC_POWER_STATUS_ON;
+          eventCallbackCEC(TMDL_HDMICEC_CALLBACK_STATUS, NULL, 0);
+       }
++#ifndef GUI_OVER_HDMI
++      else
++         this->cec.source_status = CEC_POWER_STATUS_ON;
++#endif
+    }
+    /* new phy addr means new EDID, mean HPD ! */
+    else if ((this->cec.phy_addr != new_phy_addr) &&
+@@ -2147,7 +2147,9 @@
+    
+    down(&this->driver.sem);
+ 
+-   if (this->driver.write_pending || this->cec.source_status != CEC_POWER_STATUS_ON) {
++   if (this->driver.write_pending || 
++       this->cec.phy_addr == 0xFFFF || 
++       this->cec.source_status != CEC_POWER_STATUS_ON) {
+       up(&this->driver.sem);
+       return -EAGAIN;
+    }
+@@ -2194,7 +2196,7 @@
+       if (this->driver.read_queue_head != this->driver.read_queue_tail)
+          mask |= POLLIN | POLLRDNORM;	/* readable */
+ 
+-      if (!this->driver.write_pending && this->cec.source_status == CEC_POWER_STATUS_ON)
++      if (!this->driver.write_pending || this->cec.source_status != CEC_POWER_STATUS_ON)
+          mask |= POLLOUT | POLLWRNORM;	/* writable */
+ 
+    } else {
