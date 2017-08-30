@@ -2,9 +2,18 @@
 
 . config/options
 
-get_meta $1
+$SCRIPTS/unpack dvb-scan-tables
+get_meta dvb-scan-tables
+scandata=$(basename $PKG_BUILD_DIR)
 
+get_meta $1
 cd $PKG_BUILD_DIR
+
+mkdir -p data
+rm -f data/dvb-scan
+ln -sf ../../$scandata data/dvb-scan
+touch data/dvb-scan/.stamp
+
 
 if pkg_uses $1 zeroconf; then
   CFG_AVAHI="--enable-avahi"
@@ -18,10 +27,6 @@ else
   CFG_DVBCSA="--disable-dvbcsa"
 fi
 
-# check for cached scan data...
-dvbscandata=$ROOT/$SOURCES/$1/dvb-scan.cache.tar.bz2
-[ -e $dvbscandata ] && tar -C ./data -xaf $dvbscandata
-
 export COMPILER=$TARGET_CC
 
 ./configure \
@@ -34,13 +39,6 @@ export COMPILER=$TARGET_CC
             --disable-libav \
             --disable-hdhomerun_static \
             --enable-hdhomerun_client
-            
-# save scan data for next time
-(cd ./data/dvb-scan; git log -1 --pretty="%h" > GIT_REV.NEW)
-if ! cmp -s ./data/dvb-scan/GIT_REV.NEW ./data/dvb-scan/GIT_REV 2>/dev/null; then
-  mv -f ./data/dvb-scan/GIT_REV.NEW ./data/dvb-scan/GIT_REV
-  tar -C ./data -caf $dvbscandata dvb-scan
-fi
 
 sed -i -e "s/0.0.0~unknown/$PKG_VERSION/" support/version
 

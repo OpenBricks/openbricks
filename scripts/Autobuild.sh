@@ -5,13 +5,12 @@
 # In case it's the first time we try the build
 mkdir -p /project/sources /project/stamps build/config /project/.ccache-$1 /project/.ssh
 
-if [ -d /project/build.host ] ; then
-  rm -rf /project/build.host
-fi
+# Remove old files
+#rm -rf /project/build.host
+#rm -rf /project/.ccache
 
-if [ -d /project/.ccache ] ; then 
- rm -rf /project/.ccache
-fi
+# !!! disc space low !!!
+rm -rf /project/.ccache-$1/*
 
 REPONAME=openbricks
 REPO=/project/repo/checkout
@@ -30,7 +29,7 @@ echo "######## Public key #########"
 cat /project/.ssh/id_rsa.pub
 echo "######## Public key #########"
 
-# Do not dowmnload if we have already the sources
+# Do not download if we have already the sources
 ln -s /project/sources sources
 ln -s /project/stamps .stamps
 
@@ -75,7 +74,7 @@ fi
 # enforce disk space saving options
 sed -i $dot_config \
     -e 's:.*CONFIG_OPT_SAVE_SPACE.*:CONFIG_OPT_SAVE_SPACE=y:' \
-    -e 's:.*CONFIG_OPT_USE_CCACHE.*:CONFIG_OPT_USE_CCACHE=y:'
+    -e 's:.*CONFIG_OPT_USE_CCACHE.*:# CONFIG_OPT_USE_CCACHE is not set:'
 
 make silentoldconfig
 
@@ -86,6 +85,7 @@ make || exit 1
 # Clean packages
 echo "Cleaning binaries/binaries.*"
 find binaries/binaries.* -name "*-dbg_*.opk" -delete
+./scripts/index
 
 mkdir -p /project/$REPONAME/$CONFNAME/$DATE
 rm -rf /project/$REPONAME/$CONFNAME/$DATE/*
