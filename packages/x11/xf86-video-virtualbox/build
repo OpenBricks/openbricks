@@ -3,13 +3,13 @@
 . config/options
 
 get_meta $1
-myver=`echo $PKG_VERSION |cut -d- -f1`
+myver=$(echo $PKG_VERSION | cut -d- -f1)
 
 $SCRIPTS/build linux
 
 cd $PKG_BUILD_DIR
 
-mkdir -p data data-iso data-extracted work .install/$XORG_PATH_MODULES/drivers .install/usr/lib/dri .install/usr/lib
+mkdir -p data data-iso data-extracted work .install/usr/lib/dri .install/usr/lib
 tar xjf VirtualBox.tar.bz2 -C data
 xorriso -osirrox on -indev data/additions/VBoxGuestAdditions.iso \
   -extract /VBoxLinuxAdditions.run data-iso/VBoxLinuxAdditions.run
@@ -21,8 +21,9 @@ else
   fic="data-extracted/VBoxGuestAdditions-amd64.tar.bz2"
 fi
 
-tar xjf $fic -C work
+tar xjf $fic -C work && rm -rf data data-iso
 
+# build kernel drivers
 make -C work/src/vboxguest-$myver \
      CC=${CC} \
      KERN_VER=$(kernel_version) \
@@ -30,10 +31,17 @@ make -C work/src/vboxguest-$myver \
 
 mkdir -p .install/lib/modules/$(kernel_version)/kernel/drivers/misc
 cp work/src/vboxguest-$myver/*.ko .install/lib/modules/$(kernel_version)/kernel/drivers/misc
+strip_kmods .install/lib/modules
 
+
+# copy proprietary files
 get_meta xorg-server
-XVER=`echo $PKG_VERSION | sed 's/\.//' | cut -d. -f1`
+XVER=$(echo $PKG_VERSION | sed 's/\.//' | cut -d. -f1)
 
-cp work/lib/VBoxGuestAdditions/vboxvideo_drv_${XVER}.so .install/$XORG_PATH_MODULES/drivers/vboxvideo_drv.so
-cp work/lib/VBoxOGL.so .install/usr/lib/dri/vboxvideo_dri.so
-cp -R work/lib/* .install/usr/lib
+if [ $XVER -lt 119 ]; then
+  mkdir -p .install/$XORG_PATH_MODULES/drivers
+  cp work/lib/VBoxGuestAdditions/vboxvideo_drv_${XVER}.so .install/$XORG_PATH_MODULES/drivers/vboxvideo_drv.so
+fi
+
+ln -sf ../VBoxOGL.so .install/usr/lib/dri/vboxvideo_dri.so
+cp work/lib/*.so .install/usr/lib
