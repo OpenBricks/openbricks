@@ -10,62 +10,71 @@ ARCH=$TARGET_ARCH
 [ "$TARGET_ARCH" = i386 ]   && ARCH="x86,r600"
 [ "$TARGET_ARCH" = x86_64 ] && ARCH="x86_64,r600"
 
-cd autoconf
-aclocal --force --verbose -I m4
-autoconf -v -f -I m4 -o ../configure
+
+rm -rf objdir-host
+mkdir -p objdir-host
+cd objdir-host
+
+setup_toolchain host
+cmake                -DLLVM_INCLUDE_TOOLS=ON \
+                     -DLLVM_BUILD_TOOLS=OFF \
+                     -DLLVM_BUILD_UTILS=OFF \
+                     -DLLVM_BUILD_EXAMPLES=OFF \
+                     -DLLVM_INCLUDE_EXAMPLES=OFF \
+                     -DLLVM_BUILD_TESTS=OFF \
+                     -DLLVM_INCLUDE_TESTS=OFF \
+                     -DLLVM_INCLUDE_GO_TESTS=OFF \
+                     -DLLVM_BUILD_DOCS=OFF \
+                     -DLLVM_INCLUDE_DOCS=OFF \
+                     -DLLVM_ENABLE_DOXYGEN=OFF \
+                     -DLLVM_ENABLE_SPHINX=OFF \
+                     -DLLVM_TARGETS_TO_BUILD="AMDGPU" \
+                     -DLLVM_ENABLE_TERMINFO=OFF \
+                     -DLLVM_ENABLE_ASSERTIONS=OFF \
+                     -DLLVM_ENABLE_WERROR=OFF \
+                     -DLLVM_ENABLE_ZLIB=OFF \
+                     -DLLVM_OPTIMIZED_TABLEGEN=ON \
+                     -DCMAKE_INSTALL_RPATH=$ROOT/$TOOLCHAIN/lib \
+                     -DCMAKE_INSTALL_PREFIX="/usr" \
+                     ..
+
+make llvm-config llvm-tblgen
+
+cp -a bin/llvm-tblgen $ROOT/$TOOLCHAIN/bin/llvm-tblgen
+cp -a bin/llvm-config $SYSROOT_PREFIX/usr/bin/llvm-config-host
+                     
 cd ..
 
-rm -rf objdir-target
-mkdir -p objdir-target/BuildTools
-cd objdir-target/BuildTools
+mkdir -p objdir-target
+cd objdir-target
 
-do_configure host \
-             --disable-polly \
-             --enable-optimized \
-             --disable-profiling \
-             --disable-assertions \
-             --disable-expensive-checks \
-             --disable-debug-runtime \
-             --disable-debug-symbols \
-             --enable-jit \
-             --disable-docs \
-             --disable-doxygen \
-             --enable-threads \
-             --enable-pthreads \
-             --enable-pic \
-             --enable-shared \
-             --enable-embed-stdcxx \
-             --enable-timestamps \
-             --disable-libffi \
-             --enable-ltdl-install \
-             --disable-zlib
-
-make BUILD_DIRS_ONLY=1 CFLAGS= CXXFLAGS=
-
-cd ..
-
-GCC_NO_GRAPHITE=1 GCC_NO_LTO=1 GCC_NO_ATOM=1 \
-do_configure target \
-             --enable-polly \
-             --enable-optimized \
-             --disable-profiling \
-             --disable-assertions \
-             --disable-expensive-checks \
-             --disable-debug-runtime \
-             --enable-keep-symbols \
-             --enable-jit \
-             --disable-docs \
-             --disable-doxygen \
-             --enable-threads \
-             --enable-pthreads \
-             --enable-pic \
-             --enable-shared \
-             --enable-embed-stdcxx \
-             --enable-timestamps \
-             --enable-targets=$ARCH \
-             --disable-libffi \
-             --disable-ltdl-install \
-             --enable-zlib
-
+setup_toolchain target
+cmake                  -DCMAKE_BUILD_TYPE=MinSizeRel \
+                       -DCMAKE_C_FLAGS="$CFLAGS" \
+                       -DCMAKE_CXX_FLAGS="$CXXFLAGS" \
+                       -DLLVM_INCLUDE_TOOLS=ON \
+                       -DLLVM_BUILD_TOOLS=OFF \
+                       -DLLVM_BUILD_UTILS=ON \
+                       -DLLVM_BUILD_EXAMPLES=OFF \
+                       -DLLVM_INCLUDE_EXAMPLES=OFF \
+                       -DLLVM_BUILD_TESTS=OFF \
+                       -DLLVM_INCLUDE_TESTS=OFF \
+                       -DLLVM_INCLUDE_GO_TESTS=OFF \
+                       -DLLVM_BUILD_DOCS=OFF \
+                       -DLLVM_INCLUDE_DOCS=OFF \
+                       -DLLVM_ENABLE_DOXYGEN=OFF \
+                       -DLLVM_ENABLE_SPHINX=OFF \
+                       -DLLVM_TARGETS_TO_BUILD="AMDGPU" \
+                       -DLLVM_ENABLE_TERMINFO=OFF \
+                       -DLLVM_ENABLE_ASSERTIONS=OFF \
+                       -DLLVM_ENABLE_WERROR=OFF \
+                       -DLLVM_TARGET_ARCH="$TARGET_ARCH" \
+                       -DLLVM_ENABLE_ZLIB=ON \
+                       -DLLVM_BUILD_LLVM_DYLIB=ON \
+                       -DLLVM_LINK_LLVM_DYLIB=ON \
+                       -DLLVM_OPTIMIZED_TABLEGEN=ON \
+                       -DLLVM_TABLEGEN=$ROOT/$TOOLCHAIN/bin/llvm-tblgen \
+                       -DCMAKE_INSTALL_PREFIX="/usr" \
+                       ..
 make
 make_install
