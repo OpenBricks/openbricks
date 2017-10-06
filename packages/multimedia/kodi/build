@@ -33,7 +33,12 @@ KODI_FEATURES="\
 "
 
 case "$TARGET_PLATFORM" in
-     imx6) KODI_FEATURES="$KODI_FEATURES -DENABLE_IMX=ON" ;;
+     imx6) if pkg_uses $1 gbm ; then
+             echo "Do not use DENABLE_IMX=ON, gbm is used"
+           else
+             KODI_FEATURES="$KODI_FEATURES -DENABLE_IMX=ON"
+           fi ;;
+     
   amlogic) KODI_FEATURES="$KODI_FEATURES -DENABLE_AML=ON" ;;
 esac
 
@@ -89,7 +94,11 @@ cd .build
 
 if pkg_uses $1 gbm ; then
   KODI_FEATURES="$KODI_FEATURES -DCORE_PLATFORM_NAME=gbm"
+  export CFLAGS="$CFLAGS -DMESA_EGL_NO_X11_HEADERS"
+  export CXXFLAGS="$CXXFLAGS -DMESA_EGL_NO_X11_HEADERS"
 fi
+
+echo "KODI_FEATURES=$KODI_FEATURES"
 
 cmake \
   -DCMAKE_SYSTEM_NAME=Linux \
@@ -128,19 +137,10 @@ mkdir -p .install/srv/www/htdocs
 cp $ROOT/$PACKAGES/$PKG_SECTION/$1/www/* .install/srv/www/htdocs
 
 
-# ToDo: Check if this is still needed...
-if [ "$TARGET_ARCH" = arm ]; then
-  # workaround to make the addons run
-  for i in .install/usr/lib/kodi/addons/library.*/*arm.so; do
-    ln -sf $(basename $i) $(dirname $i)/$(basename $i .so)-linux.so
-  done
-fi
-
 # ToDo: Check if this is really needed...
 for i in .install/usr/lib/kodi/system/players/VideoPlayer/*.so; do
   lib=$(basename $i)
   ln -sf kodi/system/players/VideoPlayer/$lib .install/usr/lib/$lib
 done
-
 
 exit 0
