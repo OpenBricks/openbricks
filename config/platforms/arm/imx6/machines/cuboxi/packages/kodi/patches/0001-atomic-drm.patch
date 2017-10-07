@@ -1,0 +1,3291 @@
+From 17ddf6dfa850a4ec96d0ebbb33c88ea535e8c881 Mon Sep 17 00:00:00 2001
+From: Lukas Rusak <lorusak@gmail.com>
+Date: Thu, 10 Aug 2017 17:51:50 -0700
+Subject: [PATCH 1/6] windowing/gbm: split gbm from drm
+
+---
+ xbmc/windowing/gbm/CMakeLists.txt              |   6 +-
+ xbmc/windowing/gbm/DRMUtils.cpp                | 531 +++++++++++++++++++++++++
+ xbmc/windowing/gbm/DRMUtils.h                  |  89 +++++
+ xbmc/windowing/gbm/GBMUtils.cpp                | 527 +-----------------------
+ xbmc/windowing/gbm/GBMUtils.h                  |  57 +--
+ xbmc/windowing/gbm/WinSystemGbm.cpp            |  16 +-
+ xbmc/windowing/gbm/WinSystemGbm.h              |   2 +-
+ xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp |   2 +-
+ 8 files changed, 651 insertions(+), 579 deletions(-)
+ create mode 100644 xbmc/windowing/gbm/DRMUtils.cpp
+ create mode 100644 xbmc/windowing/gbm/DRMUtils.h
+
+diff --git a/xbmc/windowing/gbm/CMakeLists.txt b/xbmc/windowing/gbm/CMakeLists.txt
+index 103e9d41b224..00cb7d936d5d 100644
+--- a/xbmc/windowing/gbm/CMakeLists.txt
++++ b/xbmc/windowing/gbm/CMakeLists.txt
+@@ -1,10 +1,12 @@
+ set(SOURCES GLContextEGL.cpp
+             WinSystemGbm.cpp
+-            GBMUtils.cpp)
++            GBMUtils.cpp
++            DRMUtils.cpp)
+ 
+ set(HEADERS GLContextEGL.h
+             WinSystemGbm.h
+-            GBMUtils.h)
++            GBMUtils.h
++            DRMUtils.h)
+ 
+ if(OPENGLES_FOUND)
+   list(APPEND SOURCES WinSystemGbmGLESContext.cpp)
+diff --git a/xbmc/windowing/gbm/DRMUtils.cpp b/xbmc/windowing/gbm/DRMUtils.cpp
+new file mode 100644
+index 000000000000..14cc5e29bb0f
+--- /dev/null
++++ b/xbmc/windowing/gbm/DRMUtils.cpp
+@@ -0,0 +1,531 @@
++/*
++ *      Copyright (C) 2005-2013 Team XBMC
++ *      http://xbmc.org
++ *
++ *  This Program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; either version 2, or (at your option)
++ *  any later version.
++ *
++ *  This Program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with XBMC; see the file COPYING.  If not, see
++ *  <http://www.gnu.org/licenses/>.
++ *
++ */
++
++#include <errno.h>
++#include <fcntl.h>
++#include <poll.h>
++#include <stdint.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <drm/drm_mode.h>
++#include <EGL/egl.h>
++#include <unistd.h>
++
++#include "WinSystemGbmGLESContext.h"
++#include "guilib/gui3d.h"
++#include "utils/log.h"
++#include "settings/Settings.h"
++
++#include "DRMUtils.h"
++
++static struct drm *m_drm = new drm;
++static struct drm_fb *m_drm_fb = new drm_fb;
++
++static struct gbm *m_gbm = new gbm;
++
++static struct gbm_bo *m_bo = nullptr;
++static struct gbm_bo *m_next_bo = nullptr;
++
++static drmModeResPtr m_drm_resources = nullptr;
++static drmModeConnectorPtr m_drm_connector = nullptr;
++static drmModeEncoderPtr m_drm_encoder = nullptr;
++static drmModeCrtcPtr m_orig_crtc = nullptr;
++
++static struct pollfd m_drm_fds;
++static drmEventContext m_drm_evctx;
++static int flip_happening = 0;
++
++drm * CDRMUtils::GetDrm()
++{
++  return m_drm;
++}
++
++gbm * CDRMUtils::GetGbm()
++{
++  return m_gbm;
++}
++
++bool CDRMUtils::SetVideoMode(RESOLUTION_INFO res)
++{
++  GetMode(res);
++
++  gbm_surface_release_buffer(m_gbm->surface, m_bo);
++
++  m_bo = gbm_surface_lock_front_buffer(m_gbm->surface);
++  m_drm_fb = DrmFbGetFromBo(m_bo);
++
++  auto ret = drmModeSetCrtc(m_drm->fd,
++                            m_drm->crtc_id,
++                            m_drm_fb->fb_id,
++                            0,
++                            0,
++                            &m_drm->connector_id,
++                            1,
++                            m_drm->mode);
++
++  if(ret == -1)
++  {
++    CLog::Log(LOGERROR,
++              "CDRMUtils::%s - failed to set crtc mode: %dx%d%s @ %d Hz",
++              __FUNCTION__,
++              m_drm->mode->hdisplay,
++              m_drm->mode->vdisplay,
++              m_drm->mode->flags & DRM_MODE_FLAG_INTERLACE ? "i" : "",
++              m_drm->mode->vrefresh);
++
++    return false;
++  }
++
++  CLog::Log(LOGDEBUG, "CDRMUtils::%s - set crtc mode: %dx%d%s @ %d Hz",
++            __FUNCTION__,
++            m_drm->mode->hdisplay,
++            m_drm->mode->vdisplay,
++            m_drm->mode->flags & DRM_MODE_FLAG_INTERLACE ? "i" : "",
++            m_drm->mode->vrefresh);
++
++  return true;
++}
++
++bool CDRMUtils::GetMode(RESOLUTION_INFO res)
++{
++  m_drm->mode = &m_drm_connector->modes[atoi(res.strId.c_str())];
++
++  CLog::Log(LOGDEBUG, "CDRMUtils::%s - found crtc mode: %dx%d%s @ %d Hz",
++            __FUNCTION__,
++            m_drm->mode->hdisplay,
++            m_drm->mode->vdisplay,
++            m_drm->mode->flags & DRM_MODE_FLAG_INTERLACE ? "i" : "",
++            m_drm->mode->vrefresh);
++
++  return true;
++}
++
++void CDRMUtils::DrmFbDestroyCallback(struct gbm_bo *bo, void *data)
++{
++  struct drm_fb *fb = static_cast<drm_fb *>(data);
++
++  if(fb->fb_id)
++  {
++    drmModeRmFB(m_drm->fd, fb->fb_id);
++  }
++
++  delete (fb);
++}
++
++drm_fb * CDRMUtils::DrmFbGetFromBo(struct gbm_bo *bo)
++{
++  {
++    struct drm_fb *fb = static_cast<drm_fb *>(gbm_bo_get_user_data(bo));
++    if(fb)
++    {
++      return fb;
++    }
++  }
++
++  struct drm_fb *fb = new drm_fb;
++  fb->bo = bo;
++
++  uint32_t width = gbm_bo_get_width(bo);
++  uint32_t height = gbm_bo_get_height(bo);
++  uint32_t stride = gbm_bo_get_stride(bo);
++  uint32_t handle = gbm_bo_get_handle(bo).u32;
++
++  auto ret = drmModeAddFB(m_drm->fd,
++                          width,
++                          height,
++                          24,
++                          32,
++                          stride,
++                          handle,
++                          &fb->fb_id);
++
++  if(ret)
++  {
++    delete (fb);
++    CLog::Log(LOGDEBUG, "CDRMUtils::%s - failed to add framebuffer", __FUNCTION__);
++    return nullptr;
++  }
++
++  gbm_bo_set_user_data(bo, fb, DrmFbDestroyCallback);
++
++  return fb;
++}
++
++void CDRMUtils::PageFlipHandler(int fd, unsigned int frame, unsigned int sec,
++                                unsigned int usec, void *data)
++{
++  (void) fd, (void) frame, (void) sec, (void) usec;
++
++  int *flip_happening = static_cast<int *>(data);
++  *flip_happening = 0;
++}
++
++bool CDRMUtils::WaitingForFlip()
++{
++  if(!flip_happening)
++  {
++    return false;
++  }
++
++  m_drm_fds.revents = 0;
++
++  while(flip_happening)
++  {
++    auto ret = poll(&m_drm_fds, 1, -1);
++
++    if(ret < 0)
++    {
++      return true;
++    }
++
++    if(m_drm_fds.revents & (POLLHUP | POLLERR))
++    {
++      return true;
++    }
++
++    if(m_drm_fds.revents & POLLIN)
++    {
++      drmHandleEvent(m_drm->fd, &m_drm_evctx);
++    }
++  }
++
++  gbm_surface_release_buffer(m_gbm->surface, m_bo);
++  m_bo = m_next_bo;
++
++  return false;
++}
++
++bool CDRMUtils::QueueFlip()
++{
++  m_next_bo = gbm_surface_lock_front_buffer(m_gbm->surface);
++  m_drm_fb = DrmFbGetFromBo(m_next_bo);
++
++  auto ret = drmModePageFlip(m_drm->fd,
++                             m_drm->crtc_id,
++                             m_drm_fb->fb_id,
++                             DRM_MODE_PAGE_FLIP_EVENT,
++                             &flip_happening);
++
++  if(ret)
++  {
++    CLog::Log(LOGDEBUG, "CDRMUtils::%s - failed to queue DRM page flip", __FUNCTION__);
++    return false;
++  }
++
++  return true;
++}
++
++void CDRMUtils::FlipPage()
++{
++  if(WaitingForFlip())
++  {
++    return;
++  }
++
++  flip_happening = QueueFlip();
++
++  if(g_Windowing.NoOfBuffers() >= 3 && gbm_surface_has_free_buffers(m_gbm->surface))
++  {
++    return;
++  }
++
++  WaitingForFlip();
++}
++
++bool CDRMUtils::GetResources()
++{
++  m_drm_resources = drmModeGetResources(m_drm->fd);
++  if(!m_drm_resources)
++  {
++    return false;
++  }
++
++  return true;
++}
++
++bool CDRMUtils::GetConnector()
++{
++  for(auto i = 0; i < m_drm_resources->count_connectors; i++)
++  {
++    m_drm_connector = drmModeGetConnector(m_drm->fd,
++                                          m_drm_resources->connectors[i]);
++    if(m_drm_connector->connection == DRM_MODE_CONNECTED)
++    {
++      CLog::Log(LOGDEBUG, "CDRMUtils::%s - found connector: %d", __FUNCTION__,
++                                                                 m_drm_connector->connector_type);
++      break;
++    }
++    drmModeFreeConnector(m_drm_connector);
++    m_drm_connector = nullptr;
++  }
++
++  if(!m_drm_connector)
++  {
++    return false;
++  }
++
++  return true;
++}
++
++bool CDRMUtils::GetEncoder()
++{
++  for(auto i = 0; i < m_drm_resources->count_encoders; i++)
++  {
++    m_drm_encoder = drmModeGetEncoder(m_drm->fd, m_drm_resources->encoders[i]);
++    if(m_drm_encoder->encoder_id == m_drm_connector->encoder_id)
++    {
++      CLog::Log(LOGDEBUG, "CDRMUtils::%s - found encoder: %d", __FUNCTION__,
++                                                               m_drm_encoder->encoder_type);
++      break;
++    }
++    drmModeFreeEncoder(m_drm_encoder);
++    m_drm_encoder = nullptr;
++  }
++
++  if(!m_drm_encoder)
++  {
++    return false;
++  }
++
++  return true;
++}
++
++bool CDRMUtils::GetPreferredMode()
++{
++  for(auto i = 0, area = 0; i < m_drm_connector->count_modes; i++)
++  {
++    drmModeModeInfo *current_mode = &m_drm_connector->modes[i];
++
++    if(current_mode->type & DRM_MODE_TYPE_PREFERRED)
++    {
++      m_drm->mode = current_mode;
++      CLog::Log(LOGDEBUG,
++                "CDRMUtils::%s - found preferred mode: %dx%d%s @ %d Hz",
++                __FUNCTION__,
++                m_drm->mode->hdisplay,
++                m_drm->mode->vdisplay,
++                m_drm->mode->flags & DRM_MODE_FLAG_INTERLACE ? "i" : "",
++                m_drm->mode->vrefresh);
++      break;
++    }
++
++    auto current_area = current_mode->hdisplay * current_mode->vdisplay;
++    if (current_area > area)
++    {
++      m_drm->mode = current_mode;
++      area = current_area;
++    }
++  }
++
++  if(!m_drm->mode)
++  {
++    CLog::Log(LOGDEBUG, "CDRMUtils::%s - failed to find preferred mode", __FUNCTION__);
++    return false;
++  }
++
++  return true;
++}
++
++bool CDRMUtils::InitDrm()
++{
++  const char *device = "/dev/dri/card0";
++
++  m_drm->fd = open(device, O_RDWR);
++
++  if(m_drm->fd < 0)
++  {
++    return false;
++  }
++
++  if(!GetResources())
++  {
++    return false;
++  }
++
++  if(!GetConnector())
++  {
++    return false;
++  }
++
++  if(!GetEncoder())
++  {
++    return false;
++  }
++  else
++  {
++    m_drm->crtc_id = m_drm_encoder->crtc_id;
++  }
++
++  if(!GetPreferredMode())
++  {
++    return false;
++  }
++
++  for(auto i = 0; i < m_drm_resources->count_crtcs; i++)
++  {
++    if(m_drm_resources->crtcs[i] == m_drm->crtc_id)
++    {
++      m_drm->crtc_index = i;
++      break;
++    }
++  }
++
++  drmModeFreeResources(m_drm_resources);
++
++  drmSetMaster(m_drm->fd);
++
++  m_gbm->dev = gbm_create_device(m_drm->fd);
++
++  CGBMUtils::InitGbm(m_gbm, m_drm->mode->hdisplay, m_drm->mode->vdisplay);
++
++  m_drm_fds.fd = m_drm->fd;
++  m_drm_fds.events = POLLIN;
++
++  m_drm_evctx.version = DRM_EVENT_CONTEXT_VERSION;
++  m_drm_evctx.page_flip_handler = PageFlipHandler;
++
++  m_drm->connector_id = m_drm_connector->connector_id;
++  m_orig_crtc = drmModeGetCrtc(m_drm->fd, m_drm->crtc_id);
++
++  return true;
++}
++
++bool CDRMUtils::RestoreOriginalMode()
++{
++  if(!m_orig_crtc)
++  {
++    return false;
++  }
++
++  auto ret = drmModeSetCrtc(m_drm->fd,
++                            m_orig_crtc->crtc_id,
++                            m_orig_crtc->buffer_id,
++                            m_orig_crtc->x,
++                            m_orig_crtc->y,
++                            &m_drm->connector_id,
++                            1,
++                            &m_orig_crtc->mode);
++
++  if(ret)
++  {
++    CLog::Log(LOGERROR, "CDRMUtils::%s - failed to set original crtc mode", __FUNCTION__);
++    return false;
++  }
++
++  CLog::Log(LOGDEBUG, "CDRMUtils::%s - set original crtc mode", __FUNCTION__);
++
++  drmModeFreeCrtc(m_orig_crtc);
++  m_orig_crtc = nullptr;
++
++  return true;
++}
++
++void CDRMUtils::DestroyDrm()
++{
++  RestoreOriginalMode();
++
++  if(m_gbm->surface)
++  {
++    gbm_surface_destroy(m_gbm->surface);
++  }
++
++  if(m_gbm->dev)
++  {
++    gbm_device_destroy(m_gbm->dev);
++  }
++
++  if(m_drm_encoder)
++  {
++    drmModeFreeEncoder(m_drm_encoder);
++  }
++
++  if(m_drm_connector)
++  {
++    drmModeFreeConnector(m_drm_connector);
++  }
++
++  if(m_drm_resources)
++  {
++    drmModeFreeResources(m_drm_resources);
++  }
++
++  drmDropMaster(m_drm->fd);
++  close(m_drm->fd);
++
++  m_drm_encoder = nullptr;
++  m_drm_connector = nullptr;
++  m_drm_resources = nullptr;
++
++  m_drm->connector = nullptr;
++  m_drm->connector_id = 0;
++  m_drm->crtc = nullptr;
++  m_drm->crtc_id = 0;
++  m_drm->crtc_index = 0;
++  m_drm->fd = -1;
++  m_drm->mode = nullptr;
++
++  m_bo = nullptr;
++  m_next_bo = nullptr;
++}
++
++bool CDRMUtils::GetModes(std::vector<RESOLUTION_INFO> &resolutions)
++{
++  for(auto i = 0; i < m_drm_connector->count_modes; i++)
++  {
++    RESOLUTION_INFO res;
++    res.iScreen = 0;
++    res.iWidth = m_drm_connector->modes[i].hdisplay;
++    res.iHeight = m_drm_connector->modes[i].vdisplay;
++    res.iScreenWidth = m_drm_connector->modes[i].hdisplay;
++    res.iScreenHeight = m_drm_connector->modes[i].vdisplay;
++    res.fRefreshRate = m_drm_connector->modes[i].vrefresh;
++    res.iSubtitles = static_cast<int>(0.965 * res.iHeight);
++    res.fPixelRatio = 1.0f;
++    res.bFullScreen = true;
++    res.strMode = m_drm_connector->modes[i].name;
++    res.strId = std::to_string(i);
++
++    if(m_drm_connector->modes[i].flags & DRM_MODE_FLAG_3D_MASK)
++    {
++      if(m_drm_connector->modes[i].flags & DRM_MODE_FLAG_3D_TOP_AND_BOTTOM)
++      {
++        res.dwFlags = D3DPRESENTFLAG_MODE3DTB;
++      }
++      else if(m_drm_connector->modes[i].flags
++          & DRM_MODE_FLAG_3D_SIDE_BY_SIDE_HALF)
++      {
++        res.dwFlags = D3DPRESENTFLAG_MODE3DSBS;
++      }
++    }
++    else if(m_drm_connector->modes[i].flags & DRM_MODE_FLAG_INTERLACE)
++    {
++      res.dwFlags = D3DPRESENTFLAG_INTERLACED;
++    }
++    else
++    {
++      res.dwFlags = D3DPRESENTFLAG_PROGRESSIVE;
++    }
++
++    resolutions.push_back(res);
++  }
++
++  return resolutions.size() > 0;
++}
+diff --git a/xbmc/windowing/gbm/DRMUtils.h b/xbmc/windowing/gbm/DRMUtils.h
+new file mode 100644
+index 000000000000..58c4dde80a73
+--- /dev/null
++++ b/xbmc/windowing/gbm/DRMUtils.h
+@@ -0,0 +1,89 @@
++/*
++ *      Copyright (C) 2005-2013 Team XBMC
++ *      http://xbmc.org
++ *
++ *  This Program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; either version 2, or (at your option)
++ *  any later version.
++ *
++ *  This Program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with XBMC; see the file COPYING.  If not, see
++ *  <http://www.gnu.org/licenses/>.
++ *
++ */
++
++#pragma once
++
++#include <xf86drm.h>
++#include <xf86drmMode.h>
++#include <gbm.h>
++#include <vector>
++#include <poll.h>
++
++#include "guilib/Resolution.h"
++#include "GBMUtils.h"
++
++struct crtc
++{
++  drmModeCrtc *crtc;
++  drmModeObjectProperties *props;
++  drmModePropertyRes **props_info;
++};
++
++struct connector
++{
++  drmModeConnector *connector;
++  drmModeObjectProperties *props;
++  drmModePropertyRes **props_info;
++};
++
++struct drm
++{
++  int fd;
++
++  struct crtc *crtc;
++  struct connector *connector;
++  int crtc_index;
++
++  drmModeModeInfo *mode;
++  uint32_t crtc_id;
++  uint32_t connector_id;
++};
++
++struct drm_fb
++{
++  struct gbm_bo *bo;
++  uint32_t fb_id;
++};
++
++class CDRMUtils
++{
++public:
++  static drm * GetDrm();
++  static gbm * GetGbm();
++  static bool InitDrm();
++  static bool SetVideoMode(RESOLUTION_INFO res);
++  static void FlipPage();
++  static void DestroyDrm();
++  static bool GetModes(std::vector<RESOLUTION_INFO> &resolutions);
++
++private:
++  static bool GetMode(RESOLUTION_INFO res);
++  static bool GetResources();
++  static bool GetConnector();
++  static bool GetEncoder();
++  static bool GetPreferredMode();
++  static bool RestoreOriginalMode();
++  static bool WaitingForFlip();
++  static bool QueueFlip();
++  static void PageFlipHandler(int fd, unsigned int frame, unsigned int sec,
++                              unsigned int usec, void *data);
++  static void DrmFbDestroyCallback(struct gbm_bo *bo, void *data);
++  static drm_fb * DrmFbGetFromBo(struct gbm_bo *bo);
++};
+diff --git a/xbmc/windowing/gbm/GBMUtils.cpp b/xbmc/windowing/gbm/GBMUtils.cpp
+index 1be0ae5611e9..f54d6a9ce73f 100644
+--- a/xbmc/windowing/gbm/GBMUtils.cpp
++++ b/xbmc/windowing/gbm/GBMUtils.cpp
+@@ -36,533 +36,36 @@
+ 
+ #include "GBMUtils.h"
+ 
+-static struct drm *m_drm = new drm;
+-static struct drm_fb *m_drm_fb = new drm_fb;
+-
+-static struct gbm *m_gbm = new gbm;
+-
+-static struct gbm_bo *m_bo = nullptr;
+-static struct gbm_bo *m_next_bo = nullptr;
+-
+-static drmModeResPtr m_drm_resources = nullptr;
+-static drmModeConnectorPtr m_drm_connector = nullptr;
+-static drmModeEncoderPtr m_drm_encoder = nullptr;
+-static drmModeCrtcPtr m_orig_crtc = nullptr;
+-
+-static struct pollfd m_drm_fds;
+-static drmEventContext m_drm_evctx;
+-static int flip_happening = 0;
+-
+-drm * CGBMUtils::GetDrm()
+-{
+-  return m_drm;
+-}
+-
+-gbm * CGBMUtils::GetGbm()
+-{
+-  return m_gbm;
+-}
+-
+-bool CGBMUtils::InitGbm(RESOLUTION_INFO res)
++bool CGBMUtils::InitGbm(struct gbm *gbm, int hdisplay, int vdisplay)
+ {
+-  GetMode(res);
++  gbm->width = hdisplay;
++  gbm->height = vdisplay;
+ 
+-  m_gbm->width = m_drm->mode->hdisplay;
+-  m_gbm->height = m_drm->mode->vdisplay;
++  gbm->surface = gbm_surface_create(gbm->dev,
++                                    gbm->width,
++                                    gbm->height,
++                                    GBM_FORMAT_ARGB8888,
++                                    GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
+ 
+-  m_gbm->surface = gbm_surface_create(m_gbm->dev,
+-                                      m_gbm->width,
+-                                      m_gbm->height,
+-                                      GBM_FORMAT_ARGB8888,
+-                                      GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
+-
+-  if(!m_gbm->surface)
++  if(!gbm->surface)
+   {
+     CLog::Log(LOGERROR, "CGBMUtils::%s - failed to create surface", __FUNCTION__);
+     return false;
+   }
+ 
+   CLog::Log(LOGDEBUG, "CGBMUtils::%s - created surface with size %dx%d", __FUNCTION__,
+-                                                                         m_gbm->width,
+-                                                                         m_gbm->height);
++                                                                         gbm->width,
++                                                                         gbm->height);
+ 
+   return true;
+ }
+ 
+-void CGBMUtils::DestroyGbm()
+-{
+-  if(m_gbm->surface)
+-  {
+-    gbm_surface_destroy(m_gbm->surface);
+-  }
+-
+-  m_gbm->surface = nullptr;
+-}
+-
+-bool CGBMUtils::SetVideoMode(RESOLUTION_INFO res)
++void CGBMUtils::DestroyGbm(struct gbm *gbm)
+ {
+-  GetMode(res);
+-
+-  gbm_surface_release_buffer(m_gbm->surface, m_bo);
+-
+-  m_bo = gbm_surface_lock_front_buffer(m_gbm->surface);
+-  m_drm_fb = DrmFbGetFromBo(m_bo);
+-
+-  auto ret = drmModeSetCrtc(m_drm->fd,
+-                            m_drm->crtc_id,
+-                            m_drm_fb->fb_id,
+-                            0,
+-                            0,
+-                            &m_drm->connector_id,
+-                            1,
+-                            m_drm->mode);
+-
+-  if(ret == -1)
++  if(gbm->surface)
+   {
+-    CLog::Log(LOGERROR,
+-              "CGBMUtils::%s - failed to set crtc mode: %dx%d%s @ %d Hz",
+-              __FUNCTION__,
+-              m_drm->mode->hdisplay,
+-              m_drm->mode->vdisplay,
+-              m_drm->mode->flags & DRM_MODE_FLAG_INTERLACE ? "i" : "",
+-              m_drm->mode->vrefresh);
+-
+-    return false;
+-  }
+-
+-  CLog::Log(LOGDEBUG, "CGBMUtils::%s - set crtc mode: %dx%d%s @ %d Hz",
+-            __FUNCTION__,
+-            m_drm->mode->hdisplay,
+-            m_drm->mode->vdisplay,
+-            m_drm->mode->flags & DRM_MODE_FLAG_INTERLACE ? "i" : "",
+-            m_drm->mode->vrefresh);
+-
+-  return true;
+-}
+-
+-bool CGBMUtils::GetMode(RESOLUTION_INFO res)
+-{
+-  m_drm->mode = &m_drm_connector->modes[atoi(res.strId.c_str())];
+-
+-  CLog::Log(LOGDEBUG, "CGBMUtils::%s - found crtc mode: %dx%d%s @ %d Hz",
+-            __FUNCTION__,
+-            m_drm->mode->hdisplay,
+-            m_drm->mode->vdisplay,
+-            m_drm->mode->flags & DRM_MODE_FLAG_INTERLACE ? "i" : "",
+-            m_drm->mode->vrefresh);
+-
+-  return true;
+-}
+-
+-void CGBMUtils::DrmFbDestroyCallback(struct gbm_bo *bo, void *data)
+-{
+-  struct drm_fb *fb = static_cast<drm_fb *>(data);
+-
+-  if(fb->fb_id)
+-  {
+-    drmModeRmFB(m_drm->fd, fb->fb_id);
+-  }
+-
+-  delete (fb);
+-}
+-
+-drm_fb * CGBMUtils::DrmFbGetFromBo(struct gbm_bo *bo)
+-{
+-  {
+-    struct drm_fb *fb = static_cast<drm_fb *>(gbm_bo_get_user_data(bo));
+-    if(fb)
+-    {
+-      return fb;
+-    }
+-  }
+-
+-  struct drm_fb *fb = new drm_fb;
+-  fb->bo = bo;
+-
+-  uint32_t width = gbm_bo_get_width(bo);
+-  uint32_t height = gbm_bo_get_height(bo);
+-  uint32_t stride = gbm_bo_get_stride(bo);
+-  uint32_t handle = gbm_bo_get_handle(bo).u32;
+-
+-  auto ret = drmModeAddFB(m_drm->fd,
+-                          width,
+-                          height,
+-                          24,
+-                          32,
+-                          stride,
+-                          handle,
+-                          &fb->fb_id);
+-
+-  if(ret)
+-  {
+-    delete (fb);
+-    CLog::Log(LOGDEBUG, "CGBMUtils::%s - failed to add framebuffer", __FUNCTION__);
+-    return nullptr;
+-  }
+-
+-  gbm_bo_set_user_data(bo, fb, DrmFbDestroyCallback);
+-
+-  return fb;
+-}
+-
+-void CGBMUtils::PageFlipHandler(int fd, unsigned int frame, unsigned int sec,
+-                                unsigned int usec, void *data)
+-{
+-  (void) fd, (void) frame, (void) sec, (void) usec;
+-
+-  int *flip_happening = static_cast<int *>(data);
+-  *flip_happening = 0;
+-}
+-
+-bool CGBMUtils::WaitingForFlip()
+-{
+-  if(!flip_happening)
+-  {
+-    return false;
+-  }
+-
+-  m_drm_fds.revents = 0;
+-
+-  while(flip_happening)
+-  {
+-    auto ret = poll(&m_drm_fds, 1, -1);
+-
+-    if(ret < 0)
+-    {
+-      return true;
+-    }
+-
+-    if(m_drm_fds.revents & (POLLHUP | POLLERR))
+-    {
+-      return true;
+-    }
+-
+-    if(m_drm_fds.revents & POLLIN)
+-    {
+-      drmHandleEvent(m_drm->fd, &m_drm_evctx);
+-    }
+-  }
+-
+-  gbm_surface_release_buffer(m_gbm->surface, m_bo);
+-  m_bo = m_next_bo;
+-
+-  return false;
+-}
+-
+-bool CGBMUtils::QueueFlip()
+-{
+-  m_next_bo = gbm_surface_lock_front_buffer(m_gbm->surface);
+-  m_drm_fb = DrmFbGetFromBo(m_next_bo);
+-
+-  auto ret = drmModePageFlip(m_drm->fd,
+-                             m_drm->crtc_id,
+-                             m_drm_fb->fb_id,
+-                             DRM_MODE_PAGE_FLIP_EVENT,
+-                             &flip_happening);
+-
+-  if(ret)
+-  {
+-    CLog::Log(LOGDEBUG, "CGBMUtils::%s - failed to queue DRM page flip", __FUNCTION__);
+-    return false;
+-  }
+-
+-  return true;
+-}
+-
+-void CGBMUtils::FlipPage()
+-{
+-  if(WaitingForFlip())
+-  {
+-    return;
+-  }
+-
+-  flip_happening = QueueFlip();
+-
+-  if(g_Windowing.NoOfBuffers() >= 3 && gbm_surface_has_free_buffers(m_gbm->surface))
+-  {
+-    return;
+-  }
+-
+-  WaitingForFlip();
+-}
+-
+-bool CGBMUtils::GetResources()
+-{
+-  m_drm_resources = drmModeGetResources(m_drm->fd);
+-  if(!m_drm_resources)
+-  {
+-    return false;
+-  }
+-
+-  return true;
+-}
+-
+-bool CGBMUtils::GetConnector()
+-{
+-  for(auto i = 0; i < m_drm_resources->count_connectors; i++)
+-  {
+-    m_drm_connector = drmModeGetConnector(m_drm->fd,
+-                                          m_drm_resources->connectors[i]);
+-    if(m_drm_connector->connection == DRM_MODE_CONNECTED)
+-    {
+-      CLog::Log(LOGDEBUG, "CGBMUtils::%s - found connector: %d", __FUNCTION__,
+-                                                                 m_drm_connector->connector_type);
+-      break;
+-    }
+-    drmModeFreeConnector(m_drm_connector);
+-    m_drm_connector = nullptr;
+-  }
+-
+-  if(!m_drm_connector)
+-  {
+-    return false;
+-  }
+-
+-  return true;
+-}
+-
+-bool CGBMUtils::GetEncoder()
+-{
+-  for(auto i = 0; i < m_drm_resources->count_encoders; i++)
+-  {
+-    m_drm_encoder = drmModeGetEncoder(m_drm->fd, m_drm_resources->encoders[i]);
+-    if(m_drm_encoder->encoder_id == m_drm_connector->encoder_id)
+-    {
+-      CLog::Log(LOGDEBUG, "CGBMUtils::%s - found encoder: %d", __FUNCTION__,
+-                                                               m_drm_encoder->encoder_type);
+-      break;
+-    }
+-    drmModeFreeEncoder(m_drm_encoder);
+-    m_drm_encoder = nullptr;
+-  }
+-
+-  if(!m_drm_encoder)
+-  {
+-    return false;
+-  }
+-
+-  return true;
+-}
+-
+-bool CGBMUtils::GetPreferredMode()
+-{
+-  for(auto i = 0, area = 0; i < m_drm_connector->count_modes; i++)
+-  {
+-    drmModeModeInfo *current_mode = &m_drm_connector->modes[i];
+-
+-    if(current_mode->type & DRM_MODE_TYPE_PREFERRED)
+-    {
+-      m_drm->mode = current_mode;
+-      CLog::Log(LOGDEBUG,
+-                "CGBMUtils::%s - found preferred mode: %dx%d%s @ %d Hz",
+-                __FUNCTION__,
+-                m_drm->mode->hdisplay,
+-                m_drm->mode->vdisplay,
+-                m_drm->mode->flags & DRM_MODE_FLAG_INTERLACE ? "i" : "",
+-                m_drm->mode->vrefresh);
+-      break;
+-    }
+-
+-    auto current_area = current_mode->hdisplay * current_mode->vdisplay;
+-    if (current_area > area)
+-    {
+-      m_drm->mode = current_mode;
+-      area = current_area;
+-    }
+-  }
+-
+-  if(!m_drm->mode)
+-  {
+-    CLog::Log(LOGDEBUG, "CGBMUtils::%s - failed to find preferred mode", __FUNCTION__);
+-    return false;
+-  }
+-
+-  return true;
+-}
+-
+-bool CGBMUtils::InitDrm()
+-{
+-  const char *device = "/dev/dri/card0";
+-
+-  m_drm->fd = open(device, O_RDWR);
+-
+-  if(m_drm->fd < 0)
+-  {
+-    return false;
+-  }
+-
+-  if(!GetResources())
+-  {
+-    return false;
+-  }
+-
+-  if(!GetConnector())
+-  {
+-    return false;
+-  }
+-
+-  if(!GetEncoder())
+-  {
+-    return false;
+-  }
+-  else
+-  {
+-    m_drm->crtc_id = m_drm_encoder->crtc_id;
+-  }
+-
+-  if(!GetPreferredMode())
+-  {
+-    return false;
+-  }
+-
+-  for(auto i = 0; i < m_drm_resources->count_crtcs; i++)
+-  {
+-    if(m_drm_resources->crtcs[i] == m_drm->crtc_id)
+-    {
+-      m_drm->crtc_index = i;
+-      break;
+-    }
+-  }
+-
+-  drmModeFreeResources(m_drm_resources);
+-
+-  drmSetMaster(m_drm->fd);
+-
+-  m_gbm->dev = gbm_create_device(m_drm->fd);
+-  m_gbm->surface = nullptr;
+-
+-  m_drm_fds.fd = m_drm->fd;
+-  m_drm_fds.events = POLLIN;
+-
+-  m_drm_evctx.version = DRM_EVENT_CONTEXT_VERSION;
+-  m_drm_evctx.page_flip_handler = PageFlipHandler;
+-
+-  m_drm->connector_id = m_drm_connector->connector_id;
+-  m_orig_crtc = drmModeGetCrtc(m_drm->fd, m_drm->crtc_id);
+-
+-  return true;
+-}
+-
+-bool CGBMUtils::RestoreOriginalMode()
+-{
+-  if(!m_orig_crtc)
+-  {
+-    return false;
+-  }
+-
+-  auto ret = drmModeSetCrtc(m_drm->fd,
+-                            m_orig_crtc->crtc_id,
+-                            m_orig_crtc->buffer_id,
+-                            m_orig_crtc->x,
+-                            m_orig_crtc->y,
+-                            &m_drm->connector_id,
+-                            1,
+-                            &m_orig_crtc->mode);
+-
+-  if(ret)
+-  {
+-    CLog::Log(LOGERROR, "CGBMUtils::%s - failed to set original crtc mode", __FUNCTION__);
+-    return false;
+-  }
+-
+-  CLog::Log(LOGDEBUG, "CGBMUtils::%s - set original crtc mode", __FUNCTION__);
+-
+-  drmModeFreeCrtc(m_orig_crtc);
+-  m_orig_crtc = nullptr;
+-
+-  return true;
+-}
+-
+-void CGBMUtils::DestroyDrm()
+-{
+-  RestoreOriginalMode();
+-
+-  if(m_gbm->surface)
+-  {
+-    gbm_surface_destroy(m_gbm->surface);
+-  }
+-
+-  if(m_gbm->dev)
+-  {
+-    gbm_device_destroy(m_gbm->dev);
+-  }
+-
+-  if(m_drm_encoder)
+-  {
+-    drmModeFreeEncoder(m_drm_encoder);
+-  }
+-
+-  if(m_drm_connector)
+-  {
+-    drmModeFreeConnector(m_drm_connector);
+-  }
+-
+-  if(m_drm_resources)
+-  {
+-    drmModeFreeResources(m_drm_resources);
+-  }
+-
+-  drmDropMaster(m_drm->fd);
+-  close(m_drm->fd);
+-
+-  m_drm_encoder = nullptr;
+-  m_drm_connector = nullptr;
+-  m_drm_resources = nullptr;
+-
+-  m_drm->connector = nullptr;
+-  m_drm->connector_id = 0;
+-  m_drm->crtc = nullptr;
+-  m_drm->crtc_id = 0;
+-  m_drm->crtc_index = 0;
+-  m_drm->fd = -1;
+-  m_drm->mode = nullptr;
+-
+-  m_gbm = nullptr;
+-
+-  m_bo = nullptr;
+-  m_next_bo = nullptr;
+-}
+-
+-bool CGBMUtils::GetModes(std::vector<RESOLUTION_INFO> &resolutions)
+-{
+-  for(auto i = 0; i < m_drm_connector->count_modes; i++)
+-  {
+-    RESOLUTION_INFO res;
+-    res.iScreen = 0;
+-    res.iWidth = m_drm_connector->modes[i].hdisplay;
+-    res.iHeight = m_drm_connector->modes[i].vdisplay;
+-    res.iScreenWidth = m_drm_connector->modes[i].hdisplay;
+-    res.iScreenHeight = m_drm_connector->modes[i].vdisplay;
+-    res.fRefreshRate = m_drm_connector->modes[i].vrefresh;
+-    res.iSubtitles = static_cast<int>(0.965 * res.iHeight);
+-    res.fPixelRatio = 1.0f;
+-    res.bFullScreen = true;
+-    res.strMode = m_drm_connector->modes[i].name;
+-    res.strId = std::to_string(i);
+-
+-    if(m_drm_connector->modes[i].flags & DRM_MODE_FLAG_3D_MASK)
+-    {
+-      if(m_drm_connector->modes[i].flags & DRM_MODE_FLAG_3D_TOP_AND_BOTTOM)
+-      {
+-        res.dwFlags = D3DPRESENTFLAG_MODE3DTB;
+-      }
+-      else if(m_drm_connector->modes[i].flags
+-          & DRM_MODE_FLAG_3D_SIDE_BY_SIDE_HALF)
+-      {
+-        res.dwFlags = D3DPRESENTFLAG_MODE3DSBS;
+-      }
+-    }
+-    else if(m_drm_connector->modes[i].flags & DRM_MODE_FLAG_INTERLACE)
+-    {
+-      res.dwFlags = D3DPRESENTFLAG_INTERLACED;
+-    }
+-    else
+-    {
+-      res.dwFlags = D3DPRESENTFLAG_PROGRESSIVE;
+-    }
+-
+-    resolutions.push_back(res);
++    gbm_surface_destroy(gbm->surface);
+   }
+ 
+-  return resolutions.size() > 0;
++  gbm->surface = nullptr;
+ }
+diff --git a/xbmc/windowing/gbm/GBMUtils.h b/xbmc/windowing/gbm/GBMUtils.h
+index 874c10045c93..7b2412c114bd 100644
+--- a/xbmc/windowing/gbm/GBMUtils.h
++++ b/xbmc/windowing/gbm/GBMUtils.h
+@@ -34,62 +34,9 @@ struct gbm
+   int width, height;
+ };
+ 
+-struct crtc
+-{
+-  drmModeCrtc *crtc;
+-  drmModeObjectProperties *props;
+-  drmModePropertyRes **props_info;
+-};
+-
+-struct connector
+-{
+-  drmModeConnector *connector;
+-  drmModeObjectProperties *props;
+-  drmModePropertyRes **props_info;
+-};
+-
+-struct drm
+-{
+-  int fd;
+-
+-  struct crtc *crtc;
+-  struct connector *connector;
+-  int crtc_index;
+-
+-  drmModeModeInfo *mode;
+-  uint32_t crtc_id;
+-  uint32_t connector_id;
+-};
+-
+-struct drm_fb
+-{
+-  struct gbm_bo *bo;
+-  uint32_t fb_id;
+-};
+-
+ class CGBMUtils
+ {
+ public:
+-  static gbm * GetGbm();
+-  static drm * GetDrm();
+-  static bool InitDrm();
+-  static bool InitGbm(RESOLUTION_INFO res);
+-  static void DestroyGbm();
+-  static bool SetVideoMode(RESOLUTION_INFO res);
+-  static void FlipPage();
+-  static void DestroyDrm();
+-  static bool GetModes(std::vector<RESOLUTION_INFO> &resolutions);
+-private:
+-  static bool GetMode(RESOLUTION_INFO res);
+-  static bool GetResources();
+-  static bool GetConnector();
+-  static bool GetEncoder();
+-  static bool GetPreferredMode();
+-  static bool RestoreOriginalMode();
+-  static bool WaitingForFlip();
+-  static bool QueueFlip();
+-  static void PageFlipHandler(int fd, unsigned int frame, unsigned int sec,
+-                              unsigned int usec, void *data);
+-  static void DrmFbDestroyCallback(struct gbm_bo *bo, void *data);
+-  static drm_fb * DrmFbGetFromBo(struct gbm_bo *bo);
++  static bool InitGbm(struct gbm *gbm, int hdisplay, int vdisplay);
++  static void DestroyGbm(struct gbm *gbm);
+ };
+diff --git a/xbmc/windowing/gbm/WinSystemGbm.cpp b/xbmc/windowing/gbm/WinSystemGbm.cpp
+index 7f09bd18f28d..3d9837340def 100644
+--- a/xbmc/windowing/gbm/WinSystemGbm.cpp
++++ b/xbmc/windowing/gbm/WinSystemGbm.cpp
+@@ -41,14 +41,14 @@ CWinSystemGbm::CWinSystemGbm() :
+ 
+ bool CWinSystemGbm::InitWindowSystem()
+ {
+-  if (!CGBMUtils::InitDrm())
++  if (!CDRMUtils::InitDrm())
+   {
+     CLog::Log(LOGERROR, "CWinSystemGbm::%s - failed to initialize DRM", __FUNCTION__);
+     return false;
+   }
+ 
+-  m_drm = CGBMUtils::GetDrm();
+-  m_gbm = CGBMUtils::GetGbm();
++  m_drm = CDRMUtils::GetDrm();
++  m_gbm = CDRMUtils::GetGbm();
+ 
+   m_nativeDisplay = m_gbm->dev;
+ 
+@@ -68,7 +68,7 @@ bool CWinSystemGbm::InitWindowSystem()
+ 
+ bool CWinSystemGbm::DestroyWindowSystem()
+ {
+-  CGBMUtils::DestroyDrm();
++  CDRMUtils::DestroyDrm();
+   m_nativeDisplay = nullptr;
+   m_drm = nullptr;
+   m_gbm = nullptr;
+@@ -81,7 +81,7 @@ bool CWinSystemGbm::CreateNewWindow(const std::string& name,
+                                     bool fullScreen,
+                                     RESOLUTION_INFO& res)
+ {
+-  if (!CGBMUtils::InitGbm(res))
++  if (!CGBMUtils::InitGbm(m_gbm, m_drm->mode->hdisplay, m_drm->mode->vdisplay))
+   {
+     CLog::Log(LOGERROR, "CWinSystemGbm::%s - failed to initialize GBM", __FUNCTION__);
+     return false;
+@@ -95,7 +95,7 @@ bool CWinSystemGbm::CreateNewWindow(const std::string& name,
+ 
+ bool CWinSystemGbm::DestroyWindow()
+ {
+-  CGBMUtils::DestroyGbm();
++  CGBMUtils::DestroyGbm(m_gbm);
+   m_nativeWindow = nullptr;
+ 
+   CLog::Log(LOGDEBUG, "CWinSystemGbm::%s - deinitialized GBM", __FUNCTION__);
+@@ -114,7 +114,7 @@ void CWinSystemGbm::UpdateResolutions()
+ 
+   std::vector<RESOLUTION_INFO> resolutions;
+ 
+-  if (!CGBMUtils::GetModes(resolutions) || resolutions.empty())
++  if (!CDRMUtils::GetModes(resolutions) || resolutions.empty())
+   {
+     CLog::Log(LOGWARNING, "CWinSystemGbm::%s - Failed to get resolutions", __FUNCTION__);
+   }
+@@ -144,7 +144,7 @@ bool CWinSystemGbm::ResizeWindow(int newWidth, int newHeight, int newLeft, int n
+ 
+ bool CWinSystemGbm::SetFullScreen(bool fullScreen, RESOLUTION_INFO& res, bool blankOtherDisplays)
+ {
+-  auto ret = CGBMUtils::SetVideoMode(res);
++  auto ret = CDRMUtils::SetVideoMode(res);
+ 
+   if (!ret)
+   {
+diff --git a/xbmc/windowing/gbm/WinSystemGbm.h b/xbmc/windowing/gbm/WinSystemGbm.h
+index 9c3891e05d20..4a43e3db4cfd 100644
+--- a/xbmc/windowing/gbm/WinSystemGbm.h
++++ b/xbmc/windowing/gbm/WinSystemGbm.h
+@@ -25,7 +25,7 @@
+ 
+ #include "threads/CriticalSection.h"
+ #include "windowing/WinSystem.h"
+-#include "GBMUtils.h"
++#include "DRMUtils.h"
+ 
+ class IDispResource;
+ 
+diff --git a/xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp b/xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp
+index 48bbc47d7258..c517543093f3 100644
+--- a/xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp
++++ b/xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp
+@@ -134,7 +134,7 @@ void CWinSystemGbmGLESContext::PresentRenderImpl(bool rendered)
+   if (rendered)
+   {
+     m_pGLContext.SwapBuffers();
+-    CGBMUtils::FlipPage();
++    CDRMUtils::FlipPage();
+   }
+ }
+ 
+
+From 4b71919ea6cea00c44a60e1a66da08d0cc342953 Mon Sep 17 00:00:00 2001
+From: Lukas Rusak <lorusak@gmail.com>
+Date: Thu, 10 Aug 2017 18:37:29 -0700
+Subject: [PATCH 2/6] windowing/gbm: split legacy drm
+
+---
+ xbmc/windowing/gbm/CMakeLists.txt              |   6 +-
+ xbmc/windowing/gbm/DRMLegacy.cpp               | 213 +++++++++++++++++++++++++
+ xbmc/windowing/gbm/DRMLegacy.h                 |  38 +++++
+ xbmc/windowing/gbm/DRMUtils.cpp                | 172 +-------------------
+ xbmc/windowing/gbm/DRMUtils.h                  |  18 +--
+ xbmc/windowing/gbm/WinSystemGbm.cpp            |  21 ++-
+ xbmc/windowing/gbm/WinSystemGbm.h              |   4 +-
+ xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp |   2 +-
+ 8 files changed, 283 insertions(+), 191 deletions(-)
+ create mode 100644 xbmc/windowing/gbm/DRMLegacy.cpp
+ create mode 100644 xbmc/windowing/gbm/DRMLegacy.h
+
+diff --git a/xbmc/windowing/gbm/CMakeLists.txt b/xbmc/windowing/gbm/CMakeLists.txt
+index 00cb7d936d5d..7e6494730236 100644
+--- a/xbmc/windowing/gbm/CMakeLists.txt
++++ b/xbmc/windowing/gbm/CMakeLists.txt
+@@ -1,12 +1,14 @@
+ set(SOURCES GLContextEGL.cpp
+             WinSystemGbm.cpp
+             GBMUtils.cpp
+-            DRMUtils.cpp)
++            DRMUtils.cpp
++            DRMLegacy.cpp)
+ 
+ set(HEADERS GLContextEGL.h
+             WinSystemGbm.h
+             GBMUtils.h
+-            DRMUtils.h)
++            DRMUtils.h
++            DRMLegacy.h)
+ 
+ if(OPENGLES_FOUND)
+   list(APPEND SOURCES WinSystemGbmGLESContext.cpp)
+diff --git a/xbmc/windowing/gbm/DRMLegacy.cpp b/xbmc/windowing/gbm/DRMLegacy.cpp
+new file mode 100644
+index 000000000000..d6e8ea183470
+--- /dev/null
++++ b/xbmc/windowing/gbm/DRMLegacy.cpp
+@@ -0,0 +1,213 @@
++/*
++ *      Copyright (C) 2005-2013 Team XBMC
++ *      http://xbmc.org
++ *
++ *  This Program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; either version 2, or (at your option)
++ *  any later version.
++ *
++ *  This Program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with XBMC; see the file COPYING.  If not, see
++ *  <http://www.gnu.org/licenses/>.
++ *
++ */
++
++#include <errno.h>
++#include <fcntl.h>
++#include <poll.h>
++#include <stdint.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <drm/drm_mode.h>
++#include <EGL/egl.h>
++#include <unistd.h>
++
++#include "WinSystemGbmGLESContext.h"
++#include "guilib/gui3d.h"
++#include "utils/log.h"
++#include "settings/Settings.h"
++
++#include "DRMLegacy.h"
++
++static struct drm *m_drm = nullptr;
++static struct gbm *m_gbm = nullptr;
++
++static struct drm_fb *m_drm_fb = new drm_fb;
++
++static struct gbm_bo *m_bo = nullptr;
++static struct gbm_bo *m_next_bo = nullptr;
++
++static int flip_happening = 0;
++
++static struct pollfd m_drm_fds;
++static drmEventContext m_drm_evctx;
++
++bool CDRMLegacy::SetVideoMode(RESOLUTION_INFO res)
++{
++  CDRMUtils::GetMode(res);
++
++  gbm_surface_release_buffer(m_gbm->surface, m_bo);
++
++  m_bo = gbm_surface_lock_front_buffer(m_gbm->surface);
++  m_drm_fb = CDRMUtils::DrmFbGetFromBo(m_bo);
++
++  auto ret = drmModeSetCrtc(m_drm->fd,
++                            m_drm->crtc_id,
++                            m_drm_fb->fb_id,
++                            0,
++                            0,
++                            &m_drm->connector_id,
++                            1,
++                            m_drm->mode);
++
++  if(ret < 0)
++  {
++    CLog::Log(LOGERROR,
++              "CDRMUtils::%s - failed to set crtc mode: %dx%d%s @ %d Hz",
++              __FUNCTION__,
++              m_drm->mode->hdisplay,
++              m_drm->mode->vdisplay,
++              m_drm->mode->flags & DRM_MODE_FLAG_INTERLACE ? "i" : "",
++              m_drm->mode->vrefresh);
++
++    return false;
++  }
++
++  CLog::Log(LOGDEBUG, "CDRMUtils::%s - set crtc mode: %dx%d%s @ %d Hz",
++            __FUNCTION__,
++            m_drm->mode->hdisplay,
++            m_drm->mode->vdisplay,
++            m_drm->mode->flags & DRM_MODE_FLAG_INTERLACE ? "i" : "",
++            m_drm->mode->vrefresh);
++
++  return true;
++}
++
++void CDRMLegacy::PageFlipHandler(int fd, unsigned int frame, unsigned int sec,
++                                unsigned int usec, void *data)
++{
++  (void) fd, (void) frame, (void) sec, (void) usec;
++
++  int *flip_happening = static_cast<int *>(data);
++  *flip_happening = 0;
++}
++
++bool CDRMLegacy::WaitingForFlip()
++{
++  if(!flip_happening)
++  {
++    return false;
++  }
++
++  m_drm_fds.fd = m_drm->fd;
++  m_drm_fds.events = POLLIN;
++
++  m_drm_evctx.version = DRM_EVENT_CONTEXT_VERSION;
++  m_drm_evctx.page_flip_handler = PageFlipHandler;
++
++  m_drm_fds.revents = 0;
++
++  while(flip_happening)
++  {
++    auto ret = poll(&m_drm_fds, 1, -1);
++
++    if(ret < 0)
++    {
++      return true;
++    }
++
++    if(m_drm_fds.revents & (POLLHUP | POLLERR))
++    {
++      return true;
++    }
++
++    if(m_drm_fds.revents & POLLIN)
++    {
++      drmHandleEvent(m_drm->fd, &m_drm_evctx);
++    }
++  }
++
++  gbm_surface_release_buffer(m_gbm->surface, m_bo);
++  m_bo = m_next_bo;
++
++  return false;
++}
++
++bool CDRMLegacy::QueueFlip()
++{
++  m_next_bo = gbm_surface_lock_front_buffer(m_gbm->surface);
++  m_drm_fb = CDRMUtils::DrmFbGetFromBo(m_next_bo);
++
++  auto ret = drmModePageFlip(m_drm->fd,
++                             m_drm->crtc_id,
++                             m_drm_fb->fb_id,
++                             DRM_MODE_PAGE_FLIP_EVENT,
++                             &flip_happening);
++
++  if(ret)
++  {
++    CLog::Log(LOGDEBUG, "CDRMLegacy::%s - failed to queue DRM page flip", __FUNCTION__);
++    return false;
++  }
++
++  return true;
++}
++
++void CDRMLegacy::FlipPage()
++{
++  if(WaitingForFlip())
++  {
++    return;
++  }
++
++  flip_happening = QueueFlip();
++
++  if(g_Windowing.NoOfBuffers() >= 3 && gbm_surface_has_free_buffers(m_gbm->surface))
++  {
++    return;
++  }
++
++  WaitingForFlip();
++}
++
++bool CDRMLegacy::InitDrmLegacy(drm *drm, gbm *gbm)
++{
++  m_drm = drm;
++  m_gbm = gbm;
++
++  if (!CDRMUtils::InitDrm(m_drm))
++  {
++    return false;
++  }
++
++  m_gbm->dev = gbm_create_device(m_drm->fd);
++
++  if (!CGBMUtils::InitGbm(m_gbm, m_drm->mode->hdisplay, m_drm->mode->vdisplay))
++  {
++    return false;
++  }
++
++  return true;
++}
++
++void CDRMLegacy::DestroyDrmLegacy()
++{
++  CDRMUtils::DestroyDrm();
++
++  if(m_gbm->surface)
++  {
++    gbm_surface_destroy(m_gbm->surface);
++  }
++
++  if(m_gbm->dev)
++  {
++    gbm_device_destroy(m_gbm->dev);
++  }
++}
+diff --git a/xbmc/windowing/gbm/DRMLegacy.h b/xbmc/windowing/gbm/DRMLegacy.h
+new file mode 100644
+index 000000000000..559219cf3a68
+--- /dev/null
++++ b/xbmc/windowing/gbm/DRMLegacy.h
+@@ -0,0 +1,38 @@
++/*
++ *      Copyright (C) 2005-2013 Team XBMC
++ *      http://xbmc.org
++ *
++ *  This Program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; either version 2, or (at your option)
++ *  any later version.
++ *
++ *  This Program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with XBMC; see the file COPYING.  If not, see
++ *  <http://www.gnu.org/licenses/>.
++ *
++ */
++
++#pragma once
++
++#include "DRMUtils.h"
++
++class CDRMLegacy : public CDRMUtils
++{
++public:
++  static void FlipPage();
++  static bool SetVideoMode(RESOLUTION_INFO res);
++  static bool InitDrmLegacy(drm *drm, gbm *gbm);
++  static void DestroyDrmLegacy();
++
++private:
++  static bool WaitingForFlip();
++  static bool QueueFlip();
++  static void PageFlipHandler(int fd, unsigned int frame, unsigned int sec,
++                              unsigned int usec, void *data);
++};
+diff --git a/xbmc/windowing/gbm/DRMUtils.cpp b/xbmc/windowing/gbm/DRMUtils.cpp
+index 14cc5e29bb0f..bc5e7d1630fc 100644
+--- a/xbmc/windowing/gbm/DRMUtils.cpp
++++ b/xbmc/windowing/gbm/DRMUtils.cpp
+@@ -20,7 +20,6 @@
+ 
+ #include <errno.h>
+ #include <fcntl.h>
+-#include <poll.h>
+ #include <stdint.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+@@ -32,78 +31,16 @@
+ #include "WinSystemGbmGLESContext.h"
+ #include "guilib/gui3d.h"
+ #include "utils/log.h"
+-#include "settings/Settings.h"
+ 
+ #include "DRMUtils.h"
+ 
+-static struct drm *m_drm = new drm;
+-static struct drm_fb *m_drm_fb = new drm_fb;
+-
+-static struct gbm *m_gbm = new gbm;
+-
+-static struct gbm_bo *m_bo = nullptr;
+-static struct gbm_bo *m_next_bo = nullptr;
++static struct drm *m_drm = nullptr;
+ 
+ static drmModeResPtr m_drm_resources = nullptr;
+ static drmModeConnectorPtr m_drm_connector = nullptr;
+ static drmModeEncoderPtr m_drm_encoder = nullptr;
+ static drmModeCrtcPtr m_orig_crtc = nullptr;
+ 
+-static struct pollfd m_drm_fds;
+-static drmEventContext m_drm_evctx;
+-static int flip_happening = 0;
+-
+-drm * CDRMUtils::GetDrm()
+-{
+-  return m_drm;
+-}
+-
+-gbm * CDRMUtils::GetGbm()
+-{
+-  return m_gbm;
+-}
+-
+-bool CDRMUtils::SetVideoMode(RESOLUTION_INFO res)
+-{
+-  GetMode(res);
+-
+-  gbm_surface_release_buffer(m_gbm->surface, m_bo);
+-
+-  m_bo = gbm_surface_lock_front_buffer(m_gbm->surface);
+-  m_drm_fb = DrmFbGetFromBo(m_bo);
+-
+-  auto ret = drmModeSetCrtc(m_drm->fd,
+-                            m_drm->crtc_id,
+-                            m_drm_fb->fb_id,
+-                            0,
+-                            0,
+-                            &m_drm->connector_id,
+-                            1,
+-                            m_drm->mode);
+-
+-  if(ret == -1)
+-  {
+-    CLog::Log(LOGERROR,
+-              "CDRMUtils::%s - failed to set crtc mode: %dx%d%s @ %d Hz",
+-              __FUNCTION__,
+-              m_drm->mode->hdisplay,
+-              m_drm->mode->vdisplay,
+-              m_drm->mode->flags & DRM_MODE_FLAG_INTERLACE ? "i" : "",
+-              m_drm->mode->vrefresh);
+-
+-    return false;
+-  }
+-
+-  CLog::Log(LOGDEBUG, "CDRMUtils::%s - set crtc mode: %dx%d%s @ %d Hz",
+-            __FUNCTION__,
+-            m_drm->mode->hdisplay,
+-            m_drm->mode->vdisplay,
+-            m_drm->mode->flags & DRM_MODE_FLAG_INTERLACE ? "i" : "",
+-            m_drm->mode->vrefresh);
+-
+-  return true;
+-}
+-
+ bool CDRMUtils::GetMode(RESOLUTION_INFO res)
+ {
+   m_drm->mode = &m_drm_connector->modes[atoi(res.strId.c_str())];
+@@ -169,87 +106,6 @@ drm_fb * CDRMUtils::DrmFbGetFromBo(struct gbm_bo *bo)
+   return fb;
+ }
+ 
+-void CDRMUtils::PageFlipHandler(int fd, unsigned int frame, unsigned int sec,
+-                                unsigned int usec, void *data)
+-{
+-  (void) fd, (void) frame, (void) sec, (void) usec;
+-
+-  int *flip_happening = static_cast<int *>(data);
+-  *flip_happening = 0;
+-}
+-
+-bool CDRMUtils::WaitingForFlip()
+-{
+-  if(!flip_happening)
+-  {
+-    return false;
+-  }
+-
+-  m_drm_fds.revents = 0;
+-
+-  while(flip_happening)
+-  {
+-    auto ret = poll(&m_drm_fds, 1, -1);
+-
+-    if(ret < 0)
+-    {
+-      return true;
+-    }
+-
+-    if(m_drm_fds.revents & (POLLHUP | POLLERR))
+-    {
+-      return true;
+-    }
+-
+-    if(m_drm_fds.revents & POLLIN)
+-    {
+-      drmHandleEvent(m_drm->fd, &m_drm_evctx);
+-    }
+-  }
+-
+-  gbm_surface_release_buffer(m_gbm->surface, m_bo);
+-  m_bo = m_next_bo;
+-
+-  return false;
+-}
+-
+-bool CDRMUtils::QueueFlip()
+-{
+-  m_next_bo = gbm_surface_lock_front_buffer(m_gbm->surface);
+-  m_drm_fb = DrmFbGetFromBo(m_next_bo);
+-
+-  auto ret = drmModePageFlip(m_drm->fd,
+-                             m_drm->crtc_id,
+-                             m_drm_fb->fb_id,
+-                             DRM_MODE_PAGE_FLIP_EVENT,
+-                             &flip_happening);
+-
+-  if(ret)
+-  {
+-    CLog::Log(LOGDEBUG, "CDRMUtils::%s - failed to queue DRM page flip", __FUNCTION__);
+-    return false;
+-  }
+-
+-  return true;
+-}
+-
+-void CDRMUtils::FlipPage()
+-{
+-  if(WaitingForFlip())
+-  {
+-    return;
+-  }
+-
+-  flip_happening = QueueFlip();
+-
+-  if(g_Windowing.NoOfBuffers() >= 3 && gbm_surface_has_free_buffers(m_gbm->surface))
+-  {
+-    return;
+-  }
+-
+-  WaitingForFlip();
+-}
+-
+ bool CDRMUtils::GetResources()
+ {
+   m_drm_resources = drmModeGetResources(m_drm->fd);
+@@ -344,8 +200,9 @@ bool CDRMUtils::GetPreferredMode()
+   return true;
+ }
+ 
+-bool CDRMUtils::InitDrm()
++bool CDRMUtils::InitDrm(drm *drm)
+ {
++  m_drm = drm;
+   const char *device = "/dev/dri/card0";
+ 
+   m_drm->fd = open(device, O_RDWR);
+@@ -392,16 +249,6 @@ bool CDRMUtils::InitDrm()
+ 
+   drmSetMaster(m_drm->fd);
+ 
+-  m_gbm->dev = gbm_create_device(m_drm->fd);
+-
+-  CGBMUtils::InitGbm(m_gbm, m_drm->mode->hdisplay, m_drm->mode->vdisplay);
+-
+-  m_drm_fds.fd = m_drm->fd;
+-  m_drm_fds.events = POLLIN;
+-
+-  m_drm_evctx.version = DRM_EVENT_CONTEXT_VERSION;
+-  m_drm_evctx.page_flip_handler = PageFlipHandler;
+-
+   m_drm->connector_id = m_drm_connector->connector_id;
+   m_orig_crtc = drmModeGetCrtc(m_drm->fd, m_drm->crtc_id);
+ 
+@@ -442,16 +289,6 @@ void CDRMUtils::DestroyDrm()
+ {
+   RestoreOriginalMode();
+ 
+-  if(m_gbm->surface)
+-  {
+-    gbm_surface_destroy(m_gbm->surface);
+-  }
+-
+-  if(m_gbm->dev)
+-  {
+-    gbm_device_destroy(m_gbm->dev);
+-  }
+-
+   if(m_drm_encoder)
+   {
+     drmModeFreeEncoder(m_drm_encoder);
+@@ -481,9 +318,6 @@ void CDRMUtils::DestroyDrm()
+   m_drm->crtc_index = 0;
+   m_drm->fd = -1;
+   m_drm->mode = nullptr;
+-
+-  m_bo = nullptr;
+-  m_next_bo = nullptr;
+ }
+ 
+ bool CDRMUtils::GetModes(std::vector<RESOLUTION_INFO> &resolutions)
+diff --git a/xbmc/windowing/gbm/DRMUtils.h b/xbmc/windowing/gbm/DRMUtils.h
+index 58c4dde80a73..9d910805c14c 100644
+--- a/xbmc/windowing/gbm/DRMUtils.h
++++ b/xbmc/windowing/gbm/DRMUtils.h
+@@ -24,10 +24,10 @@
+ #include <xf86drmMode.h>
+ #include <gbm.h>
+ #include <vector>
+-#include <poll.h>
+ 
+ #include "guilib/Resolution.h"
+ #include "GBMUtils.h"
++#include "DRMLegacy.h"
+ 
+ struct crtc
+ {
+@@ -65,25 +65,19 @@ struct drm_fb
+ class CDRMUtils
+ {
+ public:
+-  static drm * GetDrm();
+-  static gbm * GetGbm();
+-  static bool InitDrm();
+-  static bool SetVideoMode(RESOLUTION_INFO res);
+-  static void FlipPage();
++  static bool InitDrm(drm *drm);
+   static void DestroyDrm();
+   static bool GetModes(std::vector<RESOLUTION_INFO> &resolutions);
+ 
+-private:
++protected:
+   static bool GetMode(RESOLUTION_INFO res);
++  static drm_fb * DrmFbGetFromBo(struct gbm_bo *bo);
++
++private:
+   static bool GetResources();
+   static bool GetConnector();
+   static bool GetEncoder();
+   static bool GetPreferredMode();
+   static bool RestoreOriginalMode();
+-  static bool WaitingForFlip();
+-  static bool QueueFlip();
+-  static void PageFlipHandler(int fd, unsigned int frame, unsigned int sec,
+-                              unsigned int usec, void *data);
+   static void DrmFbDestroyCallback(struct gbm_bo *bo, void *data);
+-  static drm_fb * DrmFbGetFromBo(struct gbm_bo *bo);
+ };
+diff --git a/xbmc/windowing/gbm/WinSystemGbm.cpp b/xbmc/windowing/gbm/WinSystemGbm.cpp
+index 3d9837340def..ac759c9f0ed7 100644
+--- a/xbmc/windowing/gbm/WinSystemGbm.cpp
++++ b/xbmc/windowing/gbm/WinSystemGbm.cpp
+@@ -41,15 +41,15 @@ CWinSystemGbm::CWinSystemGbm() :
+ 
+ bool CWinSystemGbm::InitWindowSystem()
+ {
+-  if (!CDRMUtils::InitDrm())
++  m_drm = new drm;
++  m_gbm = new gbm;
++
++  if (!CDRMLegacy::InitDrmLegacy(m_drm, m_gbm))
+   {
+     CLog::Log(LOGERROR, "CWinSystemGbm::%s - failed to initialize DRM", __FUNCTION__);
+     return false;
+   }
+ 
+-  m_drm = CDRMUtils::GetDrm();
+-  m_gbm = CDRMUtils::GetGbm();
+-
+   m_nativeDisplay = m_gbm->dev;
+ 
+   if (!m_drm)
+@@ -68,9 +68,13 @@ bool CWinSystemGbm::InitWindowSystem()
+ 
+ bool CWinSystemGbm::DestroyWindowSystem()
+ {
+-  CDRMUtils::DestroyDrm();
++  CDRMLegacy::DestroyDrmLegacy();
+   m_nativeDisplay = nullptr;
++
++  delete m_drm;
+   m_drm = nullptr;
++
++  delete m_gbm;
+   m_gbm = nullptr;
+ 
+   CLog::Log(LOGDEBUG, "CWinSystemGbm::%s - deinitialized DRM", __FUNCTION__);
+@@ -144,7 +148,7 @@ bool CWinSystemGbm::ResizeWindow(int newWidth, int newHeight, int newLeft, int n
+ 
+ bool CWinSystemGbm::SetFullScreen(bool fullScreen, RESOLUTION_INFO& res, bool blankOtherDisplays)
+ {
+-  auto ret = CDRMUtils::SetVideoMode(res);
++  auto ret = CDRMLegacy::SetVideoMode(res);
+ 
+   if (!ret)
+   {
+@@ -154,6 +158,11 @@ bool CWinSystemGbm::SetFullScreen(bool fullScreen, RESOLUTION_INFO& res, bool bl
+   return true;
+ }
+ 
++void CWinSystemGbm::FlipPage()
++{
++  CDRMLegacy::FlipPage();
++}
++
+ void* CWinSystemGbm::GetVaDisplay()
+ {
+ #if defined(HAVE_LIBVA)
+diff --git a/xbmc/windowing/gbm/WinSystemGbm.h b/xbmc/windowing/gbm/WinSystemGbm.h
+index 4a43e3db4cfd..0f42fd3bb6fc 100644
+--- a/xbmc/windowing/gbm/WinSystemGbm.h
++++ b/xbmc/windowing/gbm/WinSystemGbm.h
+@@ -25,7 +25,7 @@
+ 
+ #include "threads/CriticalSection.h"
+ #include "windowing/WinSystem.h"
+-#include "DRMUtils.h"
++#include "DRMLegacy.h"
+ 
+ class IDispResource;
+ 
+@@ -47,6 +47,8 @@ class CWinSystemGbm : public CWinSystemBase
+   bool ResizeWindow(int newWidth, int newHeight, int newLeft, int newTop) override;
+   bool SetFullScreen(bool fullScreen, RESOLUTION_INFO& res, bool blankOtherDisplays) override;
+ 
++  void FlipPage();
++
+   void UpdateResolutions() override;
+ 
+   void* GetVaDisplay();
+diff --git a/xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp b/xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp
+index c517543093f3..5ba086406371 100644
+--- a/xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp
++++ b/xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp
+@@ -134,7 +134,7 @@ void CWinSystemGbmGLESContext::PresentRenderImpl(bool rendered)
+   if (rendered)
+   {
+     m_pGLContext.SwapBuffers();
+-    CDRMUtils::FlipPage();
++    CWinSystemGbm::FlipPage();
+   }
+ }
+ 
+
+From c818b8e1d85351a588cf2938b195c0e334e90a35 Mon Sep 17 00:00:00 2001
+From: Lukas Rusak <lorusak@gmail.com>
+Date: Fri, 11 Aug 2017 14:05:57 -0700
+Subject: [PATCH 3/6] windowing/gbm: add atomic modesetting
+
+---
+ xbmc/windowing/gbm/CMakeLists.txt              |   8 +-
+ xbmc/windowing/gbm/DRM.cpp                     |  83 +++++
+ xbmc/windowing/gbm/DRM.h                       |  38 +++
+ xbmc/windowing/gbm/DRMAtomic.cpp               | 449 +++++++++++++++++++++++++
+ xbmc/windowing/gbm/DRMAtomic.h                 |  40 +++
+ xbmc/windowing/gbm/DRMLegacy.cpp               |   2 +-
+ xbmc/windowing/gbm/DRMLegacy.h                 |   3 +-
+ xbmc/windowing/gbm/DRMUtils.h                  |  12 +-
+ xbmc/windowing/gbm/GLContextEGL.cpp            |  89 ++++-
+ xbmc/windowing/gbm/GLContextEGL.h              |  12 +-
+ xbmc/windowing/gbm/WinSystemGbm.cpp            |  11 +-
+ xbmc/windowing/gbm/WinSystemGbm.h              |   7 +-
+ xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp |   2 +-
+ 13 files changed, 739 insertions(+), 17 deletions(-)
+ create mode 100644 xbmc/windowing/gbm/DRM.cpp
+ create mode 100644 xbmc/windowing/gbm/DRM.h
+ create mode 100644 xbmc/windowing/gbm/DRMAtomic.cpp
+ create mode 100644 xbmc/windowing/gbm/DRMAtomic.h
+
+diff --git a/xbmc/windowing/gbm/CMakeLists.txt b/xbmc/windowing/gbm/CMakeLists.txt
+index 7e6494730236..12655e7cc268 100644
+--- a/xbmc/windowing/gbm/CMakeLists.txt
++++ b/xbmc/windowing/gbm/CMakeLists.txt
+@@ -2,13 +2,17 @@ set(SOURCES GLContextEGL.cpp
+             WinSystemGbm.cpp
+             GBMUtils.cpp
+             DRMUtils.cpp
+-            DRMLegacy.cpp)
++            DRMLegacy.cpp
++            DRMAtomic.cpp
++            DRM.cpp)
+ 
+ set(HEADERS GLContextEGL.h
+             WinSystemGbm.h
+             GBMUtils.h
+             DRMUtils.h
+-            DRMLegacy.h)
++            DRMLegacy.h
++            DRMAtomic.h
++            DRM.h)
+ 
+ if(OPENGLES_FOUND)
+   list(APPEND SOURCES WinSystemGbmGLESContext.cpp)
+diff --git a/xbmc/windowing/gbm/DRM.cpp b/xbmc/windowing/gbm/DRM.cpp
+new file mode 100644
+index 000000000000..c334b833a100
+--- /dev/null
++++ b/xbmc/windowing/gbm/DRM.cpp
+@@ -0,0 +1,83 @@
++/*
++ *      Copyright (C) 2005-2013 Team XBMC
++ *      http://xbmc.org
++ *
++ *  This Program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; either version 2, or (at your option)
++ *  any later version.
++ *
++ *  This Program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with XBMC; see the file COPYING.  If not, see
++ *  <http://www.gnu.org/licenses/>.
++ *
++ */
++
++#include "utils/log.h"
++
++#include "DRM.h"
++#include "DRMAtomic.h"
++#include "DRMLegacy.h"
++
++CDRM::CDRM()
++  : m_hasAtomic(false)
++{
++}
++
++void CDRM::FlipPage(CGLContextEGL *pGLContext)
++{
++  if (m_hasAtomic)
++  {
++    CDRMAtomic::FlipPage(pGLContext);
++  }
++  else
++  {
++    CDRMLegacy::FlipPage(pGLContext);
++  }
++}
++
++bool CDRM::SetVideoMode(RESOLUTION_INFO res)
++{
++  if (m_hasAtomic)
++  {
++    return CDRMAtomic::SetVideoMode(res);
++  }
++  else
++  {
++    return CDRMLegacy::SetVideoMode(res);
++  }
++}
++
++bool CDRM::InitDrm(drm *drm, gbm *gbm)
++{
++  if (CDRMAtomic::InitDrmAtomic(drm, gbm))
++  {
++    m_hasAtomic = true;
++    CLog::Log(LOGNOTICE, "CDRM::%s - initialized Atomic DRM", __FUNCTION__);
++    return true;
++  }
++  else if (CDRMLegacy::InitDrmLegacy(drm, gbm))
++  {
++    CLog::Log(LOGNOTICE, "CDRM::%s - initialized Legacy DRM", __FUNCTION__);
++    return true;
++  }
++
++  return false;
++}
++
++void CDRM::DestroyDrm()
++{
++  if (m_hasAtomic)
++  {
++    CDRMAtomic::DestroyDrmAtomic();
++  }
++  else
++  {
++    CDRMLegacy::DestroyDrmLegacy();
++  }
++}
+diff --git a/xbmc/windowing/gbm/DRM.h b/xbmc/windowing/gbm/DRM.h
+new file mode 100644
+index 000000000000..08de82bd0cb8
+--- /dev/null
++++ b/xbmc/windowing/gbm/DRM.h
+@@ -0,0 +1,38 @@
++/*
++ *      Copyright (C) 2005-2013 Team XBMC
++ *      http://xbmc.org
++ *
++ *  This Program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; either version 2, or (at your option)
++ *  any later version.
++ *
++ *  This Program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with XBMC; see the file COPYING.  If not, see
++ *  <http://www.gnu.org/licenses/>.
++ *
++ */
++
++#pragma once
++
++#include "DRMUtils.h"
++#include "GLContextEGL.h"
++
++class CDRM
++{
++public:
++  CDRM();
++  ~CDRM() = default;
++  void FlipPage(CGLContextEGL *pGLContext);
++  bool SetVideoMode(RESOLUTION_INFO res);
++  bool InitDrm(drm *drm, gbm *gbm);
++  void DestroyDrm();
++
++private:
++  bool m_hasAtomic;
++};
+diff --git a/xbmc/windowing/gbm/DRMAtomic.cpp b/xbmc/windowing/gbm/DRMAtomic.cpp
+new file mode 100644
+index 000000000000..059d3bd6dcf5
+--- /dev/null
++++ b/xbmc/windowing/gbm/DRMAtomic.cpp
+@@ -0,0 +1,449 @@
++/*
++ *      Copyright (C) 2005-2013 Team XBMC
++ *      http://xbmc.org
++ *
++ *  This Program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; either version 2, or (at your option)
++ *  any later version.
++ *
++ *  This Program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with XBMC; see the file COPYING.  If not, see
++ *  <http://www.gnu.org/licenses/>.
++ *
++ */
++
++#include <errno.h>
++#include <drm/drm_mode.h>
++#include <EGL/egl.h>
++#include <EGL/eglext.h>
++#include <string.h>
++#include <unistd.h>
++
++#include "settings/Settings.h"
++#include "utils/log.h"
++
++#include "DRMAtomic.h"
++#include "WinSystemGbmGLESContext.h"
++
++static struct drm *m_drm = nullptr;
++static struct gbm *m_gbm = nullptr;
++
++static struct drm_fb *m_drm_fb = new drm_fb;
++
++static struct gbm_bo *m_bo = nullptr;
++static struct gbm_bo *m_next_bo = nullptr;
++
++bool CDRMAtomic::AddConnectorProperty(drmModeAtomicReq *req, int obj_id, const char *name, int value)
++{
++  struct connector *obj = m_drm->connector;
++  int prop_id = 0;
++
++  for (unsigned int i = 0 ; i < obj->props->count_props ; i++)
++  {
++    if (strcmp(obj->props_info[i]->name, name) == 0)
++    {
++      prop_id = obj->props_info[i]->prop_id;
++      break;
++    }
++  }
++
++  if (prop_id < 0)
++  {
++    CLog::Log(LOGERROR, "CDRMAtomic::%s - no connector property: %s", __FUNCTION__, name);
++    return false;
++  }
++
++  auto ret = drmModeAtomicAddProperty(req, obj_id, prop_id, value);
++  if (ret < 0)
++  {
++    return false;
++  }
++
++  return true;
++}
++
++bool CDRMAtomic::AddCrtcProperty(drmModeAtomicReq *req, int obj_id, const char *name, int value)
++{
++  struct crtc *obj = m_drm->crtc;
++  int prop_id = -1;
++
++  for (unsigned int i = 0 ; i < obj->props->count_props ; i++)
++  {
++    if (strcmp(obj->props_info[i]->name, name) == 0)
++    {
++      prop_id = obj->props_info[i]->prop_id;
++      break;
++    }
++  }
++
++  if (prop_id < 0)
++  {
++    CLog::Log(LOGERROR, "CDRMAtomic::%s - no crtc property: %s", __FUNCTION__, name);
++    return false;
++  }
++
++  auto ret = drmModeAtomicAddProperty(req, obj_id, prop_id, value);
++  if (ret < 0)
++  {
++    return false;
++  }
++
++  return true;
++}
++
++bool CDRMAtomic::AddPlaneProperty(drmModeAtomicReq *req, int obj_id, const char *name, int value)
++{
++  struct plane *obj = m_drm->plane;
++  int prop_id = -1;
++
++  for (unsigned int i = 0 ; i < obj->props->count_props ; i++)
++  {
++    if (strcmp(obj->props_info[i]->name, name) == 0)
++    {
++      prop_id = obj->props_info[i]->prop_id;
++      break;
++    }
++  }
++
++  if (prop_id < 0)
++  {
++    CLog::Log(LOGERROR, "CDRMAtomic::%s - no plane property: %s", __FUNCTION__, name);
++    return false;
++  }
++
++  auto ret = drmModeAtomicAddProperty(req, obj_id, prop_id, value);
++  if (ret < 0)
++  {
++    return false;
++  }
++
++  return true;
++}
++
++bool CDRMAtomic::DrmAtomicCommit(int fb_id, int flags)
++{
++  drmModeAtomicReq *req;
++  int plane_id = m_drm->plane->plane->plane_id;
++  uint32_t blob_id;
++
++  req = drmModeAtomicAlloc();
++
++  if (flags & DRM_MODE_ATOMIC_ALLOW_MODESET)
++  {
++    if (!AddConnectorProperty(req, m_drm->connector_id, "CRTC_ID", m_drm->crtc_id))
++    {
++      return false;
++    }
++
++    if (drmModeCreatePropertyBlob(m_drm->fd, m_drm->mode, sizeof(*m_drm->mode), &blob_id) != 0)
++    {
++      return false;
++    }
++
++    if (!AddCrtcProperty(req, m_drm->crtc_id, "MODE_ID", blob_id))
++    {
++      return false;
++    }
++
++    if (!AddCrtcProperty(req, m_drm->crtc_id, "ACTIVE", 1))
++    {
++      return false;
++    }
++  }
++
++  AddPlaneProperty(req, plane_id, "FB_ID", fb_id);
++  AddPlaneProperty(req, plane_id, "CRTC_ID", m_drm->crtc_id);
++  AddPlaneProperty(req, plane_id, "SRC_X", 0);
++  AddPlaneProperty(req, plane_id, "SRC_Y", 0);
++  AddPlaneProperty(req, plane_id, "SRC_W", m_drm->mode->hdisplay << 16);
++  AddPlaneProperty(req, plane_id, "SRC_H", m_drm->mode->vdisplay << 16);
++  AddPlaneProperty(req, plane_id, "CRTC_X", 0);
++  AddPlaneProperty(req, plane_id, "CRTC_Y", 0);
++  AddPlaneProperty(req, plane_id, "CRTC_W", m_drm->mode->hdisplay);
++  AddPlaneProperty(req, plane_id, "CRTC_H", m_drm->mode->vdisplay);
++
++  if (m_drm->kms_in_fence_fd != -1)
++  {
++    AddCrtcProperty(req, m_drm->crtc_id, "OUT_FENCE_PTR", (uint64_t)(unsigned long)&m_drm->kms_out_fence_fd);
++    AddPlaneProperty(req, plane_id, "IN_FENCE_FD", m_drm->kms_in_fence_fd);
++  }
++
++  auto ret = drmModeAtomicCommit(m_drm->fd, req, flags, nullptr);
++  if (ret)
++  {
++    return false;
++  }
++
++  if (m_drm->kms_in_fence_fd != -1)
++  {
++    close(m_drm->kms_in_fence_fd);
++    m_drm->kms_in_fence_fd = -1;
++  }
++
++  return true;
++}
++
++void CDRMAtomic::FlipPage(CGLContextEGL *pGLContext)
++{
++  int flags = DRM_MODE_ATOMIC_NONBLOCK;
++
++  pGLContext->CreateGPUFence();
++  m_drm->kms_in_fence_fd = pGLContext->FlushFence();
++  pGLContext->WaitSyncCPU();
++
++  gbm_surface_release_buffer(m_gbm->surface, m_bo);
++  m_bo = m_next_bo;
++
++  m_next_bo = gbm_surface_lock_front_buffer(m_gbm->surface);
++  if (!m_next_bo)
++  {
++    CLog::Log(LOGERROR, "CDRMAtomic::%s - Failed to lock frontbuffer", __FUNCTION__);
++    return;
++  }
++
++  m_drm_fb = CDRMUtils::DrmFbGetFromBo(m_next_bo);
++  if (!m_drm_fb)
++  {
++    CLog::Log(LOGERROR, "CDRMAtomic::%s - Failed to get a new FBO", __FUNCTION__);
++    return;
++  }
++
++  auto ret = DrmAtomicCommit(m_drm_fb->fb_id, flags);
++  if (!ret) {
++    CLog::Log(LOGERROR, "CDRMAtomic::%s - failed to commit: %s", __FUNCTION__, strerror(errno));
++    return;
++  }
++
++  pGLContext->CreateKMSFence(m_drm->kms_out_fence_fd);
++  pGLContext->WaitSyncGPU();
++  m_drm->kms_out_fence_fd = -1;
++
++  if(g_Windowing.NoOfBuffers() > 2 && gbm_surface_has_free_buffers(m_gbm->surface))
++  {
++    return;
++  }
++
++  gbm_surface_release_buffer(m_gbm->surface, m_bo);
++  m_bo = m_next_bo;
++}
++
++int CDRMAtomic::GetPlaneId()
++{
++  drmModePlaneResPtr plane_resources;
++  int ret = -EINVAL;
++  int found_primary = 0;
++
++  plane_resources = drmModeGetPlaneResources(m_drm->fd);
++  if (!plane_resources)
++  {
++    CLog::Log(LOGERROR, "CDRMAtomic::%s - drmModeGetPlaneResources failed: %s", __FUNCTION__, strerror(errno));
++    return -1;
++  }
++
++  for (uint32_t i = 0; (i < plane_resources->count_planes) && !found_primary; i++)
++  {
++    uint32_t id = plane_resources->planes[i];
++    drmModePlanePtr plane = drmModeGetPlane(m_drm->fd, id);
++    if (!plane)
++    {
++      CLog::Log(LOGERROR, "CDRMAtomic::%s - drmModeGetPlane(%u) failed: %s", __FUNCTION__, id, strerror(errno));
++      continue;
++    }
++
++    if (plane->possible_crtcs & (1 << m_drm->crtc_index))
++    {
++      drmModeObjectPropertiesPtr props = drmModeObjectGetProperties(m_drm->fd, id, DRM_MODE_OBJECT_PLANE);
++
++      /* primary or not, this plane is good enough to use: */
++      ret = id;
++
++      for (uint32_t j = 0; j < props->count_props; j++)
++      {
++        drmModePropertyPtr p = drmModeGetProperty(m_drm->fd, props->props[j]);
++
++        if ((strcmp(p->name, "type") == 0) && (props->prop_values[j] == DRM_PLANE_TYPE_PRIMARY))
++        {
++          /* found our primary plane, lets use that: */
++          found_primary = 1;
++        }
++
++        drmModeFreeProperty(p);
++      }
++
++      drmModeFreeObjectProperties(props);
++    }
++
++    drmModeFreePlane(plane);
++  }
++
++  drmModeFreePlaneResources(plane_resources);
++
++  return ret;
++}
++
++bool CDRMAtomic::InitDrmAtomic(drm *drm, gbm *gbm)
++{
++  int plane_id;
++  int ret;
++
++  m_drm = drm;
++  m_gbm = gbm;
++
++  m_drm->kms_out_fence_fd = -1;
++
++  if (!CDRMUtils::InitDrm(m_drm))
++  {
++    return false;
++  }
++
++  ret = drmSetClientCap(m_drm->fd, DRM_CLIENT_CAP_ATOMIC, 1);
++  if (ret)
++  {
++    CLog::Log(LOGERROR, "CDRMAtomic::%s - no atomic modesetting support: %s", __FUNCTION__, strerror(errno));
++    return false;
++  }
++
++  ret = GetPlaneId();
++  if (!ret)
++  {
++    CLog::Log(LOGERROR, "CDRMAtomic::%s - could not find a suitable plane", __FUNCTION__);
++    return false;
++  }
++  else
++  {
++    plane_id = ret;
++  }
++
++  /* We only do single plane to single crtc to single connector, no
++     * fancy multi-monitor or multi-plane stuff.  So just grab the
++     * plane/crtc/connector property info for one of each:
++     */
++  m_drm->plane = new plane;
++  m_drm->crtc = new crtc;
++  m_drm->connector = new connector;
++
++  // plane
++  m_drm->plane->plane = drmModeGetPlane(m_drm->fd, plane_id);
++  if (!m_drm->plane->plane)
++  {
++    CLog::Log(LOGERROR, "CDRMAtomic::%s - could not get plane %i: %s", __FUNCTION__, plane_id, strerror(errno));
++    return false;
++  }
++
++  m_drm->plane->props = drmModeObjectGetProperties(m_drm->fd, plane_id, DRM_MODE_OBJECT_PLANE);
++  if (!m_drm->plane->props)
++  {
++    CLog::Log(LOGERROR, "CDRMAtomic::%s - could not get plane %u properties: %s", __FUNCTION__, plane_id, strerror(errno));
++    return false;
++  }
++
++  m_drm->plane->props_info = new drmModePropertyPtr;
++  for (uint32_t i = 0; i < m_drm->plane->props->count_props; i++)
++  {
++    m_drm->plane->props_info[i] = drmModeGetProperty(m_drm->fd, m_drm->plane->props->props[i]);             \
++  }
++
++  // crtc
++  m_drm->crtc->crtc = drmModeGetCrtc(m_drm->fd, m_drm->crtc_id);
++  if (!m_drm->crtc->crtc)
++  {
++    CLog::Log(LOGERROR, "CDRMAtomic::%s - could not get crtc %i: %s", __FUNCTION__, m_drm->crtc_id, strerror(errno));
++    return false;
++  }
++
++  m_drm->crtc->props = drmModeObjectGetProperties(m_drm->fd, m_drm->crtc_id, DRM_MODE_OBJECT_CRTC);
++  if (!m_drm->crtc->props)
++  {
++    CLog::Log(LOGERROR, "CDRMAtomic::%s - could not get crtc %u properties: %s", __FUNCTION__, m_drm->crtc_id, strerror(errno));
++    return false;
++  }
++
++  m_drm->crtc->props_info = new drmModePropertyPtr;
++  for (uint32_t i = 0; i < m_drm->crtc->props->count_props; i++)
++  {
++    m_drm->crtc->props_info[i] = drmModeGetProperty(m_drm->fd, m_drm->crtc->props->props[i]);             \
++  }
++
++  // connector
++  m_drm->connector->connector = drmModeGetConnector(m_drm->fd, m_drm->connector_id);
++  if (!m_drm->connector->connector)
++  {
++    CLog::Log(LOGERROR, "CDRMAtomic::%s - could not get plane %i: %s", __FUNCTION__, m_drm->connector_id, strerror(errno));
++    return false;
++  }
++
++  m_drm->connector->props = drmModeObjectGetProperties(m_drm->fd, m_drm->connector_id, DRM_MODE_OBJECT_CONNECTOR);
++  if (!m_drm->connector->props)
++  {
++    CLog::Log(LOGERROR, "CDRMAtomic::%s - could not get connector %u properties: %s", __FUNCTION__, m_drm->connector_id, strerror(errno));
++    return false;
++  }
++
++  m_drm->connector->props_info = new drmModePropertyPtr;
++  for (uint32_t i = 0; i < m_drm->connector->props->count_props; i++)
++  {
++    m_drm->connector->props_info[i] = drmModeGetProperty(m_drm->fd, m_drm->connector->props->props[i]);             \
++  }
++
++  //
++  m_gbm->dev = gbm_create_device(m_drm->fd);
++
++  if (!CGBMUtils::InitGbm(m_gbm, m_drm->mode->hdisplay, m_drm->mode->vdisplay))
++  {
++    return false;
++  }
++
++  return true;
++}
++
++void CDRMAtomic::DestroyDrmAtomic()
++{
++  CDRMUtils::DestroyDrm();
++
++  if(m_gbm->surface)
++  {
++    gbm_surface_destroy(m_gbm->surface);
++  }
++
++  if(m_gbm->dev)
++  {
++    gbm_device_destroy(m_gbm->dev);
++  }
++}
++
++bool CDRMAtomic::SetVideoMode(RESOLUTION_INFO res)
++{
++  CDRMUtils::GetMode(res);
++
++  gbm_surface_release_buffer(m_gbm->surface, m_bo);
++  m_bo = m_next_bo;
++
++  m_next_bo = gbm_surface_lock_front_buffer(m_gbm->surface);
++  if (!m_next_bo)
++  {
++    CLog::Log(LOGERROR, "CDRMAtomic::%s - Failed to lock frontbuffer", __FUNCTION__);
++    return false;
++  }
++
++  m_drm_fb = CDRMUtils::DrmFbGetFromBo(m_next_bo);
++  if (!m_drm_fb)
++  {
++    CLog::Log(LOGERROR, "CDRMAtomic::%s - Failed to get a new FBO", __FUNCTION__);
++    return false;
++  }
++
++  auto ret = DrmAtomicCommit(m_drm_fb->fb_id, DRM_MODE_ATOMIC_ALLOW_MODESET);
++  if (!ret)
++  {
++    CLog::Log(LOGERROR, "CDRMAtomic::%s - failed to commit modeset: %s", __FUNCTION__, strerror(errno));
++    return false;
++  }
++
++  return true;
++}
+diff --git a/xbmc/windowing/gbm/DRMAtomic.h b/xbmc/windowing/gbm/DRMAtomic.h
+new file mode 100644
+index 000000000000..5b6495a5641a
+--- /dev/null
++++ b/xbmc/windowing/gbm/DRMAtomic.h
+@@ -0,0 +1,40 @@
++/*
++ *      Copyright (C) 2005-2013 Team XBMC
++ *      http://xbmc.org
++ *
++ *  This Program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation; either version 2, or (at your option)
++ *  any later version.
++ *
++ *  This Program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ *  GNU General Public License for more details.
++ *
++ *  You should have received a copy of the GNU General Public License
++ *  along with XBMC; see the file COPYING.  If not, see
++ *  <http://www.gnu.org/licenses/>.
++ *
++ */
++
++#pragma once
++
++#include "DRMUtils.h"
++#include "GLContextEGL.h"
++
++class CDRMAtomic : public CDRMUtils
++{
++public:
++  static void FlipPage(CGLContextEGL *pGLContext);
++  static bool SetVideoMode(RESOLUTION_INFO res);
++  static bool InitDrmAtomic(drm *drm, gbm *gbm);
++  static void DestroyDrmAtomic();
++
++private:
++  static bool AddConnectorProperty(drmModeAtomicReq *req, int obj_id, const char *name, int value);
++  static bool AddCrtcProperty(drmModeAtomicReq *req, int obj_id, const char *name, int value);
++  static bool AddPlaneProperty(drmModeAtomicReq *req, int obj_id, const char *name, int value);
++  static bool DrmAtomicCommit(int fb_id, int flags);
++  static int GetPlaneId();
++};
+diff --git a/xbmc/windowing/gbm/DRMLegacy.cpp b/xbmc/windowing/gbm/DRMLegacy.cpp
+index d6e8ea183470..8087293a999f 100644
+--- a/xbmc/windowing/gbm/DRMLegacy.cpp
++++ b/xbmc/windowing/gbm/DRMLegacy.cpp
+@@ -160,7 +160,7 @@ bool CDRMLegacy::QueueFlip()
+   return true;
+ }
+ 
+-void CDRMLegacy::FlipPage()
++void CDRMLegacy::FlipPage(CGLContextEGL *pGLContext)
+ {
+   if(WaitingForFlip())
+   {
+diff --git a/xbmc/windowing/gbm/DRMLegacy.h b/xbmc/windowing/gbm/DRMLegacy.h
+index 559219cf3a68..46411f5e187d 100644
+--- a/xbmc/windowing/gbm/DRMLegacy.h
++++ b/xbmc/windowing/gbm/DRMLegacy.h
+@@ -21,11 +21,12 @@
+ #pragma once
+ 
+ #include "DRMUtils.h"
++#include "GLContextEGL.h"
+ 
+ class CDRMLegacy : public CDRMUtils
+ {
+ public:
+-  static void FlipPage();
++  static void FlipPage(CGLContextEGL *pGLContext);
+   static bool SetVideoMode(RESOLUTION_INFO res);
+   static bool InitDrmLegacy(drm *drm, gbm *gbm);
+   static void DestroyDrmLegacy();
+diff --git a/xbmc/windowing/gbm/DRMUtils.h b/xbmc/windowing/gbm/DRMUtils.h
+index 9d910805c14c..f95754587bb6 100644
+--- a/xbmc/windowing/gbm/DRMUtils.h
++++ b/xbmc/windowing/gbm/DRMUtils.h
+@@ -27,7 +27,13 @@
+ 
+ #include "guilib/Resolution.h"
+ #include "GBMUtils.h"
+-#include "DRMLegacy.h"
++
++struct plane
++{
++  drmModePlane *plane;
++  drmModeObjectProperties *props;
++  drmModePropertyRes **props_info;
++};
+ 
+ struct crtc
+ {
+@@ -47,9 +53,13 @@ struct drm
+ {
+   int fd;
+ 
++  /* only used for atomic: */
++  struct plane *plane;
+   struct crtc *crtc;
+   struct connector *connector;
+   int crtc_index;
++  int kms_in_fence_fd;
++  int kms_out_fence_fd;
+ 
+   drmModeModeInfo *mode;
+   uint32_t crtc_id;
+diff --git a/xbmc/windowing/gbm/GLContextEGL.cpp b/xbmc/windowing/gbm/GLContextEGL.cpp
+index 392080ba830f..41ff1de79546 100644
+--- a/xbmc/windowing/gbm/GLContextEGL.cpp
++++ b/xbmc/windowing/gbm/GLContextEGL.cpp
+@@ -24,14 +24,15 @@
+ #include "settings/AdvancedSettings.h"
+ #include "utils/log.h"
+ 
+-#include <EGL/eglext.h>
+ #include <string.h>
+ 
+ CGLContextEGL::CGLContextEGL() :
+   m_eglDisplay(EGL_NO_DISPLAY),
+   m_eglSurface(EGL_NO_SURFACE),
+   m_eglContext(EGL_NO_CONTEXT),
+-  m_eglConfig(0)
++  m_eglConfig(0),
++  m_gpuFence(nullptr),
++  m_kmsFence(nullptr)
+ {
+ }
+ 
+@@ -250,3 +251,87 @@ void CGLContextEGL::SwapBuffers()
+ 
+   eglSwapBuffers(m_eglDisplay, m_eglSurface);
+ }
++
++EGLSyncKHR CGLContextEGL::CreateFence(int fd)
++{
++  EGLint attrib_list[] =
++  {
++    EGL_SYNC_NATIVE_FENCE_FD_ANDROID, fd,
++    EGL_NONE,
++  };
++
++  PFNEGLCREATESYNCKHRPROC eglCreateSyncKHR = (PFNEGLCREATESYNCKHRPROC)eglGetProcAddress("eglCreateSyncKHR");
++
++  EGLSyncKHR fence = eglCreateSyncKHR(m_eglDisplay, EGL_SYNC_NATIVE_FENCE_ANDROID, attrib_list);
++
++  return fence;
++}
++
++void CGLContextEGL::CreateGPUFence()
++{
++  m_gpuFence = CreateFence(EGL_NO_NATIVE_FENCE_FD_ANDROID);
++}
++
++void CGLContextEGL::CreateKMSFence(int kms_out_fence_fd)
++{
++  m_kmsFence = CreateFence(kms_out_fence_fd);
++}
++
++EGLint CGLContextEGL::FlushFence()
++{
++  PFNEGLDUPNATIVEFENCEFDANDROIDPROC eglDupNativeFenceFDANDROID = (PFNEGLDUPNATIVEFENCEFDANDROIDPROC)eglGetProcAddress("eglDupNativeFenceFDANDROID");
++  PFNEGLDESTROYSYNCKHRPROC eglDestroySyncKHR = (PFNEGLDESTROYSYNCKHRPROC)eglGetProcAddress("eglDestroySyncKHR");
++
++  auto fd = eglDupNativeFenceFDANDROID(m_eglDisplay, m_gpuFence);
++
++  if (fd < 0)
++  {
++    return -1;
++  }
++
++  eglDestroySyncKHR(m_eglDisplay, m_gpuFence);
++
++  return fd;
++}
++
++void CGLContextEGL::WaitSyncGPU()
++{
++  if (m_kmsFence == 0)
++  {
++    return;
++  }
++
++  PFNEGLWAITSYNCKHRPROC eglWaitSyncKHR = (PFNEGLWAITSYNCKHRPROC)eglGetProcAddress("eglWaitSyncKHR");
++
++  /* wait "on the gpu" (ie. this won't necessarily block, but
++   * will block the rendering until fence is signaled), until
++   * the previous pageflip completes so we don't render into
++   * the buffer that is still on screen.
++   */
++  eglWaitSyncKHR(m_eglDisplay, m_kmsFence, 0);
++}
++
++void CGLContextEGL::WaitSyncCPU()
++{
++  if (m_kmsFence)
++  {
++    EGLint status;
++    PFNEGLCLIENTWAITSYNCKHRPROC eglClientWaitSyncKHR = (PFNEGLCLIENTWAITSYNCKHRPROC)eglGetProcAddress("eglClientWaitSyncKHR");
++    PFNEGLDESTROYSYNCKHRPROC eglDestroySyncKHR = (PFNEGLDESTROYSYNCKHRPROC)eglGetProcAddress("eglDestroySyncKHR");
++
++    /* Wait on the CPU side for the _previous_ commit to
++     * complete before we post the flip through KMS, as
++     * atomic will reject the commit if we post a new one
++     * whilst the previous one is still pending.
++     */
++    do
++    {
++      status = eglClientWaitSyncKHR(m_eglDisplay,
++                                    m_kmsFence,
++                                    0,
++                                    EGL_FOREVER_KHR);
++    } while (status != EGL_CONDITION_SATISFIED_KHR);
++
++    eglDestroySyncKHR(m_eglDisplay, m_kmsFence);
++  }
++}
+diff --git a/xbmc/windowing/gbm/GLContextEGL.h b/xbmc/windowing/gbm/GLContextEGL.h
+index afea42950e87..0dd2427aad95 100644
+--- a/xbmc/windowing/gbm/GLContextEGL.h
++++ b/xbmc/windowing/gbm/GLContextEGL.h
+@@ -20,7 +20,8 @@
+ 
+ #pragma once
+ 
+-#include "EGL/egl.h"
++#include <EGL/egl.h>
++#include <EGL/eglext.h>
+ 
+ class CGLContextEGL
+ {
+@@ -40,9 +41,18 @@ class CGLContextEGL
+   void Detach();
+   bool SetVSync(bool enable);
+   void SwapBuffers();
++  EGLSyncKHR CreateFence(int fd);
++  void CreateGPUFence();
++  void CreateKMSFence(int kms_out_fence_fd);
++  EGLint FlushFence();
++  void WaitSyncGPU();
++  void WaitSyncCPU();
+ 
+   EGLDisplay m_eglDisplay;
+   EGLSurface m_eglSurface;
+   EGLContext m_eglContext;
+   EGLConfig m_eglConfig;
++
++  EGLSyncKHR m_gpuFence;
++  EGLSyncKHR m_kmsFence;
+ };
+diff --git a/xbmc/windowing/gbm/WinSystemGbm.cpp b/xbmc/windowing/gbm/WinSystemGbm.cpp
+index ac759c9f0ed7..74d9bc857505 100644
+--- a/xbmc/windowing/gbm/WinSystemGbm.cpp
++++ b/xbmc/windowing/gbm/WinSystemGbm.cpp
+@@ -44,7 +44,7 @@ bool CWinSystemGbm::InitWindowSystem()
+   m_drm = new drm;
+   m_gbm = new gbm;
+ 
+-  if (!CDRMLegacy::InitDrmLegacy(m_drm, m_gbm))
++  if (!m_DRM.InitDrm(m_drm, m_gbm))
+   {
+     CLog::Log(LOGERROR, "CWinSystemGbm::%s - failed to initialize DRM", __FUNCTION__);
+     return false;
+@@ -68,7 +68,7 @@ bool CWinSystemGbm::InitWindowSystem()
+ 
+ bool CWinSystemGbm::DestroyWindowSystem()
+ {
+-  CDRMLegacy::DestroyDrmLegacy();
++  m_DRM.DestroyDrm();
+   m_nativeDisplay = nullptr;
+ 
+   delete m_drm;
+@@ -148,8 +148,7 @@ bool CWinSystemGbm::ResizeWindow(int newWidth, int newHeight, int newLeft, int n
+ 
+ bool CWinSystemGbm::SetFullScreen(bool fullScreen, RESOLUTION_INFO& res, bool blankOtherDisplays)
+ {
+-  auto ret = CDRMLegacy::SetVideoMode(res);
+-
++  auto ret = m_DRM.SetVideoMode(res);
+   if (!ret)
+   {
+     return false;
+@@ -158,9 +157,9 @@ bool CWinSystemGbm::SetFullScreen(bool fullScreen, RESOLUTION_INFO& res, bool bl
+   return true;
+ }
+ 
+-void CWinSystemGbm::FlipPage()
++void CWinSystemGbm::FlipPage(CGLContextEGL *pGLContext)
+ {
+-  CDRMLegacy::FlipPage();
++  m_DRM.FlipPage(pGLContext);
+ }
+ 
+ void* CWinSystemGbm::GetVaDisplay()
+diff --git a/xbmc/windowing/gbm/WinSystemGbm.h b/xbmc/windowing/gbm/WinSystemGbm.h
+index 0f42fd3bb6fc..87bf8ed7a639 100644
+--- a/xbmc/windowing/gbm/WinSystemGbm.h
++++ b/xbmc/windowing/gbm/WinSystemGbm.h
+@@ -25,7 +25,8 @@
+ 
+ #include "threads/CriticalSection.h"
+ #include "windowing/WinSystem.h"
+-#include "DRMLegacy.h"
++#include "DRM.h"
++#include "GLContextEGL.h"
+ 
+ class IDispResource;
+ 
+@@ -47,7 +48,7 @@ class CWinSystemGbm : public CWinSystemBase
+   bool ResizeWindow(int newWidth, int newHeight, int newLeft, int newTop) override;
+   bool SetFullScreen(bool fullScreen, RESOLUTION_INFO& res, bool blankOtherDisplays) override;
+ 
+-  void FlipPage();
++  void FlipPage(CGLContextEGL *m_pGLContext);
+ 
+   void UpdateResolutions() override;
+ 
+@@ -59,6 +60,8 @@ class CWinSystemGbm : public CWinSystemBase
+   virtual void Unregister(IDispResource *resource);
+ 
+ protected:
++  CDRM m_DRM;
++
+   gbm* m_gbm;
+   drm* m_drm;
+ 
+diff --git a/xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp b/xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp
+index 5ba086406371..d55c615bd858 100644
+--- a/xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp
++++ b/xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp
+@@ -134,7 +134,7 @@ void CWinSystemGbmGLESContext::PresentRenderImpl(bool rendered)
+   if (rendered)
+   {
+     m_pGLContext.SwapBuffers();
+-    CWinSystemGbm::FlipPage();
++    CWinSystemGbm::FlipPage(&m_pGLContext);
+   }
+ }
+ 
+
+From efe43ff4beae399b906a7d16f194a94b415095f9 Mon Sep 17 00:00:00 2001
+From: Lukas Rusak <lorusak@gmail.com>
+Date: Sun, 13 Aug 2017 19:14:07 -0700
+Subject: [PATCH 4/6] windowing/gbm: enough of the pointer games
+
+---
+ xbmc/windowing/gbm/WinSystemGbm.cpp            | 37 ++++++--------------------
+ xbmc/windowing/gbm/WinSystemGbm.h              |  4 +--
+ xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp |  4 +--
+ 3 files changed, 12 insertions(+), 33 deletions(-)
+
+diff --git a/xbmc/windowing/gbm/WinSystemGbm.cpp b/xbmc/windowing/gbm/WinSystemGbm.cpp
+index 74d9bc857505..8498f84fd380 100644
+--- a/xbmc/windowing/gbm/WinSystemGbm.cpp
++++ b/xbmc/windowing/gbm/WinSystemGbm.cpp
+@@ -31,8 +31,6 @@
+ #include "utils/log.h"
+ 
+ CWinSystemGbm::CWinSystemGbm() :
+-  m_gbm(nullptr),
+-  m_drm(nullptr),
+   m_nativeDisplay(nullptr),
+   m_nativeWindow(nullptr)
+ {
+@@ -41,26 +39,13 @@ CWinSystemGbm::CWinSystemGbm() :
+ 
+ bool CWinSystemGbm::InitWindowSystem()
+ {
+-  m_drm = new drm;
+-  m_gbm = new gbm;
+-
+-  if (!m_DRM.InitDrm(m_drm, m_gbm))
++  if (!m_DRM.InitDrm(&m_drm, &m_gbm))
+   {
+     CLog::Log(LOGERROR, "CWinSystemGbm::%s - failed to initialize DRM", __FUNCTION__);
+     return false;
+   }
+ 
+-  m_nativeDisplay = m_gbm->dev;
+-
+-  if (!m_drm)
+-  {
+-    return false;
+-  }
+-
+-  if (!m_gbm)
+-  {
+-    return false;
+-  }
++  m_nativeDisplay = m_gbm.dev;
+ 
+   CLog::Log(LOGDEBUG, "CWinSystemGbm::%s - initialized DRM", __FUNCTION__);
+   return CWinSystemBase::InitWindowSystem();
+@@ -71,12 +56,6 @@ bool CWinSystemGbm::DestroyWindowSystem()
+   m_DRM.DestroyDrm();
+   m_nativeDisplay = nullptr;
+ 
+-  delete m_drm;
+-  m_drm = nullptr;
+-
+-  delete m_gbm;
+-  m_gbm = nullptr;
+-
+   CLog::Log(LOGDEBUG, "CWinSystemGbm::%s - deinitialized DRM", __FUNCTION__);
+   return true;
+ }
+@@ -85,13 +64,13 @@ bool CWinSystemGbm::CreateNewWindow(const std::string& name,
+                                     bool fullScreen,
+                                     RESOLUTION_INFO& res)
+ {
+-  if (!CGBMUtils::InitGbm(m_gbm, m_drm->mode->hdisplay, m_drm->mode->vdisplay))
++  if (!CGBMUtils::InitGbm(&m_gbm, m_drm.mode->hdisplay, m_drm.mode->vdisplay))
+   {
+     CLog::Log(LOGERROR, "CWinSystemGbm::%s - failed to initialize GBM", __FUNCTION__);
+     return false;
+   }
+ 
+-  m_nativeWindow = m_gbm->surface;
++  m_nativeWindow = m_gbm.surface;
+ 
+   CLog::Log(LOGDEBUG, "CWinSystemGbm::%s - initialized GBM", __FUNCTION__);
+   return true;
+@@ -99,7 +78,7 @@ bool CWinSystemGbm::CreateNewWindow(const std::string& name,
+ 
+ bool CWinSystemGbm::DestroyWindow()
+ {
+-  CGBMUtils::DestroyGbm(m_gbm);
++  CGBMUtils::DestroyGbm(&m_gbm);
+   m_nativeWindow = nullptr;
+ 
+   CLog::Log(LOGDEBUG, "CWinSystemGbm::%s - deinitialized GBM", __FUNCTION__);
+@@ -112,9 +91,9 @@ void CWinSystemGbm::UpdateResolutions()
+ 
+   UpdateDesktopResolution(CDisplaySettings::GetInstance().GetResolutionInfo(RES_DESKTOP),
+                           0,
+-                          m_drm->mode->hdisplay,
+-                          m_drm->mode->vdisplay,
+-                          m_drm->mode->vrefresh);
++                          m_drm.mode->hdisplay,
++                          m_drm.mode->vdisplay,
++                          m_drm.mode->vrefresh);
+ 
+   std::vector<RESOLUTION_INFO> resolutions;
+ 
+diff --git a/xbmc/windowing/gbm/WinSystemGbm.h b/xbmc/windowing/gbm/WinSystemGbm.h
+index 87bf8ed7a639..c436a23b5491 100644
+--- a/xbmc/windowing/gbm/WinSystemGbm.h
++++ b/xbmc/windowing/gbm/WinSystemGbm.h
+@@ -62,8 +62,8 @@ class CWinSystemGbm : public CWinSystemBase
+ protected:
+   CDRM m_DRM;
+ 
+-  gbm* m_gbm;
+-  drm* m_drm;
++  gbm m_gbm;
++  drm m_drm;
+ 
+   EGLDisplay m_nativeDisplay;
+   EGLNativeWindowType m_nativeWindow;
+diff --git a/xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp b/xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp
+index d55c615bd858..672982768482 100644
+--- a/xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp
++++ b/xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp
+@@ -114,8 +114,8 @@ bool CWinSystemGbmGLESContext::CreateNewWindow(const std::string& name,
+ 
+ bool CWinSystemGbmGLESContext::SetFullScreen(bool fullScreen, RESOLUTION_INFO& res, bool blankOtherDisplays)
+ {
+-  if (res.iWidth != m_drm->mode->hdisplay ||
+-      res.iHeight != m_drm->mode->vdisplay)
++  if (res.iWidth != m_drm.mode->hdisplay ||
++      res.iHeight != m_drm.mode->vdisplay)
+   {
+     CLog::Log(LOGDEBUG, "CWinSystemGbmGLESContext::%s - resolution changed, creating a new window", __FUNCTION__);
+     CreateNewWindow("", fullScreen, res);
+
+From 92e625d69a43351a0aaca30679b7de4047d52871 Mon Sep 17 00:00:00 2001
+From: Lukas Rusak <lorusak@gmail.com>
+Date: Sun, 13 Aug 2017 21:02:14 -0700
+Subject: [PATCH 5/6] windowing/gbm: implement register/unregister
+
+---
+ xbmc/windowing/gbm/WinSystemGbm.cpp | 12 ++++++++++--
+ xbmc/windowing/gbm/WinSystemGbm.h   |  3 +++
+ 2 files changed, 13 insertions(+), 2 deletions(-)
+
+diff --git a/xbmc/windowing/gbm/WinSystemGbm.cpp b/xbmc/windowing/gbm/WinSystemGbm.cpp
+index 8498f84fd380..b772ca9a50c4 100644
+--- a/xbmc/windowing/gbm/WinSystemGbm.cpp
++++ b/xbmc/windowing/gbm/WinSystemGbm.cpp
+@@ -181,10 +181,18 @@ bool CWinSystemGbm::Show(bool raise)
+   return true;
+ }
+ 
+-void CWinSystemGbm::Register(IDispResource * /*resource*/)
++void CWinSystemGbm::Register(IDispResource *resource)
+ {
++  CSingleLock lock(m_resourceSection);
++  m_resources.push_back(resource);
+ }
+ 
+-void CWinSystemGbm::Unregister(IDispResource * /*resource*/)
++void CWinSystemGbm::Unregister(IDispResource *resource)
+ {
++  CSingleLock lock(m_resourceSection);
++  std::vector<IDispResource*>::iterator i = find(m_resources.begin(), m_resources.end(), resource);
++  if (i != m_resources.end())
++  {
++    m_resources.erase(i);
++  }
+ }
+diff --git a/xbmc/windowing/gbm/WinSystemGbm.h b/xbmc/windowing/gbm/WinSystemGbm.h
+index c436a23b5491..dd0a3490ded6 100644
+--- a/xbmc/windowing/gbm/WinSystemGbm.h
++++ b/xbmc/windowing/gbm/WinSystemGbm.h
+@@ -67,4 +67,7 @@ class CWinSystemGbm : public CWinSystemBase
+ 
+   EGLDisplay m_nativeDisplay;
+   EGLNativeWindowType m_nativeWindow;
++
++  CCriticalSection m_resourceSection;
++  std::vector<IDispResource*>  m_resources;
+ };
+
+From 6f73fa5db030acba28cce64c9749a89761f68151 Mon Sep 17 00:00:00 2001
+From: Lukas Rusak <lorusak@gmail.com>
+Date: Tue, 22 Aug 2017 21:12:08 -0700
+Subject: [PATCH 6/6] windowing/gbm: use drmModeAddFB2
+
+---
+ xbmc/windowing/gbm/DRMUtils.cpp | 36 +++++++++++++++++++++++-------------
+ 1 file changed, 23 insertions(+), 13 deletions(-)
+
+diff --git a/xbmc/windowing/gbm/DRMUtils.cpp b/xbmc/windowing/gbm/DRMUtils.cpp
+index bc5e7d1630fc..2a696d27a799 100644
+--- a/xbmc/windowing/gbm/DRMUtils.cpp
++++ b/xbmc/windowing/gbm/DRMUtils.cpp
+@@ -24,6 +24,7 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
++#include <drm/drm_fourcc.h>
+ #include <drm/drm_mode.h>
+ #include <EGL/egl.h>
+ #include <unistd.h>
+@@ -80,19 +81,28 @@ drm_fb * CDRMUtils::DrmFbGetFromBo(struct gbm_bo *bo)
+   struct drm_fb *fb = new drm_fb;
+   fb->bo = bo;
+ 
+-  uint32_t width = gbm_bo_get_width(bo);
+-  uint32_t height = gbm_bo_get_height(bo);
+-  uint32_t stride = gbm_bo_get_stride(bo);
+-  uint32_t handle = gbm_bo_get_handle(bo).u32;
+-
+-  auto ret = drmModeAddFB(m_drm->fd,
+-                          width,
+-                          height,
+-                          24,
+-                          32,
+-                          stride,
+-                          handle,
+-                          &fb->fb_id);
++  uint32_t width,
++           height,
++           handles[4] = {0},
++           strides[4] = {0},
++           offsets[4] = {0};
++
++  width = gbm_bo_get_width(bo);
++  height = gbm_bo_get_height(bo);
++
++  handles[0] = gbm_bo_get_handle(bo).u32;
++  strides[0] = gbm_bo_get_stride(bo);
++  memset(offsets, 0, 16);
++
++  auto ret = drmModeAddFB2(m_drm->fd,
++                           width,
++                           height,
++                           DRM_FORMAT_ARGB8888,
++                           handles,
++                           strides,
++                           offsets,
++                           &fb->fb_id,
++                           0);
+ 
+   if(ret)
+   {
