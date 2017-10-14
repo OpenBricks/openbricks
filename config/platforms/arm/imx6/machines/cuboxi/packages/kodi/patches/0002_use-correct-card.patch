@@ -1,0 +1,119 @@
+diff --git a/xbmc/windowing/gbm/DRMUtils.cpp b/xbmc/windowing/gbm/DRMUtils.cpp
+index 2a696d27a799..b6f8610906a1 100644
+--- a/xbmc/windowing/gbm/DRMUtils.cpp
++++ b/xbmc/windowing/gbm/DRMUtils.cpp
+@@ -210,36 +210,86 @@ bool CDRMUtils::GetPreferredMode()
+   return true;
+ }
+ 
+-bool CDRMUtils::InitDrm(drm *drm)
++int CDRMUtils::Open(const char* device)
+ {
+-  m_drm = drm;
+-  const char *device = "/dev/dri/card0";
+-
+-  m_drm->fd = open(device, O_RDWR);
++  int fd;
+ 
+-  if(m_drm->fd < 0)
++  std::vector<const char*>modules =
+   {
+-    return false;
++    "i915",
++    "amdgpu",
++    "radeon",
++    "nouveau",
++    "vmwgfx",
++    "msm",
++    "imx-drm",
++    "rockchip",
++    "vc4",
++    "virtio_gpu",
++  };
++
++  for (auto module : modules)
++  {
++    fd = drmOpen(module, device);
++    if (fd < 0)
++    {
++      CLog::Log(LOGDEBUG, "CDRMUtils::%s - failed to open device: %s using module: %s", __FUNCTION__, device, module);
++    }
++    else
++    {
++      CLog::Log(LOGDEBUG, "CDRMUtils::%s - opened device: %s using module: %s", __FUNCTION__, device, module);
++      break;
++    }
+   }
+ 
+-  if(!GetResources())
++  if (fd < 0)
+   {
+-    return false;
++    CLog::Log(LOGDEBUG, "CDRMUtils::%s - no module found for device: %s", __FUNCTION__, device);
++    return -1;
+   }
+ 
+-  if(!GetConnector())
++  return fd;
++}
++
++bool CDRMUtils::InitDrm(drm *drm)
++{
++  m_drm = drm;
++
++  for(int i = 0; i < 10; ++i)
+   {
+-    return false;
++    std::string device = "/dev/dri/card";
++    device.append(std::to_string(i));
++    m_drm->fd = CDRMUtils::Open(device.c_str());
++
++    if(m_drm->fd > 0)
++    {
++      if(!GetResources())
++      {
++        continue;
++      }
++
++      if(!GetConnector())
++      {
++        continue;
++      }
++
++      if(!GetEncoder())
++      {
++        continue;
++      }
++      else
++      {
++        m_drm->crtc_id = m_drm_encoder->crtc_id;
++      }
++
++      break;
++    }
+   }
+ 
+-  if(!GetEncoder())
++  if(m_drm->fd < 0)
+   {
+     return false;
+   }
+-  else
+-  {
+-    m_drm->crtc_id = m_drm_encoder->crtc_id;
+-  }
+ 
+   if(!GetPreferredMode())
+   {
+diff --git a/xbmc/windowing/gbm/DRMUtils.h b/xbmc/windowing/gbm/DRMUtils.h
+index 25eb2d02fa84..41cbf774f7a9 100644
+--- a/xbmc/windowing/gbm/DRMUtils.h
++++ b/xbmc/windowing/gbm/DRMUtils.h
+@@ -77,6 +77,7 @@ class CDRMUtils
+   static bool GetConnector();
+   static bool GetEncoder();
+   static bool GetPreferredMode();
++  static int Open(const char* device);
+   static bool RestoreOriginalMode();
+   static void DrmFbDestroyCallback(struct gbm_bo *bo, void *data);
+ };
