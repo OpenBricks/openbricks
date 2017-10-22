@@ -1,0 +1,57 @@
+--- a/drivers/gpu/drm/bridge/synopsys/dw-hdmi-ahb-audio.c	2017-10-22 13:54:22.352418669 +0200
++++ b/drivers/gpu/drm/bridge/synopsys/dw-hdmi-ahb-audio.c	2017-10-22 13:54:22.384418598 +0200
+@@ -259,11 +259,6 @@
+ 
+ 	writeb_relaxed((u8)~HDMI_AHB_DMA_MASK_DONE, base + HDMI_AHB_DMA_MASK);
+ 	writeb(HDMI_AHB_DMA_START_START, base + HDMI_AHB_DMA_START);
+-
+-	offset += period;
+-	if (offset >= dw->buf_size)
+-		offset = 0;
+-	dw->buf_offset = offset;
+ }
+ 
+ static void dw_hdmi_stop_dma(struct snd_dw_hdmi *dw)
+@@ -277,7 +272,7 @@
+ {
+ 	struct snd_dw_hdmi *dw = data;
+ 	struct snd_pcm_substream *substream;
+-	unsigned stat;
++	unsigned stat, offset;
+ 
+ 	stat = readb_relaxed(dw->data.base + HDMI_IH_AHBDMAAUD_STAT0);
+ 	if (!stat)
+@@ -287,11 +282,17 @@
+ 
+ 	substream = dw->substream;
+ 	if (stat & HDMI_IH_AHBDMAAUD_STAT0_DONE && substream) {
++		spin_lock(&dw->lock);
++		offset = dw->buf_offset + dw->buf_period;
++		if (offset >= dw->buf_size)
++			offset = 0;
++		dw->buf_offset = offset;
++		spin_unlock(&dw->lock);
++
+ 		snd_pcm_period_elapsed(substream);
+ 
+ 		spin_lock(&dw->lock);
+-		if (dw->substream)
+-			dw_hdmi_start_dma(dw);
++		dw_hdmi_start_dma(dw);
+ 		spin_unlock(&dw->lock);
+ 	}
+ 
+@@ -315,10 +316,10 @@
+ 	.channels_min = 2,
+ 	.channels_max = 8,
+ 	.buffer_bytes_max = 1024 * 1024,
+-	.period_bytes_min = 256,
+-	.period_bytes_max = 8192,	/* ERR004323: must limit to 8k */
++	.period_bytes_min = 1536,	/* 192 frames x 4 bytes x 2 ch */
++	.period_bytes_max = 7680,	/* ERR004323: must limit to 8k */
+ 	.periods_min = 2,
+-	.periods_max = 16,
++	.periods_max = 128,
+ 	.fifo_size = 0,
+ };
+ 
