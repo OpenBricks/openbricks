@@ -5,12 +5,25 @@ get_meta $1
 
 cd $PKG_BUILD_DIR
 export SERVICES="yes"
-VDR_DIR=`basename $BUILD/vdr-1*`
+VIDEODIR=$(grep "^videodir" ./vdr.pc | sed -e "s/.*=//")
+CACHEDIR=$(grep "^cachedir" ./vdr.pc | sed -e "s/.*=//")
+PLUGINDIR=$(grep "^libdir" ./vdr.pc | sed -e "s/.*=//")
+CFGDIR=$(grep "^configdir" ./vdr.pc | sed -e "s/.*=//")
+RESDIR=$(grep "^resdir" ./vdr.pc | sed -e "s/.*=//")
+
+mkdir -p ${INSTALL}/usr/bin
+mkdir -p ${INSTALL}/usr/sbin
+mkdir -p ${INSTALL}/usr/share/fonts/truetype
+mkdir -p ${INSTALL}/firmware
+mkdir -p ${INSTALL}${VIDEODIR}
+mkdir -p ${INSTALL}${PLUGINDIR}
+mkdir -p ${INSTALL}${CFGDIR}/plugins
+mkdir -p ${INSTALL}${CFGDIR}/plugins.d
+mkdir -p ${INSTALL}${CACHEDIR}/epgimages
+mkdir -p ${INSTALL}${RESDIR}/libxine1-xvdr
 
 do_install usr/bin/vdr
-mkdir -p $INSTALL/usr/sbin
-mkdir -p $INSTALL/usr/share/fonts/truetype
-mkdir -p $INSTALL/usr/bin
+
 cp -r $ROOT/$PACKAGES/$PKG_SECTION/$PKG_NAME/fonts $INSTALL/usr/share/
 
 cp $ROOT/$PACKAGES/$PKG_SECTION/$PKG_NAME/scripts/runvdr $INSTALL/usr/sbin/runvdr
@@ -21,13 +34,9 @@ if [ "$PKG_VERSION" = "2.1.2" ]; then
    sed -i "s|eval vdr -g /tmp -L /usr/lib/vdr/plugins --buffer=/media/video|#eval vdr -g /tmp -L /usr/lib/vdr/plugins --buffer=/media/video|" $INSTALL/usr/sbin/runvdr
 fi
 
-mkdir -p $INSTALL/usr/lib/vdr
-mkdir -p $INSTALL/usr/bin
-mkdir -p $INSTALL/usr/lib/vdr/plugins
-mkdir -p $INSTALL/media/video
-mkdir -p $INSTALL/usr/share/libxine1-xvdr
-mkdir -p $INSTALL/firmware
-mkdir -p $INSTALL/var/cache/vdr/epgimages/
+sed -e "s|/usr/lib/vdr/plugins|${PLUGINDIR}|g" \
+    -e "s|/media/video|${VIDEODIR}|g" \
+    -i $INSTALL/usr/sbin/runvdr*
 
 cp $ROOT/$PACKAGES/$PKG_SECTION/$PKG_NAME/config/nosignal.mpg $INSTALL/usr/share/libxine1-xvdr
 cp $ROOT/$PACKAGES/$PKG_SECTION/$PKG_NAME/firmware/* $INSTALL/firmware
@@ -42,12 +51,9 @@ do_install var
 ##[ "$SERVICES" = yes ] && sed -i "s|0.0.0.0/0|#0.0.0.0/0|" $INSTALL/etc/vdr/svdrphosts.conf
 ##[ "$SERVICES" = yes ] && sed -i "s|#127.0.0.1|127.0.0.1|" $INSTALL/etc/vdr/svdrphosts.conf
 
-mkdir -p $INSTALL/etc/vdr/plugins
-mkdir -p $INSTALL/etc/vdr/plugins.d
-
 cp $ROOT/$PACKAGES/$PKG_SECTION/$PKG_NAME/config/wakeup $INSTALL/etc
 cp $ROOT/$PACKAGES/$PKG_SECTION/$PKG_NAME/config/channels.conf $INSTALL/etc/vdr/channels.conf
-if [ "$TARGET_MACHINE" = raspberrypi ]; then
+if [ "$TARGET_MACHINE" = raspberrypi ] || [ "$TARGET_MACHINE" = raspberrypi2 ]; then
    cp $ROOT/$PACKAGES/$PKG_SECTION/$PKG_NAME/config/setup.conf.rasp $INSTALL/etc/vdr/setup.conf
 else
    cp $ROOT/$PACKAGES/$PKG_SECTION/$PKG_NAME/config/setup.conf $INSTALL/etc/vdr
@@ -58,8 +64,7 @@ cp $ROOT/$PACKAGES/$PKG_SECTION/$PKG_NAME/config/scr.conf $INSTALL/etc/vdr
 cp $ROOT/$PACKAGES/$PKG_SECTION/$PKG_NAME/config/diseqc.conf $INSTALL/etc/vdr
 mkdir -p $INSTALL/etc/default
 cp $ROOT/$PACKAGES/$PKG_SECTION/$PKG_NAME/config/vdr $INSTALL/etc/default
-cd $INSTALL/etc/vdr
-ln -s ../default/vdr vdr.default
+ln -sf ../default/vdr $INSTALL/etc/vdr/vdr.default
 
 #mkdir -p $INSTALL/etc/systemd/system/multi-user-target-wants
 #cd $INSTALL/etc/systemd/system/multi-user-target-wants
