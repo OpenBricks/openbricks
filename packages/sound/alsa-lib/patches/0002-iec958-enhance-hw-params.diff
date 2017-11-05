@@ -1,0 +1,74 @@
+--- a/src/pcm/pcm_iec958.c	2017-11-04 11:39:10.170716538 +0100
++++ b/src/pcm/pcm_iec958.c	2017-11-04 11:39:10.194716361 +0100
+@@ -32,6 +32,10 @@
+ 
+ #include "plugin_ops.h"
+ 
++#undef	IEC958_AES1_CON_ADC_ID
++#undef	IEC958_AES1_CON_ADC_COPYRIGHT_ID
++#include "asoundef.h"
++
+ #ifndef PIC
+ /* entry for static linking */
+ const char *_snd_module_pcm_iec958 = "";
+@@ -317,6 +321,8 @@
+ {
+ 	snd_pcm_iec958_t *iec = pcm->private_data;
+ 	snd_pcm_format_t format;
++	unsigned rate, channels;
++	unsigned char aes3, aes4;
+ 	int err = snd_pcm_hw_params_slave(pcm, params,
+ 					  snd_pcm_iec958_hw_refine_cchange,
+ 					  snd_pcm_iec958_hw_refine_sprepare,
+@@ -353,9 +359,48 @@
+ 			iec->byteswap = format != SND_PCM_FORMAT_IEC958_SUBFRAME;
+ 		}
+ 	}
+-	/* FIXME: needs to adjust status_bits according to the format
+-	 *        and sample rate
+-	 */
++
++	iec->counter = 0;
++
++	err = INTERNAL(snd_pcm_hw_params_get_rate)(params, &rate, NULL);
++	if (err < 0)
++		return err;
++
++	switch (rate) {
++	case  22050: aes3 = IEC958_AES3_CON_FS_22050;	break;
++	case  24000: aes3 = IEC958_AES3_CON_FS_24000;	break;
++	case  32000: aes3 = IEC958_AES3_CON_FS_32000;	break;
++	case  44100: aes3 = IEC958_AES3_CON_FS_44100;	break;
++	case  48000: aes3 = IEC958_AES3_CON_FS_48000;	break;
++	case  88200: aes3 = IEC958_AES3_CON_FS_88200;	break;
++	case  96000: aes3 = IEC958_AES3_CON_FS_96000;	break;
++	case 176400: aes3 = IEC958_AES3_CON_FS_176400;	break;
++	case 192000: aes3 = IEC958_AES3_CON_FS_192000;	break;
++	    default: aes3 = IEC958_AES3_CON_FS_NOTID;
++	}
++
++	err = INTERNAL(snd_pcm_hw_params_get_channels)(params, &channels);
++	if (err < 0)
++		return err;
++
++	/* special case for HDMI high bitrate mode */
++	if (rate == 192000 && channels == 8 &&
++	    (iec->status[0] & IEC958_AES0_NONAUDIO))
++	    aes3 = IEC958_AES3_CON_FS_768000;
++
++	iec->status[3] = (iec->status[3] & ~IEC958_AES3_CON_FS) | aes3;
++
++	switch (snd_pcm_format_physical_width(format)) {
++	case 16: aes4 = IEC958_AES4_CON_WORDLEN_20_16;	break;
++	case 18: aes4 = IEC958_AES4_CON_WORDLEN_22_18;	break;
++	case 20: aes4 = IEC958_AES4_CON_MAX_WORDLEN_24 | IEC958_AES4_CON_WORDLEN_20_16;	break;
++	case 24:
++	case 32: aes4 = IEC958_AES4_CON_MAX_WORDLEN_24 | IEC958_AES4_CON_WORDLEN_24_20;	break;
++	default: aes4 = IEC958_AES4_CON_WORDLEN_NOTID;
++	}
++
++	iec->status[4] = aes4 | IEC958_AES4_CON_ORIGFS_NOTID;
++
+ 	return 0;
+ }
+ 
