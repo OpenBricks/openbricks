@@ -1,0 +1,90 @@
+--- a/drivers/gpu/drm/bridge/synopsys/dw-hdmi-ahb-audio.c	2017-11-05 11:32:16.951485979 +0100
++++ b/drivers/gpu/drm/bridge/synopsys/dw-hdmi-ahb-audio.c	2017-11-05 11:32:16.979488709 +0100
+@@ -237,13 +237,17 @@
+ 	dw->cs[0][0] |= BIT(4);
+ }
+ 
+-static void dw_hdmi_start_dma(struct snd_dw_hdmi *dw)
++static void dw_hdmi_start_dma(struct snd_dw_hdmi *dw, unsigned period_inc)
+ {
+ 	void __iomem *base = dw->data.base;
+-	unsigned offset = dw->buf_offset;
++	unsigned offset = dw->buf_offset + period_inc;
+ 	unsigned period = dw->buf_period;
+ 	u32 start, stop;
+ 
++	if (offset >= dw->buf_size)
++		offset = 0;
++	dw->buf_offset = offset;
++
+ 	dw->reformat(dw, offset, period);
+ 
+ 	/* Clear all irqs before enabling irqs and starting DMA */
+@@ -259,11 +263,6 @@
+ 
+ 	writeb_relaxed((u8)~HDMI_AHB_DMA_MASK_DONE, base + HDMI_AHB_DMA_MASK);
+ 	writeb(HDMI_AHB_DMA_START_START, base + HDMI_AHB_DMA_START);
+-
+-	offset += period;
+-	if (offset >= dw->buf_size)
+-		offset = 0;
+-	dw->buf_offset = offset;
+ }
+ 
+ static void dw_hdmi_stop_dma(struct snd_dw_hdmi *dw)
+@@ -287,12 +286,11 @@
+ 
+ 	substream = dw->substream;
+ 	if (stat & HDMI_IH_AHBDMAAUD_STAT0_DONE && substream) {
+-		snd_pcm_period_elapsed(substream);
+-
+ 		spin_lock(&dw->lock);
+-		if (dw->substream)
+-			dw_hdmi_start_dma(dw);
++		dw_hdmi_start_dma(dw, dw->buf_period);
+ 		spin_unlock(&dw->lock);
++
++		snd_pcm_period_elapsed(substream);
+ 	}
+ 
+ 	return IRQ_HANDLED;
+@@ -315,10 +313,10 @@
+ 	.channels_min = 2,
+ 	.channels_max = 8,
+ 	.buffer_bytes_max = 1024 * 1024,
+-	.period_bytes_min = 256,
+-	.period_bytes_max = 8192,	/* ERR004323: must limit to 8k */
++	.period_bytes_min = 6144,	/* 192 frames x 4 bytes x 8 ch */
++	.period_bytes_max = 6144,	/* ERR004323: must limit to 8k */
+ 	.periods_min = 2,
+-	.periods_max = 16,
++	.periods_max = 128,
+ 	.fifo_size = 0,
+ };
+ 
+@@ -466,6 +464,7 @@
+ 	dw->buf_src  = runtime->dma_area;
+ 	dw->buf_dst  = substream->dma_buffer.area;
+ 	dw->buf_addr = substream->dma_buffer.addr;
++	dw->buf_offset = 0;
+ 	dw->buf_period = snd_pcm_lib_period_bytes(substream);
+ 	dw->buf_size = snd_pcm_lib_buffer_bytes(substream);
+ 
+@@ -483,7 +482,7 @@
+ 		spin_lock_irqsave(&dw->lock, flags);
+ 		dw->buf_offset = 0;
+ 		dw->substream = substream;
+-		dw_hdmi_start_dma(dw);
++		dw_hdmi_start_dma(dw, 0);
+ 		dw_hdmi_audio_enable(dw->data.hdmi);
+ 		spin_unlock_irqrestore(&dw->lock, flags);
+ 		substream->runtime->delay = substream->runtime->period_size;
+@@ -580,7 +579,7 @@
+ 	 * to satisfy alsa with our restricted period (ERR004323).
+ 	 */
+ 	snd_pcm_lib_preallocate_pages_for_all(pcm, SNDRV_DMA_TYPE_DEV,
+-			dev, 128 * 1024, 1024 * 1024);
++			dev, 128 * 1024, dw_hdmi_hw.buffer_bytes_max);
+ 
+ 	ret = snd_card_register(card);
+ 	if (ret < 0)

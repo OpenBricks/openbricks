@@ -1,0 +1,36 @@
+--- a/drivers/gpu/drm/bridge/synopsys/dw-hdmi-ahb-audio.c	2017-11-05 11:54:56.150412888 +0100
++++ b/drivers/gpu/drm/bridge/synopsys/dw-hdmi-ahb-audio.c	2017-11-05 11:54:56.182413005 +0100
+@@ -195,13 +195,19 @@
+ 	u32 *end = dw->buf_src + offset + bytes;
+ 
+ 	do {
+-		u32 b, sample = *src++;
++		u32 sample = *src++;
+ 
+-		b = (sample & 8) << (28 - 3);
++		if (sample & 8)
++			dw->iec_offset = dw->channels;
+ 
+ 		sample >>= 4;
+ 
+-		*dst++ = sample | b;
++		if (dw->iec_offset) {
++			dw->iec_offset--;
++			sample |= 1 << 28;
++		}
++
++		*dst++ = sample;
+ 	} while (src < end);
+ }
+ 
+@@ -263,8 +269,9 @@
+ 			for (j = 0; j < 8; j++, c >>= 1)
+ 				dw->cs[i * 8 + j][ch] = (c & 1) << 2;
+ 		}
++
++		dw->cs[0][ch] |= BIT(4);
+ 	}
+-	dw->cs[0][0] |= BIT(4);
+ }
+ 
+ static void dw_hdmi_start_dma(struct snd_dw_hdmi *dw, unsigned period_inc)
