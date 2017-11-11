@@ -1,0 +1,208 @@
+From cf5f4c7e643af840d0dc90298787b705de516c5e Mon Sep 17 00:00:00 2001
+From: Lukas Rusak <lorusak@gmail.com>
+Date: Mon, 6 Nov 2017 17:56:41 -0800
+Subject: [PATCH 1/3] v4l2: output drm prime
+
+---
+ libavcodec/v4l2_buffers.c | 89 +++++++++++++++++++++++++++++++++++------------
+ libavcodec/v4l2_buffers.h |  1 +
+ libavcodec/v4l2_m2m_dec.c | 43 +++++++++++++----------
+ 3 files changed, 91 insertions(+), 42 deletions(-)
+
+diff --git a/libavcodec/v4l2_buffers.c b/libavcodec/v4l2_buffers.c
+index ba70c5d14b..732d12b833 100644
+--- a/libavcodec/v4l2_buffers.c
++++ b/libavcodec/v4l2_buffers.c
+@@ -29,6 +29,8 @@
+ #include <poll.h>
+ #include "libavcodec/avcodec.h"
+ #include "libavcodec/internal.h"
++#include "libavutil/hwcontext.h"
++#include "libavutil/hwcontext_drm.h"
+ #include "v4l2_context.h"
+ #include "v4l2_buffers.h"
+ #include "v4l2_m2m.h"
+@@ -289,32 +291,12 @@ int ff_v4l2_buffer_avframe_to_buf(const AVFrame *frame, V4L2Buffer* out)
+ int ff_v4l2_buffer_buf_to_avframe(AVFrame *frame, V4L2Buffer *avbuf)
+ {
+     V4L2m2mContext *s = buf_to_m2mctx(avbuf);
+-    int i, ret;
++    AVDRMFrameDescriptor *desc = NULL;
++    AVDRMLayerDescriptor *layer = NULL;
++    int ret;
+ 
+     av_frame_unref(frame);
+ 
+-    /* 1. get references to the actual data */
+-    for (i = 0; i < avbuf->num_planes; i++) {
+-        ret = v4l2_buf_to_bufref(avbuf, i, &frame->buf[i]);
+-        if (ret)
+-            return ret;
+-
+-        frame->linesize[i] = avbuf->plane_info[i].bytesperline;
+-        frame->data[i] = frame->buf[i]->data;
+-    }
+-
+-    /* 1.1 fixup special cases */
+-    switch (avbuf->context->av_pix_fmt) {
+-    case AV_PIX_FMT_NV12:
+-        if (avbuf->num_planes > 1)
+-            break;
+-        frame->linesize[1] = avbuf->plane_info[0].bytesperline;
+-        frame->data[1] = frame->buf[0]->data + avbuf->plane_info[0].bytesperline * avbuf->context->format.fmt.pix_mp.height;
+-        break;
+-    default:
+-        break;
+-    }
+-
+     /* 2. get frame information */
+     frame->key_frame = !!(avbuf->buf.flags & V4L2_BUF_FLAG_KEYFRAME);
+     frame->format = avbuf->context->av_pix_fmt;
+@@ -328,6 +310,42 @@ int ff_v4l2_buffer_buf_to_avframe(AVFrame *frame, V4L2Buffer *avbuf)
+     frame->height = s->output.height;
+     frame->width = s->output.width;
+ 
++    ret = ff_v4l2_buffer_export(avbuf);
++    if (ret < 0) {
++        return AVERROR(errno);
++    }
++
++    desc = av_mallocz(sizeof(AVDRMFrameDescriptor));
++    if (!desc) {
++        return AVERROR(ENOMEM);
++    }
++
++    desc->nb_objects = 1;
++
++    if (V4L2_TYPE_IS_MULTIPLANAR(avbuf->buf.type)) {
++        desc->objects[0].fd = avbuf->buf.m.planes[0].m.fd;
++        desc->objects[0].size = avbuf->buf.m.planes[0].length;
++    } else {
++        desc->objects[0].fd = avbuf->buf.m.fd;
++        desc->objects[0].size = avbuf->buf.length;
++    }
++
++    desc->nb_layers = 1;
++    layer = &desc->layers[0];
++    layer->format = AV_PIX_FMT_NV12;
++    layer->nb_planes = 2;
++
++    layer->planes[0].object_index = 0;
++    layer->planes[0].offset = 0;
++    layer->planes[0].pitch = avbuf->plane_info[0].bytesperline;
++
++    layer->planes[1].object_index = 0;
++    layer->planes[1].offset = layer->planes[0].pitch * avbuf->context->format.fmt.pix_mp.height;
++    layer->planes[1].pitch = avbuf->plane_info[0].bytesperline;
++
++    frame->data[0] = (uint8_t *)desc;
++    frame->buf[0] = av_buffer_create((uint8_t *)desc, sizeof(*desc), v4l2_free_buffer, avbuf, 0);
++
+     /* 3. report errors upstream */
+     if (avbuf->buf.flags & V4L2_BUF_FLAG_ERROR) {
+         av_log(logger(avbuf), AV_LOG_ERROR, "%s: driver decode error\n", avbuf->context->name);
+@@ -461,3 +479,28 @@ int ff_v4l2_buffer_enqueue(V4L2Buffer* avbuf)
+ 
+     return 0;
+ }
++
++int ff_v4l2_buffer_export(V4L2Buffer* avbuf)
++{
++    int i, ret;
++
++    for (i = 0; i < avbuf->num_planes; i++) {
++
++        struct v4l2_exportbuffer expbuf;
++        memset(&expbuf, 0, sizeof(expbuf));
++        expbuf.type = avbuf->buf.type;
++        expbuf.index = avbuf->buf.index;
++        expbuf.plane = i;
++
++        ret = ioctl(buf_to_m2mctx(avbuf)->fd, VIDIOC_EXPBUF, &expbuf);
++        if (ret < 0)
++            return AVERROR(errno);
++
++        if (V4L2_TYPE_IS_MULTIPLANAR(avbuf->buf.type))
++            avbuf->buf.m.planes[i].m.fd = expbuf.fd;
++        else
++            avbuf->buf.m.fd = expbuf.fd;
++    }
++
++    return 0;
++}
+diff --git a/libavcodec/v4l2_buffers.h b/libavcodec/v4l2_buffers.h
+index e28a4a650d..317fdd1469 100644
+--- a/libavcodec/v4l2_buffers.h
++++ b/libavcodec/v4l2_buffers.h
+@@ -121,5 +121,6 @@ int ff_v4l2_buffer_initialize(V4L2Buffer* avbuf, int index);
+  */
+ int ff_v4l2_buffer_enqueue(V4L2Buffer* avbuf);
+ 
++int ff_v4l2_buffer_export(V4L2Buffer* avbuf);
+ 
+ #endif // AVCODEC_V4L2_BUFFERS_H
+diff --git a/libavcodec/v4l2_m2m_dec.c b/libavcodec/v4l2_m2m_dec.c
+index 958cdc522b..82397fc8a1 100644
+--- a/libavcodec/v4l2_m2m_dec.c
++++ b/libavcodec/v4l2_m2m_dec.c
+@@ -23,6 +23,7 @@
+ 
+ #include <linux/videodev2.h>
+ #include <sys/ioctl.h>
++#include "libavutil/hwcontext_drm.h"
+ #include "libavutil/pixfmt.h"
+ #include "libavutil/pixdesc.h"
+ #include "libavutil/opt.h"
+@@ -196,26 +197,30 @@ static const AVOption options[] = {
+     { NULL},
+ };
+ 
++#define M2MDEC_CLASS(NAME) \
++    static const AVClass v4l2_m2m_ ## NAME ## _dec_class = { \
++        .class_name = #NAME "_v4l2_m2m_decoder", \
++        .item_name  = av_default_item_name, \
++        .option     = options, \
++        .version    = LIBAVUTIL_VERSION_INT, \
++    };
++
+ #define M2MDEC(NAME, LONGNAME, CODEC, bsf_name) \
+-static const AVClass v4l2_m2m_ ## NAME ## _dec_class = {\
+-    .class_name = #NAME "_v4l2_m2m_decoder",\
+-    .item_name  = av_default_item_name,\
+-    .option     = options,\
+-    .version    = LIBAVUTIL_VERSION_INT,\
+-};\
+-\
+-AVCodec ff_ ## NAME ## _v4l2m2m_decoder = { \
+-    .name           = #NAME "_v4l2m2m" ,\
+-    .long_name      = NULL_IF_CONFIG_SMALL("V4L2 mem2mem " LONGNAME " decoder wrapper"),\
+-    .type           = AVMEDIA_TYPE_VIDEO,\
+-    .id             = CODEC ,\
+-    .priv_data_size = sizeof(V4L2m2mContext),\
+-    .priv_class     = &v4l2_m2m_ ## NAME ## _dec_class,\
+-    .init           = v4l2_decode_init,\
+-    .receive_frame  = v4l2_receive_frame,\
+-    .close          = ff_v4l2_m2m_codec_end,\
+-    .bsfs           = bsf_name, \
+-};
++    M2MDEC_CLASS(NAME) \
++    AVCodec ff_ ## NAME ## _v4l2m2m_decoder = { \
++        .name           = #NAME "_v4l2m2m" , \
++        .long_name      = NULL_IF_CONFIG_SMALL("V4L2 mem2mem " LONGNAME " decoder wrapper"), \
++        .type           = AVMEDIA_TYPE_VIDEO, \
++        .id             = CODEC , \
++        .priv_data_size = sizeof(V4L2m2mContext), \
++        .priv_class     = &v4l2_m2m_ ## NAME ## _dec_class, \
++        .init           = v4l2_decode_init, \
++        .receive_frame  = v4l2_receive_frame, \
++        .close          = ff_v4l2_m2m_codec_end, \
++        .pix_fmts       = (const enum AVPixelFormat[]) { AV_PIX_FMT_DRM_PRIME, \
++ +                                                       AV_PIX_FMT_NONE}, \
++        .bsfs           = bsf_name, \
++    };
+ 
+ M2MDEC(h264,  "H.264", AV_CODEC_ID_H264,       "h264_mp4toannexb");
+ M2MDEC(hevc,  "HEVC",  AV_CODEC_ID_HEVC,       "hevc_mp4toannexb");
+-- 
+2.11.0
+
