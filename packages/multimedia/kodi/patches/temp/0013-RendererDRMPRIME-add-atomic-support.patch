@@ -1,0 +1,547 @@
+From 788a954d91a857a17476e1a8432ddbfec998f821 Mon Sep 17 00:00:00 2001
+From: Lukas Rusak <lorusak@gmail.com>
+Date: Tue, 7 Nov 2017 14:32:14 -0800
+Subject: [PATCH 13/13] RendererDRMPRIME: add atomic support
+
+---
+ .../cores/VideoPlayer/DVDCodecs/Video/DRMPRIME.cpp |   2 +-
+ .../HwDecRender/RendererDRMPRIME.cpp               |  33 ++--
+ xbmc/windowing/gbm/DRM.cpp                         |   4 +-
+ xbmc/windowing/gbm/DRM.h                           |   2 +-
+ xbmc/windowing/gbm/DRMAtomic.cpp                   | 170 +++++++++++++--------
+ xbmc/windowing/gbm/DRMAtomic.h                     |   8 +-
+ xbmc/windowing/gbm/DRMUtils.h                      |   5 +-
+ xbmc/windowing/gbm/WinSystemGbm.cpp                |   4 +-
+ xbmc/windowing/gbm/WinSystemGbm.h                  |   2 +-
+ xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp     |  12 +-
+ xbmc/windowing/gbm/WinSystemGbmGLESContext.h       |   3 +-
+ 11 files changed, 159 insertions(+), 86 deletions(-)
+
+diff --git a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DRMPRIME.cpp b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DRMPRIME.cpp
+index 9ef5292d83..2b67252956 100644
+--- a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DRMPRIME.cpp
++++ b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DRMPRIME.cpp
+@@ -220,7 +220,7 @@ bool CDecoder::GetPicture(AVCodecContext* avctx, VideoPicture* picture)
+   picture->videoBuffer->Acquire();
+ 
+   picture->dts = DVD_NOPTS_VALUE;
+-  picture->pts = (double)m_renderBuffer->GetPTS() * DVD_TIME_BASE / AV_TIME_BASE;
++  picture->pts = DVD_NOPTS_VALUE; //(double)m_renderBuffer->GetPTS() * DVD_TIME_BASE / AV_TIME_BASE;
+ 
+   return true;
+ }
+diff --git a/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.cpp b/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.cpp
+index a6e529bbd6..3b7790e878 100644
+--- a/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.cpp
++++ b/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.cpp
+@@ -27,6 +27,7 @@
+ #include "utils/log.h"
+ #include "windowing/WindowingFactory.h"
+ #include "windowing/gbm/DRMUtils.h"
++#include "windowing/gbm/DRMAtomic.h"
+ 
+ using namespace DRMPRIME;
+ 
+@@ -234,16 +235,30 @@ void CRendererDRMPRIME::SetVideoPlane(CVideoBufferDRMPRIME* buffer)
+     uint32_t src_w = buffer->GetWidth() << 16;
+     uint32_t src_h = buffer->GetHeight() << 16;
+ 
+-    // TODO: use atomic or legacy api
+-
+-    // show the video frame FB on the video plane
+-    ret = drmModeSetPlane(drm->fd, drm->video_plane_id, drm->crtc_id, buffer->m_fb_id, 0,
+-                          crtc_x, crtc_y, crtc_w, crtc_h,
+-                          src_x, src_y, src_w, src_h);
+-    if (ret < 0)
++    if(drm->req)
+     {
+-      CLog::Log(LOGERROR, "CRendererDRMPRIME::%s - failed to set drm plane %d, buffer = %d, ret = %d", __FUNCTION__, drm->video_plane_id, buffer->m_fb_id, ret);
+-      return;
++      CDRMAtomic::AddPlaneProperty(drm->req, drm->primary_plane, "FB_ID",   buffer->m_fb_id);
++      CDRMAtomic::AddPlaneProperty(drm->req, drm->primary_plane, "CRTC_ID", drm->crtc_id);
++      CDRMAtomic::AddPlaneProperty(drm->req, drm->primary_plane, "SRC_X",   src_x);
++      CDRMAtomic::AddPlaneProperty(drm->req, drm->primary_plane, "SRC_Y",   src_y);
++      CDRMAtomic::AddPlaneProperty(drm->req, drm->primary_plane, "SRC_W",   src_w);
++      CDRMAtomic::AddPlaneProperty(drm->req, drm->primary_plane, "SRC_H",   src_h);
++      CDRMAtomic::AddPlaneProperty(drm->req, drm->primary_plane, "CRTC_X",  crtc_x);
++      CDRMAtomic::AddPlaneProperty(drm->req, drm->primary_plane, "CRTC_Y",  crtc_y);
++      CDRMAtomic::AddPlaneProperty(drm->req, drm->primary_plane, "CRTC_W",  crtc_w);
++      CDRMAtomic::AddPlaneProperty(drm->req, drm->primary_plane, "CRTC_H",  crtc_h);
++    }
++    else
++    {
++      // show the video frame FB on the video plane
++      ret = drmModeSetPlane(drm->fd, drm->primary_plane->plane->plane_id, drm->crtc_id, buffer->m_fb_id, 0,
++                            crtc_x, crtc_y, crtc_w, crtc_h,
++                            src_x, src_y, src_w, src_h);
++      if (ret < 0)
++      {
++        CLog::Log(LOGERROR, "CRendererDRMPRIME::%s - failed to set drm plane %d, buffer = %d, ret = %d", __FUNCTION__, drm->primary_plane->plane->plane_id, buffer->m_fb_id, ret);
++        return;
++      }
+     }
+   }
+ }
+diff --git a/xbmc/windowing/gbm/DRM.cpp b/xbmc/windowing/gbm/DRM.cpp
+index 7324ee580a..e8ee141bac 100644
+--- a/xbmc/windowing/gbm/DRM.cpp
++++ b/xbmc/windowing/gbm/DRM.cpp
+@@ -29,11 +29,11 @@ CDRM::CDRM()
+ {
+ }
+ 
+-void CDRM::FlipPage()
++void CDRM::FlipPage(bool rendered)
+ {
+   if (m_atomic)
+   {
+-    CDRMAtomic::FlipPage();
++    CDRMAtomic::FlipPage(rendered);
+   }
+   else
+   {
+diff --git a/xbmc/windowing/gbm/DRM.h b/xbmc/windowing/gbm/DRM.h
+index 5317396b48..e6b5a90a99 100644
+--- a/xbmc/windowing/gbm/DRM.h
++++ b/xbmc/windowing/gbm/DRM.h
+@@ -28,7 +28,7 @@ class CDRM
+ public:
+   CDRM();
+   ~CDRM() = default;
+-  void FlipPage();
++  void FlipPage(bool rendered);
+   bool SetVideoMode(RESOLUTION_INFO res);
+   bool InitDrm(drm *drm, gbm *gbm);
+   void DestroyDrm();
+diff --git a/xbmc/windowing/gbm/DRMAtomic.cpp b/xbmc/windowing/gbm/DRMAtomic.cpp
+index 9c0fe7fdfd..bebf7e1db0 100644
+--- a/xbmc/windowing/gbm/DRMAtomic.cpp
++++ b/xbmc/windowing/gbm/DRMAtomic.cpp
+@@ -97,9 +97,8 @@ bool CDRMAtomic::AddCrtcProperty(drmModeAtomicReq *req, int obj_id, const char *
+   return true;
+ }
+ 
+-bool CDRMAtomic::AddPlaneProperty(drmModeAtomicReq *req, int obj_id, const char *name, int value)
++bool CDRMAtomic::AddPlaneProperty(drmModeAtomicReq *req, struct plane *obj, const char *name, int value)
+ {
+-  struct plane *obj = m_drm->plane;
+   int prop_id = -1;
+ 
+   for (unsigned int i = 0 ; i < obj->props->count_props ; i++)
+@@ -117,7 +116,7 @@ bool CDRMAtomic::AddPlaneProperty(drmModeAtomicReq *req, int obj_id, const char
+     return false;
+   }
+ 
+-  auto ret = drmModeAtomicAddProperty(req, obj_id, prop_id, value);
++  auto ret = drmModeAtomicAddProperty(req, obj->plane->plane_id, prop_id, value);
+   if (ret < 0)
+   {
+     return false;
+@@ -126,17 +125,13 @@ bool CDRMAtomic::AddPlaneProperty(drmModeAtomicReq *req, int obj_id, const char
+   return true;
+ }
+ 
+-bool CDRMAtomic::DrmAtomicCommit(int fb_id, int flags)
++bool CDRMAtomic::DrmAtomicCommit(int fb_id, int flags, bool rendered)
+ {
+-  drmModeAtomicReq *req;
+-  int plane_id = m_drm->plane->plane->plane_id;
+   uint32_t blob_id;
+ 
+-  req = drmModeAtomicAlloc();
+-
+   if (flags & DRM_MODE_ATOMIC_ALLOW_MODESET)
+   {
+-    if (!AddConnectorProperty(req, m_drm->connector_id, "CRTC_ID", m_drm->crtc_id))
++    if (!AddConnectorProperty(m_drm->req, m_drm->connector_id, "CRTC_ID", m_drm->crtc_id))
+     {
+       return false;
+     }
+@@ -146,40 +141,47 @@ bool CDRMAtomic::DrmAtomicCommit(int fb_id, int flags)
+       return false;
+     }
+ 
+-    if (!AddCrtcProperty(req, m_drm->crtc_id, "MODE_ID", blob_id))
++    if (!AddCrtcProperty(m_drm->req, m_drm->crtc_id, "MODE_ID", blob_id))
+     {
+       return false;
+     }
+ 
+-    if (!AddCrtcProperty(req, m_drm->crtc_id, "ACTIVE", 1))
++    if (!AddCrtcProperty(m_drm->req, m_drm->crtc_id, "ACTIVE", 1))
+     {
+       return false;
+     }
+   }
+ 
+-  AddPlaneProperty(req, plane_id, "FB_ID", fb_id);
+-  AddPlaneProperty(req, plane_id, "CRTC_ID", m_drm->crtc_id);
+-  AddPlaneProperty(req, plane_id, "SRC_X", 0);
+-  AddPlaneProperty(req, plane_id, "SRC_Y", 0);
+-  AddPlaneProperty(req, plane_id, "SRC_W", m_drm->mode->hdisplay << 16);
+-  AddPlaneProperty(req, plane_id, "SRC_H", m_drm->mode->vdisplay << 16);
+-  AddPlaneProperty(req, plane_id, "CRTC_X", 0);
+-  AddPlaneProperty(req, plane_id, "CRTC_Y", 0);
+-  AddPlaneProperty(req, plane_id, "CRTC_W", m_drm->mode->hdisplay);
+-  AddPlaneProperty(req, plane_id, "CRTC_H", m_drm->mode->vdisplay);
++  if (rendered)
++  {
++    AddPlaneProperty(m_drm->req, m_drm->overlay_plane, "FB_ID", fb_id);
++    AddPlaneProperty(m_drm->req, m_drm->overlay_plane, "CRTC_ID", m_drm->crtc_id);
++    AddPlaneProperty(m_drm->req, m_drm->overlay_plane, "SRC_X", 0);
++    AddPlaneProperty(m_drm->req, m_drm->overlay_plane, "SRC_Y", 0);
++    AddPlaneProperty(m_drm->req, m_drm->overlay_plane, "SRC_W", m_drm->mode->hdisplay << 16);
++    AddPlaneProperty(m_drm->req, m_drm->overlay_plane, "SRC_H", m_drm->mode->vdisplay << 16);
++    AddPlaneProperty(m_drm->req, m_drm->overlay_plane, "CRTC_X", 0);
++    AddPlaneProperty(m_drm->req, m_drm->overlay_plane, "CRTC_Y", 0);
++    AddPlaneProperty(m_drm->req, m_drm->overlay_plane, "CRTC_W", m_drm->mode->hdisplay);
++    AddPlaneProperty(m_drm->req, m_drm->overlay_plane, "CRTC_H", m_drm->mode->vdisplay);
++  }
+ 
+-  auto ret = drmModeAtomicCommit(m_drm->fd, req, flags, nullptr);
++  auto ret = drmModeAtomicCommit(m_drm->fd, m_drm->req, flags, nullptr);
+   if (ret)
+   {
+     return false;
+   }
+ 
++  drmModeAtomicFree(m_drm->req);
++
++  m_drm->req = drmModeAtomicAlloc();
++
+   return true;
+ }
+ 
+-void CDRMAtomic::FlipPage()
++void CDRMAtomic::FlipPage(bool rendered)
+ {
+-  int flags = DRM_MODE_ATOMIC_NONBLOCK;
++  uint32_t flags = 0;
+ 
+   if(m_drm->need_modeset)
+   {
+@@ -187,34 +189,37 @@ void CDRMAtomic::FlipPage()
+     m_drm->need_modeset = false;
+   }
+ 
+-  gbm_surface_release_buffer(m_gbm->surface, m_bo);
+-  m_bo = m_next_bo;
+-
+-  m_next_bo = gbm_surface_lock_front_buffer(m_gbm->surface);
+-  if (!m_next_bo)
++  if (rendered)
+   {
+-    CLog::Log(LOGERROR, "CDRMAtomic::%s - Failed to lock frontbuffer", __FUNCTION__);
+-    return;
+-  }
++    m_next_bo = gbm_surface_lock_front_buffer(m_gbm->surface);
++    if (!m_next_bo)
++    {
++      CLog::Log(LOGERROR, "CDRMAtomic::%s - Failed to lock frontbuffer", __FUNCTION__);
++      return;
++    }
+ 
+-  m_drm_fb = CDRMUtils::DrmFbGetFromBo(m_next_bo);
+-  if (!m_drm_fb)
+-  {
+-    CLog::Log(LOGERROR, "CDRMAtomic::%s - Failed to get a new FBO", __FUNCTION__);
+-    return;
++    m_drm_fb = CDRMUtils::DrmFbGetFromBo(m_next_bo);
++    if (!m_drm_fb)
++    {
++      CLog::Log(LOGERROR, "CDRMAtomic::%s - Failed to get a new FBO", __FUNCTION__);
++      return;
++    }
+   }
+ 
+-  auto ret = DrmAtomicCommit(m_drm_fb->fb_id, flags);
++  auto ret = DrmAtomicCommit(m_drm_fb->fb_id, flags, rendered);
+   if (!ret) {
+     CLog::Log(LOGERROR, "CDRMAtomic::%s - failed to commit: %s", __FUNCTION__, strerror(errno));
+     return;
+   }
+ 
+-  gbm_surface_release_buffer(m_gbm->surface, m_bo);
+-  m_bo = m_next_bo;
++  if (rendered)
++  {
++    gbm_surface_release_buffer(m_gbm->surface, m_bo);
++    m_bo = m_next_bo;
++  }
+ }
+ 
+-int CDRMAtomic::GetPlaneId()
++int CDRMAtomic::GetPlaneId(uint32_t type)
+ {
+   drmModePlaneResPtr plane_resources;
+   int ret = -EINVAL;
+@@ -248,7 +253,7 @@ int CDRMAtomic::GetPlaneId()
+       {
+         drmModePropertyPtr p = drmModeGetProperty(m_drm->fd, props->props[j]);
+ 
+-        if ((strcmp(p->name, "type") == 0) && (props->prop_values[j] == DRM_PLANE_TYPE_PRIMARY))
++        if ((strcmp(p->name, "type") == 0) && (props->prop_values[j] == type))
+         {
+           /* found our primary plane, lets use that: */
+           found_primary = 1;
+@@ -281,6 +286,13 @@ bool CDRMAtomic::InitDrmAtomic(drm *drm, gbm *gbm)
+     return false;
+   }
+ 
++  ret = drmSetClientCap(m_drm->fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1);
++  if (ret)
++  {
++    CLog::Log(LOGERROR, "CDRMAtomic::%s - failed to set Universal planes capability: %s", __FUNCTION__, strerror(errno));
++    return false;
++  }
++
+   ret = drmSetClientCap(m_drm->fd, DRM_CLIENT_CAP_ATOMIC, 1);
+   if (ret)
+   {
+@@ -288,44 +300,79 @@ bool CDRMAtomic::InitDrmAtomic(drm *drm, gbm *gbm)
+     return false;
+   }
+ 
+-  ret = GetPlaneId();
++  /* We only do single plane to single crtc to single connector, no
++     * fancy multi-monitor.  So just grab the
++     * plane/crtc/connector property info for one of each:
++     */
++  m_drm->primary_plane = new plane;
++  m_drm->overlay_plane = new plane;
++  m_drm->crtc = new crtc;
++  m_drm->connector = new connector;
++
++  // primary plane
++  ret = GetPlaneId(DRM_PLANE_TYPE_PRIMARY);
+   if (!ret)
+   {
+-    CLog::Log(LOGERROR, "CDRMAtomic::%s - could not find a suitable plane", __FUNCTION__);
++    CLog::Log(LOGERROR, "CDRMAtomic::%s - could not find a suitable primary plane", __FUNCTION__);
+     return false;
+   }
+   else
+   {
++    CLog::Log(LOGDEBUG, "CDRMAtomic::%s - primary plane %d", __FUNCTION__, ret);
+     plane_id = ret;
+   }
+ 
+-  /* We only do single plane to single crtc to single connector, no
+-     * fancy multi-monitor or multi-plane stuff.  So just grab the
+-     * plane/crtc/connector property info for one of each:
+-     */
+-  m_drm->plane = new plane;
+-  m_drm->crtc = new crtc;
+-  m_drm->connector = new connector;
++  m_drm->primary_plane->plane = drmModeGetPlane(m_drm->fd, plane_id);
++  if (!m_drm->primary_plane->plane)
++  {
++    CLog::Log(LOGERROR, "CDRMAtomic::%s - could not get plane %i: %s", __FUNCTION__, plane_id, strerror(errno));
++    return false;
++  }
++
++  m_drm->primary_plane->props = drmModeObjectGetProperties(m_drm->fd, plane_id, DRM_MODE_OBJECT_PLANE);
++  if (!m_drm->primary_plane->props)
++  {
++    CLog::Log(LOGERROR, "CDRMAtomic::%s - could not get plane %u properties: %s", __FUNCTION__, plane_id, strerror(errno));
++    return false;
++  }
+ 
+-  // plane
+-  m_drm->plane->plane = drmModeGetPlane(m_drm->fd, plane_id);
+-  if (!m_drm->plane->plane)
++  m_drm->primary_plane->props_info = new drmModePropertyPtr;
++  for (uint32_t i = 0; i < m_drm->primary_plane->props->count_props; i++)
++  {
++    m_drm->primary_plane->props_info[i] = drmModeGetProperty(m_drm->fd, m_drm->primary_plane->props->props[i]);
++  }
++
++  // overlay plane
++  ret = GetPlaneId(DRM_PLANE_TYPE_OVERLAY);
++  if (!ret)
++  {
++    CLog::Log(LOGERROR, "CDRMAtomic::%s - could not find a suitable overlay plane", __FUNCTION__);
++    return false;
++  }
++  else
++  {
++    CLog::Log(LOGDEBUG, "CDRMAtomic::%s - overlay plane %d", __FUNCTION__, ret);
++    plane_id = ret;
++  }
++
++  m_drm->overlay_plane->plane = drmModeGetPlane(m_drm->fd, plane_id);
++  if (!m_drm->overlay_plane->plane)
+   {
+     CLog::Log(LOGERROR, "CDRMAtomic::%s - could not get plane %i: %s", __FUNCTION__, plane_id, strerror(errno));
+     return false;
+   }
+ 
+-  m_drm->plane->props = drmModeObjectGetProperties(m_drm->fd, plane_id, DRM_MODE_OBJECT_PLANE);
+-  if (!m_drm->plane->props)
++  m_drm->overlay_plane->props = drmModeObjectGetProperties(m_drm->fd, plane_id, DRM_MODE_OBJECT_PLANE);
++  if (!m_drm->overlay_plane->props)
+   {
+     CLog::Log(LOGERROR, "CDRMAtomic::%s - could not get plane %u properties: %s", __FUNCTION__, plane_id, strerror(errno));
+     return false;
+   }
+ 
+-  m_drm->plane->props_info = new drmModePropertyPtr;
+-  for (uint32_t i = 0; i < m_drm->plane->props->count_props; i++)
++  m_drm->overlay_plane->props_info = new drmModePropertyPtr;
++  for (uint32_t i = 0; i < m_drm->overlay_plane->props->count_props; i++)
+   {
+-    m_drm->plane->props_info[i] = drmModeGetProperty(m_drm->fd, m_drm->plane->props->props[i]);             \
++    m_drm->overlay_plane->props_info[i] = drmModeGetProperty(m_drm->fd, m_drm->overlay_plane->props->props[i]);
+   }
+ 
+   // crtc
+@@ -370,7 +417,6 @@ bool CDRMAtomic::InitDrmAtomic(drm *drm, gbm *gbm)
+     m_drm->connector->props_info[i] = drmModeGetProperty(m_drm->fd, m_drm->connector->props->props[i]);             \
+   }
+ 
+-  //
+   m_gbm->dev = gbm_create_device(m_drm->fd);
+ 
+   if (!CGBMUtils::InitGbm(m_gbm, m_drm->mode->hdisplay, m_drm->mode->vdisplay))
+@@ -378,6 +424,8 @@ bool CDRMAtomic::InitDrmAtomic(drm *drm, gbm *gbm)
+     return false;
+   }
+ 
++  m_drm->req = drmModeAtomicAlloc();
++
+   return true;
+ }
+ 
+@@ -394,6 +442,8 @@ void CDRMAtomic::DestroyDrmAtomic()
+   {
+     gbm_device_destroy(m_gbm->dev);
+   }
++
++  drmModeAtomicFree(m_drm->req);
+ }
+ 
+ bool CDRMAtomic::SetVideoMode(RESOLUTION_INFO res)
+diff --git a/xbmc/windowing/gbm/DRMAtomic.h b/xbmc/windowing/gbm/DRMAtomic.h
+index 68e5c2dd97..812cbe9b4f 100644
+--- a/xbmc/windowing/gbm/DRMAtomic.h
++++ b/xbmc/windowing/gbm/DRMAtomic.h
+@@ -26,7 +26,8 @@
+ class CDRMAtomic : public CDRMUtils
+ {
+ public:
+-  static void FlipPage();
++  static bool AddPlaneProperty(drmModeAtomicReq *req, struct plane *obj, const char *name, int value);
++  static void FlipPage(bool rendered);
+   static bool SetVideoMode(RESOLUTION_INFO res);
+   static bool InitDrmAtomic(drm *drm, gbm *gbm);
+   static void DestroyDrmAtomic();
+@@ -34,7 +35,6 @@ public:
+ private:
+   static bool AddConnectorProperty(drmModeAtomicReq *req, int obj_id, const char *name, int value);
+   static bool AddCrtcProperty(drmModeAtomicReq *req, int obj_id, const char *name, int value);
+-  static bool AddPlaneProperty(drmModeAtomicReq *req, int obj_id, const char *name, int value);
+-  static bool DrmAtomicCommit(int fb_id, int flags);
+-  static int GetPlaneId();
++  static bool DrmAtomicCommit(int fb_id, int flags, bool rendered);
++  static int GetPlaneId(uint32_t type);
+ };
+diff --git a/xbmc/windowing/gbm/DRMUtils.h b/xbmc/windowing/gbm/DRMUtils.h
+index 6d8e0f3596..5d75520a7e 100644
+--- a/xbmc/windowing/gbm/DRMUtils.h
++++ b/xbmc/windowing/gbm/DRMUtils.h
+@@ -54,7 +54,8 @@ struct drm
+   int fd;
+ 
+   /* only used for atomic: */
+-  struct plane *plane;
++  struct plane *primary_plane;
++  struct plane *overlay_plane;
+   struct crtc *crtc;
+   struct connector *connector;
+   int crtc_index;
+@@ -64,6 +65,8 @@ struct drm
+   uint32_t connector_id;
+ 
+   bool need_modeset;
++
++  drmModeAtomicReq *req;
+ };
+ 
+ struct drm_fb
+diff --git a/xbmc/windowing/gbm/WinSystemGbm.cpp b/xbmc/windowing/gbm/WinSystemGbm.cpp
+index 47be763b30..153c738a8d 100644
+--- a/xbmc/windowing/gbm/WinSystemGbm.cpp
++++ b/xbmc/windowing/gbm/WinSystemGbm.cpp
+@@ -142,9 +142,9 @@ bool CWinSystemGbm::SetFullScreen(bool fullScreen, RESOLUTION_INFO& res, bool bl
+   return true;
+ }
+ 
+-void CWinSystemGbm::FlipPage()
++void CWinSystemGbm::FlipPage(bool rendered)
+ {
+-  m_DRM.FlipPage();
++  m_DRM.FlipPage(rendered);
+ }
+ 
+ void* CWinSystemGbm::GetVaDisplay()
+diff --git a/xbmc/windowing/gbm/WinSystemGbm.h b/xbmc/windowing/gbm/WinSystemGbm.h
+index 289f7eace0..b9e3737169 100644
+--- a/xbmc/windowing/gbm/WinSystemGbm.h
++++ b/xbmc/windowing/gbm/WinSystemGbm.h
+@@ -48,7 +48,7 @@ public:
+   bool ResizeWindow(int newWidth, int newHeight, int newLeft, int newTop) override;
+   bool SetFullScreen(bool fullScreen, RESOLUTION_INFO& res, bool blankOtherDisplays) override;
+ 
+-  void FlipPage();
++  void FlipPage(bool rendered);
+ 
+   void UpdateResolutions() override;
+ 
+diff --git a/xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp b/xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp
+index e7ef372187..c8ee0af50b 100644
+--- a/xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp
++++ b/xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp
+@@ -140,12 +140,16 @@ bool CWinSystemGbmGLESContext::SetFullScreen(bool fullScreen, RESOLUTION_INFO& r
+   return true;
+ }
+ 
+-void CWinSystemGbmGLESContext::PresentRenderImpl(bool rendered)
++void CWinSystemGbmGLESContext::PresentRender(bool rendered, bool videoLayer)
+ {
+-  if (rendered)
++  if (!m_bRenderCreated)
++    return;
++
++  if (rendered || videoLayer)
+   {
+-    m_pGLContext.SwapBuffers();
+-    CWinSystemGbm::FlipPage();
++    if (rendered)
++      m_pGLContext.SwapBuffers();
++    CWinSystemGbm::FlipPage(rendered);
+   }
+ }
+ 
+diff --git a/xbmc/windowing/gbm/WinSystemGbmGLESContext.h b/xbmc/windowing/gbm/WinSystemGbmGLESContext.h
+index a5baba84d7..b56f608226 100644
+--- a/xbmc/windowing/gbm/WinSystemGbmGLESContext.h
++++ b/xbmc/windowing/gbm/WinSystemGbmGLESContext.h
+@@ -38,13 +38,14 @@ public:
+                        RESOLUTION_INFO& res) override;
+ 
+   bool SetFullScreen(bool fullScreen, RESOLUTION_INFO& res, bool blankOtherDisplays) override;
++  void PresentRender(bool rendered, bool videoLayer) override;
+   EGLDisplay GetEGLDisplay() const;
+   EGLSurface GetEGLSurface() const;
+   EGLContext GetEGLContext() const;
+   EGLConfig  GetEGLConfig() const;
+ protected:
+   void SetVSyncImpl(bool enable) override { return; };
+-  void PresentRenderImpl(bool rendered) override;
++  void PresentRenderImpl(bool rendered) override {};
+ 
+ private:
+   CGLContextEGL m_pGLContext;
+-- 
+2.11.0
+
