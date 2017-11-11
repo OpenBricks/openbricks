@@ -1,0 +1,45 @@
+From b389a2d09bc383b98f5d554e32937206eea74e08 Mon Sep 17 00:00:00 2001
+From: Jonas Karlman <jonas@kwiboo.se>
+Date: Sun, 5 Nov 2017 13:04:39 +0100
+Subject: [PATCH 11/13] HACK: use <codec>_rkmpp ffmpeg decoder
+
+---
+ .../VideoPlayer/DVDCodecs/Video/DVDVideoCodecFFmpeg.cpp    | 14 +++++++++++---
+ 1 file changed, 11 insertions(+), 3 deletions(-)
+
+diff --git a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecFFmpeg.cpp b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecFFmpeg.cpp
+index 8914e27a8a..4e2ae0c67a 100644
+--- a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecFFmpeg.cpp
++++ b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecFFmpeg.cpp
+@@ -356,7 +356,7 @@ bool CDVDVideoCodecFFmpeg::Open(CDVDStreamInfo &hints, CDVDCodecOptions &options
+   m_hints = hints;
+   m_options = options;
+ 
+-  AVCodec* pCodec;
++  AVCodec* pCodec = nullptr;
+ 
+   m_iOrientation = hints.orientation;
+ 
+@@ -365,9 +365,17 @@ bool CDVDVideoCodecFFmpeg::Open(CDVDStreamInfo &hints, CDVDCodecOptions &options
+   m_formats.push_back(AV_PIX_FMT_NONE); /* always add none to get a terminated list in ffmpeg world */
+   m_processInfo.SetSwDeinterlacingMethods();
+ 
+-  pCodec = avcodec_find_decoder(hints.codec);
++  // HACK
++  if (!(hints.codecOptions & CODEC_FORCE_SOFTWARE))
++  {
++    std::string codec = StringUtils::Format("%s_rkmpp", avcodec_get_name(hints.codec));
++    pCodec = avcodec_find_decoder_by_name(codec.c_str());
++  }
++
++  if (pCodec == nullptr)
++    pCodec = avcodec_find_decoder(hints.codec);
+ 
+-  if(pCodec == NULL)
++  if (pCodec == nullptr)
+   {
+     CLog::Log(LOGDEBUG,"CDVDVideoCodecFFmpeg::Open() Unable to find codec %d", hints.codec);
+     return false;
+-- 
+2.11.0
+

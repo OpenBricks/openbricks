@@ -1,0 +1,176 @@
+From f1f23e3e4f430119ceb2135197299492fd6a036e Mon Sep 17 00:00:00 2001
+From: Jonas Karlman <jonas@kwiboo.se>
+Date: Sun, 5 Nov 2017 13:04:39 +0100
+Subject: [PATCH 09/13] VideoPlayer: update DRM PRIME renderer
+
+---
+ .../cores/VideoPlayer/DVDCodecs/Video/DRMPRIME.cpp | 19 +++++++
+ xbmc/cores/VideoPlayer/DVDCodecs/Video/DRMPRIME.h  |  3 +
+ .../HwDecRender/RendererDRMPRIME.cpp               | 65 +++++++++++++++++++++-
+ xbmc/windowing/gbm/DRMUtils.cpp                    |  5 ++
+ xbmc/windowing/gbm/DRMUtils.h                      |  1 +
+ 5 files changed, 92 insertions(+), 1 deletion(-)
+
+diff --git a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DRMPRIME.cpp b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DRMPRIME.cpp
+index 4289079d40..9ef5292d83 100644
+--- a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DRMPRIME.cpp
++++ b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DRMPRIME.cpp
+@@ -26,6 +26,7 @@
+ #include "settings/Settings.h"
+ #include "threads/SingleLock.h"
+ #include "utils/log.h"
++#include "windowing/gbm/DRMUtils.h"
+ #include "ServiceBroker.h"
+ 
+ using namespace DRMPRIME;
+@@ -54,6 +55,24 @@ void CVideoBufferDRMPRIME::SetRef(AVFrame* frame)
+ 
+ void CVideoBufferDRMPRIME::Unref()
+ {
++  struct drm* drm = CDRMUtils::GetDrm();
++
++  if (m_fb_id)
++  {
++    drmModeRmFB(drm->fd, m_fb_id);
++    m_fb_id = 0;
++  }
++
++  for (int i = 0; i < AV_DRM_MAX_PLANES; i++)
++  {
++    if (m_handles[i])
++    {
++      struct drm_gem_close gem_close = { .handle = m_handles[i] };
++      drmIoctl(drm->fd, DRM_IOCTL_GEM_CLOSE, &gem_close);
++      m_handles[i] = 0;
++    }
++  }
++
+   av_frame_unref(m_pFrame);
+ }
+ 
+diff --git a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DRMPRIME.h b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DRMPRIME.h
+index b34c4dae6f..d6ec3344cd 100644
+--- a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DRMPRIME.h
++++ b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DRMPRIME.h
+@@ -44,6 +44,9 @@ public:
+   void SetRef(AVFrame* frame);
+   void Unref();
+ 
++  uint32_t m_fb_id = 0;
++  uint32_t m_handles[AV_DRM_MAX_PLANES] = {0};
++
+   AVDRMFrameDescriptor* GetDescriptor() const { return (AVDRMFrameDescriptor*)m_pFrame->data[0]; }
+   uint32_t GetWidth() const { return m_pFrame->width; }
+   uint32_t GetHeight() const { return m_pFrame->height; }
+diff --git a/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.cpp b/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.cpp
+index bcc56fbe21..a6e529bbd6 100644
+--- a/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.cpp
++++ b/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.cpp
+@@ -26,6 +26,7 @@
+ #include "settings/MediaSettings.h"
+ #include "utils/log.h"
+ #include "windowing/WindowingFactory.h"
++#include "windowing/gbm/DRMUtils.h"
+ 
+ using namespace DRMPRIME;
+ 
+@@ -182,5 +183,67 @@ bool CRendererDRMPRIME::Supports(ESCALINGMETHOD method)
+ 
+ void CRendererDRMPRIME::SetVideoPlane(CVideoBufferDRMPRIME* buffer)
+ {
+-  // TODO: implement
++  if (g_advancedSettings.CanLogComponent(LOGVIDEO))
++    CLog::Log(LOGDEBUG, "CRendererDRMPRIME::%s - buffer:%p width:%u height:%u", __FUNCTION__, buffer, buffer->GetWidth(), buffer->GetHeight());
++
++  AVDRMFrameDescriptor* descriptor = buffer->GetDescriptor();
++  if (descriptor && descriptor->nb_layers)
++  {
++    uint32_t handles[4] = {0}, pitches[4] = {0}, offsets[4] = {0};
++    struct drm* drm = CDRMUtils::GetDrm();
++    int ret;
++
++    // convert Prime FD to GEM handle
++    for (int object = 0; object < descriptor->nb_objects; object++)
++    {
++      ret = drmPrimeFDToHandle(drm->fd, descriptor->objects[object].fd, &buffer->m_handles[object]);
++      if (ret < 0)
++      {
++        CLog::Log(LOGERROR, "CRendererDRMPRIME::%s - failed to retrieve the GEM handle from prime fd %d, ret = %d", __FUNCTION__, descriptor->objects[object].fd, ret);
++        return;
++      }
++    }
++
++    AVDRMLayerDescriptor* layer = &descriptor->layers[0];
++
++    for (int plane = 0; plane < layer->nb_planes; plane++)
++    {
++      uint32_t handle = buffer->m_handles[layer->planes[plane].object_index];
++      if (handle && layer->planes[plane].pitch)
++      {
++        handles[plane] = handle;
++        pitches[plane] = layer->planes[plane].pitch;
++        offsets[plane] = layer->planes[plane].offset;
++      }
++    }
++
++    // add the video frame FB
++    ret = drmModeAddFB2(drm->fd, buffer->GetWidth(), buffer->GetHeight(), layer->format, handles, pitches, offsets, &buffer->m_fb_id, 0);
++    if (ret < 0)
++    {
++      CLog::Log(LOGERROR, "CRendererDRMPRIME::%s - failed to add drm layer %d, ret = %d", __FUNCTION__, buffer->m_fb_id, ret);
++      return;
++    }
++
++    int32_t crtc_x = (int32_t)m_destRect.x1;
++    int32_t crtc_y = (int32_t)m_destRect.y1;
++    uint32_t crtc_w = (uint32_t)m_destRect.Width();
++    uint32_t crtc_h = (uint32_t)m_destRect.Height();
++    uint32_t src_x = 0;
++    uint32_t src_y = 0;
++    uint32_t src_w = buffer->GetWidth() << 16;
++    uint32_t src_h = buffer->GetHeight() << 16;
++
++    // TODO: use atomic or legacy api
++
++    // show the video frame FB on the video plane
++    ret = drmModeSetPlane(drm->fd, drm->video_plane_id, drm->crtc_id, buffer->m_fb_id, 0,
++                          crtc_x, crtc_y, crtc_w, crtc_h,
++                          src_x, src_y, src_w, src_h);
++    if (ret < 0)
++    {
++      CLog::Log(LOGERROR, "CRendererDRMPRIME::%s - failed to set drm plane %d, buffer = %d, ret = %d", __FUNCTION__, drm->video_plane_id, buffer->m_fb_id, ret);
++      return;
++    }
++  }
+ }
+diff --git a/xbmc/windowing/gbm/DRMUtils.cpp b/xbmc/windowing/gbm/DRMUtils.cpp
+index 143b6ee16f..72e9f4e90a 100644
+--- a/xbmc/windowing/gbm/DRMUtils.cpp
++++ b/xbmc/windowing/gbm/DRMUtils.cpp
+@@ -42,6 +42,11 @@ static drmModeConnectorPtr m_drm_connector = nullptr;
+ static drmModeEncoderPtr m_drm_encoder = nullptr;
+ static drmModeCrtcPtr m_orig_crtc = nullptr;
+ 
++struct drm *CDRMUtils::GetDrm()
++{
++  return m_drm;
++}
++
+ bool CDRMUtils::SetMode(RESOLUTION_INFO res)
+ {
+   m_drm->mode = &m_drm_connector->modes[atoi(res.strId.c_str())];
+diff --git a/xbmc/windowing/gbm/DRMUtils.h b/xbmc/windowing/gbm/DRMUtils.h
+index b6d53e870f..6d8e0f3596 100644
+--- a/xbmc/windowing/gbm/DRMUtils.h
++++ b/xbmc/windowing/gbm/DRMUtils.h
+@@ -79,6 +79,7 @@ public:
+   static void DestroyDrm();
+   static bool GetModes(std::vector<RESOLUTION_INFO> &resolutions);
+   static bool SetMode(RESOLUTION_INFO res);
++  static struct drm *GetDrm();
+ 
+ protected:
+   static drm_fb * DrmFbGetFromBo(struct gbm_bo *bo);
+-- 
+2.11.0
+
