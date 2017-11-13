@@ -5,17 +5,16 @@
 get_meta $1
 cd $PKG_BUILD_DIR
 
-install_dir="$PWD/.install"
 
-make -C lib PREFIX=/usr KERNEL_DIR=$(kernel_path)
-make -C utils PREFIX=/usr KERNEL_DIR=$(kernel_path)
-make -C lib install PREFIX=$install_dir/usr
-make -C utils install PREFIX=/usr DESTDIR=$install_dir
+export TARGET_CFLAGS="$(echo $TARGET_CFLAGS | sed -e 's%-D_FILE_OFFSET_BITS=64%%')"
 
-mkdir -p .install-unstripped
-cp -R .install/* .install-unstripped
+# needed, else we've problem at re-link time
+export MAKEFLAGS=-j1
 
-strip_libs $install_dir
-fix_libs $install_dir $LIB_PREFIX
+do_configure --disable-libdvbv5
+
+make
+make_install 
 
 cp -P $ROOT/$PACKAGES/$PKG_SECTION/$1/config/* $install_dir/etc/rc_keymaps
+cp utils/keytable/rc_keymaps/* $install_dir/etc/rc_keymaps
