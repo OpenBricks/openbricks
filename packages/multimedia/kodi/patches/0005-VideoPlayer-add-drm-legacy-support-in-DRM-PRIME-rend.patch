@@ -1,29 +1,30 @@
-From f1f23e3e4f430119ceb2135197299492fd6a036e Mon Sep 17 00:00:00 2001
+From f926a8edaf0287055a5b0c75bc79f7d5db345bc4 Mon Sep 17 00:00:00 2001
 From: Jonas Karlman <jonas@kwiboo.se>
-Date: Sun, 5 Nov 2017 13:04:39 +0100
-Subject: [PATCH 09/13] VideoPlayer: update DRM PRIME renderer
+Date: Sat, 11 Nov 2017 23:59:07 +0100
+Subject: [PATCH 05/13] VideoPlayer: add drm legacy support in DRM PRIME
+ renderer
 
 ---
- .../cores/VideoPlayer/DVDCodecs/Video/DRMPRIME.cpp | 19 +++++++
- xbmc/cores/VideoPlayer/DVDCodecs/Video/DRMPRIME.h  |  3 +
- .../HwDecRender/RendererDRMPRIME.cpp               | 65 +++++++++++++++++++++-
+ .../DVDCodecs/Video/DVDVideoCodecDRMPRIME.cpp      | 19 +++++++
+ .../DVDCodecs/Video/DVDVideoCodecDRMPRIME.h        |  3 ++
+ .../HwDecRender/RendererDRMPRIME.cpp               | 62 +++++++++++++++++++++-
  xbmc/windowing/gbm/DRMUtils.cpp                    |  5 ++
  xbmc/windowing/gbm/DRMUtils.h                      |  1 +
- 5 files changed, 92 insertions(+), 1 deletion(-)
+ 5 files changed, 89 insertions(+), 1 deletion(-)
 
-diff --git a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DRMPRIME.cpp b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DRMPRIME.cpp
-index 4289079d40..9ef5292d83 100644
---- a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DRMPRIME.cpp
-+++ b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DRMPRIME.cpp
-@@ -26,6 +26,7 @@
- #include "settings/Settings.h"
+diff --git a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecDRMPRIME.cpp b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecDRMPRIME.cpp
+index 0ee5ca47bc..a8be781d31 100644
+--- a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecDRMPRIME.cpp
++++ b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecDRMPRIME.cpp
+@@ -23,6 +23,7 @@
+ #include "cores/VideoPlayer/DVDCodecs/DVDFactoryCodec.h"
  #include "threads/SingleLock.h"
  #include "utils/log.h"
 +#include "windowing/gbm/DRMUtils.h"
- #include "ServiceBroker.h"
  
- using namespace DRMPRIME;
-@@ -54,6 +55,24 @@ void CVideoBufferDRMPRIME::SetRef(AVFrame* frame)
+ extern "C" {
+ #include "libavcodec/avcodec.h"
+@@ -52,6 +53,24 @@ void CVideoBufferDRMPRIME::SetRef(AVFrame* frame)
  
  void CVideoBufferDRMPRIME::Unref()
  {
@@ -48,40 +49,37 @@ index 4289079d40..9ef5292d83 100644
    av_frame_unref(m_pFrame);
  }
  
-diff --git a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DRMPRIME.h b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DRMPRIME.h
-index b34c4dae6f..d6ec3344cd 100644
---- a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DRMPRIME.h
-+++ b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DRMPRIME.h
-@@ -44,6 +44,9 @@ public:
+diff --git a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecDRMPRIME.h b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecDRMPRIME.h
+index 12c0f6d505..3a94bd94e1 100644
+--- a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecDRMPRIME.h
++++ b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecDRMPRIME.h
+@@ -41,6 +41,9 @@ public:
    void SetRef(AVFrame* frame);
    void Unref();
  
 +  uint32_t m_fb_id = 0;
 +  uint32_t m_handles[AV_DRM_MAX_PLANES] = {0};
 +
-   AVDRMFrameDescriptor* GetDescriptor() const { return (AVDRMFrameDescriptor*)m_pFrame->data[0]; }
+   AVDRMFrameDescriptor* GetDescriptor() const { return reinterpret_cast<AVDRMFrameDescriptor*>(m_pFrame->data[0]); }
    uint32_t GetWidth() const { return m_pFrame->width; }
    uint32_t GetHeight() const { return m_pFrame->height; }
 diff --git a/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.cpp b/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.cpp
-index bcc56fbe21..a6e529bbd6 100644
+index 1de70b8e6c..5ea349c037 100644
 --- a/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.cpp
 +++ b/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.cpp
-@@ -26,6 +26,7 @@
- #include "settings/MediaSettings.h"
+@@ -23,6 +23,7 @@
+ #include "cores/VideoPlayer/VideoRenderers/RenderCapture.h"
+ #include "cores/VideoPlayer/VideoRenderers/RenderFactory.h"
  #include "utils/log.h"
- #include "windowing/WindowingFactory.h"
 +#include "windowing/gbm/DRMUtils.h"
  
- using namespace DRMPRIME;
- 
-@@ -182,5 +183,67 @@ bool CRendererDRMPRIME::Supports(ESCALINGMETHOD method)
+ CRendererDRMPRIME::CRendererDRMPRIME()
+ {
+@@ -161,5 +162,64 @@ bool CRendererDRMPRIME::Supports(ESCALINGMETHOD method)
  
  void CRendererDRMPRIME::SetVideoPlane(CVideoBufferDRMPRIME* buffer)
  {
 -  // TODO: implement
-+  if (g_advancedSettings.CanLogComponent(LOGVIDEO))
-+    CLog::Log(LOGDEBUG, "CRendererDRMPRIME::%s - buffer:%p width:%u height:%u", __FUNCTION__, buffer, buffer->GetWidth(), buffer->GetHeight());
-+
 +  AVDRMFrameDescriptor* descriptor = buffer->GetDescriptor();
 +  if (descriptor && descriptor->nb_layers)
 +  {
@@ -144,7 +142,7 @@ index bcc56fbe21..a6e529bbd6 100644
 +  }
  }
 diff --git a/xbmc/windowing/gbm/DRMUtils.cpp b/xbmc/windowing/gbm/DRMUtils.cpp
-index 143b6ee16f..72e9f4e90a 100644
+index bcf9a49350..bff6941f7b 100644
 --- a/xbmc/windowing/gbm/DRMUtils.cpp
 +++ b/xbmc/windowing/gbm/DRMUtils.cpp
 @@ -42,6 +42,11 @@ static drmModeConnectorPtr m_drm_connector = nullptr;
@@ -160,10 +158,10 @@ index 143b6ee16f..72e9f4e90a 100644
  {
    m_drm->mode = &m_drm_connector->modes[atoi(res.strId.c_str())];
 diff --git a/xbmc/windowing/gbm/DRMUtils.h b/xbmc/windowing/gbm/DRMUtils.h
-index b6d53e870f..6d8e0f3596 100644
+index bef303ab5c..e4967feb01 100644
 --- a/xbmc/windowing/gbm/DRMUtils.h
 +++ b/xbmc/windowing/gbm/DRMUtils.h
-@@ -79,6 +79,7 @@ public:
+@@ -68,6 +68,7 @@ public:
    static void DestroyDrm();
    static bool GetModes(std::vector<RESOLUTION_INFO> &resolutions);
    static bool SetMode(RESOLUTION_INFO res);

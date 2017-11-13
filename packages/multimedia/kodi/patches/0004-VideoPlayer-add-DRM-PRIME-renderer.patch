@@ -1,21 +1,21 @@
-From 10545fa3480541a2dcceaa390313687a782e0c2f Mon Sep 17 00:00:00 2001
+From 7bb13736465918a81577bf414c3338ae7605ec55 Mon Sep 17 00:00:00 2001
 From: Jonas Karlman <jonas@kwiboo.se>
-Date: Sun, 5 Nov 2017 13:04:39 +0100
-Subject: [PATCH 08/13] VideoPlayer: add DRM PRIME renderer
+Date: Sat, 11 Nov 2017 23:59:07 +0100
+Subject: [PATCH 04/13] VideoPlayer: add DRM PRIME renderer
 
 ---
  .../VideoRenderers/HwDecRender/CMakeLists.txt      |   5 +
- .../HwDecRender/RendererDRMPRIME.cpp               | 186 +++++++++++++++++++++
- .../VideoRenderers/HwDecRender/RendererDRMPRIME.h  |  71 ++++++++
- 3 files changed, 262 insertions(+)
+ .../HwDecRender/RendererDRMPRIME.cpp               | 165 +++++++++++++++++++++
+ .../VideoRenderers/HwDecRender/RendererDRMPRIME.h  |  71 +++++++++
+ 3 files changed, 241 insertions(+)
  create mode 100644 xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.cpp
  create mode 100644 xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.h
 
 diff --git a/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/CMakeLists.txt b/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/CMakeLists.txt
-index 7148da2b58..91627fb0b8 100644
+index 3f81151710..2caac93de5 100644
 --- a/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/CMakeLists.txt
 +++ b/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/CMakeLists.txt
-@@ -54,6 +54,11 @@ if(CORE_SYSTEM_NAME STREQUAL android)
+@@ -49,6 +49,11 @@ if(CORE_SYSTEM_NAME STREQUAL android)
                        RendererMediaCodecSurface.h)
  endif()
  
@@ -29,10 +29,10 @@ index 7148da2b58..91627fb0b8 100644
  if(SOURCES)
 diff --git a/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.cpp b/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.cpp
 new file mode 100644
-index 0000000000..bcc56fbe21
+index 0000000000..1de70b8e6c
 --- /dev/null
 +++ b/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.cpp
-@@ -0,0 +1,186 @@
+@@ -0,0 +1,165 @@
 +/*
 + *      Copyright (C) 2017 Team Kodi
 + *      http://kodi.tv
@@ -57,26 +57,18 @@ index 0000000000..bcc56fbe21
 +
 +#include "cores/VideoPlayer/VideoRenderers/RenderCapture.h"
 +#include "cores/VideoPlayer/VideoRenderers/RenderFactory.h"
-+#include "settings/AdvancedSettings.h"
-+#include "settings/MediaSettings.h"
 +#include "utils/log.h"
-+#include "windowing/WindowingFactory.h"
-+
-+using namespace DRMPRIME;
 +
 +CRendererDRMPRIME::CRendererDRMPRIME()
 +{
-+  CLog::Log(LOGINFO, "CRendererDRMPRIME::%s", __FUNCTION__);
 +}
 +
 +CRendererDRMPRIME::~CRendererDRMPRIME()
 +{
-+  CLog::Log(LOGINFO, "CRendererDRMPRIME::%s", __FUNCTION__);
-+
 +  Reset();
 +}
 +
-+CBaseRenderer* CRendererDRMPRIME::Create(CVideoBuffer *buffer)
++CBaseRenderer* CRendererDRMPRIME::Create(CVideoBuffer* buffer)
 +{
 +  if (buffer && dynamic_cast<CVideoBufferDRMPRIME*>(buffer))
 +    return new CRendererDRMPRIME();
@@ -113,11 +105,6 @@ index 0000000000..bcc56fbe21
 +
 +void CRendererDRMPRIME::AddVideoPicture(const VideoPicture& picture, int index, double currentClock)
 +{
-+  if (g_advancedSettings.CanLogComponent(LOGVIDEO))
-+    CLog::Log(LOGDEBUG, "CRendererDRMPRIME::%s - index:%d buffer:%p", __FUNCTION__, index, picture.videoBuffer);
-+
-+  ReleaseBuffer(index); // probably not needed
-+
 +  BUFFER& buf = m_buffers[index];
 +  buf.videoBuffer = picture.videoBuffer;
 +  buf.videoBuffer->Acquire();
@@ -136,9 +123,6 @@ index 0000000000..bcc56fbe21
 +  BUFFER& buf = m_buffers[index];
 +  if (buf.videoBuffer)
 +  {
-+    if (g_advancedSettings.CanLogComponent(LOGVIDEO))
-+      CLog::Log(LOGDEBUG, "CRendererDRMPRIME::%s - index:%d buffer:%p", __FUNCTION__, index, buf.videoBuffer);
-+
 +    CVideoBufferDRMPRIME* buffer = dynamic_cast<CVideoBufferDRMPRIME*>(buf.videoBuffer);
 +    if (buffer)
 +      buffer->Release();
@@ -175,12 +159,7 @@ index 0000000000..bcc56fbe21
 +
 +  CVideoBufferDRMPRIME* buffer = dynamic_cast<CVideoBufferDRMPRIME*>(m_buffers[index].videoBuffer);
 +  if (buffer)
-+  {
-+    if (g_advancedSettings.CanLogComponent(LOGVIDEO))
-+      CLog::Log(LOGDEBUG, "CRendererDRMPRIME::%s - index:%d buffer:%p pts:%" PRId64, __FUNCTION__, index, buffer, buffer->GetPTS());
-+
 +    SetVideoPlane(buffer);
-+  }
 +
 +  m_iLastRenderBuffer = index;
 +}
@@ -221,7 +200,7 @@ index 0000000000..bcc56fbe21
 +}
 diff --git a/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.h b/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.h
 new file mode 100644
-index 0000000000..4f058949aa
+index 0000000000..5571c0ac2e
 --- /dev/null
 +++ b/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.h
 @@ -0,0 +1,71 @@
@@ -249,7 +228,7 @@ index 0000000000..4f058949aa
 +
 +#include "system.h"
 +
-+#include "cores/VideoPlayer/DVDCodecs/Video/DRMPRIME.h"
++#include "cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecDRMPRIME.h"
 +#include "cores/VideoPlayer/VideoRenderers/BaseRenderer.h"
 +
 +class CRendererDRMPRIME
@@ -284,7 +263,7 @@ index 0000000000..4f058949aa
 +  bool Supports(ESCALINGMETHOD method) override;
 +
 +private:
-+  void SetVideoPlane(DRMPRIME::CVideoBufferDRMPRIME* buffer);
++  void SetVideoPlane(CVideoBufferDRMPRIME* buffer);
 +
 +  bool m_bConfigured = false;
 +  int m_iLastRenderBuffer = -1;

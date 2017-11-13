@@ -1,0 +1,187 @@
+From a1d2fabc135aec65cb36e70c6c5071cb27f11318 Mon Sep 17 00:00:00 2001
+From: Lukas Rusak <lorusak@gmail.com>
+Date: Fri, 10 Nov 2017 09:29:28 -0800
+Subject: [PATCH 13/13] if videolayer is present switch to overlay plane
+
+---
+ xbmc/windowing/gbm/DRM.cpp                     |  4 +--
+ xbmc/windowing/gbm/DRM.h                       |  2 +-
+ xbmc/windowing/gbm/DRMAtomic.cpp               | 34 +++++++++++++++-----------
+ xbmc/windowing/gbm/DRMAtomic.h                 |  4 +--
+ xbmc/windowing/gbm/WinSystemGbm.cpp            |  4 +--
+ xbmc/windowing/gbm/WinSystemGbm.h              |  2 +-
+ xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp |  2 +-
+ 7 files changed, 29 insertions(+), 23 deletions(-)
+
+diff --git a/xbmc/windowing/gbm/DRM.cpp b/xbmc/windowing/gbm/DRM.cpp
+index e8ee141bac..b776f0b14e 100644
+--- a/xbmc/windowing/gbm/DRM.cpp
++++ b/xbmc/windowing/gbm/DRM.cpp
+@@ -29,11 +29,11 @@ CDRM::CDRM()
+ {
+ }
+ 
+-void CDRM::FlipPage(bool rendered)
++void CDRM::FlipPage(bool rendered, bool videoLayer)
+ {
+   if (m_atomic)
+   {
+-    CDRMAtomic::FlipPage(rendered);
++    CDRMAtomic::FlipPage(rendered, videoLayer);
+   }
+   else
+   {
+diff --git a/xbmc/windowing/gbm/DRM.h b/xbmc/windowing/gbm/DRM.h
+index e6b5a90a99..65fe981d87 100644
+--- a/xbmc/windowing/gbm/DRM.h
++++ b/xbmc/windowing/gbm/DRM.h
+@@ -28,7 +28,7 @@ class CDRM
+ public:
+   CDRM();
+   ~CDRM() = default;
+-  void FlipPage(bool rendered);
++  void FlipPage(bool rendered, bool videoLayer);
+   bool SetVideoMode(RESOLUTION_INFO res);
+   bool InitDrm(drm *drm, gbm *gbm);
+   void DestroyDrm();
+diff --git a/xbmc/windowing/gbm/DRMAtomic.cpp b/xbmc/windowing/gbm/DRMAtomic.cpp
+index 8b55681c09..f69f10ed54 100644
+--- a/xbmc/windowing/gbm/DRMAtomic.cpp
++++ b/xbmc/windowing/gbm/DRMAtomic.cpp
+@@ -125,9 +125,10 @@ bool CDRMAtomic::AddPlaneProperty(drmModeAtomicReq *req, struct plane *obj, cons
+   return true;
+ }
+ 
+-bool CDRMAtomic::DrmAtomicCommit(int fb_id, int flags, bool rendered)
++bool CDRMAtomic::DrmAtomicCommit(int fb_id, int flags, bool rendered, bool videoLayer)
+ {
+   uint32_t blob_id;
++  struct plane *plane;
+ 
+   if (flags & DRM_MODE_ATOMIC_ALLOW_MODESET)
+   {
+@@ -154,16 +155,21 @@ bool CDRMAtomic::DrmAtomicCommit(int fb_id, int flags, bool rendered)
+ 
+   if (rendered)
+   {
+-    AddPlaneProperty(m_drm->req, m_drm->overlay_plane, "FB_ID", fb_id);
+-    AddPlaneProperty(m_drm->req, m_drm->overlay_plane, "CRTC_ID", m_drm->crtc_id);
+-    AddPlaneProperty(m_drm->req, m_drm->overlay_plane, "SRC_X", 0);
+-    AddPlaneProperty(m_drm->req, m_drm->overlay_plane, "SRC_Y", 0);
+-    AddPlaneProperty(m_drm->req, m_drm->overlay_plane, "SRC_W", m_drm->mode->hdisplay << 16);
+-    AddPlaneProperty(m_drm->req, m_drm->overlay_plane, "SRC_H", m_drm->mode->vdisplay << 16);
+-    AddPlaneProperty(m_drm->req, m_drm->overlay_plane, "CRTC_X", 0);
+-    AddPlaneProperty(m_drm->req, m_drm->overlay_plane, "CRTC_Y", 0);
+-    AddPlaneProperty(m_drm->req, m_drm->overlay_plane, "CRTC_W", m_drm->mode->hdisplay);
+-    AddPlaneProperty(m_drm->req, m_drm->overlay_plane, "CRTC_H", m_drm->mode->vdisplay);
++    if (videoLayer)
++      plane = m_drm->overlay_plane;
++    else
++      plane = m_drm->primary_plane;
++
++    AddPlaneProperty(m_drm->req, plane, "FB_ID", fb_id);
++    AddPlaneProperty(m_drm->req, plane, "CRTC_ID", m_drm->crtc_id);
++    AddPlaneProperty(m_drm->req, plane, "SRC_X", 0);
++    AddPlaneProperty(m_drm->req, plane, "SRC_Y", 0);
++    AddPlaneProperty(m_drm->req, plane, "SRC_W", m_drm->mode->hdisplay << 16);
++    AddPlaneProperty(m_drm->req, plane, "SRC_H", m_drm->mode->vdisplay << 16);
++    AddPlaneProperty(m_drm->req, plane, "CRTC_X", 0);
++    AddPlaneProperty(m_drm->req, plane, "CRTC_Y", 0);
++    AddPlaneProperty(m_drm->req, plane, "CRTC_W", m_drm->mode->hdisplay);
++    AddPlaneProperty(m_drm->req, plane, "CRTC_H", m_drm->mode->vdisplay);
+   }
+ 
+   auto ret = drmModeAtomicCommit(m_drm->fd, m_drm->req, flags, nullptr);
+@@ -179,7 +185,7 @@ bool CDRMAtomic::DrmAtomicCommit(int fb_id, int flags, bool rendered)
+   return true;
+ }
+ 
+-void CDRMAtomic::FlipPage(bool rendered)
++void CDRMAtomic::FlipPage(bool rendered, bool videoLayer)
+ {
+   uint32_t flags = 0;
+ 
+@@ -209,7 +215,7 @@ void CDRMAtomic::FlipPage(bool rendered)
+     }
+   }
+ 
+-  auto ret = DrmAtomicCommit(m_drm_fb->fb_id, flags, rendered);
++  auto ret = DrmAtomicCommit(m_drm_fb->fb_id, flags, rendered, videoLayer);
+   if (!ret) {
+     CLog::Log(LOGERROR, "CDRMAtomic::%s - failed to commit: %s", __FUNCTION__, strerror(errno));
+     return;
+@@ -286,7 +292,7 @@ bool CDRMAtomic::InitDrmAtomic(drm *drm, gbm *gbm)
+   ret = drmSetClientCap(m_drm->fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1);
+   if (ret)
+   {
+-    CLog::Log(LOGERROR, "CDRMAtomic::%s - failed to set Universal planes capability: %s", __FUNCTION__, strerror(errno));
++    CLog::Log(LOGERROR, "CDRMAtomic::%s - failed to set universal planes capability: %s", __FUNCTION__, strerror(errno));
+     return false;
+   }
+ 
+diff --git a/xbmc/windowing/gbm/DRMAtomic.h b/xbmc/windowing/gbm/DRMAtomic.h
+index 812cbe9b4f..0aaab81569 100644
+--- a/xbmc/windowing/gbm/DRMAtomic.h
++++ b/xbmc/windowing/gbm/DRMAtomic.h
+@@ -27,7 +27,7 @@ class CDRMAtomic : public CDRMUtils
+ {
+ public:
+   static bool AddPlaneProperty(drmModeAtomicReq *req, struct plane *obj, const char *name, int value);
+-  static void FlipPage(bool rendered);
++  static void FlipPage(bool rendered, bool videoLayer);
+   static bool SetVideoMode(RESOLUTION_INFO res);
+   static bool InitDrmAtomic(drm *drm, gbm *gbm);
+   static void DestroyDrmAtomic();
+@@ -35,6 +35,6 @@ public:
+ private:
+   static bool AddConnectorProperty(drmModeAtomicReq *req, int obj_id, const char *name, int value);
+   static bool AddCrtcProperty(drmModeAtomicReq *req, int obj_id, const char *name, int value);
+-  static bool DrmAtomicCommit(int fb_id, int flags, bool rendered);
++  static bool DrmAtomicCommit(int fb_id, int flags, bool rendered, bool videoLayer);
+   static int GetPlaneId(uint32_t type);
+ };
+diff --git a/xbmc/windowing/gbm/WinSystemGbm.cpp b/xbmc/windowing/gbm/WinSystemGbm.cpp
+index a50b99919b..b1a194b5aa 100644
+--- a/xbmc/windowing/gbm/WinSystemGbm.cpp
++++ b/xbmc/windowing/gbm/WinSystemGbm.cpp
+@@ -148,9 +148,9 @@ bool CWinSystemGbm::SetFullScreen(bool fullScreen, RESOLUTION_INFO& res, bool bl
+   return true;
+ }
+ 
+-void CWinSystemGbm::FlipPage(bool rendered)
++void CWinSystemGbm::FlipPage(bool rendered, bool videoLayer)
+ {
+-  m_DRM.FlipPage(rendered);
++  m_DRM.FlipPage(rendered, videoLayer);
+ }
+ 
+ void* CWinSystemGbm::GetVaDisplay()
+diff --git a/xbmc/windowing/gbm/WinSystemGbm.h b/xbmc/windowing/gbm/WinSystemGbm.h
+index b9e3737169..86c0815aef 100644
+--- a/xbmc/windowing/gbm/WinSystemGbm.h
++++ b/xbmc/windowing/gbm/WinSystemGbm.h
+@@ -48,7 +48,7 @@ public:
+   bool ResizeWindow(int newWidth, int newHeight, int newLeft, int newTop) override;
+   bool SetFullScreen(bool fullScreen, RESOLUTION_INFO& res, bool blankOtherDisplays) override;
+ 
+-  void FlipPage(bool rendered);
++  void FlipPage(bool rendered, bool videoLayer);
+ 
+   void UpdateResolutions() override;
+ 
+diff --git a/xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp b/xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp
+index e0b22d1884..2009dcab52 100644
+--- a/xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp
++++ b/xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp
+@@ -149,7 +149,7 @@ void CWinSystemGbmGLESContext::PresentRender(bool rendered, bool videoLayer)
+   {
+     if (rendered)
+       m_pGLContext.SwapBuffers();
+-    CWinSystemGbm::FlipPage(rendered);
++    CWinSystemGbm::FlipPage(rendered, videoLayer);
+   }
+ }
+ 
+-- 
+2.11.0
+
