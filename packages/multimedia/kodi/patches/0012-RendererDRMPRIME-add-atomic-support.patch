@@ -1,48 +1,34 @@
-From 788a954d91a857a17476e1a8432ddbfec998f821 Mon Sep 17 00:00:00 2001
+From 556345f6a192469f04c75d10bd21569fa2a30231 Mon Sep 17 00:00:00 2001
 From: Lukas Rusak <lorusak@gmail.com>
 Date: Tue, 7 Nov 2017 14:32:14 -0800
-Subject: [PATCH 13/13] RendererDRMPRIME: add atomic support
+Subject: [PATCH 12/13] RendererDRMPRIME: add atomic support
 
 ---
- .../cores/VideoPlayer/DVDCodecs/Video/DRMPRIME.cpp |   2 +-
  .../HwDecRender/RendererDRMPRIME.cpp               |  33 ++--
  xbmc/windowing/gbm/DRM.cpp                         |   4 +-
  xbmc/windowing/gbm/DRM.h                           |   2 +-
- xbmc/windowing/gbm/DRMAtomic.cpp                   | 170 +++++++++++++--------
+ xbmc/windowing/gbm/DRMAtomic.cpp                   | 169 +++++++++++++--------
  xbmc/windowing/gbm/DRMAtomic.h                     |   8 +-
  xbmc/windowing/gbm/DRMUtils.h                      |   5 +-
  xbmc/windowing/gbm/WinSystemGbm.cpp                |   4 +-
  xbmc/windowing/gbm/WinSystemGbm.h                  |   2 +-
  xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp     |  12 +-
  xbmc/windowing/gbm/WinSystemGbmGLESContext.h       |   3 +-
- 11 files changed, 159 insertions(+), 86 deletions(-)
+ 10 files changed, 156 insertions(+), 86 deletions(-)
 
-diff --git a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DRMPRIME.cpp b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DRMPRIME.cpp
-index 9ef5292d83..2b67252956 100644
---- a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DRMPRIME.cpp
-+++ b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DRMPRIME.cpp
-@@ -220,7 +220,7 @@ bool CDecoder::GetPicture(AVCodecContext* avctx, VideoPicture* picture)
-   picture->videoBuffer->Acquire();
- 
-   picture->dts = DVD_NOPTS_VALUE;
--  picture->pts = (double)m_renderBuffer->GetPTS() * DVD_TIME_BASE / AV_TIME_BASE;
-+  picture->pts = DVD_NOPTS_VALUE; //(double)m_renderBuffer->GetPTS() * DVD_TIME_BASE / AV_TIME_BASE;
- 
-   return true;
- }
 diff --git a/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.cpp b/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.cpp
-index a6e529bbd6..3b7790e878 100644
+index 5ea349c037..289e292a45 100644
 --- a/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.cpp
 +++ b/xbmc/cores/VideoPlayer/VideoRenderers/HwDecRender/RendererDRMPRIME.cpp
-@@ -27,6 +27,7 @@
+@@ -24,6 +24,7 @@
+ #include "cores/VideoPlayer/VideoRenderers/RenderFactory.h"
  #include "utils/log.h"
- #include "windowing/WindowingFactory.h"
  #include "windowing/gbm/DRMUtils.h"
 +#include "windowing/gbm/DRMAtomic.h"
  
- using namespace DRMPRIME;
- 
-@@ -234,16 +235,30 @@ void CRendererDRMPRIME::SetVideoPlane(CVideoBufferDRMPRIME* buffer)
+ CRendererDRMPRIME::CRendererDRMPRIME()
+ {
+@@ -210,16 +211,30 @@ void CRendererDRMPRIME::SetVideoPlane(CVideoBufferDRMPRIME* buffer)
      uint32_t src_w = buffer->GetWidth() << 16;
      uint32_t src_h = buffer->GetHeight() << 16;
  
@@ -114,7 +100,7 @@ index 5317396b48..e6b5a90a99 100644
    bool InitDrm(drm *drm, gbm *gbm);
    void DestroyDrm();
 diff --git a/xbmc/windowing/gbm/DRMAtomic.cpp b/xbmc/windowing/gbm/DRMAtomic.cpp
-index 9c0fe7fdfd..bebf7e1db0 100644
+index 9c0fe7fdfd..8b55681c09 100644
 --- a/xbmc/windowing/gbm/DRMAtomic.cpp
 +++ b/xbmc/windowing/gbm/DRMAtomic.cpp
 @@ -97,9 +97,8 @@ bool CDRMAtomic::AddCrtcProperty(drmModeAtomicReq *req, int obj_id, const char *
@@ -220,7 +206,7 @@ index 9c0fe7fdfd..bebf7e1db0 100644
  
    if(m_drm->need_modeset)
    {
-@@ -187,34 +189,37 @@ void CDRMAtomic::FlipPage()
+@@ -187,34 +189,34 @@ void CDRMAtomic::FlipPage()
      m_drm->need_modeset = false;
    }
  
@@ -234,18 +220,21 @@ index 9c0fe7fdfd..bebf7e1db0 100644
 -    CLog::Log(LOGERROR, "CDRMAtomic::%s - Failed to lock frontbuffer", __FUNCTION__);
 -    return;
 -  }
-+    m_next_bo = gbm_surface_lock_front_buffer(m_gbm->surface);
-+    if (!m_next_bo)
-+    {
-+      CLog::Log(LOGERROR, "CDRMAtomic::%s - Failed to lock frontbuffer", __FUNCTION__);
-+      return;
-+    }
++    gbm_surface_release_buffer(m_gbm->surface, m_bo);
++    m_bo = m_next_bo;
  
 -  m_drm_fb = CDRMUtils::DrmFbGetFromBo(m_next_bo);
 -  if (!m_drm_fb)
 -  {
 -    CLog::Log(LOGERROR, "CDRMAtomic::%s - Failed to get a new FBO", __FUNCTION__);
 -    return;
++    m_next_bo = gbm_surface_lock_front_buffer(m_gbm->surface);
++    if (!m_next_bo)
++    {
++      CLog::Log(LOGERROR, "CDRMAtomic::%s - Failed to lock frontbuffer", __FUNCTION__);
++      return;
++    }
++
 +    m_drm_fb = CDRMUtils::DrmFbGetFromBo(m_next_bo);
 +    if (!m_drm_fb)
 +    {
@@ -260,14 +249,9 @@ index 9c0fe7fdfd..bebf7e1db0 100644
      CLog::Log(LOGERROR, "CDRMAtomic::%s - failed to commit: %s", __FUNCTION__, strerror(errno));
      return;
    }
- 
+-
 -  gbm_surface_release_buffer(m_gbm->surface, m_bo);
 -  m_bo = m_next_bo;
-+  if (rendered)
-+  {
-+    gbm_surface_release_buffer(m_gbm->surface, m_bo);
-+    m_bo = m_next_bo;
-+  }
  }
  
 -int CDRMAtomic::GetPlaneId()
@@ -275,7 +259,7 @@ index 9c0fe7fdfd..bebf7e1db0 100644
  {
    drmModePlaneResPtr plane_resources;
    int ret = -EINVAL;
-@@ -248,7 +253,7 @@ int CDRMAtomic::GetPlaneId()
+@@ -248,7 +250,7 @@ int CDRMAtomic::GetPlaneId()
        {
          drmModePropertyPtr p = drmModeGetProperty(m_drm->fd, props->props[j]);
  
@@ -284,7 +268,7 @@ index 9c0fe7fdfd..bebf7e1db0 100644
          {
            /* found our primary plane, lets use that: */
            found_primary = 1;
-@@ -281,6 +286,13 @@ bool CDRMAtomic::InitDrmAtomic(drm *drm, gbm *gbm)
+@@ -281,6 +283,13 @@ bool CDRMAtomic::InitDrmAtomic(drm *drm, gbm *gbm)
      return false;
    }
  
@@ -298,7 +282,7 @@ index 9c0fe7fdfd..bebf7e1db0 100644
    ret = drmSetClientCap(m_drm->fd, DRM_CLIENT_CAP_ATOMIC, 1);
    if (ret)
    {
-@@ -288,44 +300,79 @@ bool CDRMAtomic::InitDrmAtomic(drm *drm, gbm *gbm)
+@@ -288,44 +297,79 @@ bool CDRMAtomic::InitDrmAtomic(drm *drm, gbm *gbm)
      return false;
    }
  
@@ -395,7 +379,7 @@ index 9c0fe7fdfd..bebf7e1db0 100644
    }
  
    // crtc
-@@ -370,7 +417,6 @@ bool CDRMAtomic::InitDrmAtomic(drm *drm, gbm *gbm)
+@@ -370,7 +414,6 @@ bool CDRMAtomic::InitDrmAtomic(drm *drm, gbm *gbm)
      m_drm->connector->props_info[i] = drmModeGetProperty(m_drm->fd, m_drm->connector->props->props[i]);             \
    }
  
@@ -403,7 +387,7 @@ index 9c0fe7fdfd..bebf7e1db0 100644
    m_gbm->dev = gbm_create_device(m_drm->fd);
  
    if (!CGBMUtils::InitGbm(m_gbm, m_drm->mode->hdisplay, m_drm->mode->vdisplay))
-@@ -378,6 +424,8 @@ bool CDRMAtomic::InitDrmAtomic(drm *drm, gbm *gbm)
+@@ -378,6 +421,8 @@ bool CDRMAtomic::InitDrmAtomic(drm *drm, gbm *gbm)
      return false;
    }
  
@@ -412,7 +396,7 @@ index 9c0fe7fdfd..bebf7e1db0 100644
    return true;
  }
  
-@@ -394,6 +442,8 @@ void CDRMAtomic::DestroyDrmAtomic()
+@@ -394,6 +439,8 @@ void CDRMAtomic::DestroyDrmAtomic()
    {
      gbm_device_destroy(m_gbm->dev);
    }
@@ -469,10 +453,10 @@ index 6d8e0f3596..5d75520a7e 100644
  
  struct drm_fb
 diff --git a/xbmc/windowing/gbm/WinSystemGbm.cpp b/xbmc/windowing/gbm/WinSystemGbm.cpp
-index 47be763b30..153c738a8d 100644
+index 20191c887f..a50b99919b 100644
 --- a/xbmc/windowing/gbm/WinSystemGbm.cpp
 +++ b/xbmc/windowing/gbm/WinSystemGbm.cpp
-@@ -142,9 +142,9 @@ bool CWinSystemGbm::SetFullScreen(bool fullScreen, RESOLUTION_INFO& res, bool bl
+@@ -148,9 +148,9 @@ bool CWinSystemGbm::SetFullScreen(bool fullScreen, RESOLUTION_INFO& res, bool bl
    return true;
  }
  
@@ -498,7 +482,7 @@ index 289f7eace0..b9e3737169 100644
    void UpdateResolutions() override;
  
 diff --git a/xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp b/xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp
-index e7ef372187..c8ee0af50b 100644
+index 1b37251563..e0b22d1884 100644
 --- a/xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp
 +++ b/xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp
 @@ -140,12 +140,16 @@ bool CWinSystemGbmGLESContext::SetFullScreen(bool fullScreen, RESOLUTION_INFO& r
