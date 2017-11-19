@@ -1,23 +1,5 @@
-From 4a4f79ceae8b57cf2681a3ea52b6b5674e13e419 Mon Sep 17 00:00:00 2001
-From: Lukas Rusak <lorusak@gmail.com>
-Date: Tue, 10 Oct 2017 18:21:45 -0700
-Subject: [PATCH 07/13] windowing/gbm: add atomic modesetting
-
----
- xbmc/windowing/gbm/CMakeLists.txt   |   2 +
- xbmc/windowing/gbm/DRM.cpp          |  41 +++-
- xbmc/windowing/gbm/DRM.h            |   4 +
- xbmc/windowing/gbm/DRMAtomic.cpp    | 449 ++++++++++++++++++++++++++++++++++++
- xbmc/windowing/gbm/DRMAtomic.h      |  40 ++++
- xbmc/windowing/gbm/DRMUtils.h       |  11 +
- xbmc/windowing/gbm/GLContextEGL.cpp |  89 ++++++-
- xbmc/windowing/gbm/GLContextEGL.h   |  12 +-
- 8 files changed, 641 insertions(+), 7 deletions(-)
- create mode 100644 xbmc/windowing/gbm/DRMAtomic.cpp
- create mode 100644 xbmc/windowing/gbm/DRMAtomic.h
-
 diff --git a/xbmc/windowing/gbm/CMakeLists.txt b/xbmc/windowing/gbm/CMakeLists.txt
-index 800e2927b9..12655e7cc2 100644
+index 800e2927b9b8..12655e7cc268 100644
 --- a/xbmc/windowing/gbm/CMakeLists.txt
 +++ b/xbmc/windowing/gbm/CMakeLists.txt
 @@ -3,6 +3,7 @@ set(SOURCES GLContextEGL.cpp
@@ -37,7 +19,7 @@ index 800e2927b9..12655e7cc2 100644
  
  if(OPENGLES_FOUND)
 diff --git a/xbmc/windowing/gbm/DRM.cpp b/xbmc/windowing/gbm/DRM.cpp
-index 0cfc08d108..c334b833a1 100644
+index 0cfc08d10868..7324ee580a41 100644
 --- a/xbmc/windowing/gbm/DRM.cpp
 +++ b/xbmc/windowing/gbm/DRM.cpp
 @@ -21,21 +21,47 @@
@@ -47,28 +29,29 @@ index 0cfc08d108..c334b833a1 100644
 +#include "DRMAtomic.h"
  #include "DRMLegacy.h"
  
+-void CDRM::FlipPage(CGLContextEGL *pGLContext)
 +CDRM::CDRM()
-+  : m_hasAtomic(false)
-+{
-+}
-+
- void CDRM::FlipPage(CGLContextEGL *pGLContext)
++  : m_atomic(false)
  {
 -  CDRMLegacy::FlipPage(pGLContext);
-+  if (m_hasAtomic)
++}
++
++void CDRM::FlipPage()
++{
++  if (m_atomic)
 +  {
-+    CDRMAtomic::FlipPage(pGLContext);
++    CDRMAtomic::FlipPage();
 +  }
 +  else
 +  {
-+    CDRMLegacy::FlipPage(pGLContext);
++    CDRMLegacy::FlipPage();
 +  }
  }
  
  bool CDRM::SetVideoMode(RESOLUTION_INFO res)
  {
 -  return CDRMLegacy::SetVideoMode(res);
-+  if (m_hasAtomic)
++  if (m_atomic)
 +  {
 +    return CDRMAtomic::SetVideoMode(res);
 +  }
@@ -83,7 +66,7 @@ index 0cfc08d108..c334b833a1 100644
 -  if (CDRMLegacy::InitDrmLegacy(drm, gbm))
 +  if (CDRMAtomic::InitDrmAtomic(drm, gbm))
 +  {
-+    m_hasAtomic = true;
++    m_atomic = true;
 +    CLog::Log(LOGNOTICE, "CDRM::%s - initialized Atomic DRM", __FUNCTION__);
 +    return true;
 +  }
@@ -96,7 +79,7 @@ index 0cfc08d108..c334b833a1 100644
  void CDRM::DestroyDrm()
  {
 -  CDRMLegacy::DestroyDrmLegacy();
-+  if (m_hasAtomic)
++  if (m_atomic)
 +  {
 +    CDRMAtomic::DestroyDrmAtomic();
 +  }
@@ -106,7 +89,7 @@ index 0cfc08d108..c334b833a1 100644
 +  }
  }
 diff --git a/xbmc/windowing/gbm/DRM.h b/xbmc/windowing/gbm/DRM.h
-index 870a6fe2b9..08de82bd0c 100644
+index 870a6fe2b93e..5317396b48e7 100644
 --- a/xbmc/windowing/gbm/DRM.h
 +++ b/xbmc/windowing/gbm/DRM.h
 @@ -26,9 +26,13 @@
@@ -115,20 +98,21 @@ index 870a6fe2b9..08de82bd0c 100644
  public:
 +  CDRM();
    ~CDRM() = default;
-   void FlipPage(CGLContextEGL *pGLContext);
+-  void FlipPage(CGLContextEGL *pGLContext);
++  void FlipPage();
    bool SetVideoMode(RESOLUTION_INFO res);
    bool InitDrm(drm *drm, gbm *gbm);
    void DestroyDrm();
 +
 +private:
-+  bool m_hasAtomic;
++  bool m_atomic;
  };
 diff --git a/xbmc/windowing/gbm/DRMAtomic.cpp b/xbmc/windowing/gbm/DRMAtomic.cpp
 new file mode 100644
-index 0000000000..059d3bd6dc
+index 000000000000..8378204a27f2
 --- /dev/null
 +++ b/xbmc/windowing/gbm/DRMAtomic.cpp
-@@ -0,0 +1,449 @@
+@@ -0,0 +1,399 @@
 +/*
 + *      Copyright (C) 2005-2013 Team XBMC
 + *      http://xbmc.org
@@ -150,9 +134,7 @@ index 0000000000..059d3bd6dc
 + */
 +
 +#include <errno.h>
-+#include <drm/drm_mode.h>
-+#include <EGL/egl.h>
-+#include <EGL/eglext.h>
++#include <drm_mode.h>
 +#include <string.h>
 +#include <unistd.h>
 +
@@ -299,34 +281,24 @@ index 0000000000..059d3bd6dc
 +  AddPlaneProperty(req, plane_id, "CRTC_W", m_drm->mode->hdisplay);
 +  AddPlaneProperty(req, plane_id, "CRTC_H", m_drm->mode->vdisplay);
 +
-+  if (m_drm->kms_in_fence_fd != -1)
-+  {
-+    AddCrtcProperty(req, m_drm->crtc_id, "OUT_FENCE_PTR", (uint64_t)(unsigned long)&m_drm->kms_out_fence_fd);
-+    AddPlaneProperty(req, plane_id, "IN_FENCE_FD", m_drm->kms_in_fence_fd);
-+  }
-+
 +  auto ret = drmModeAtomicCommit(m_drm->fd, req, flags, nullptr);
 +  if (ret)
 +  {
 +    return false;
 +  }
 +
-+  if (m_drm->kms_in_fence_fd != -1)
-+  {
-+    close(m_drm->kms_in_fence_fd);
-+    m_drm->kms_in_fence_fd = -1;
-+  }
-+
 +  return true;
 +}
 +
-+void CDRMAtomic::FlipPage(CGLContextEGL *pGLContext)
++void CDRMAtomic::FlipPage()
 +{
-+  int flags = DRM_MODE_ATOMIC_NONBLOCK;
++  uint32_t flags = 0;
 +
-+  pGLContext->CreateGPUFence();
-+  m_drm->kms_in_fence_fd = pGLContext->FlushFence();
-+  pGLContext->WaitSyncCPU();
++  if(m_drm->need_modeset)
++  {
++    flags |= DRM_MODE_ATOMIC_ALLOW_MODESET;
++    m_drm->need_modeset = false;
++  }
 +
 +  gbm_surface_release_buffer(m_gbm->surface, m_bo);
 +  m_bo = m_next_bo;
@@ -350,18 +322,6 @@ index 0000000000..059d3bd6dc
 +    CLog::Log(LOGERROR, "CDRMAtomic::%s - failed to commit: %s", __FUNCTION__, strerror(errno));
 +    return;
 +  }
-+
-+  pGLContext->CreateKMSFence(m_drm->kms_out_fence_fd);
-+  pGLContext->WaitSyncGPU();
-+  m_drm->kms_out_fence_fd = -1;
-+
-+  if(g_Windowing.NoOfBuffers() > 2 && gbm_surface_has_free_buffers(m_gbm->surface))
-+  {
-+    return;
-+  }
-+
-+  gbm_surface_release_buffer(m_gbm->surface, m_bo);
-+  m_bo = m_next_bo;
 +}
 +
 +int CDRMAtomic::GetPlaneId()
@@ -425,8 +385,6 @@ index 0000000000..059d3bd6dc
 +
 +  m_drm = drm;
 +  m_gbm = gbm;
-+
-+  m_drm->kms_out_fence_fd = -1;
 +
 +  if (!CDRMUtils::InitDrm(m_drm))
 +  {
@@ -550,40 +508,16 @@ index 0000000000..059d3bd6dc
 +
 +bool CDRMAtomic::SetVideoMode(RESOLUTION_INFO res)
 +{
-+  CDRMUtils::GetMode(res);
-+
-+  gbm_surface_release_buffer(m_gbm->surface, m_bo);
-+  m_bo = m_next_bo;
-+
-+  m_next_bo = gbm_surface_lock_front_buffer(m_gbm->surface);
-+  if (!m_next_bo)
-+  {
-+    CLog::Log(LOGERROR, "CDRMAtomic::%s - Failed to lock frontbuffer", __FUNCTION__);
-+    return false;
-+  }
-+
-+  m_drm_fb = CDRMUtils::DrmFbGetFromBo(m_next_bo);
-+  if (!m_drm_fb)
-+  {
-+    CLog::Log(LOGERROR, "CDRMAtomic::%s - Failed to get a new FBO", __FUNCTION__);
-+    return false;
-+  }
-+
-+  auto ret = DrmAtomicCommit(m_drm_fb->fb_id, DRM_MODE_ATOMIC_ALLOW_MODESET);
-+  if (!ret)
-+  {
-+    CLog::Log(LOGERROR, "CDRMAtomic::%s - failed to commit modeset: %s", __FUNCTION__, strerror(errno));
-+    return false;
-+  }
++  m_drm->need_modeset = true;
 +
 +  return true;
 +}
 diff --git a/xbmc/windowing/gbm/DRMAtomic.h b/xbmc/windowing/gbm/DRMAtomic.h
 new file mode 100644
-index 0000000000..5b6495a564
+index 000000000000..09f62305800d
 --- /dev/null
 +++ b/xbmc/windowing/gbm/DRMAtomic.h
-@@ -0,0 +1,40 @@
+@@ -0,0 +1,39 @@
 +/*
 + *      Copyright (C) 2005-2013 Team XBMC
 + *      http://xbmc.org
@@ -607,12 +541,11 @@ index 0000000000..5b6495a564
 +#pragma once
 +
 +#include "DRMUtils.h"
-+#include "GLContextEGL.h"
 +
 +class CDRMAtomic : public CDRMUtils
 +{
 +public:
-+  static void FlipPage(CGLContextEGL *pGLContext);
++  static void FlipPage();
 +  static bool SetVideoMode(RESOLUTION_INFO res);
 +  static bool InitDrmAtomic(drm *drm, gbm *gbm);
 +  static void DestroyDrmAtomic();
@@ -624,8 +557,34 @@ index 0000000000..5b6495a564
 +  static bool DrmAtomicCommit(int fb_id, int flags);
 +  static int GetPlaneId();
 +};
+diff --git a/xbmc/windowing/gbm/DRMLegacy.cpp b/xbmc/windowing/gbm/DRMLegacy.cpp
+index 6f34aa215137..1eb02e8253e9 100644
+--- a/xbmc/windowing/gbm/DRMLegacy.cpp
++++ b/xbmc/windowing/gbm/DRMLegacy.cpp
+@@ -158,7 +158,7 @@ bool CDRMLegacy::QueueFlip()
+   return true;
+ }
+ 
+-void CDRMLegacy::FlipPage(CGLContextEGL *pGLContext)
++void CDRMLegacy::FlipPage()
+ {
+   if(WaitingForFlip())
+   {
+diff --git a/xbmc/windowing/gbm/DRMLegacy.h b/xbmc/windowing/gbm/DRMLegacy.h
+index 46411f5e187d..9dfa0bb9456a 100644
+--- a/xbmc/windowing/gbm/DRMLegacy.h
++++ b/xbmc/windowing/gbm/DRMLegacy.h
+@@ -26,7 +26,7 @@
+ class CDRMLegacy : public CDRMUtils
+ {
+ public:
+-  static void FlipPage(CGLContextEGL *pGLContext);
++  static void FlipPage();
+   static bool SetVideoMode(RESOLUTION_INFO res);
+   static bool InitDrmLegacy(drm *drm, gbm *gbm);
+   static void DestroyDrmLegacy();
 diff --git a/xbmc/windowing/gbm/DRMUtils.h b/xbmc/windowing/gbm/DRMUtils.h
-index e4967feb01..aeded42d90 100644
+index 16d8a495e1ca..6e401f4b5b9d 100644
 --- a/xbmc/windowing/gbm/DRMUtils.h
 +++ b/xbmc/windowing/gbm/DRMUtils.h
 @@ -28,6 +28,13 @@
@@ -642,7 +601,7 @@ index e4967feb01..aeded42d90 100644
  struct crtc
  {
    drmModeCrtc *crtc;
-@@ -46,9 +53,13 @@ struct drm
+@@ -46,6 +53,8 @@ struct drm
  {
    int fd;
  
@@ -651,16 +610,20 @@ index e4967feb01..aeded42d90 100644
    struct crtc *crtc;
    struct connector *connector;
    int crtc_index;
-+  int kms_in_fence_fd;
-+  int kms_out_fence_fd;
- 
-   drmModeModeInfo *mode;
+@@ -54,6 +63,8 @@ struct drm
    uint32_t crtc_id;
+   uint32_t connector_id;
+   uint32_t video_plane_id;
++
++  bool need_modeset;
+ };
+ 
+ struct drm_fb
 diff --git a/xbmc/windowing/gbm/GLContextEGL.cpp b/xbmc/windowing/gbm/GLContextEGL.cpp
-index 392080ba83..41ff1de795 100644
+index 392080ba830f..36d4ae669cb2 100644
 --- a/xbmc/windowing/gbm/GLContextEGL.cpp
 +++ b/xbmc/windowing/gbm/GLContextEGL.cpp
-@@ -24,14 +24,15 @@
+@@ -24,7 +24,6 @@
  #include "settings/AdvancedSettings.h"
  #include "utils/log.h"
  
@@ -668,106 +631,8 @@ index 392080ba83..41ff1de795 100644
  #include <string.h>
  
  CGLContextEGL::CGLContextEGL() :
-   m_eglDisplay(EGL_NO_DISPLAY),
-   m_eglSurface(EGL_NO_SURFACE),
-   m_eglContext(EGL_NO_CONTEXT),
--  m_eglConfig(0)
-+  m_eglConfig(0),
-+  m_gpuFence(nullptr),
-+  m_kmsFence(nullptr)
- {
- }
- 
-@@ -250,3 +251,87 @@ void CGLContextEGL::SwapBuffers()
- 
-   eglSwapBuffers(m_eglDisplay, m_eglSurface);
- }
-+
-+EGLSyncKHR CGLContextEGL::CreateFence(int fd)
-+{
-+  EGLint attrib_list[] =
-+  {
-+    EGL_SYNC_NATIVE_FENCE_FD_ANDROID, fd,
-+    EGL_NONE,
-+  };
-+
-+  PFNEGLCREATESYNCKHRPROC eglCreateSyncKHR = (PFNEGLCREATESYNCKHRPROC)eglGetProcAddress("eglCreateSyncKHR");
-+
-+  EGLSyncKHR fence = eglCreateSyncKHR(m_eglDisplay, EGL_SYNC_NATIVE_FENCE_ANDROID, attrib_list);
-+
-+  return fence;
-+}
-+
-+void CGLContextEGL::CreateGPUFence()
-+{
-+  m_gpuFence = CreateFence(EGL_NO_NATIVE_FENCE_FD_ANDROID);
-+}
-+
-+void CGLContextEGL::CreateKMSFence(int kms_out_fence_fd)
-+{
-+  m_kmsFence = CreateFence(kms_out_fence_fd);
-+}
-+
-+EGLint CGLContextEGL::FlushFence()
-+{
-+  PFNEGLDUPNATIVEFENCEFDANDROIDPROC eglDupNativeFenceFDANDROID = (PFNEGLDUPNATIVEFENCEFDANDROIDPROC)eglGetProcAddress("eglDupNativeFenceFDANDROID");
-+  PFNEGLDESTROYSYNCKHRPROC eglDestroySyncKHR = (PFNEGLDESTROYSYNCKHRPROC)eglGetProcAddress("eglDestroySyncKHR");
-+
-+  auto fd = eglDupNativeFenceFDANDROID(m_eglDisplay, m_gpuFence);
-+
-+  if (fd < 0)
-+  {
-+    return -1;
-+  }
-+
-+  eglDestroySyncKHR(m_eglDisplay, m_gpuFence);
-+
-+  return fd;
-+}
-+
-+void CGLContextEGL::WaitSyncGPU()
-+{
-+  if (m_kmsFence == 0)
-+  {
-+    return;
-+  }
-+
-+  PFNEGLWAITSYNCKHRPROC eglWaitSyncKHR = (PFNEGLWAITSYNCKHRPROC)eglGetProcAddress("eglWaitSyncKHR");
-+
-+  /* wait "on the gpu" (ie. this won't necessarily block, but
-+   * will block the rendering until fence is signaled), until
-+   * the previous pageflip completes so we don't render into
-+   * the buffer that is still on screen.
-+   */
-+  eglWaitSyncKHR(m_eglDisplay, m_kmsFence, 0);
-+}
-+
-+void CGLContextEGL::WaitSyncCPU()
-+{
-+  if (m_kmsFence)
-+  {
-+    EGLint status;
-+    PFNEGLCLIENTWAITSYNCKHRPROC eglClientWaitSyncKHR = (PFNEGLCLIENTWAITSYNCKHRPROC)eglGetProcAddress("eglClientWaitSyncKHR");
-+    PFNEGLDESTROYSYNCKHRPROC eglDestroySyncKHR = (PFNEGLDESTROYSYNCKHRPROC)eglGetProcAddress("eglDestroySyncKHR");
-+
-+    /* Wait on the CPU side for the _previous_ commit to
-+     * complete before we post the flip through KMS, as
-+     * atomic will reject the commit if we post a new one
-+     * whilst the previous one is still pending.
-+     */
-+    do
-+    {
-+      status = eglClientWaitSyncKHR(m_eglDisplay,
-+                                    m_kmsFence,
-+                                    0,
-+                                    EGL_FOREVER_KHR);
-+    } while (status != EGL_CONDITION_SATISFIED_KHR);
-+
-+    eglDestroySyncKHR(m_eglDisplay, m_kmsFence);
-+  }
-+}
 diff --git a/xbmc/windowing/gbm/GLContextEGL.h b/xbmc/windowing/gbm/GLContextEGL.h
-index afea42950e..0dd2427aad 100644
+index afea42950e87..b66c7bcacd88 100644
 --- a/xbmc/windowing/gbm/GLContextEGL.h
 +++ b/xbmc/windowing/gbm/GLContextEGL.h
 @@ -20,7 +20,8 @@
@@ -780,25 +645,45 @@ index afea42950e..0dd2427aad 100644
  
  class CGLContextEGL
  {
-@@ -40,9 +41,18 @@ public:
-   void Detach();
-   bool SetVSync(bool enable);
-   void SwapBuffers();
-+  EGLSyncKHR CreateFence(int fd);
-+  void CreateGPUFence();
-+  void CreateKMSFence(int kms_out_fence_fd);
-+  EGLint FlushFence();
-+  void WaitSyncGPU();
-+  void WaitSyncCPU();
+diff --git a/xbmc/windowing/gbm/WinSystemGbm.cpp b/xbmc/windowing/gbm/WinSystemGbm.cpp
+index 8ce31a482223..42edf5bcffc0 100644
+--- a/xbmc/windowing/gbm/WinSystemGbm.cpp
++++ b/xbmc/windowing/gbm/WinSystemGbm.cpp
+@@ -150,9 +150,9 @@ bool CWinSystemGbm::SetFullScreen(bool fullScreen, RESOLUTION_INFO& res, bool bl
+   return true;
+ }
  
-   EGLDisplay m_eglDisplay;
-   EGLSurface m_eglSurface;
-   EGLContext m_eglContext;
-   EGLConfig m_eglConfig;
-+
-+  EGLSyncKHR m_gpuFence;
-+  EGLSyncKHR m_kmsFence;
- };
--- 
-2.11.0
-
+-void CWinSystemGbm::FlipPage(CGLContextEGL *pGLContext)
++void CWinSystemGbm::FlipPage()
+ {
+-  m_DRM.FlipPage(pGLContext);
++  m_DRM.FlipPage();
+ }
+ 
+ void CWinSystemGbm::WaitVBlank()
+diff --git a/xbmc/windowing/gbm/WinSystemGbm.h b/xbmc/windowing/gbm/WinSystemGbm.h
+index 149987a22b58..2d29c932fc27 100644
+--- a/xbmc/windowing/gbm/WinSystemGbm.h
++++ b/xbmc/windowing/gbm/WinSystemGbm.h
+@@ -48,7 +48,7 @@ class CWinSystemGbm : public CWinSystemBase
+   bool ResizeWindow(int newWidth, int newHeight, int newLeft, int newTop) override;
+   bool SetFullScreen(bool fullScreen, RESOLUTION_INFO& res, bool blankOtherDisplays) override;
+ 
+-  void FlipPage(CGLContextEGL *m_pGLContext);
++  void FlipPage();
+   void WaitVBlank();
+ 
+   void UpdateResolutions() override;
+diff --git a/xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp b/xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp
+index 90a2faca7a97..0bcd6f0953ed 100644
+--- a/xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp
++++ b/xbmc/windowing/gbm/WinSystemGbmGLESContext.cpp
+@@ -148,7 +148,7 @@ void CWinSystemGbmGLESContext::PresentRender(bool rendered, bool videoLayer)
+   if (rendered)
+   {
+     m_pGLContext.SwapBuffers();
+-    CWinSystemGbm::FlipPage(&m_pGLContext);
++    CWinSystemGbm::FlipPage();
+   }
+   else
+   {
