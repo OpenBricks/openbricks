@@ -1,0 +1,82 @@
+From 025034a01560385b81375384a3b912d0c574c8e5 Mon Sep 17 00:00:00 2001
+From: Russell King <rmk+kernel@arm.linux.org.uk>
+Date: Thu, 17 Mar 2016 19:17:16 +0000
+Subject: [PATCH 3/4] drm: etnaviv: try harder to reset the GPU at probe time
+
+Try harder to reset the GPU at probe time by allowing the GPU to enter
+runtime PM even if it indicates that it is busy.  Where platforms
+implement PM domains, this allows the GPU domain to be power cycled,
+which can recover a hung GPU.
+
+This can't be done in normal operation as we need to drop the mutex,
+and dropping the mutex will permit GPU submissions which will keep the
+GPU from idling.
+
+Signed-off-by: Russell King <rmk+kernel@arm.linux.org.uk>
+---
+ drivers/gpu/drm/etnaviv/etnaviv_gpu.c | 22 ++++++++++++++++++++--
+ drivers/gpu/drm/etnaviv/etnaviv_gpu.h |  1 +
+ 2 files changed, 21 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/gpu/drm/etnaviv/etnaviv_gpu.c b/drivers/gpu/drm/etnaviv/etnaviv_gpu.c
+index 80727d1284e1..d6ff534d7872 100644
+--- a/drivers/gpu/drm/etnaviv/etnaviv_gpu.c
++++ b/drivers/gpu/drm/etnaviv/etnaviv_gpu.c
+@@ -654,7 +654,7 @@ static void etnaviv_gpu_hw_init(struct etnaviv_gpu *gpu)
+ 
+ int etnaviv_gpu_init(struct etnaviv_gpu *gpu)
+ {
+-	int ret, i;
++	int ret, i, try;
+ 
+ 	ret = pm_runtime_get_sync(gpu->dev);
+ 	if (ret < 0) {
+@@ -700,7 +700,20 @@ int etnaviv_gpu_init(struct etnaviv_gpu *gpu)
+ 		gpu->identity.features &= ~chipFeatures_FAST_CLEAR;
+ 	}
+ 
+-	ret = etnaviv_hw_reset(gpu);
++	for (try = 0; try < 2; try++) {
++		ret = etnaviv_hw_reset(gpu);
++		if (ret == 0)
++			break;
++
++		dev_warn(gpu->dev, "GPU failed to reset, trying to power cycle\n");
++		gpu->force_rpm_idle = true;
++		pm_runtime_put_sync(gpu->dev);
++		msleep(100);
++		ret = pm_runtime_get_sync(gpu->dev);
++		gpu->force_rpm_idle = false;
++		if (ret)
++			break;
++	}
+ 	if (ret) {
+ 		dev_err(gpu->dev, "GPU reset failed\n");
+ 		goto fail;
+@@ -1825,6 +1838,11 @@ static int __maybe_unused etnaviv_gpu_rpm_suspend(struct device *dev)
+ {
+ 	struct etnaviv_gpu *gpu = dev_get_drvdata(dev);
+ 
++	if (gpu->force_rpm_idle) {
++		etnaviv_gpu_clk_disable(gpu);
++		return 0;
++	}
++
+ 	/* If we have outstanding fences, we're not idle */
+ 	if (gpu->completed_fence != gpu->active_fence)
+ 		return -EBUSY;
+diff --git a/drivers/gpu/drm/etnaviv/etnaviv_gpu.h b/drivers/gpu/drm/etnaviv/etnaviv_gpu.h
+index 74c83a6bd253..bb49446e5f20 100644
+--- a/drivers/gpu/drm/etnaviv/etnaviv_gpu.h
++++ b/drivers/gpu/drm/etnaviv/etnaviv_gpu.h
+@@ -102,6 +102,7 @@ struct etnaviv_gpu {
+ 	struct mutex lock;
+ 	struct etnaviv_chip_identity identity;
+ 	struct etnaviv_file_private *lastctx;
++	bool force_rpm_idle;
+ 	bool switch_context;
+ 
+ 	/* 'ring'-buffer: */
+-- 
+2.11.0
+

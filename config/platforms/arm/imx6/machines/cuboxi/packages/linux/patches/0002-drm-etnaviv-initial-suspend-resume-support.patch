@@ -1,0 +1,127 @@
+From cb3d0b72f69c6f2537da40fef8b2e42d548a1a26 Mon Sep 17 00:00:00 2001
+From: Russell King <rmk+kernel@arm.linux.org.uk>
+Date: Fri, 31 Jul 2015 14:24:55 +0100
+Subject: [PATCH 2/4] drm: etnaviv: initial suspend/resume support
+
+Signed-off-by: Russell King <rmk+kernel@arm.linux.org.uk>
+---
+ drivers/gpu/drm/etnaviv/etnaviv_gpu.c | 65 +++++++++++++++++++++++++++++------
+ 1 file changed, 55 insertions(+), 10 deletions(-)
+
+diff --git a/drivers/gpu/drm/etnaviv/etnaviv_gpu.c b/drivers/gpu/drm/etnaviv/etnaviv_gpu.c
+index 580becdbfbe4..80727d1284e1 100644
+--- a/drivers/gpu/drm/etnaviv/etnaviv_gpu.c
++++ b/drivers/gpu/drm/etnaviv/etnaviv_gpu.c
+@@ -1552,7 +1552,6 @@ static int etnaviv_gpu_hw_suspend(struct etnaviv_gpu *gpu)
+ 	return etnaviv_gpu_clk_disable(gpu);
+ }
+ 
+-#ifdef CONFIG_PM
+ static int etnaviv_gpu_hw_resume(struct etnaviv_gpu *gpu)
+ {
+ 	int ret;
+@@ -1571,7 +1570,6 @@ static int etnaviv_gpu_hw_resume(struct etnaviv_gpu *gpu)
+ 
+ 	return 0;
+ }
+-#endif
+ 
+ static int
+ etnaviv_gpu_cooling_get_max_state(struct thermal_cooling_device *cdev,
+@@ -1813,26 +1811,32 @@ static int etnaviv_gpu_platform_remove(struct platform_device *pdev)
+ 	return 0;
+ }
+ 
+-#ifdef CONFIG_PM
+-static int etnaviv_gpu_rpm_suspend(struct device *dev)
++static bool etnaviv_gpu_is_idle(struct etnaviv_gpu *gpu, u32 mask)
++{
++	u32 idle;
++
++	mask = mask & gpu->idle_mask;
++	idle = gpu_read(gpu, VIVS_HI_IDLE_STATE) & mask;
++
++	return idle == mask;
++}
++
++static int __maybe_unused etnaviv_gpu_rpm_suspend(struct device *dev)
+ {
+ 	struct etnaviv_gpu *gpu = dev_get_drvdata(dev);
+-	u32 idle, mask;
+ 
+ 	/* If we have outstanding fences, we're not idle */
+ 	if (gpu->completed_fence != gpu->active_fence)
+ 		return -EBUSY;
+ 
+ 	/* Check whether the hardware (except FE) is idle */
+-	mask = gpu->idle_mask & ~VIVS_HI_IDLE_STATE_FE;
+-	idle = gpu_read(gpu, VIVS_HI_IDLE_STATE) & mask;
+-	if (idle != mask)
++	if (!etnaviv_gpu_is_idle(gpu, ~VIVS_HI_IDLE_STATE_FE))
+ 		return -EBUSY;
+ 
+ 	return etnaviv_gpu_hw_suspend(gpu);
+ }
+ 
+-static int etnaviv_gpu_rpm_resume(struct device *dev)
++static int __maybe_unused etnaviv_gpu_rpm_resume(struct device *dev)
+ {
+ 	struct etnaviv_gpu *gpu = dev_get_drvdata(dev);
+ 	int ret;
+@@ -1852,11 +1856,52 @@ static int etnaviv_gpu_rpm_resume(struct device *dev)
+ 
+ 	return 0;
+ }
+-#endif
++
++static int __maybe_unused etnaviv_gpu_suspend(struct device *dev)
++{
++	struct etnaviv_gpu *gpu = dev_get_drvdata(dev);
++	int ret = 0;
++
++	if (!pm_runtime_suspended(dev) && gpu->drm) {
++		/*
++		 * Wait for the GPU to finish processing any commands
++		 * userspace has submitted before trying to suspend it; we
++		 * can't suspend the GPU with an incomplete command stream.
++		 * Note that this does not wait for the fences to be retired.
++		 */
++		ret = wait_event_timeout(gpu->fence_event,
++				 gpu->completed_fence == gpu->active_fence,
++				 msecs_to_jiffies(5000));
++		if (ret == 0) {
++			dev_crit(dev,
++				 "timeout while waiting for GPU to idle - rendering operations will be lost, suspending anyway\n");
++		} else {
++			/* Check whether the hardware (except FE) is idle */
++			if (!etnaviv_gpu_is_idle(gpu, ~VIVS_HI_IDLE_STATE_FE))
++				dev_crit(dev,
++					 "GPU is not idle - rendering operations will be lost, suspending anyway");
++		}
++
++		ret = etnaviv_gpu_hw_suspend(gpu);
++	}
++	return ret;
++}
++
++static int __maybe_unused etnaviv_gpu_resume(struct device *dev)
++{
++	struct etnaviv_gpu *gpu = dev_get_drvdata(dev);
++	int ret = 0;
++
++	if (!pm_runtime_suspended(dev) && gpu->drm)
++		ret = etnaviv_gpu_rpm_resume(dev);
++
++	return ret;
++}
+ 
+ static const struct dev_pm_ops etnaviv_gpu_pm_ops = {
+ 	SET_RUNTIME_PM_OPS(etnaviv_gpu_rpm_suspend, etnaviv_gpu_rpm_resume,
+ 			   NULL)
++	SET_SYSTEM_SLEEP_PM_OPS(etnaviv_gpu_suspend, etnaviv_gpu_resume)
+ };
+ 
+ struct platform_driver etnaviv_gpu_driver = {
+-- 
+2.11.0
+

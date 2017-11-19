@@ -1,0 +1,112 @@
+From 36dba045a22da82fad352f1282c8c0d09e5f5587 Mon Sep 17 00:00:00 2001
+From: Russell King <rmk+kernel@arm.linux.org.uk>
+Date: Tue, 26 May 2015 09:40:33 +0100
+Subject: [PATCH 1/4] drm: etnaviv: add device property to control parsing of
+ command buffers
+
+Parsing the command buffer is an expensive operation, as the command
+buffer is uncached.  Work-around this by providing a control to allow
+the command buffer parsing to be skipped.
+
+A better solution would be to move to cached buffers between userspace
+and kernelspace, and copying the data in kernel space to the final
+command buffer.
+
+Signed-off-by: Russell King <rmk+kernel@arm.linux.org.uk>
+---
+ drivers/gpu/drm/etnaviv/etnaviv_gem_submit.c |  3 ++-
+ drivers/gpu/drm/etnaviv/etnaviv_gpu.c        | 27 +++++++++++++++++++++++++++
+ drivers/gpu/drm/etnaviv/etnaviv_gpu.h        |  1 +
+ 3 files changed, 30 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/etnaviv/etnaviv_gem_submit.c b/drivers/gpu/drm/etnaviv/etnaviv_gem_submit.c
+index 46dfe0737f43..d5541a648999 100644
+--- a/drivers/gpu/drm/etnaviv/etnaviv_gem_submit.c
++++ b/drivers/gpu/drm/etnaviv/etnaviv_gem_submit.c
+@@ -404,7 +404,8 @@ int etnaviv_ioctl_gem_submit(struct drm_device *dev, void *data,
+ 	if (ret)
+ 		goto err_submit_objects;
+ 
+-	if (!etnaviv_cmd_validate_one(gpu, stream, args->stream_size / 4,
++	if (gpu->validate_cmdbuf &&
++	    !etnaviv_cmd_validate_one(gpu, stream, args->stream_size / 4,
+ 				      relocs, args->nr_relocs)) {
+ 		ret = -EINVAL;
+ 		goto err_submit_objects;
+diff --git a/drivers/gpu/drm/etnaviv/etnaviv_gpu.c b/drivers/gpu/drm/etnaviv/etnaviv_gpu.c
+index fc9a6a83dfc7..580becdbfbe4 100644
+--- a/drivers/gpu/drm/etnaviv/etnaviv_gpu.c
++++ b/drivers/gpu/drm/etnaviv/etnaviv_gpu.c
+@@ -1708,6 +1708,27 @@ static const struct of_device_id etnaviv_gpu_match[] = {
+ 	{ /* sentinel */ }
+ };
+ 
++static ssize_t etnaviv_gpu_check_cmdbuf_show(struct device *dev,
++	struct device_attribute *attr, char *buf)
++{
++	struct etnaviv_gpu *gpu = dev_get_drvdata(dev);
++
++	return snprintf(buf, PAGE_SIZE, "%u\n", gpu->validate_cmdbuf);
++}
++
++static ssize_t etnaviv_gpu_check_cmdbuf_store(struct device *dev,
++	struct device_attribute *attr, const char *buf, size_t count)
++{
++	struct etnaviv_gpu *gpu = dev_get_drvdata(dev);
++
++	if (strtobool(buf, &gpu->validate_cmdbuf))
++		return -EINVAL;
++
++	return count;
++}
++
++static DEVICE_ATTR(check_cmdbuf, 0600, etnaviv_gpu_check_cmdbuf_show, etnaviv_gpu_check_cmdbuf_store);
++
+ static int etnaviv_gpu_platform_probe(struct platform_device *pdev)
+ {
+ 	struct device *dev = &pdev->dev;
+@@ -1761,6 +1782,8 @@ static int etnaviv_gpu_platform_probe(struct platform_device *pdev)
+ 	/* TODO: figure out max mapped size */
+ 	dev_set_drvdata(dev, gpu);
+ 
++	gpu->validate_cmdbuf = true;
++
+ 	/*
+ 	 * We treat the device as initially suspended.  The runtime PM
+ 	 * autosuspend delay is rather arbitary: no measurements have
+@@ -1770,9 +1793,12 @@ static int etnaviv_gpu_platform_probe(struct platform_device *pdev)
+ 	pm_runtime_set_autosuspend_delay(gpu->dev, 200);
+ 	pm_runtime_enable(gpu->dev);
+ 
++	device_create_file(gpu->dev, &dev_attr_check_cmdbuf);
++
+ 	err = component_add(&pdev->dev, &gpu_ops);
+ 	if (err < 0) {
+ 		dev_err(&pdev->dev, "failed to register component: %d\n", err);
++		device_remove_file(gpu->dev, &dev_attr_check_cmdbuf);
+ 		return err;
+ 	}
+ 
+@@ -1783,6 +1809,7 @@ static int etnaviv_gpu_platform_remove(struct platform_device *pdev)
+ {
+ 	component_del(&pdev->dev, &gpu_ops);
+ 	pm_runtime_disable(&pdev->dev);
++	device_remove_file(&pdev->dev, &dev_attr_check_cmdbuf);
+ 	return 0;
+ }
+ 
+diff --git a/drivers/gpu/drm/etnaviv/etnaviv_gpu.h b/drivers/gpu/drm/etnaviv/etnaviv_gpu.h
+index 689cb8f3680c..74c83a6bd253 100644
+--- a/drivers/gpu/drm/etnaviv/etnaviv_gpu.h
++++ b/drivers/gpu/drm/etnaviv/etnaviv_gpu.h
+@@ -152,6 +152,7 @@ struct etnaviv_gpu {
+ 	u32 hangcheck_dma_addr;
+ 	struct work_struct recover_work;
+ 	unsigned int freq_scale;
++	bool validate_cmdbuf;
+ 	unsigned long base_rate_core;
+ 	unsigned long base_rate_shader;
+ };
+-- 
+2.11.0
+
