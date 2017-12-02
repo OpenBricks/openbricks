@@ -1,0 +1,42 @@
+#!/bin/sh
+
+. config/options
+
+get_meta $1
+
+case $TARGET_PLATFORM in
+  armada5xx)
+    $SCRIPTS/unpack linux
+    EXTRA_CONFIG="-DHAVE_TDA995X_API=1"
+    EXTRA_INCLUDES="-I$(kernel_path)/drivers/video/dovefb/nxp_hdmi -I$(kernel_path)/drivers/video/dovefb/nxp_hdmi/inc"
+    ;;
+
+  bcm270*)
+    EXTRA_CONFIG="-DHAVE_RPI_API=1 -DRPI_INCLUDE_DIR=$LIB_PREFIX/include"
+    EXTRA_INCLUDES=""
+    ;;
+    
+  exynos5)
+    EXTRA_CONFIG="-DHAVE_EXYNOS_API=1"
+    EXTRA_INCLUDES=""
+    ;;
+                           
+  imx6)
+    EXTRA_CONFIG="-DHAVE_IMX_API=1"
+    EXTRA_INCLUDES=""
+    ;;
+esac
+
+cd $PKG_BUILD_DIR
+
+export CFLAGS="$CFLAGS $EXTRA_INCLUDES"
+export CXXFLAGS="$CXXFLAGS $EXTRA_INCLUDES"
+
+do_cmake_build \
+  $EXTRA_CONFIG \
+  -DBUILD_SHARED_LIBS=1 \
+  -DSWIG_DIR=$TOOLCHAIN/bin \
+  -DPYTHON_LIBRARY="$LIB_PREFIX" \
+  -DPYTHON_INCLUDE_DIR="$LIB_PREFIX/include/python2.7"
+
+sed -e "/^Requires:/d" -i .install/usr/lib/pkgconfig/*.pc

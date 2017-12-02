@@ -24,7 +24,10 @@ fi
 
 
 meta_url_rev () {
-  echo "$(grep "^PKG_URL_REV" "$1/meta" | grep -o "[0-9]*~\w*")"
+  local url_rev=$(grep "^ADDON_URL_REV_${ADDON_KODIVER}" "$1/meta" | grep -o "[0-9]*~\w*")
+  [ -z "$url_rev" ] && url_rev=$(grep "^PKG_URL_REV" "$1/meta" | grep -o "[0-9]*~\w*")
+  [ -z "$url_rev" ] && url_rev="0"
+  echo "$url_rev"
 }
 
 next_url_rev () {
@@ -49,15 +52,22 @@ next_url_rev () {
 create_meta () {
   cat > $1/meta <<EOF
 ADDON_ID=""
-ADDON_API=""
 ADDON_REPO=""
 ADDON_BUILD_DEPENDS=""
 ADDON_DEPENDS=""
-PKG_URL_REV=""
-PKG_REV=1
+ADDON_API=\$(get_meta kodi-platform; echo \${PKG_VERSION%+*})
+
+ADDON_URL_REV_16="0~HEAD"
+ADDON_REV_16="0"
+ADDON_URL_REV_17="0~HEAD"
+ADDON_REV_17="0"
+ADDON_URL_REV_18="0~HEAD"
+ADDON_REV_18="0"
 
 PKG_NAME="kodi-addon-\${ADDON_ID}"
-PKG_VERSION="\${ADDON_API}+\${PKG_URL_REV}"
+PKG_URL_REV=\$(valueof ADDON_URL_REV_\${ADDON_API})
+PKG_REV=\$(valueof ADDON_REV_\${ADDON_API})
+PKG_VERSION="\${ADDON_API}+\${ADDON_URL_REV_${ADDON_KODIVER}}"
 PKG_URL="\${ADDON_REPO}/\${ADDON_ID}.git"
 PKG_URL_PROTO=git
 PKG_BUILD_DEPENDS="toolchain cmake kodi-platform \$ADDON_BUILD_DEPENDS \$ADDON_DEPENDS"
@@ -76,6 +86,8 @@ create_scripts () {
 . config/options
 
 get_meta \$1
+[ -z "\$PKG_REV" ] && exit 0
+
 cd \$PKG_BUILD_DIR
 
 do_cmake_build \\
@@ -88,6 +100,7 @@ EOF
 
 . config/options
 get_meta \$1
+[ -z "\$PKG_REV" ] && exit 0
 
 cd \$PKG_BUILD_DIR
 
@@ -97,7 +110,10 @@ EOF
   chmod +x $1/build $1/install
 }
 
+echo "Updating addon packages for Kodi $ADDON_KODIVER.x"
+
 for d in $ADDON_BASE/depends/common/*platform $ADDON_BASE/addons/*.*; do
+  echo "Parsing $d..."
   addon=$(basename $d)
   addon_id=$(cut -f1 -d' ' "$d/$addon.txt")
   addon_url=$(cut -f2 -d' ' "$d/$addon.txt")
@@ -118,9 +134,10 @@ for d in $ADDON_BASE/depends/common/*platform $ADDON_BASE/addons/*.*; do
 
   # check for common libraries
   if [ "$(dirname $d)" = "$ADDON_BASE/depends/common" ]; then
-    pkg_dir="$ROOT/packages/multimedia/$addon_id"
-    [ -e "$pkg_dir" ] || pkg_dir="$ROOT/packages/libs/$addon_id"
-    [ -e "$pkg_dir" ] || continue
+    pkg_dir="$PLATFORM_PACKAGES/$addon_id"
+    [ -d "$pkg_dir" ] || pkg_dir="$ROOT/$PACKAGES/multimedia/$addon_id"
+    [ -d "$pkg_dir" ] || pkg_dir="$ROOT/$PACKAGES/libs/$addon_id"
+    [ -d "$pkg_dir" ] || continue
 
     # query package revision string
     cur_url_rev=$(meta_url_rev ${pkg_dir})
@@ -134,7 +151,8 @@ for d in $ADDON_BASE/depends/common/*platform $ADDON_BASE/addons/*.*; do
     sed \
       -i ${pkg_dir}/meta \
       -e "s%^PKG_URL_REV=.*%PKG_URL_REV=\"${pkg_url_rev}\"%" \
-      -e "s%^PKG_URL=.*%PKG_URL=\"$(dirname ${addon_url})/${addon_id}.git\"%"
+      -e "s%^PKG_URL=.*%PKG_URL=\"$(dirname ${addon_url})/$(basename ${addon_url} .git).git\"%" \
+      -e "s%^PKG_REV=.*%PKG_REV=\"1\"%"
 
     continue
   fi
@@ -145,7 +163,7 @@ for d in $ADDON_BASE/depends/common/*platform $ADDON_BASE/addons/*.*; do
     continue
   fi
 
-  # this is a new addon: create a package for it based on pvr.demo
+  # this is a new addon: create a package for it
   if [ ! -e ${ADDON_PKG_PREFIX}${addon_id}/meta ]; then
     echo "File ${ADDON_PKG_PREFIX}${addon_id}/meta not found. Creating new package..."
     #continue
@@ -157,9 +175,9 @@ for d in $ADDON_BASE/depends/common/*platform $ADDON_BASE/addons/*.*; do
     sed \
       -i ${ADDON_PKG_PREFIX}${addon_id}/meta \
       -e "s%^ADDON_ID=.*%ADDON_ID=\"${addon_id}\"%" \
-      -e "s%^ADDON_API=.*%ADDON_API=\"${ADDON_KODIVER}\"%" \
       -e "s%^ADDON_REPO=.*%ADDON_REPO=\"$(dirname ${addon_url})\"%" \
-      -e "s%^PKG_URL_REV=.*%PKG_URL_REV=\"1~${addon_githash}\"%"
+      -e "s%^ADDON_URL_REV_${ADDON_KODIVER}=.*%ADDON_URL_REV_${ADDON_KODIVER}=\"1~${addon_githash}\"%" \
+      -e "s%^ADDON_REV_${ADDON_KODIVER}=.*%ADDON_REV_${ADDON_KODIVER}=\"1\"%"
 
     continue
   fi
@@ -179,14 +197,12 @@ for d in $ADDON_BASE/depends/common/*platform $ADDON_BASE/addons/*.*; do
   echo "$addon_id $addon_url $addon_ref $pkg_url_rev *"
   #continue
 
-  #create_meta ${ADDON_PKG_PREFIX}${addon_id}
-
   sed \
     -i ${ADDON_PKG_PREFIX}${addon_id}/meta \
     -e "s%^ADDON_ID=.*%ADDON_ID=\"${addon_id}\"%" \
-    -e "s%^ADDON_API=.*%ADDON_API=\"${ADDON_KODIVER}\"%" \
     -e "s%^ADDON_REPO=.*%ADDON_REPO=\"$(dirname ${addon_url})\"%" \
-    -e "s%^PKG_URL_REV=.*%PKG_URL_REV=\"${pkg_url_rev}\"%"
+    -e "s%^ADDON_URL_REV_${ADDON_KODIVER}=.*%ADDON_URL_REV_${ADDON_KODIVER}=\"${pkg_url_rev}\"%" \
+    -e "s%^ADDON_REV_${ADDON_KODIVER}=.*%ADDON_REV_${ADDON_KODIVER}=\"1\"%"
 
 done
 

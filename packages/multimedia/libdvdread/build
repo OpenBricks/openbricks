@@ -1,22 +1,48 @@
 #!/bin/sh
 
 . config/options
-
 get_meta $1
+
 cd $PKG_BUILD_DIR
 
-do_gcc_strip_lto
-./configure2 --host=$TARGET_NAME \
-             --build=$HOST_NAME \
-             --prefix=/usr \
-             --disable-static \
-             --enable-shared \
-             --disable-debug \
-             --disable-strip \
-             --cc=$CC \
+do_autoconf
 
-make
-make_install
+do_build() {
+  if [ "$1" = shared ]; then
+    extra_config="--enable-shared --disable-static"
+    if pkg_uses $PKG_NAME dvdcss; then
+      extra_config="$extra_config --with-libdvdcss"
+    else
+      extra_config="$extra_config --without-libdvdcss"
+    fi
+  else
+    extra_config="--disable-shared --enable-static --with-libdvdcss"
+  fi
 
-sed -i "s%prefix=.*%prefix=$LIB_PREFIX%"     .install/usr/bin/dvdread-config
-sed -i "s%libdir=.*%libdir=$LIB_PREFIX/lib%" .install/usr/bin/dvdread-config
+  rm -rf obj-$1
+  mkdir -p obj-$1
+  cd obj-$1
+
+  STRIP=$TARGET_STRIP \
+  CC=$TARGET_CC CFLAGS="$(echo "$TARGET_CFLAGS" | sed -e "s/-flto\\S*//") $2" \
+  PKG_CONFIG_PATH=$LIB_PREFIX/lib/pkgconfig \
+  ../configure  --host=$TARGET_NAME \
+                --build=$HOST_NAME \
+                --prefix=/usr \
+                --disable-debug \
+                --disable-apidoc \
+                $extra_config
+  
+  make
+  make_install
+  cd ..
+}
+
+do_build shared ""
+do_build static "-D_XBMC -DHAVE_DVDCSS_DVDCSS_H"
+
+for f in obj-static/.install/usr/lib/*.a; do
+  cp $f obj-shared/.install/usr/lib/$(basename $f .a)-kodi.a
+done
+
+ln -sf obj-shared/.install

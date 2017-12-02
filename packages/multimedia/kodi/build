@@ -3,189 +3,125 @@
 . config/options
 get_meta $1
 
-export MAKEFLAGS=-j2
+cd $PKG_BUILD_DIR
 
-kodi_set_option() {
+
+kodi_set_feature() {
   PKG="$1"
   OPT="$2"
   CFG_LIST="$3"
-  pkg_uses $PKG $OPT && CFG=enable || CFG=disable
-  for CFG_NAME in $CFG_LIST; do
-    EXTRA_CONFIG="$EXTRA_CONFIG --$CFG-$CFG_NAME"
+  pkg_uses $PKG $OPT && val=ON || val=OFF
+  for cfg in $CFG_LIST; do
+    KODI_FEATURES="$KODI_FEATURES -DENABLE_$cfg=$val"
   done
   return 0
 }
 
-kodi_set_option $1 "opengl"            "gl"
-kodi_set_option $1 "opengles"          "gles"
-kodi_set_option $1 "openmax"           "openmax"
-kodi_set_option $1 "joystick"          "joystick"
-kodi_set_option $1 "zeroconf"          "avahi"
-kodi_set_option $1 "webserver"         "webserver"
-kodi_set_option $1 "vdpau"             "vdpau"
-kodi_set_option $1 "xvba"              "xvba"
-kodi_set_option $1 "vaapi"             "vaapi"
-kodi_set_option $1 "crystalhd"         "crystalhd"
-kodi_set_option $1 "pulse"             "pulse"
-kodi_set_option $1 "dvdcss"            "dvdcss optical-drive"
-kodi_set_option $1 "bluray"            "libbluray"
-kodi_set_option $1 "rtmp"              "rtmp"
-kodi_set_option $1 "nonfree"           "non-free"
-kodi_set_option $1 "libcec"            "libcec"
-kodi_set_option $1 "libnfs"            "nfs"
-kodi_set_option $1 "afpclient"         "afpclient"
-kodi_set_option $1 "airplay"           "airplay"
-kodi_set_option $1 "airtunes"          "airtunes"
-kodi_set_option $1 "screensavers"      "rsxs"
-kodi_set_option $1 "gstreamer"         "gstreamer"
-kodi_set_option $1 "xorg"              "x11 xrandr"
-kodi_set_option $1 "sdl"               "sdl"
-kodi_set_option $1 "alsa"               "alsa"
-
-
-# check for nVidia ARM Tegra2 optimizations
-CFG_TEGRA="--disable-tegra"
-
-
-case "$TARGET_PLATFORM" in
-  tegra2)
-    CFG_TEGRA="--enable-tegra"
-    ;;
-    
-  armada5xx)
-    EXTRA_CONFIG="$EXTRA_CONFIG --with-platform=marvell-dove"
-    ;;
-
-  a10|a20)
-    EXTRA_CONFIG="$EXTRA_CONFIG --with-platform=allwinner-a10"
-    export CEDARLIBS="-lcedarx"
-    #export CEDARLIBS="-lcedarv -lvecore"
-    ;;
-    
-  imx6)
-    EXTRA_CONFIG="$EXTRA_CONFIG --enable-codec=imxvpu"
-    ;;
-esac
-
 
 case "$TARGET_MACHINE" in
-  pandaboard)
-    EXTRA_CONFIG="$EXTRA_CONFIG --enable-player=gstplayer"  
-    ;;
-    
-  raspberrypi|raspberrypi2) 
-    EXTRA_CONFIG="$EXTRA_CONFIG --with-platform=raspberry-pi"
-    if pkg_uses $1 openmax; then
-      EXTRA_CONFIG="$EXTRA_CONFIG --disable-openmax --enable-player=omxplayer"
-      local_cflags="-I$LIB_PREFIX/include/interface/vcos/pthreads -I$LIB_PREFIX/include/interface/vmcs_host/linux"
-      local_cxxflags="-I$LIB_PREFIX/include/interface/vcos/pthreads -I$LIB_PREFIX/include/interface/vmcs_host/linux"
-    fi
-    ;;
+  raspberrypi|raspberrypi2) TARGET_NAME="rbpi" ;;
+  *)                        TARGET_NAME="linux" ;;
 esac
 
+KODI_FEATURES="\
+  -DENABLE_LIRC=ON \
+  -DENABLE_UPNP=ON \
+  -DENABLE_OPENSSL=ON \
+  -DENABLE_OPTICAL=ON \
+  -DENABLE_EVENTCLIENTS=ON \
+  -DENABLE_INTERNAL_CROSSGUID=OFF \
+"
 
-if [ "$FPU_OPTIMIZATIONS" = "neon" -o  "$FPU_OPTIMIZATIONS" = "neon-vfp4" ]; then
-  EXTRA_CONFIG="$EXTRA_CONFIG --enable-neon"
-fi
+case "$TARGET_PLATFORM" in
+     imx6) KODI_FEATURES="$KODI_FEATURES -DENABLE_IMX=ON" ;;
+  amlogic) KODI_FEATURES="$KODI_FEATURES -DENABLE_AML=ON" ;;
+esac
 
-[ "$FPU_OPTIMIZATIONS" = "neon-vfp4" ] && CFLAGS="$CFLAGS -mfpu=vfpv4"
-[ "$FPU_OPTIMIZATIONS" = "neon-vfp4" ] && CXXFLAGS="$CXXFLAGS -mfpu=vfpv4"
+kodi_set_feature $1 "opengl"            "OPENGL"
+kodi_set_feature $1 "opengles"          "OPENGLES"
+kodi_set_feature $1 "xorg"              "X11"
+kodi_set_feature $1 "sdl"               "SDL"
+kodi_set_feature $1 "vdpau"             "VDPAU"
+kodi_set_feature $1 "vaapi"             "VAAPI"
+kodi_set_feature $1 "alsa"              "ALSA"
+kodi_set_feature $1 "pulse"             "PULSEAUDIO"
+kodi_set_feature $1 "airtunes"          "AIRTUNES"
+kodi_set_feature $1 "dvdcss"            "DVDCSS"
+kodi_set_feature $1 "nonfree"           "NONFREE"
 
-export LIBS="$LIBS -lstdc++"
-export LIB_P=$LIB_PREFIX
+#kodi_set_feature $1 "libcec"            "CEC"
+#kodi_set_feature $1 "libnfs"            "NFS"
+#kodi_set_feature $1 "zeroconf"          "AVAHI"
+#kodi_set_feature $1 "webserver"         "MICROHTTPD"
 
-export PYTHON_VERSION=2.7
-export PYTHON_CPPFLAGS=-I$LIB_PREFIX/include/python2.7
-export PYTHON_LDFLAGS="-L$LIB_PREFIX/lib/python2.7 -lpython2.7"
-export PYTHON_SITE_PKG=$LIB_PREFIX/lib/python2.7/site-packages
-export PYTHON_EXTRA_LIBS="-lpthread -ldl -lutil"
-export PYTHON_EXTRA_LDFLAGS="-Xlinker -export-dynamic"
-
-#export ac_cv_path_JAVA_EXE="/usr/bin/java"
-
-# disable doxygen
-export ac_cv_path_DOXYGEN=""
-export ac_cv_path_DOXYGEN_EXE=none
-
-
-cd $PKG_BUILD_DIR
-
-touch .dummy.in
+#kodi_set_feature $1 "openmax"           "openmax"
+#kodi_set_feature $1 "joystick"          "joystick"
+#kodi_set_feature $1 "xvba"              "xvba"
+#kodi_set_feature $1 "crystalhd"         "crystalhd"
+#kodi_set_feature $1 "bluray"            "libbluray"
+#kodi_set_feature $1 "rtmp"              "rtmp"
+#kodi_set_feature $1 "afpclient"         "afpclient"
+#kodi_set_feature $1 "airplay"           "airplay"
+#kodi_set_feature $1 "screensavers"      "rsxs"
+#kodi_set_feature $1 "gstreamer"         "gstreamer"
 
 
-# bootstrap
-if [ ! -f configure ] ; then
-  # git version
-  echo "$PKG_URL_REV-$PKG_REV" > VERSION
-
-  # build libsquish for target
-  setup_toolchain target
-  do_gcc_strip_lto
-  cd tools/depends/native/libsquish-native
-  make NATIVEPLATFORM=target NATIVEPREFIX=$LIB_PREFIX
-  cd -
-  
-  # build TexturePacker (and libsquish) for host
-  setup_toolchain host
-  cd tools/depends/native/TexturePacker
+# build host tools
+setup_toolchain host
+for tool in JsonSchemaBuilder TexturePacker; do
+  cd tools/depends/native/$tool/src
+  do_autoconf
+  do_configure host
   make
+  make prefix=$ROOT/$PKG_BUILD_DIR/tools install
   cd -
-  
-  # autoreconf for directory . may fail ...
-  do_autoconf || true
-  setup_toolchain host
-  BOOTSTRAP_STANDALONE=1 make -f bootstrap.mk
+done
 
-  setup_toolchain host
-  BOOTSTRAP_STANDALONE=1 make -f codegenerator.mk
-  
-  # refresh addon list
-  cd project/cmake/addons/bootstrap
-  cmake . -DCMAKE_INSTALL_PREFIX=../addons
-  #make
-  cd -
-fi
 
-## problem with new glibc ..
-#if [ "$TARGET_LIBC" = glibc ] ; then
-#  sed -i 's%projectM_isnan isnan%projectM_isnan std::isnan%g' xbmc/visualizations/XBMCProjectM/libprojectM/Common.hpp
-#fi
+#  build package
+setup_toolchain target
+rm -rf .build
+mkdir -p .build
+cd .build
 
-sed -i 's%PYTHON_VERSION=$ac_python_version%PYTHON_VERSION=2.7%' configure
-GCC_NO_LTO=1 GCC_NO_GOLD=1 GCC_NO_GRAPHITE=1 GCC_NO_LOOP_TREE=1 \
-do_configure \
-  --with-arch=$TARGET_ARCH \
-  --with-cpu=$TARGET_CPU \
-  --disable-debug \
-  --enable-optimizations \
-  --disable-vdadecoder \
-  --disable-profiling \
-  --disable-goom \
-  --disable-ccache \
-  --disable-mid \
-  --disable-hal \
-  --disable-asap-codec \
-  --enable-projectm \
-  --with-ffmpeg=shared \
-  $CFG_TEGRA \
-  $EXTRA_CONFIG \
+# Hack: enable SSE2 for i386 target
+[ "$TARGET_ARCH" = i386 ] && export CFLAGS="$CFLAGS -msse2"
+[ "$TARGET_ARCH" = i386 ] && export CXXFLAGS="$CXXFLAGS -msse2"
 
-# leaked host includes break the Python components build
-sed -i Makefile.include -e "s:-I$ROOT/$TOOLCHAIN/include::"
+cmake \
+  -DCMAKE_SYSTEM_NAME=Linux \
+  -DCMAKE_FIND_ROOT_PATH=$LIB_PREFIX \
+  -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
+  -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
+  -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
+  -DCMAKE_FIND_NO_INSTALL_PREFIX=1 \
+  -DCMAKE_INSTALL_PREFIX=/usr \
+  -DENABLE_CCACHE=OFF \
+  -DKODI_DEPENDSBUILD=0 \
+  -DWITH_CPU=$TARGET_CPU \
+  -DWITH_ARCH=$TARGET_ARCH \
+  -DCORE_SYSTEM_NAME=$TARGET_NAME \
+  -DLIBDVDCSS_URL=$ROOT/sources/libdvdcss/libdvdcss-1.4.0+1~2f12236.tar.bz2 \
+  -DLIBDVDNAV_URL=$ROOT/sources/libdvdnav/libdvdnav-5.0.4+1~43b5f81.tar.bz2 \
+  -DLIBDVDREAD_URL=$ROOT/sources/libdvdread/libdvdread-5.90.0+1~17d99db.tar.bz2 \
+  $KODI_FEATURES -DGIT_VERSION="$PKG_URL_REV-$PKG_REV" \
+  ../project/cmake
 
-# leaked host includes also break libdvdnav
-sed -i lib/libdvd/libdvdnav/config.mak \
-    -e "s:^DVDREAD_CFLAGS=.*$:DVDREAD_CFLAGS=-I$LIB_PREFIX/include:" \
-    -e "s:^DVDREAD_LIBS=.*$:DVDREAD_LIBS=-L$LIB_PREFIX/lib -ldvdread:" \
+#cmake --build . -- VERBOSE=1
+make
+make DESTDIR=../.install install
+cd -
 
-#export MAKEFLAGS=-j1
-make externals
-make kodi.bin
-make kodi-xrandr
-make skins
+strip_bins .install/usr/lib/kodi
+strip_libs .install/usr/lib/kodi
 
-make_install
-strip_bins .install/usr/lib/kodi/ $install_dir_debug/usr/lib/debug
+# copy default settings
+cp -P $ROOT/$PACKAGES/$PKG_SECTION/$1/scripts/kodi-default-settings.sh \
+  .install/usr/lib/kodi/
+
+# hook into global home page
+mkdir -p .install/srv/www/htdocs
+cp $ROOT/$PACKAGES/$PKG_SECTION/$1/www/* .install/srv/www/htdocs
 
 
 # ToDo: Check if this is still needed...
@@ -197,26 +133,10 @@ if [ "$TARGET_ARCH" = arm ]; then
 fi
 
 # ToDo: Check if this is really needed...
-for i in .install/usr/lib/kodi/system/players/dvdplayer/*.so; do
+for i in .install/usr/lib/kodi/system/players/VideoPlayer/*.so; do
   lib=$(basename $i)
-  ln -sf kodi/system/players/dvdplayer/$lib .install/usr/lib/$lib
+  ln -sf kodi/system/players/VideoPlayer/$lib .install/usr/lib/$lib
 done
 
-cp -P $ROOT/$PACKAGES/$PKG_SECTION/$1/scripts/kodi-default-settings.sh \
-  .install/usr/lib/kodi/
-
-# remove unneeded files from skins
-for i in .install/usr/share/kodi/addons/skin.*; do
-  rm $i/media/Makefile*
-
-  if [ -f $i/media/Textures.xbt ]; then
-    find $i/media -type f -not -iregex ".*\.xbt" -delete
-    find $i/media -type d -empty -delete
-  fi
-done
-
-# hook into global home page
-mkdir -p .install/srv/www/htdocs
-cp $ROOT/$PACKAGES/$PKG_SECTION/$1/www/* .install/srv/www/htdocs
 
 exit 0

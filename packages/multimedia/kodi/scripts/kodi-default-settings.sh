@@ -72,6 +72,16 @@ if [ ! -f "$GUI_SETTINGS" ] ; then
   sed -i $GUI_SETTINGS \
       -e "s,GUI_LIMIT,$GUI_LIMIT," \
       -e "s,TZ_COUNTRY,$TZ_COUNTRY," -e "s,TZ,$TZ,"
+  
+  case "$SYS_PREFIX" in
+       rpi) CECCONFIG="rpi_2708_1001.xml" ;;
+    cubox*) CECCONFIG="cec_0471_1001.xml" ;;
+  esac
+  if [ -n "$CECCONFIG" ]; then
+    mkdir -p $USERDATA/peripheral_data
+    copy_if_present /etc/kodi/$SYS_PREFIX-cecdefaults.xml $USERDATA/peripheral_data/$CECCONFIG
+    copy_if_missing /etc/kodi/generic-cecdefaults.xml $USERDATA/peripheral_data/$CECCONFIG
+  fi
 fi
 
 # set default sources.xml
