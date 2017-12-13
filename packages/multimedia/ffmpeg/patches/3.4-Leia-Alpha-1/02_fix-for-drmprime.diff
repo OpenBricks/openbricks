@@ -1,0 +1,38 @@
+diff --git a/libavcodec/v4l2_buffers.c b/libavcodec/v4l2_buffers.c
+index 065074c9447..b522fd2bcf9 100644
+--- a/libavcodec/v4l2_buffers.c
++++ b/libavcodec/v4l2_buffers.c
+@@ -65,7 +65,7 @@ static inline void v4l2_set_pts(V4L2Buffer *out, int64_t pts)
+     out->buf.timestamp.tv_sec = v4l2_pts / USEC_PER_SEC;
+ }
+ 
+-static inline uint64_t v4l2_get_pts(V4L2Buffer *avbuf)
++static inline int64_t v4l2_get_pts(V4L2Buffer *avbuf)
+ {
+     V4L2m2mContext *s = buf_to_m2mctx(avbuf);
+     AVRational v4l2_timebase = { 1, USEC_PER_SEC };
+@@ -74,7 +74,10 @@ static inline uint64_t v4l2_get_pts(V4L2Buffer *avbuf)
+     /* convert pts back to encoder timebase */
+     v4l2_pts = avbuf->buf.timestamp.tv_sec * USEC_PER_SEC + avbuf->buf.timestamp.tv_usec;
+ 
+-    return av_rescale_q(v4l2_pts, v4l2_timebase, s->avctx->time_base);
++    if (v4l2_pts == 0)
++        return AV_NOPTS_VALUE;
++    else
++        return av_rescale_q(v4l2_pts, v4l2_timebase, s->avctx->time_base);
+ }
+ 
+ static enum AVColorPrimaries v4l2_get_color_primaries(V4L2Buffer *buf)
+diff --git a/libavcodec/v4l2_m2m_dec.c b/libavcodec/v4l2_m2m_dec.c
+index 82397fc8a1a..bf990c051dc 100644
+--- a/libavcodec/v4l2_m2m_dec.c
++++ b/libavcodec/v4l2_m2m_dec.c
+@@ -178,6 +178,8 @@ static av_cold int v4l2_decode_init(AVCodecContext *avctx)
+     capture->av_codec_id = AV_CODEC_ID_RAWVIDEO;
+     capture->av_pix_fmt = avctx->pix_fmt;
+ 
++    avctx->time_base = AV_TIME_BASE_Q;
++
+     ret = ff_v4l2_m2m_codec_init(avctx);
+     if (ret) {
+         av_log(avctx, AV_LOG_ERROR, "can't configure decoder\n");
