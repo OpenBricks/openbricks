@@ -1,27 +1,27 @@
 #!/bin/sh
 
+mmcdev=/dev/mmcblk0
+
 resize_part () {
-  count_part=`ls /dev/mmcblk0p* | wc -l`
-  a=`fdisk -l /dev/mmcblk0 | grep p${count_part}`
-  part_start=`echo $a| cut -d' ' -f2`
+  part_no=$(ls ${mmcdev}p* | wc -l)
+  a=$(fdisk -l ${mmcdev} | grep ${mmcdev}p${part_no})
+  part_start=$(echo $a | sed -e "s/[ *]\+/\t/g" | cut -f4)
   
-  fdisk_input="d\n${count_part}\nn\np\n${count_part}\n${part_start}\n\nw\n"
-  echo -e $fdisk_input | fdisk /dev/mmcblk0
-  touch /etc/need-to-enlarge
-  rm /etc/need-to-resize
-  reboot
+  if [ -n "${part_start}" ]; then
+    fdisk_input="d\n${part_no}\nn\np\n${part_no}\n${part_start}\n\nw\n"
+    echo -e "$fdisk_input" | fdisk -u ${mmcdev}
+    touch /etc/need-to-enlarge
+    rm /etc/need-to-resize
+    reboot
+  fi
 }
 
 enlarge_part () {
-  count_part=`ls /dev/mmcblk0p* | wc -l`
-  resize2fs /dev/mmcblk0p${count_part}
+  part_no=$(ls ${mmcdev}p* | wc -l)
+  resize2fs ${mmcdev}p${part_no}
   rm /etc/need-to-enlarge
 }
 
-if [ -f /etc/need-to-resize ] ; then
-  resize_part
-fi
-
-if [ -f /etc/need-to-enlarge ] ; then
-  enlarge_part
-fi
+[ -f /etc/need-to-resize ] && resize_part
+[ -f /etc/need-to-enlarge ] && enlarge_part
+exit 0
