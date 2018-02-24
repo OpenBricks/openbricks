@@ -1,0 +1,585 @@
+--- a/arch/arm/boot/dts/overlays/Makefile	2018-02-23 21:10:47.999812757 +0100
++++ b/arch/arm/boot/dts/overlays/Makefile	2018-02-23 21:10:48.031812559 +0100
+@@ -124,7 +124,13 @@
+ 	vga666.dtbo \
+ 	w1-gpio.dtbo \
+ 	w1-gpio-pullup.dtbo \
+-	wittypi.dtbo
++	wittypi.dtbo \
++	jbtek.dtbo \
++	oled-ssd1306.dtbo \
++	oled-ssd1331.dtbo \
++	waveshare32b.dtbo \
++	waveshare35a.dtbo \
++	waveshare35b.dtbo
+ 
+ targets += dtbs dtbs_install
+ targets += $(dtbo-y)
+diff -Naur a/arch/arm/boot/dts/overlays/jbtek-overlay.dts b/arch/arm/boot/dts/overlays/jbtek-overlay.dts
+--- a/arch/arm/boot/dts/overlays/jbtek-overlay.dts	1970-01-01 01:00:00.000000000 +0100
++++ b/arch/arm/boot/dts/overlays/jbtek-overlay.dts	2018-02-23 21:06:37.021369015 +0100
+@@ -0,0 +1,96 @@
++/*
++ * Device Tree overlay for PiScreen 3.5" display shield by Ozzmaker
++ *
++ */
++
++/dts-v1/;
++/plugin/;
++
++/ {
++	compatible = "brcm,bcm2835", "brcm,bcm2708", "brcm,bcm2709";
++
++	fragment@0 {
++		target = <&spi0>;
++		__overlay__ {
++			status = "okay";
++
++			spidev@0{
++				status = "disabled";
++			};
++
++			spidev@1{
++				status = "disabled";
++			};
++		};
++	};
++
++	fragment@1 {
++		target = <&gpio>;
++		__overlay__ {
++			jbtek_pins: jbtek_pins {
++				brcm,pins = <17 25 24 22>;
++				brcm,function = <0 1 1 1>; /* in out out out */
++			};
++		};
++	};
++
++	fragment@2 {
++		target = <&spi0>;
++		__overlay__ {
++			/* needed to avoid dtc warning */
++			#address-cells = <1>;
++			#size-cells = <0>;
++
++			jbtek: jbtek@0{
++				compatible = "ilitek,ili9486";
++				reg = <0>;
++				pinctrl-names = "default";
++				pinctrl-0 = <&jbtek_pins>;
++
++				spi-max-frequency = <16000000>;
++				rotate = <90>;
++				bgr;
++				fps = <30>;
++				buswidth = <8>;
++				regwidth = <16>;
++				reset-gpios = <&gpio 25 0>;
++				dc-gpios = <&gpio 24 0>;
++				led-gpios = <&gpio 22 1>;
++				debug = <0>;
++
++				init = <0x10000b0 0x00
++				        0x1000011
++					0x20000ff
++					0x100003a 0x55
++					0x1000036 0x28
++					0x10000c2 0x44
++					0x10000c5 0x00 0x00 0x00 0x00
++					0x10000e0 0x0f 0x1f 0x1c 0x0c 0x0f 0x08 0x48 0x98 0x37 0x0a 0x13 0x04 0x11 0x0d 0x00
++					0x10000e1 0x0f 0x32 0x2e 0x0b 0x0d 0x05 0x47 0x75 0x37 0x06 0x10 0x03 0x24 0x20 0x00
++					0x10000e2 0x0f 0x32 0x2e 0x0b 0x0d 0x05 0x47 0x75 0x37 0x06 0x10 0x03 0x24 0x20 0x00
++					/* piscreen -> jbtek */
++					0x1000036 0x28
++					0x1000011
++					0x1000029>;
++			};
++
++			jbtek-ts@1 {
++				compatible = "ti,ads7846";
++				reg = <1>;
++
++				spi-max-frequency = <2000000>;
++				interrupts = <17 2>; /* high-to-low edge triggered */
++				interrupt-parent = <&gpio>;
++				pendown-gpio = <&gpio 17 0>;
++				ti,x-plate-ohms = /bits/ 16 <60>;
++				ti,pressure-max = /bits/ 16 <255>;
++			};
++		};
++	};
++	__overrides__ {
++		speed =		<&jbtek>,"spi-max-frequency:0";
++		rotate =	<&jbtek>,"rotate:0";
++		fps =		<&jbtek>,"fps:0";
++		debug =		<&jbtek>,"debug:0";
++	};
++};
+diff -Naur a/arch/arm/boot/dts/overlays/oled-ssd1306-overlay.dts b/arch/arm/boot/dts/overlays/oled-ssd1306-overlay.dts
+--- a/arch/arm/boot/dts/overlays/oled-ssd1306-overlay.dts	1970-01-01 01:00:00.000000000 +0100
++++ b/arch/arm/boot/dts/overlays/oled-ssd1306-overlay.dts	2018-02-23 21:06:37.021369015 +0100
+@@ -0,0 +1,81 @@
++// Definitions for Rpi-Proto
++/dts-v1/;
++/plugin/;
++
++/ {
++  compatible = "brcm,bcm2835", "brcm,bcm2708", "brcm,bcm2709";
++
++  fragment@0 {
++    target = <&spi0>;
++    __overlay__ {
++      status = "okay";
++      spidev@0 {
++          status = "disabled";
++      };
++      spidev@1 {
++          status = "disabled";
++      };
++    };
++  };
++
++  fragment@1 {
++    target = <&gpio>;
++    __overlay__ {
++      ssd1306_pins: ssd1306_pins {
++          brcm,pins = <24 23>;
++          brcm,function = <1 1>;
++      };
++    };
++  };
++
++  fragment@2 {
++    target = <&spi0>;
++    __overlay__ {
++      /* needed to avoid dtc warning */
++      #address-cells = <1>;
++      #size-cells = <0>;
++
++      ssd1306: ssd1306@0 {
++        compatible = "solomon,ssd1306";
++        reg = <0>;
++        pinctrl-names = "default";
++        pinctrl-0 = <&ssd1306_pins>;
++
++        spi-max-frequency = <16000000>;
++        txbuflen = <32768>;
++        bgr = <0>;
++        fps = <30>;
++        buswidth = <8>;
++
++        reset-gpios = <&gpio 24 0>;
++        dc-gpios = <&gpio 23 0>;
++        debug = <0>;
++        
++        //init = <0x10000ae /* Display Off */
++        //        0x10000d5 0x80 /* Clock Div */
++        //        0x10000a8 0x3f /* Set multiplex */
++        //        0x10000d3 0x00 /* Set Display Offset */
++        //        0x1000040 /* Set Display Start Line */
++        //        0x100008d 0x14 /* Charge Pump */
++        //        0x1000020 0x00 /* Set memory mode */
++        //        0x10000a1 /* SegRemap */
++        //        0x10000c8 /* COM Output Scan Direction */
++        //        0x10000da 0x12 /* Set COM Pins Hardware Conf */
++        //        0x1000081 0xcf /* Set Contrast */
++        //        0x10000d9 0xf1 /* Precharge */
++        //        0x10000db 0x40 /* vcomh */
++        //        0x10000a4 /* Display All ON and Resume to RAM  */
++        //        0x10000a6 /* Normal Display */
++        //        0x10000af /* Set Sleep Mode Display On */
++        //        >;
++        };
++      };
++    };
++    __overrides__ {
++            speed =	<&ssd1306>,"spi-max-frequency:0";
++            txbuflen =	<&ssd1306>,"txbuflen:0";
++            fps =	<&ssd1306>,"fps:0";
++            bgr =	<&ssd1306>,"bgr:0";
++            debug =	<&ssd1306>,"debug:0";
++    };
++};
+diff -Naur a/arch/arm/boot/dts/overlays/oled-ssd1331-overlay.dts b/arch/arm/boot/dts/overlays/oled-ssd1331-overlay.dts
+--- a/arch/arm/boot/dts/overlays/oled-ssd1331-overlay.dts	1970-01-01 01:00:00.000000000 +0100
++++ b/arch/arm/boot/dts/overlays/oled-ssd1331-overlay.dts	2018-02-23 21:06:37.021369015 +0100
+@@ -0,0 +1,85 @@
++// Definitions for Rpi-Proto
++/dts-v1/;
++/plugin/;
++
++/ {
++  compatible = "brcm,bcm2835", "brcm,bcm2708", "brcm,bcm2709";
++
++  fragment@0 {
++    target = <&spi0>;
++    __overlay__ {
++      status = "okay";
++      spidev@0 {
++          status = "disabled";
++      };
++      spidev@1 {
++          status = "disabled";
++      };
++    };
++  };
++
++  fragment@1 {
++    target = <&gpio>;
++    __overlay__ {
++      ssd1331_pins: ssd1331_pins {
++          brcm,pins = <24 23>;
++          brcm,function = <1 1>;
++      };
++    };
++  };
++
++  fragment@2 {
++    target = <&spi0>;
++    __overlay__ {
++      /* needed to avoid dtc warning */
++      #address-cells = <1>;
++      #size-cells = <0>;
++
++      ssd1331: ssd1331@0 {
++        compatible = "solomon,ssd1331";
++        reg = <0>;
++        pinctrl-names = "default";
++        pinctrl-0 = <&ssd1331_pins>;
++
++        spi-max-frequency = <16000000>;
++        txbuflen = <32768>;
++        bgr = <0>;
++        fps = <30>;
++        buswidth = <8>;
++
++        reset-gpios = <&gpio 24 0>;
++        dc-gpios = <&gpio 23 0>;
++        debug = <0>;
++        
++        init = <0x10000ae /* Display Off */
++                0x10000a0 0x72 /* Set Colour Depth and left to right */
++                0x10000a1 0x00 /* Set Display Start Line */
++                0x10000a2 0x00 /* Set Display Offset */
++                0x10000a4 /* Normal Display */
++                0x10000a8 0x3f /* Set multiplex */
++                0x10000ad 0x8e /* Set master */
++                /*0x10000b0 0x0b  Set power mode */
++                0x10000b1 0x31 /* Precharge */
++                0x10000b3 0xf0 /* Clock Div */
++                0x100008a 0x64 /* Precharge A */
++                0x100008b 0x78 /* Precharge B */
++                0x100008c 0x64 /* Precharge C  */
++                0x10000bb 0x3a /* Precharge level */
++                0x10000be 0x3e /* vcomh */
++                0x1000087 0x06 /* Master current */
++                0x1000081 0x91 /* Contrast A */
++                0x1000082 0x50 /* Contrast B */
++                0x1000083 0x7d /* Contrast C */
++                0x10000af /* Set Sleep Mode Display On */
++                >;
++        };
++      };
++    };
++    __overrides__ {
++            speed =	<&ssd1331>,"spi-max-frequency:0";
++            txbuflen =	<&ssd1331>,"txbuflen:0";
++            fps =	<&ssd1331>,"fps:0";
++            bgr =	<&ssd1331>,"bgr:0";
++            debug =	<&ssd1331>,"debug:0";
++    };
++};
+diff -Naur a/arch/arm/boot/dts/overlays/waveshare32b-overlay.dts b/arch/arm/boot/dts/overlays/waveshare32b-overlay.dts
+--- a/arch/arm/boot/dts/overlays/waveshare32b-overlay.dts	1970-01-01 01:00:00.000000000 +0100
++++ b/arch/arm/boot/dts/overlays/waveshare32b-overlay.dts	2018-02-23 21:06:37.021369015 +0100
+@@ -0,0 +1,84 @@
++/*
++ * Device Tree overlay for waveshare 3.2inch TFT LCD
++ *
++ */
++
++/dts-v1/;
++/plugin/;
++
++/ {
++	compatible = "brcm,bcm2835", "brcm,bcm2708", "brcm,bcm2709";
++
++	fragment@0 {
++		target = <&spi0>;
++		__overlay__ {
++			status = "okay";
++
++			spidev@0{
++				status = "disabled";
++			};
++
++			spidev@1{
++				status = "disabled";
++			};
++		};
++	};
++
++	fragment@1 {
++		target = <&gpio>;
++		__overlay__ {
++			waveshare32b_pins: waveshare32b_pins {
++				brcm,pins = <17 27 22>;
++				brcm,function = <0 0 0>; /* in in in */
++			};
++		};
++	};
++
++	fragment@2 {
++		target = <&spi0>;
++		__overlay__ {
++			/* needed to avoid dtc warning */
++			#address-cells = <1>;
++			#size-cells = <0>;
++
++			waveshare32b: waveshare32b@0{
++				compatible = "ilitek,ili9340";
++				reg = <0>;
++				pinctrl-names = "default";
++				pinctrl-0 = <&waveshare32b_pins>;
++
++				spi-max-frequency = <16000000>;
++				txbuflen = <32768>;
++				rotate = <90>;
++				fps = <25>;
++				bgr = <0>;
++				buswidth = <8>;
++				reset-gpios = <&gpio 27 0>;
++				dc-gpios = <&gpio 22 0>;
++				debug = <0>;
++			};
++
++			waveshare32b_ts: waveshare32b-ts@1 {
++				compatible = "ti,ads7846";
++				reg = <1>;
++
++				spi-max-frequency = <2000000>;
++				interrupts = <17 2>; /* high-to-low edge triggered */
++				interrupt-parent = <&gpio>;
++				pendown-gpio = <&gpio 17 0>;
++				ti,x-plate-ohms = /bits/ 16 <60>;
++				ti,pressure-max = /bits/ 16 <255>;
++			};
++		};
++	};
++
++	__overrides__ {
++		speed =   	<&waveshare32b>,"spi-max-frequency:0";
++		txbuflen =	<&waveshare32b>,"txbuflen:0";
++		rotate =  	<&waveshare32b>,"rotate:0";
++		fps =     	<&waveshare32b>,"fps:0";
++		bgr =		<&waveshare32b>,"bgr:0";
++		debug =   	<&waveshare32b>,"debug:0";
++		swapxy =  	<&waveshare32b_ts>,"ti,swap-xy?";
++	};
++};
+diff -Naur a/arch/arm/boot/dts/overlays/waveshare35a-overlay.dts b/arch/arm/boot/dts/overlays/waveshare35a-overlay.dts
+--- a/arch/arm/boot/dts/overlays/waveshare35a-overlay.dts	1970-01-01 01:00:00.000000000 +0100
++++ b/arch/arm/boot/dts/overlays/waveshare35a-overlay.dts	2018-02-23 21:06:37.021369015 +0100
+@@ -0,0 +1,99 @@
++/*
++ * Device Tree overlay for waveshare 3.5inch TFT LCD
++ *
++ */
++
++/dts-v1/;
++/plugin/;
++
++/ {
++	compatible = "brcm,bcm2835", "brcm,bcm2708", "brcm,bcm2709";
++
++	fragment@0 {
++		target = <&spi0>;
++		__overlay__ {
++			status = "okay";
++
++			spidev@0{
++				status = "disabled";
++			};
++
++			spidev@1{
++				status = "disabled";
++			};
++		};
++	};
++
++	fragment@1 {
++		target = <&gpio>;
++		__overlay__ {
++			waveshare35a_pins: waveshare35a_pins {
++				brcm,pins = <17 25 24>;
++				brcm,function = <0 0 0>; /* in in in */
++			};
++		};
++	};
++
++	fragment@2 {
++		target = <&spi0>;
++		__overlay__ {
++			/* needed to avoid dtc warning */
++			#address-cells = <1>;
++			#size-cells = <0>;
++
++			waveshare35a: waveshare35a@0{
++				compatible = "ilitek,ili9486";
++				reg = <0>;
++				pinctrl-names = "default";
++				pinctrl-0 = <&waveshare35a_pins>;
++
++				spi-max-frequency = <16000000>;
++				txbuflen = <32768>;
++				rotate = <90>;
++				bgr = <0>;
++				fps = <30>;
++				buswidth = <8>;
++				regwidth = <16>;
++				reset-gpios = <&gpio 25 0>;
++				dc-gpios = <&gpio 24 0>;
++				debug = <0>;
++
++				init = <0x10000b0 0x00
++				        0x1000011
++					0x20000ff
++					0x100003a 0x55
++					0x1000036 0x28
++					0x10000c2 0x44
++					0x10000c5 0x00 0x00 0x00 0x00
++					0x10000e0 0x0f 0x1f 0x1c 0x0c 0x0f 0x08 0x48 0x98 0x37 0x0a 0x13 0x04 0x11 0x0d 0x00
++					0x10000e1 0x0f 0x32 0x2e 0x0b 0x0d 0x05 0x47 0x75 0x37 0x06 0x10 0x03 0x24 0x20 0x00
++					0x10000e2 0x0f 0x32 0x2e 0x0b 0x0d 0x05 0x47 0x75 0x37 0x06 0x10 0x03 0x24 0x20 0x00
++					/* piscreen -> waveshare35a */
++					0x1000036 0x28
++					0x1000011
++					0x1000029>;
++			};
++
++			waveshare35a_ts: waveshare35a-ts@1 {
++				compatible = "ti,ads7846";
++				reg = <1>;
++
++				spi-max-frequency = <2000000>;
++				interrupts = <17 2>; /* high-to-low edge triggered */
++				interrupt-parent = <&gpio>;
++				pendown-gpio = <&gpio 17 0>;
++				ti,x-plate-ohms = /bits/ 16 <60>;
++				ti,pressure-max = /bits/ 16 <255>;
++			};
++		};
++	};
++	__overrides__ {
++		speed =		<&waveshare35a>,"spi-max-frequency:0";
++		txbuflen =	<&waveshare35a>,"txbuflen:0";
++		rotate =	<&waveshare35a>,"rotate:0";
++		fps =		<&waveshare35a>,"fps:0";
++		bgr =		<&waveshare35a>,"bgr:0";
++		debug =		<&waveshare35a>,"debug:0";
++		swapxy =	<&waveshare35a_ts>,"ti,swap-xy?";
++	};
++};
+diff -Naur a/arch/arm/boot/dts/overlays/waveshare35b-overlay.dts b/arch/arm/boot/dts/overlays/waveshare35b-overlay.dts
+--- a/arch/arm/boot/dts/overlays/waveshare35b-overlay.dts	1970-01-01 01:00:00.000000000 +0100
++++ b/arch/arm/boot/dts/overlays/waveshare35b-overlay.dts	2018-02-23 21:06:37.021369015 +0100
+@@ -0,0 +1,99 @@
++/*
++ * Device Tree overlay for waveshare 3.5inch IPS LCD
++ *
++ */
++
++/dts-v1/;
++/plugin/;
++
++/ {
++	compatible = "brcm,bcm2835", "brcm,bcm2708", "brcm,bcm2709";
++
++	fragment@0 {
++		target = <&spi0>;
++		__overlay__ {
++			status = "okay";
++
++			spidev@0 {
++				status = "disabled";
++			};
++
++			spidev@1 {
++				status = "disabled";
++			};
++		};
++	};
++
++	fragment@1 {
++		target = <&gpio>;
++		__overlay__ {
++			waveshare35b_pins: waveshare35b_pins {
++				brcm,pins = <17 25 24>;
++				brcm,function = <0 0 0>; /* in in in */
++			};
++		};
++	};
++
++	fragment@2 {
++		target = <&spi0>;
++		__overlay__ {
++			/* needed to avoid dtc warning */
++			#address-cells = <1>;
++			#size-cells = <0>;
++
++			waveshare35b: waveshare35b@0 {
++				compatible = "ilitek,ili9486";
++				reg = <0>;
++				pinctrl-names = "default";
++				pinctrl-0 = <&waveshare35b_pins>;
++
++				spi-max-frequency = <15000000>;
++				txbuflen = <32768>;
++				rotate = <90>;
++				bgr = <0>;
++				fps = <30>;
++				buswidth = <8>;
++				regwidth = <16>;
++				reset-gpios = <&gpio 25 0>;
++				dc-gpios = <&gpio 24 0>;
++				debug = <0>;
++
++				init = <0x10000b0 0x0
++				        0x1000011
++				        0x20000ff
++				        0x100003a 0x55
++				        0x1000036 0x28
++				        0x1000021
++				        0x10000c0 0x9 0x9
++				        0x10000c1 0x41 0x0
++				        0x10000c5 0x0 0x36
++				        0x10000e0 0x0 0x2c 0x2c 0xb 0xc 0x4 0x4c 0x64 0x36 0x3 0xe 0x1 0x10 0x1 0x0
++				        0x10000e1 0xf 0x37 0x37 0xc 0xf 0x5 0x50 0x32 0x36 0x4 0xb 0x0 0x19 0x14 0xf
++				        0x1000011
++				        0x20000ff
++				        0x1000029>;
++			};
++
++			waveshare35b_ts: waveshare35b-ts@1 {
++				compatible = "ti,ads7846";
++				reg = <1>;
++
++				spi-max-frequency = <2000000>;
++				interrupts = <17 2>; /* high-to-low edge triggered */
++				interrupt-parent = <&gpio>;
++				pendown-gpio = <&gpio 17 0>;
++				ti,x-plate-ohms = /bits/ 16 <60>;
++				ti,pressure-max = /bits/ 16 <255>;
++			};
++		};
++	};
++	__overrides__ {
++		speed =		<&waveshare35b>,"spi-max-frequency:0";
++		txbuflen =	<&waveshare35b>,"txbuflen:0";
++		rotate =	<&waveshare35b>,"rotate:0";
++		fps =		<&waveshare35b>,"fps:0";
++		bgr =		<&waveshare35b>,"bgr:0";
++		debug =		<&waveshare35b>,"debug:0";
++		swapxy =	<&waveshare35b_ts>,"ti,swap-xy?";
++	};
++};
