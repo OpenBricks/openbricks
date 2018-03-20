@@ -1,0 +1,38 @@
+From 0f52924e74e3953be32164e1815e98c468869f08 Mon Sep 17 00:00:00 2001
+From: Rudi <r.ihle@s-t.de>
+Date: Tue, 20 Mar 2018 20:10:15 +0100
+Subject: [PATCH] MXC-IPU: Avoid message flood on some (interlaced) videos
+
+As zero appears to be a valid value for 'vdi_save_lines', don't
+spam the log with error messages when this happens.
+
+Signed-off-by: Rudi <r.ihle@s-t.de>
+---
+ drivers/mxc/ipu3/ipu_device.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/mxc/ipu3/ipu_device.c b/drivers/mxc/ipu3/ipu_device.c
+index 601221c..eb1c5f7 100644
+--- a/drivers/mxc/ipu3/ipu_device.c
++++ b/drivers/mxc/ipu3/ipu_device.c
+@@ -2438,13 +2438,15 @@ static void vdi_split_process(struct ipu_soc *ipu, struct ipu_task_entry *t)
+ 		line_size = t->output.crop.w;
+ 
+ 	vdi_save_lines = (t->output.crop.h - t->set.sp_setting.ud_split_line)/2;
+-	vdi_size = vdi_save_lines * line_size;
+ 	if (vdi_save_lines <= 0) {
+-		dev_err(t->dev, "[0x%p] vdi_save_line error\n", (void *)t);
+ 		mutex_unlock(lock);
++		if (vdi_save_lines)
++			dev_err(t->dev, "[0x%p] vdi_save_line error\n", (void *)t);
+ 		return;
+ 	}
+ 
++	vdi_size = vdi_save_lines * line_size;
++
+ 	/*check vditmpbuf buffer have alloced or buffer size is changed */
+ 	if ((vdi_save_lines != parent->old_save_lines) ||
+ 		(vdi_size != parent->old_size)) {
+-- 
+2.7.4
+
