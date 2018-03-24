@@ -1,0 +1,53 @@
+From a2c59d841fd078616be7c01d972924ca64e20126 Mon Sep 17 00:00:00 2001
+From: warped-rudi <r.ihle@s-t.de>
+Date: Thu, 22 Mar 2018 12:26:34 +0100
+Subject: [PATCH] MXC-IPU: ENGR00161315 rework: Use correct cache size
+
+The output stride must always be considered when calculating the size of the
+cache area to be invalidated. This patch unifies this for all code paths.
+
+Signed-off-by: warped-rudi <r.ihle@s-t.de>
+---
+ drivers/mxc/ipu3/ipu_device.c | 10 ++++++----
+ 1 file changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/mxc/ipu3/ipu_device.c b/drivers/mxc/ipu3/ipu_device.c
+index a5c85e4..849f17b 100644
+--- a/drivers/mxc/ipu3/ipu_device.c
++++ b/drivers/mxc/ipu3/ipu_device.c
+@@ -2488,6 +2488,8 @@ static void vdi_split_process(struct ipu_soc *ipu, struct ipu_task_entry *t)
+ 		filled  = parent->buf0filled++;
+ 	}
+ 
++	vdi_size = vdi_save_lines * t->set.ostride;
++
+ 	if (stripe_mode & UP_STRIPE) {
+ 		if ((filled & 1) == 0) {
+ 			offset_addr = t->set.o_off +
+@@ -2509,9 +2511,9 @@ static void vdi_split_process(struct ipu_soc *ipu, struct ipu_task_entry *t)
+ 						tmp_buf + i*line_size, line_size);
+ 
+ 			dmac_flush_range(base_off + offset_addr,
+-					base_off + offset_addr + i*t->set.ostride);
++					base_off + offset_addr + vdi_size);
+ 			outer_flush_range(t->output.paddr + offset_addr,
+-					t->output.paddr + offset_addr + i*t->set.ostride);
++					t->output.paddr + offset_addr + vdi_size);
+ 		}
+ 	} else {
+ 		if ((filled & 1) == 0) {
+@@ -2533,9 +2535,9 @@ static void vdi_split_process(struct ipu_soc *ipu, struct ipu_task_entry *t)
+ 						line_size);
+ 
+ 			dmac_flush_range(base_off + offset_addr,
+-					base_off + offset_addr + i*t->set.ostride);
++					base_off + offset_addr + vdi_size);
+ 			outer_flush_range(t->output.paddr + offset_addr,
+-					t->output.paddr + offset_addr + i*t->set.ostride);
++					t->output.paddr + offset_addr + vdi_size);
+ 		}
+ 	}
+ 
+-- 
+2.7.4
+

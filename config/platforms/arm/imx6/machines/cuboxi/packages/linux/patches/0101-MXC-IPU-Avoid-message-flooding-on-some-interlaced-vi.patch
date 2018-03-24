@@ -1,0 +1,70 @@
+From ec5366b4432ee3bf230563146f377a9c3c398165 Mon Sep 17 00:00:00 2001
+From: Rudi <r.ihle@s-t.de>
+Date: Tue, 20 Mar 2018 20:10:15 +0100
+Subject: [PATCH] MXC-IPU: Avoid message flooding on some interlaced videos
+
+Since zero appears to be a valid value for 'vdi_save_lines', don't spam
+the log with error messages when this happens. Also acquire 'vdic_lock'
+only when we are really going to modify data and remove an unused variable.
+
+Signed-off-by: Rudi <r.ihle@s-t.de>
+---
+ drivers/mxc/ipu3/ipu_device.c | 25 +++++++++++++------------
+ 1 file changed, 13 insertions(+), 12 deletions(-)
+
+diff --git a/drivers/mxc/ipu3/ipu_device.c b/drivers/mxc/ipu3/ipu_device.c
+index 601221c..39c86d9 100644
+--- a/drivers/mxc/ipu3/ipu_device.c
++++ b/drivers/mxc/ipu3/ipu_device.c
+@@ -2413,20 +2413,24 @@ static void vdi_split_process(struct ipu_soc *ipu, struct ipu_task_entry *t)
+ 	u32 vdi_size;
+ 	u32 vdi_save_lines;
+ 	u32 stripe_mode;
+-	u32 task_no;
+ 	u32 i, offset_addr;
+ 	u32 line_size;
+ 	unsigned char  *base_off;
+ 	struct ipu_task_entry *parent = t->parent;
+-	struct mutex *lock = &parent->vdic_lock;
++	struct mutex *lock;
+ 
+ 	if (!parent) {
+ 		dev_err(t->dev, "ERR[0x%x]invalid parent\n", t->task_no);
+ 		return;
+ 	}
+-	mutex_lock(lock);
+-	stripe_mode = t->task_no & 0xf;
+-	task_no = t->task_no >> 4;
++
++	vdi_save_lines = (t->output.crop.h - t->set.sp_setting.ud_split_line)/2;
++	if (vdi_save_lines == 0)
++		return;
++	if (vdi_save_lines < 0) {
++		dev_err(t->dev, "[0x%p] vdi_save_line error\n", (void *)t);
++		return;
++	}
+ 
+ 	/* Save both luma and chroma part for interleaved YUV(e.g. YUYV).
+ 	 * Save luma part for non-interleaved and partial-interleaved
+@@ -2436,14 +2440,11 @@ static void vdi_split_process(struct ipu_soc *ipu, struct ipu_task_entry *t)
+ 		line_size = t->output.crop.w * fmt_to_bpp(t->output.format)/8;
+ 	else
+ 		line_size = t->output.crop.w;
+-
+-	vdi_save_lines = (t->output.crop.h - t->set.sp_setting.ud_split_line)/2;
+ 	vdi_size = vdi_save_lines * line_size;
+-	if (vdi_save_lines <= 0) {
+-		dev_err(t->dev, "[0x%p] vdi_save_line error\n", (void *)t);
+-		mutex_unlock(lock);
+-		return;
+-	}
++
++	lock = &parent->vdic_lock;
++	mutex_lock(lock);
++	stripe_mode = t->task_no & SPLIT_MASK;
+ 
+ 	/*check vditmpbuf buffer have alloced or buffer size is changed */
+ 	if ((vdi_save_lines != parent->old_save_lines) ||
+-- 
+2.7.4
+

@@ -1,0 +1,193 @@
+From 5f97e2c9cf24ddba689012ac77073c1d58735b18 Mon Sep 17 00:00:00 2001
+From: warped-rudi <r.ihle@s-t.de>
+Date: Fri, 23 Mar 2018 08:17:15 +0100
+Subject: [PATCH] MXC-IPU: ENGR00161315 rework: Simplify stripe processing
+
+We don't need to write separate code for each permutation of LEFT,RIGHT,UP and DOWN.
+So let's clean this up by simply switching the buffers depending on LEFT/RIGHT and
+choose the copy operation depending on UP/DOWN.
+
+Signed-off-by: Rudi <r.ihle@s-t.de>
+---
+ drivers/mxc/ipu3/ipu_device.c | 100 +++++++++---------------------------------
+ 1 file changed, 21 insertions(+), 79 deletions(-)
+
+diff --git a/drivers/mxc/ipu3/ipu_device.c b/drivers/mxc/ipu3/ipu_device.c
+index d8b9625..a5c85e4 100644
+--- a/drivers/mxc/ipu3/ipu_device.c
++++ b/drivers/mxc/ipu3/ipu_device.c
+@@ -304,11 +304,11 @@ struct ipu_task_entry {
+ 	atomic_t res_get;
+ 
+ 	struct ipu_task_entry *parent;
+-	char *vditmpbuf[2];
++	u8 *vditmpbuf[2];
+ 	u32 old_save_lines;
+ 	u32 old_size;
+-	bool buf1filled;
+-	bool buf0filled;
++	u8 buf1filled;
++	u8 buf0filled;
+ 
+ 	vdoa_handle_t vdoa_handle;
+ 	struct vdoa_output_mem {
+@@ -2415,7 +2415,7 @@ static void vdi_split_process(struct ipu_soc *ipu, struct ipu_task_entry *t)
+ 	u32 stripe_mode;
+ 	u32 i, offset_addr;
+ 	u32 line_size;
+-	unsigned char  *base_off;
++	u8 *base_off, *tmp_buf, filled;
+ 	struct ipu_task_entry *parent = t->parent;
+ 	struct mutex *lock;
+ 
+@@ -2470,7 +2470,7 @@ static void vdi_split_process(struct ipu_soc *ipu, struct ipu_task_entry *t)
+ 		base_off = page_address(pfn_to_page(t->output.paddr >> PAGE_SHIFT));
+ 		base_off += t->output.paddr & ((1 << PAGE_SHIFT) - 1);
+ 	} else {
+-		base_off = (char *)ioremap_nocache(t->output.paddr,
++		base_off = ioremap_nocache(t->output.paddr,
+ 				t->output.width * t->output.height *
+ 				fmt_to_bpp(t->output.format)/8);
+ 	}
+@@ -2480,10 +2480,16 @@ static void vdi_split_process(struct ipu_soc *ipu, struct ipu_task_entry *t)
+ 		return;
+ 	}
+ 
+-	/* UP stripe or UP&LEFT stripe */
+-	if ((stripe_mode == UP_STRIPE) ||
+-			(stripe_mode == (UP_STRIPE | LEFT_STRIPE))) {
+-		if (!parent->buf0filled) {
++	if (stripe_mode & RIGHT_STRIPE) {
++		tmp_buf = parent->vditmpbuf[1];
++		filled  = parent->buf1filled++;
++	} else {
++		tmp_buf = parent->vditmpbuf[0];
++		filled  = parent->buf0filled++;
++	}
++
++	if (stripe_mode & UP_STRIPE) {
++		if ((filled & 1) == 0) {
+ 			offset_addr = t->set.o_off +
+ 				t->set.sp_setting.ud_split_line*t->set.ostride;
+ 			dmac_flush_range(base_off + offset_addr,
+@@ -2492,28 +2498,23 @@ static void vdi_split_process(struct ipu_soc *ipu, struct ipu_task_entry *t)
+ 				t->output.paddr + offset_addr + vdi_size);
+ 
+ 			for (i = 0; i < vdi_save_lines; i++)
+-				memcpy(parent->vditmpbuf[0] + i*line_size,
++				memcpy(tmp_buf + i*line_size,
+ 					base_off + offset_addr +
+ 					i*t->set.ostride, line_size);
+-			parent->buf0filled = true;
+ 		} else {
+ 			offset_addr = t->set.o_off + (t->output.crop.h -
+ 					vdi_save_lines) * t->set.ostride;
+ 			for (i = 0; i < vdi_save_lines; i++)
+ 				memcpy(base_off + offset_addr + i*t->set.ostride,
+-						parent->vditmpbuf[0] + i*line_size, line_size);
++						tmp_buf + i*line_size, line_size);
+ 
+ 			dmac_flush_range(base_off + offset_addr,
+ 					base_off + offset_addr + i*t->set.ostride);
+ 			outer_flush_range(t->output.paddr + offset_addr,
+ 					t->output.paddr + offset_addr + i*t->set.ostride);
+-			parent->buf0filled = false;
+ 		}
+-	}
+-	/*Down stripe or Down&Left stripe*/
+-	else if ((stripe_mode == DOWN_STRIPE) ||
+-			(stripe_mode == (DOWN_STRIPE | LEFT_STRIPE))) {
+-		if (!parent->buf0filled) {
++	} else {
++		if ((filled & 1) == 0) {
+ 			offset_addr = t->set.o_off + vdi_save_lines*t->set.ostride;
+ 			dmac_flush_range(base_off + offset_addr,
+ 					base_off + offset_addr + vdi_size);
+@@ -2521,82 +2522,23 @@ static void vdi_split_process(struct ipu_soc *ipu, struct ipu_task_entry *t)
+ 					t->output.paddr + offset_addr + vdi_size);
+ 
+ 			for (i = 0; i < vdi_save_lines; i++)
+-				memcpy(parent->vditmpbuf[0] + i*line_size,
++				memcpy(tmp_buf + i*line_size,
+ 						base_off + offset_addr + i*t->set.ostride,
+ 						line_size);
+-			parent->buf0filled = true;
+ 		} else {
+ 			offset_addr = t->set.o_off;
+ 			for (i = 0; i < vdi_save_lines; i++)
+ 				memcpy(base_off + offset_addr + i*t->set.ostride,
+-						parent->vditmpbuf[0] + i*line_size,
++						tmp_buf + i*line_size,
+ 						line_size);
+ 
+ 			dmac_flush_range(base_off + offset_addr,
+ 					base_off + offset_addr + i*t->set.ostride);
+ 			outer_flush_range(t->output.paddr + offset_addr,
+ 					t->output.paddr + offset_addr + i*t->set.ostride);
+-			parent->buf0filled = false;
+ 		}
+ 	}
+-	/*Up&Right stripe*/
+-	else if (stripe_mode == (UP_STRIPE | RIGHT_STRIPE)) {
+-		if (!parent->buf1filled) {
+-			offset_addr = t->set.o_off +
+-				t->set.sp_setting.ud_split_line*t->set.ostride;
+-			dmac_flush_range(base_off + offset_addr,
+-					base_off + offset_addr + vdi_size);
+-			outer_flush_range(t->output.paddr + offset_addr,
+-					t->output.paddr + offset_addr + vdi_size);
+ 
+-			for (i = 0; i < vdi_save_lines; i++)
+-				memcpy(parent->vditmpbuf[1] + i*line_size,
+-						base_off + offset_addr + i*t->set.ostride,
+-						line_size);
+-			parent->buf1filled = true;
+-		} else {
+-			offset_addr = t->set.o_off +
+-				(t->output.crop.h - vdi_save_lines)*t->set.ostride;
+-			for (i = 0; i < vdi_save_lines; i++)
+-				memcpy(base_off + offset_addr + i*t->set.ostride,
+-						parent->vditmpbuf[1] + i*line_size,
+-						line_size);
+-
+-			dmac_flush_range(base_off + offset_addr,
+-					base_off + offset_addr + i*t->set.ostride);
+-			outer_flush_range(t->output.paddr + offset_addr,
+-					t->output.paddr + offset_addr + i*t->set.ostride);
+-			parent->buf1filled = false;
+-		}
+-	}
+-	/*Down stripe or Down&Right stript*/
+-	else if (stripe_mode == (DOWN_STRIPE | RIGHT_STRIPE)) {
+-		if (!parent->buf1filled) {
+-			offset_addr = t->set.o_off + vdi_save_lines*t->set.ostride;
+-			dmac_flush_range(base_off + offset_addr,
+-					base_off + offset_addr + vdi_save_lines*t->set.ostride);
+-			outer_flush_range(t->output.paddr + offset_addr,
+-					t->output.paddr + offset_addr + vdi_save_lines*t->set.ostride);
+-
+-			for (i = 0; i < vdi_save_lines; i++)
+-				memcpy(parent->vditmpbuf[1] + i*line_size,
+-						base_off + offset_addr + i*t->set.ostride,
+-						line_size);
+-			parent->buf1filled = true;
+-		} else {
+-			offset_addr = t->set.o_off;
+-			for (i = 0; i < vdi_save_lines; i++)
+-				memcpy(base_off + offset_addr + i*t->set.ostride,
+-						parent->vditmpbuf[1] + i*line_size,
+-						line_size);
+-
+-			dmac_flush_range(base_off + offset_addr,
+-					base_off + offset_addr + vdi_save_lines*t->set.ostride);
+-			outer_flush_range(t->output.paddr + offset_addr,
+-					t->output.paddr + offset_addr + vdi_save_lines*t->set.ostride);
+-			parent->buf1filled = false;
+-		}
+-	}
+ 	if (!pfn_valid(t->output.paddr >> PAGE_SHIFT))
+ 		iounmap(base_off);
+ 	mutex_unlock(lock);
+-- 
+2.7.4
+
