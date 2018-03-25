@@ -1,0 +1,54 @@
+From 576b7b37f7720a98cb5a14a24021c5e17cbc101d Mon Sep 17 00:00:00 2001
+From: Rudi <r.ihle@s-t.de>
+Date: Sun, 25 Mar 2018 22:17:30 +0200
+Subject: [PATCH] IMXCODEC: Clear frame buffer on codec disposal
+
+---
+ xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp | 10 ++++++----
+ 1 file changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp
+index 933d4d5..b042728 100644
+--- a/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp
++++ b/xbmc/cores/VideoPlayer/DVDCodecs/Video/DVDVideoCodecIMX.cpp
+@@ -691,6 +691,8 @@ void CIMXCodec::Dispose()
+     m_converter->Close();
+     SAFE_DELETE(m_converter);
+   }
++
++  g_IMXContext.Clear();
+ }
+ 
+ void CIMXCodec::SetVPUParams(VpuDecConfig InDecConf, void* pInParam)
+@@ -1292,7 +1294,7 @@ CIMXContext::~CIMXContext()
+   Dispose();
+ 
+   m_processInfo = 0;
+-  Clear(-1);
++  Clear();
+   CloseDevices();
+ }
+ 
+@@ -1654,7 +1656,7 @@ void CIMXContext::Clear(int page)
+ {
+   if (!m_fbVirtAddr) return;
+ 
+-  uint16_t clr = 128 << 8 | 16;
++  const uint32_t clr = 0x80108010;
+   uint8_t *tmp_buf;
+   int bytes;
+ 
+@@ -1675,8 +1677,8 @@ void CIMXContext::Clear(int page)
+   if (m_fbVar.nonstd == _4CC('R', 'G', 'B', '4'))
+     memset(tmp_buf, 0, bytes);
+   else if (m_fbVar.nonstd == _4CC('Y', 'U', 'Y', 'V'))
+-    for (int i = 0; i < bytes / 2; ++i, tmp_buf += 2)
+-      memcpy(tmp_buf, &clr, 2);
++    for (int i = 0; i < bytes / 4; ++i, tmp_buf += 4)
++      *(uint32_t *)tmp_buf = clr;
+   else
+     CLog::Log(LOGERROR, "iMX Clear fb error : Unexpected format");
+ 
+-- 
+2.7.4
+
