@@ -1,6 +1,19 @@
---- a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c	2017-06-08 03:15:10.000000000 +0200
-+++ b/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c	2017-08-05 09:28:52.513019995 +0200
-@@ -630,15 +630,15 @@
+From 3c0861ba1eb3baa7efc04b8601815ad7716a6112 Mon Sep 17 00:00:00 2001
+From: Rudi <r.ihle@s-t.de>
+Date: Wed, 9 Aug 2017 19:19:15 +0200
+Subject: [PATCH] tda998x_cec: Return writable for poll when no link status and
+ avoid another race condition
+
+Signed-off-by: Rudi <r.ihle@s-t.de>
+---
+ drivers/video/dovefb/nxp_hdmi/tda998x_cec.c | 18 ++++++++++--------
+ 1 file changed, 10 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c b/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c
+index 1db0c55..476e4f6 100755
+--- a/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c
++++ b/drivers/video/dovefb/nxp_hdmi/tda998x_cec.c
+@@ -630,15 +630,15 @@ static void cec_interrupt(struct work_struct *dummy)
        /* send active msg when hdmi has been abled */
        cec_on(this);
  
@@ -22,18 +35,18 @@
     }
     /* new phy addr means new EDID, mean HPD ! */
     else if ((this->cec.phy_addr != new_phy_addr) &&
-@@ -2147,7 +2147,9 @@
+@@ -2147,7 +2147,9 @@ static ssize_t this_cdev_write(struct file *pFile, const char *buffer, size_t le
     
     down(&this->driver.sem);
  
 -   if (this->driver.write_pending || this->cec.source_status != CEC_POWER_STATUS_ON) {
-+   if (this->driver.write_pending || 
-+       this->cec.phy_addr == 0xFFFF || 
++   if (this->driver.write_pending ||
++       this->cec.phy_addr == 0xFFFF ||
 +       this->cec.source_status != CEC_POWER_STATUS_ON) {
        up(&this->driver.sem);
        return -EAGAIN;
     }
-@@ -2194,7 +2196,7 @@
+@@ -2194,7 +2196,7 @@ static unsigned int this_cdev_poll(struct file *pFile, poll_table *poll_data)
        if (this->driver.read_queue_head != this->driver.read_queue_tail)
           mask |= POLLIN | POLLRDNORM;	/* readable */
  
@@ -42,3 +55,6 @@
           mask |= POLLOUT | POLLWRNORM;	/* writable */
  
     } else {
+-- 
+2.7.4
+
