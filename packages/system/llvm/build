@@ -12,6 +12,28 @@ case $TARGET_ARCH in
        *) BUILD_FOR=$TARGET_ARCH;;
 esac
 
+COMMON="-DLLVM_INCLUDE_TOOLS=ON \
+        -DLLVM_BUILD_TOOLS=OFF \
+        -DLLVM_BUILD_UTILS=OFF \
+        -DLLVM_BUILD_EXAMPLES=OFF \
+        -DLLVM_INCLUDE_EXAMPLES=OFF \
+        -DLLVM_BUILD_TESTS=OFF \
+        -DLLVM_INCLUDE_TESTS=OFF \
+        -DLLVM_INCLUDE_GO_TESTS=OFF \
+        -DLLVM_BUILD_DOCS=OFF \
+        -DLLVM_INCLUDE_DOCS=OFF \
+        -DLLVM_ENABLE_DOXYGEN=OFF \
+        -DLLVM_ENABLE_SPHINX=OFF \
+        -DLLVM_ENABLE_TERMINFO=OFF \
+        -DLLVM_ENABLE_ASSERTIONS=OFF \
+        -DLLVM_ENABLE_WERROR=OFF \
+        -DLLVM_ENABLE_ZLIB=ON \
+        -DLLVM_BUILD_LLVM_DYLIB=ON \
+        -DLLVM_LINK_LLVM_DYLIB=ON \
+        -DLLVM_OPTIMIZED_TABLEGEN=ON \
+        -DLLVM_APPEND_VC_REV=OFF"
+
+
 
 rm -rf objdir-host
 mkdir -p objdir-host
@@ -19,27 +41,11 @@ cd objdir-host
 
 setup_toolchain host
 do_gcc_strip_lto
-cmake                -DLLVM_INCLUDE_TOOLS=ON \
-                     -DLLVM_BUILD_TOOLS=OFF \
-                     -DLLVM_BUILD_UTILS=OFF \
-                     -DLLVM_BUILD_EXAMPLES=OFF \
-                     -DLLVM_INCLUDE_EXAMPLES=OFF \
-                     -DLLVM_BUILD_TESTS=OFF \
-                     -DLLVM_INCLUDE_TESTS=OFF \
-                     -DLLVM_INCLUDE_GO_TESTS=OFF \
-                     -DLLVM_BUILD_DOCS=OFF \
-                     -DLLVM_INCLUDE_DOCS=OFF \
-                     -DLLVM_ENABLE_DOXYGEN=OFF \
-                     -DLLVM_ENABLE_SPHINX=OFF \
-                     -DLLVM_TARGETS_TO_BUILD="$BUILD_FOR" \
-                     -DLLVM_ENABLE_TERMINFO=OFF \
-                     -DLLVM_ENABLE_ASSERTIONS=OFF \
-                     -DLLVM_ENABLE_WERROR=OFF \
-                     -DLLVM_ENABLE_ZLIB=OFF \
-                     -DLLVM_OPTIMIZED_TABLEGEN=ON \
-                     -DCMAKE_INSTALL_RPATH=$ROOT/$TOOLCHAIN/lib \
-                     -DCMAKE_INSTALL_PREFIX="/usr" \
-                     ..
+cmake $COMMON \
+      -DLLVM_TARGETS_TO_BUILD="$BUILD_FOR" \
+      -DCMAKE_INSTALL_RPATH=$ROOT/$TOOLCHAIN/lib \
+      -DCMAKE_INSTALL_PREFIX="/usr" \
+      ..
 
 make llvm-config llvm-tblgen VERBOSE=1
 
@@ -54,32 +60,15 @@ cd objdir-target
 
 setup_toolchain target
 do_gcc_strip_lto
-cmake                  -DCMAKE_BUILD_TYPE=MinSizeRel \
-                       -DCMAKE_C_FLAGS="$CFLAGS" \
-                       -DCMAKE_CXX_FLAGS="$CXXFLAGS" \
-                       -DLLVM_INCLUDE_TOOLS=ON \
-                       -DLLVM_BUILD_TOOLS=OFF \
-                       -DLLVM_BUILD_UTILS=ON \
-                       -DLLVM_BUILD_EXAMPLES=OFF \
-                       -DLLVM_INCLUDE_EXAMPLES=OFF \
-                       -DLLVM_BUILD_TESTS=OFF \
-                       -DLLVM_INCLUDE_TESTS=OFF \
-                       -DLLVM_INCLUDE_GO_TESTS=OFF \
-                       -DLLVM_BUILD_DOCS=OFF \
-                       -DLLVM_INCLUDE_DOCS=OFF \
-                       -DLLVM_ENABLE_DOXYGEN=OFF \
-                       -DLLVM_ENABLE_SPHINX=OFF \
-                       -DLLVM_TARGETS_TO_BUILD="$BUILD_FOR" \
-                       -DLLVM_ENABLE_TERMINFO=OFF \
-                       -DLLVM_ENABLE_ASSERTIONS=OFF \
-                       -DLLVM_ENABLE_WERROR=OFF \
-                       -DLLVM_TARGET_ARCH="$TARGET_ARCH" \
-                       -DLLVM_ENABLE_ZLIB=ON \
-                       -DLLVM_BUILD_LLVM_DYLIB=ON \
-                       -DLLVM_LINK_LLVM_DYLIB=ON \
-                       -DLLVM_OPTIMIZED_TABLEGEN=ON \
-                       -DLLVM_TABLEGEN=$LIB_PREFIX/bin/llvm-tblgen \
-                       -DCMAKE_INSTALL_PREFIX="/usr" \
-                       ..
+cmake -DCMAKE_BUILD_TYPE=MinSizeRel \
+      -DCMAKE_C_FLAGS="$CFLAGS" \
+      -DCMAKE_CXX_FLAGS="$CXXFLAGS" \
+      -DLLVM_TARGETS_TO_BUILD="$BUILD_FOR" \
+      -DLLVM_TARGET_ARCH="$TARGET_ARCH" \
+      $COMMON \
+      -DLLVM_TABLEGEN=$LIB_PREFIX/bin/llvm-tblgen \
+      -DCMAKE_INSTALL_PREFIX="/usr" \
+      ..
+
 make VERBOSE=1
 make_install
