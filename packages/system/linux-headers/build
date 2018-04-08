@@ -1,0 +1,41 @@
+#!/bin/sh
+
+. config/options
+get_meta $1
+
+dst_dir=$ROOT/$PKG_BUILD_DIR/.install
+hdr_path=$dst_dir/usr/usr
+
+mkdir -p $dst_dir
+rm -rf $dst_dir/*
+ln -sf .install $dst_dir/../.install-unstripped
+
+$SCRIPTS/unpack linux
+cd $(kernel_path)
+# remove cache file present in 4.1x+ kernels
+rm -f .cache.mk
+
+[ $TARGET_ARCH = i386 -o $TARGET_ARCH = x86_64 ] && TARGET_ARCH=x86
+[ $TARGET_ARCH = powerpc -o $TARGET_ARCH = powerpc64 ] && TARGET_ARCH=powerpc
+
+[ "$TARGET_PLATFORM" != imx6 ] && make ARCH=$TARGET_ARCH headers_check
+make ARCH=$TARGET_ARCH INSTALL_HDR_PATH=$hdr_path headers_install
+
+if [ "$TARGET_PLATFORM" = omap3 ] || [ "$TARGET_PLATFORM" = omap4 ]; then
+  mkdir -p $hdr_path/include/asm/arch-omap
+  cp -P include/linux/omapfb.h $hdr_path/include/asm/arch-omap
+  sed -i "s%__user%%g" $hdr_path/include/asm/arch-omap/omapfb.h
+fi
+
+if [ "$TARGET_PLATFORM" = imx5x ] || [ "$TARGET_PLATFORM" = imx6 ]; then
+  if [ "$TARGET_MACHINE" = cuboxi ] || [ "$TARGET_MACHINE" = utilite ] || [ "$TARGET_MACHINE" = utilite-locked ]; then
+    echo "linux-headers : No need to copy extra files for cubox-i or utilite* ..."
+  else
+    cp -P include/linux/ipu.h $hdr_path/include/linux
+    cp -P include/linux/mxc*.h $hdr_path/include/linux
+  fi
+fi
+
+find $hdr_path -name ".*" -delete
+
+exit 0
