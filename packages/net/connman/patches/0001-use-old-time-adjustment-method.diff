@@ -1,0 +1,62 @@
+--- a/src/ntp.c	2018-04-14 19:33:46.666876608 +0200
++++ b/src/ntp.c	2018-04-14 19:33:46.710876096 +0200
+@@ -357,6 +357,7 @@
+ 
+ 	nd->poll_id = g_timeout_add_seconds(transmit_delay, next_poll, nd);
+ 
++#if 0
+ 	if (offset < STEPTIME_MIN_OFFSET && offset > -STEPTIME_MIN_OFFSET) {
+ 		tmx.modes = ADJ_STATUS | ADJ_NANO | ADJ_OFFSET | ADJ_TIMECONST | ADJ_MAXERROR | ADJ_ESTERROR;
+ 		tmx.status = STA_PLL;
+@@ -398,6 +399,51 @@
+ 	DBG("interval/delta/delay/drift %fs/%+.3fs/%.3fs/%+ldppm",
+ 		LOGTOD(msg->poll), offset, delay, tmx.freq / 65536);
+ 
++#else
++	/*
++	 * Use old (v1.33) method for time adjustment since the
++	 * new one fails on systems witout an RTC (Raspberry)
++	 */
++	if (offset < STEPTIME_MIN_OFFSET && offset > -STEPTIME_MIN_OFFSET) {
++		struct timeval adj;
++
++		connman_info("ntp: time slew %+.6f s", offset);
++
++		adj.tv_sec = (long) offset;
++		adj.tv_usec = (offset - adj.tv_sec) * 1000000;
++
++		DBG("adjusting time %ld seconds, %ld msecs", adj.tv_sec, adj.tv_usec);
++
++		if (adjtime(&adj, &adj) < 0) {
++			connman_error("Failed to adjust time");
++			nd->cb(false, nd->user_data);
++			return;
++		}
++
++		DBG("remaining adjustment %ld seconds, %ld msecs", adj.tv_sec, adj.tv_usec);
++	} else {
++		struct timeval cur;
++		double dtime;
++
++		connman_info("ntp: time jump %+.6f s", offset);
++
++		gettimeofday(&cur, NULL);
++		dtime = offset + cur.tv_sec + 1.0e-6 * cur.tv_usec;
++		cur.tv_sec = (long) dtime;
++		cur.tv_usec = (dtime - cur.tv_sec) * 1000000;
++
++		DBG("setting time: %ld seconds, %ld msecs", cur.tv_sec, cur.tv_usec);
++
++		if (settimeofday(&cur, NULL) < 0) {
++			connman_error("Failed to set time");
++			nd->cb(false, nd->user_data);
++			return;
++		}
++
++	}
++
++#endif
++
+ 	nd->cb(true, nd->user_data);
+ }
+ 
