@@ -699,6 +699,15 @@ do_python_make_host () {
   $ROOT/$TOOLCHAIN/bin/python setup.py install $*
 }
 
+do_python3_make_host () {
+  setup_toolchain host
+  BUILD_SYS="$HOST_NAME" \
+  HOST_SYS="$HOST_NAME" \
+  STAGING_LIBDIR=$ROOT/$TOOLCHAIN/lib \
+  STAGING_INCDIR=$ROOT/$TOOLCHAIN/include \
+  $ROOT/$TOOLCHAIN/bin/python3 setup.py install $*
+}
+
 do_python_make_cross () {
   setup_toolchain target
   BUILD_SYS="$HOST_NAME" \
@@ -1024,4 +1033,44 @@ do_cmake_build () {
   fi
 
   return 0
+}
+
+create_meson_conf() {
+  cat > my-meson.conf <<EOF
+[binaries]
+c = '$CC'
+cpp = '$CXX'
+ar = '$AR'
+strip = '$STRIP'
+pkgconfig = '$PKG_CONFIG'
+
+[host_machine]
+system = 'linux'
+cpu_family = '$TARGET_ARCH'
+cpu = '$TARGET_SUBARCH'
+endian = 'little'
+
+[properties]
+root = '$SYSROOT_PREFIX/usr'
+c_args = $(echo "['`echo $CFLAGS | sed s"% %', '%g"`']")
+c_link_args = $(echo "['`echo $LDFLAGS | sed s"% %', '%g"`']")
+EOF
+}
+
+do_meson_build () {
+  rm -rf .build-meson
+  mkdir .build-meson
+  cd .build-meson
+  create_meson_conf
+  TARGET_MESON_OPTS="--prefix=/usr \
+                   --bindir=/usr/bin \
+                   --sbindir=/usr/sbin \
+                   --sysconfdir=/etc \
+                   --libdir=/usr/lib \
+                   --libexecdir=/usr/lib \
+                   --localstatedir=/var \
+                   --buildtype=plain"
+    meson $TARGET_MESON_OPTS --cross-file my-meson.conf $@ ../ ./
+    DESTDIR=../.install ninja install 
+                   
 }
