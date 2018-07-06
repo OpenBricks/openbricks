@@ -18,11 +18,6 @@ kodi_set_feature() {
 }
 
 
-case "$TARGET_MACHINE" in
-  raspberrypi|raspberrypi2) TARGET_NAME="rbpi" ;;
-  *)                        TARGET_NAME="linux" ;;
-esac
-
 KODI_FEATURES="\
   -DENABLE_LIRC=ON \
   -DENABLE_UPNP=ON \
@@ -32,9 +27,6 @@ KODI_FEATURES="\
   -DENABLE_INTERNAL_CROSSGUID=OFF \
 "
 
-case "$TARGET_PLATFORM" in    
-  amlogic) KODI_FEATURES="$KODI_FEATURES -DENABLE_AML=ON" ;;
-esac
 
 kodi_set_feature $1 "opengl"            "OPENGL"
 kodi_set_feature $1 "opengles"          "OPENGLES"
@@ -90,6 +82,14 @@ if pkg_uses $1 gbm ; then
   KODI_FEATURES="$KODI_FEATURES -DCORE_PLATFORM_NAME=gbm"
   export CFLAGS="$CFLAGS -DMESA_EGL_NO_X11_HEADERS"
   export CXXFLAGS="$CXXFLAGS -DMESA_EGL_NO_X11_HEADERS"
+elif pkg_uses $1 xorg ; then
+  KODI_FEATURES="$KODI_FEATURES -DCORE_PLATFORM_NAME=x11"
+elif pkg_uses $1 wayland ; then
+  KODI_FEATURES="$KODI_FEATURES -DCORE_PLATFORM_NAME=wayland"
+elif [ "$TARGET_MACHINE" = raspberrypi ] || [ "$TARGET_MACHINE" = raspberrypi2 ]; then
+  KODI_FEATURES="$KODI_FEATURES -DCORE_PLATFORM_NAME=rbpi"
+elif [ "$TARGET_PLATFORM" = amlogic ]; then
+  KODI_FEATURES="$KODI_FEATURES -DCORE_PLATFORM_NAME=aml"
 fi
 
 echo "KODI_FEATURES=$KODI_FEATURES"
@@ -110,14 +110,14 @@ cmake \
   -DKODI_DEPENDSBUILD=0 \
   -DWITH_CPU=$TARGET_CPU \
   -DWITH_ARCH=$TARGET_ARCH \
-  -DCORE_SYSTEM_NAME=$TARGET_NAME \
+  -DCORE_SYSTEM_NAME=linux \
   -DLIBDVDCSS_URL=$ROOT/sources/libdvdcss/libdvdcss-1.4.0+1~2f12236.tar.bz2 \
   -DLIBDVDNAV_URL=$ROOT/sources/libdvdnav/libdvdnav-5.0.4+1~43b5f81.tar.bz2 \
   -DLIBDVDREAD_URL=$ROOT/sources/libdvdread/libdvdread-5.90.0+1~17d99db.tar.bz2 \
   $KODI_FEATURES -DGIT_VERSION="$PKG_URL_REV-$PKG_REV" \
   -DENABLE_APP_AUTONAME=OFF \
   ../
-  
+
 
 #cmake --build . -- VERBOSE=1
 make
