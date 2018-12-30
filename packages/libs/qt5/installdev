@@ -1,0 +1,51 @@
+#!/bin/sh
+
+. config/options
+get_meta $1
+
+cd $PKG_BUILD_DIR/.build
+
+# Install host tools
+rm -rf .install
+mkdir -p .install/usr/share/qt5
+
+cp -PR host-tools/bin .install/usr
+cp -PR host-tools/mkspecs .install/usr/share/qt5
+
+# Create custom config file containing our toolchain paths
+cat > .install/usr/bin/qt.conf <<EOF
+[Paths]
+Sysroot=$ROOT/$TOOLCHAIN/$TARGET_NAME/sysroot
+Prefix=$ROOT/$TOOLCHAIN/$TARGET_NAME/sysroot/usr/local
+Documentation=share/qt5/doc
+Headers=include/qt5
+LibraryExecutables=lib/qt5/libexec
+Plugins=lib/qt5/plugins
+Imports=lib/qt5/imports
+Qml2Imports=lib/qt5/qml
+ArchData=lib/qt5
+Data=share/qt5
+Translations=share/qt5/translations
+Examples=lib/qt5/examples
+Tests=lib/qt5/tests
+HostPrefix=$ROOT/$TOOLCHAIN
+HostData=share/qt5
+Settings=$ROOT/$TOOLCHAIN/$TARGET_NAME/sysroot/etc/xdg
+EOF
+
+# Install binaries
+pkg_uses $1 declarative && QML_TOOLS="qml*"
+HOST_TOOLS="qt.conf qmake moc uic rcc lrelease lupdate lconvert repc qdoc qdbus* $QML_TOOLS"
+for tool in $HOST_TOOLS; do
+  do_installdev usr/bin/$tool toolchain
+done
+
+# Install mkspecs
+do_installdev usr/share toolchain
+
+
+cd ..
+
+# Install includes and libs
+do_installdev usr/lib
+do_installdev usr/include

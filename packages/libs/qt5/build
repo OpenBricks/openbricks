@@ -1,0 +1,215 @@
+#!/bin/sh
+
+. config/options
+
+get_meta $1
+
+require_cxx $1
+
+# Ensure one of the qualifying flags has been set to build QT.
+if ! pkg_uses $1 embedded && ! pkg_uses $1 xorg&& ! pkg_uses $1 directfb; then
+  echo "Unable to build QT: enable Embedded, DirectFB or X11 flavor and try again"
+  exit 1
+fi
+
+
+strip_option () {
+  echo "$1" | sed -e "s%$2%%g"
+}
+
+
+check_feature () {
+  local option="-$3"
+  pkg_uses $1 $2 || option="-no$option"
+  echo "$option"
+}
+
+
+enable_module () {
+  local option="$4"
+  pkg_uses $1 $2 || option="-skip $3"
+  echo "$option"
+}
+
+
+cd $PKG_BUILD_DIR
+
+setup_toolchain host
+
+# uncomment to debug configure process
+CFG_VERBOSE=-verbose
+
+# unset flags, QT does it by itself
+unset CC CXX AR OBJCOPY STRIP CFLAGS CXXFLAGS CPPFLAGS LDFLAGS LD NM
+# just to be sure...
+unset QMAKESPEC
+
+
+# why ?
+TARGET_CFLAGS="$(strip_option "$TARGET_CFLAGS" -mthumb)"
+# gcc 4.9.x doesn't like this...
+TARGET_CFLAGS="$(strip_option "$TARGET_CFLAGS" -fgraphite-identity)"
+# get rid of lto, which might cause undefined symbols
+TARGET_CFLAGS="$(strip_option "$TARGET_CFLAGS" -flto\\S*)"
+# remove default optimization
+TARGET_CFLAGS="$(strip_option "$TARGET_CFLAGS" -O\\S*)"
+
+
+# Freetype
+EXTRA_CFLAGS="-I${LIB_PREFIX}/include/freetype2"
+
+# MySql
+pkg_uses $1 mysql && \
+  EXTRA_CFLAGS="$EXTRA_CFLAGS -I${LIB_PREFIX}/include/mysql"
+
+
+# Windowing system
+if pkg_uses $1 xorg; then
+  CFG_SCREEN="-system-xcb -no-eglfs -no-directfb -qpa xcb -system-xkbcommon-x11"
+elif pkg_uses $1 directfb; then
+  CFG_SCREEN="-no-xcb -no-eglfs -directfb -qpa directfb -evdev"
+else
+  CFG_SCREEN="-no-xcb -eglfs -no-directfb -qpa eglfs -evdev"
+fi
+
+
+# OpenGL version
+if pkg_uses $1 opengl; then
+  CFG_OPENGL="-opengl desktop"
+elif pkg_uses $1 opengles; then
+  CFG_OPENGL="-opengl es2"
+else
+  CFG_OPENGL="-no-opengl"
+fi
+
+# OpenGL extra flags
+EGLFS_INTEGRATION=""
+case "$GLES_PROVIDER" in
+  sgx)
+    ;;
+  tegra)
+    ;;
+  imx5)
+    ;;
+  imx6)
+    if pkg_uses $1 xorg; then
+      EXTRA_CFLAGS="$EXTRA_CFLAGS -DLINUX"
+    elif pkg_uses $1 directfb; then
+      EXTRA_CFLAGS="$EXTRA_CFLAGS -DLINUX -DEGL_API_DFB"
+    else
+      EXTRA_CFLAGS="$EXTRA_CFLAGS -DLINUX -DEGL_API_FB"
+    fi
+    EGLFS_INTEGRATION="eglfs_viv"
+    ;;
+  mali)
+    EXTRA_LFLAGS="$EXTRA_LFLAGS -lEGL -lGLESv2"
+    EGLFS_INTEGRATION="eglfs_mali"
+    ;;
+  vivante)
+    EXTRA_LFLAGS="$EXTRA_LFLAGS -lEGL -lGLESv2"
+    EGLFS_INTEGRATION="eglfs_x11"
+    ;;
+  vc)
+    EXTRA_CFLAGS="$EXTRA_CFLAGS -I${LIB_PREFIX}/include/interface/vmcs_host/linux"
+    EXTRA_CFLAGS="$EXTRA_CFLAGS -I${LIB_PREFIX}/include/interface/vcos/pthreads"
+    EXTRA_LFLAGS="$EXTRA_LFLAGS -lEGL -lGLESv2"
+    EGLFS_INTEGRATION="eglfs_brcm"
+    ;;
+esac
+
+
+# Remove old stuff
+rm -rf .install .build/.install
+
+# Re-create build dir
+#rm -rf .build
+mkdir -p .build
+cd .build
+
+
+# OK, let's go!
+PKG_CONFIG_LIBDIR=$LIB_PREFIX/lib/pkgconfig \
+../configure $CFG_VERBOSE \
+    -recheck-all \
+    -device linux-generic-g++ \
+    -device-option CROSS_COMPILE="$TARGET_PREFIX" \
+    -device-option COMPILER_FLAGS="$TARGET_CFLAGS $EXTRA_CFLAGS" \
+    -device-option LINKER_FLAGS="$EXTRA_LFLAGS" \
+    -device-option EGLFS_INTEGRATION="$EGLFS_INTEGRATION" \
+    -sysroot        "$SYSROOT_PREFIX" \
+    -prefix         "/usr" \
+    -bindir         "/usr/bin" \
+    -libdir         "/usr/lib" \
+    -headerdir      "/usr/include/qt5" \
+    -datadir        "/usr/share/qt5" \
+    -archdatadir    "/usr/lib/qt5" \
+    -testsdir       "/usr/lib/qt5/tests" \
+    -examplesdir    "/usr/lib/qt5/examples" \
+    -sysconfdir     "/etc/xdg" \
+    -hostprefix     "$PWD/host-tools" \
+    -extprefix      "$PWD/../.install/usr" \
+    -c++std c++11 \
+    -opensource \
+    -confirm-license \
+    -release \
+    -shared \
+    -strip \
+    -no-pch \
+    -no-rpath \
+    -no-ccache \
+    -no-use-gold-linker \
+    -no-separate-debug-info \
+    -no-qml-debug \
+    -pkg-config \
+    $CFG_OPENGL \
+    $CFG_SCREEN \
+    -sql-sqlite \
+    -system-sqlite \
+    -system-libpng \
+    -system-libjpeg \
+    -system-freetype \
+    -system-zlib \
+    -iconv \
+    -no-icu \
+    -no-glib \
+    -qt-pcre \
+    -dbus-runtime \
+    -openssl-runtime \
+    $(check_feature $1 "alsa" "alsa") \
+    $(check_feature $1 "cups" "cups") \
+    $(check_feature $1 "tds" "sql-tds") \
+    $(check_feature $1 "psql" "sql-psql") \
+    $(check_feature $1 "mysql" "sql-mysql") \
+    $(check_feature $1 "touchscreen" "tslib") \
+    $(check_feature $1 "gstreamer" "gstreamer") \
+    $(check_feature $1 "pulseaudio" "pulseaudio") \
+    $(enable_module $1 "multimedia" "qtmultimedia" "-printing-and-pdf") \
+    $(enable_module $1 "webengine" "qtwebengine") \
+    $(enable_module $1 "purchasing" "qtpurchasing") \
+    $(enable_module $1 "location" "qtlocation") \
+    -skip qtgamepad \
+    -skip qtwayland \
+    -make libs \
+    -make tools \
+    -nomake tests \
+    -nomake examples
+
+# Build all
+make
+make install
+
+# Build documentation (!!! qch-docs cannot be created on host !!!)
+if pkg_uses $1 devtools; then
+  make html_docs
+  make install_html_docs
+fi
+
+cd ..
+
+
+# Fixup system include and lib paths for install to sysroot
+sed -e "s%=.*/\.install%=${LIB_PREFIX}%g" \
+    -i .install/usr/lib/pkgconfig/*.pc \
+       .install/usr/lib/*.la .install/usr/lib/*.prl
+
+exit 0
