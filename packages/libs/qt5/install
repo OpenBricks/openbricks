@@ -5,35 +5,34 @@ get_meta $1
 
 cd $PKG_BUILD_DIR
 
-LANGUAGES="de en fr it es ru"
+install_translations () {
+  for lang in "de" "fr" "it" "es" "ru"; do
+    for f in .install/usr/share/qt5/translations/$1_${lang}.qm; do
+      [ -e "$f" ] && do_install usr/share/qt5/translations/$(basename $f)
+    done
+    # workaround for shell bug
+    echo > /dev/null
+  done
+}
 
-do_install usr/bin/qdbus
-do_install usr/bin/qtdiag usr/bin/qtpaths usr/bin/qtplugininfo
+do_install usr/bin/qdbus usr/bin/qtdiag usr/bin/qtpaths usr/bin/qtplugininfo
 do_install usr/lib/libQt5*.so*
 do_install usr/lib/qt5/plugins
 
-for lang in $LANGUAGES; do
-  do_install usr/share/qt5/translations/qt*_${lang}.qm
-done
+install_translations "qt*"
 
 if pkg_uses $1 declarative; then
   do_install usr/bin/qml*
   do_install usr/lib/qt5/qml
   #do_install usr/lib/qt5/imports
-  for lang in $LANGUAGES; do
-    [ -e .install/usr/share/qt5/translations/qmlviewer_${lang}.qm ] && \
-      do_install usr/share/qt5/translations/qmlviewer_${lang}.qm
-  done
+  install_translations "qmlviewer"
 fi
 
 if pkg_uses $1 devtools; then
   TARGET_TOOLS="assistant designer linguist"
   for tool in $TARGET_TOOLS; do
     do_install usr/bin/$tool
-    for lang in $LANGUAGES; do
-      [ -e .install/usr/share/qt5/translations/${tool}_*_${lang}.qm ] && \
-        do_install usr/share/qt5/translations/${tool}_*_${lang}.qm
-    done
+    install_translations "${tool}"
   done
 
   TARGET_TOOLS="qdbusviewer pixeltool qcollectiongenerator qhelp* xml* canbusutil sdpscanner"
@@ -44,3 +43,5 @@ if pkg_uses $1 devtools; then
   do_install usr/share/qt5/phrasebooks
   do_install usr/share/qt5/doc
 fi
+
+exit 0

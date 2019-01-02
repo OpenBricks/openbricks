@@ -5,17 +5,28 @@ get_meta $1
 
 cd $PKG_BUILD_DIR
 
+install_translations () {
+  for lang in "de" "fr" "it" "es" "ru"; do
+    for f in .install/usr/share/qt4/translations/$1_${lang}.qm; do
+      [ -e "$f" ] && do_install usr/share/qt4/translations/$(basename $f)
+    done
+    # workaround for shell bug
+    echo > /dev/null
+  done
+}
+
 do_install usr/bin/qdbus
-do_install usr/bin/qdbusviewer
 do_install usr/lib/libQt*.so*
 do_install usr/lib/qt4/plugins
 pkg_uses $1 gstreamer && do_install usr/lib/libphonon.so*
 
-do_install usr/share/qt4/translations/qt_*.qm
+install_translations "qt"
+install_translations "qt_help"
 
 if pkg_uses $1 declarative; then
-  do_install usr/bin/qmlviewer
+  do_install usr/bin/qml*
   do_install usr/lib/qt4/imports
+  install_translations "qmlviewer"
 fi
 
 pkg_uses $1 xorg || do_install usr/lib/fonts
@@ -26,9 +37,16 @@ if pkg_uses $1 devtools; then
   TARGET_TOOLS="assistant designer linguist"
   for tool in $TARGET_TOOLS; do
     do_install usr/bin/$tool
-    do_install usr/share/qt4/translations/${tool}_*.qm
+    install_translations "${tool}"
   done
-  
+
+  TARGET_TOOLS="lconvert qdbusviewer pixeltool qcollectiongenerator qhelp* xml*"
+  for tool in $TARGET_TOOLS; do
+    do_install usr/bin/$tool
+  done
+
   do_install usr/share/qt4/phrasebooks
   do_install usr/share/qt4/doc/qch
 fi
+
+exit 0
