@@ -1,8 +1,8 @@
 CC ?= gcc
 CFLAGS ?= -Wall -g
 
-DEPS_CFLAGS  = $(shell pkg-config --cflags glib-2.0 gthread-2.0 dbus-glib-1)
-DEPS_LDFLAGS = $(shell pkg-config --libs glib-2.0 gthread-2.0 dbus-glib-1)
+DEPS_CFLAGS  = $(shell pkg-config --cflags dbus-1)
+DEPS_LDFLAGS = $(shell pkg-config --libs dbus-1)
 
 CFLAGS  += $(DEPS_CFLAGS)
 LDFLAGS += $(DEPS_LDFLAGS)
