@@ -1,0 +1,127 @@
+--- a/drivers/net/wireless/rtl8192cu/core/rtw_ieee80211.c	2019-11-18 19:30:48.594287752 +0100
++++ b/drivers/net/wireless/rtl8192cu/core/rtw_ieee80211.c	2019-11-18 19:30:48.654287257 +0100
+@@ -26,6 +26,50 @@
+ #include <wlan_bssdef.h>
+
+
++int ieee80211_is_empty_essid(const char *essid, int essid_len)
++{
++    /* Single white space is for Linksys APs */
++    if (essid_len == 1 && essid[0] == ' ')
++        return 1;
++
++    /* Otherwise, if the entire essid is 0, we assume it is hidden */
++    while (essid_len) {
++        essid_len--;
++        if (essid[essid_len] != '\0')
++            return 0;
++    }
++
++    return 1;
++}
++
++int ieee80211_get_hdrlen(u16 fc)
++{
++    int hdrlen = 24;
++
++    switch (WLAN_FC_GET_TYPE(fc)) {
++    case IEEE80211_FTYPE_DATA:
++        if (fc & IEEE80211_QOS_DATAGRP)
++            hdrlen += 2;
++        if ((fc & IEEE80211_FCTL_FROMDS) && (fc & IEEE80211_FCTL_TODS))
++            hdrlen += 6; /* Addr4 */
++        break;
++    case IEEE80211_FTYPE_CTL:
++        switch (WLAN_FC_GET_STYPE(fc)) {
++        case IEEE80211_STYPE_CTS:
++        case IEEE80211_STYPE_ACK:
++            hdrlen = 10;
++            break;
++        default:
++            hdrlen = 16;
++            break;
++        }
++        break;
++    }
++
++    return hdrlen;
++}
++
++
+ //-----------------------------------------------------------
+ // for adhoc-master to generate ie and provide supported-rate to fw
+ //-----------------------------------------------------------
+--- a/drivers/net/wireless/rtl8192cu/include/ieee80211.h	2019-11-18 19:30:44.502321546 +0100
++++ b/drivers/net/wireless/rtl8192cu/include/ieee80211.h	2019-11-18 19:30:44.570320984 +0100
+@@ -1149,16 +1149,10 @@
+ #define MAC_FMT "%02x:%02x:%02x:%02x:%02x:%02x"
+ #define MAC_ARG(x) ((u8*)(x))[0],((u8*)(x))[1],((u8*)(x))[2],((u8*)(x))[3],((u8*)(x))[4],((u8*)(x))[5]
+
+-extern __inline int is_multicast_mac_addr(const u8 *addr)
+-{
+-        return ((addr[0] != 0xff) && (0x01 & addr[0]));
+-}
+-
+-extern __inline int is_broadcast_mac_addr(const u8 *addr)
+-{
+-	return ((addr[0] == 0xff) && (addr[1] == 0xff) && (addr[2] == 0xff) &&   \
+-		(addr[3] == 0xff) && (addr[4] == 0xff) && (addr[5] == 0xff));
+-}
++#define is_multicast_mac_addr(Addr) ((((Addr[0]) & 0x01) == 0x01) && ((Addr[0]) != 0xff))
++#define is_broadcast_mac_addr(Addr) ((((Addr[0]) & 0xff) == 0xff) && (((Addr[1]) & 0xff) == 0xff) && \
++(((Addr[2]) & 0xff) == 0xff) && (((Addr[3]) & 0xff) == 0xff) && (((Addr[4]) & 0xff) == 0xff) && \
++(((Addr[5]) & 0xff) == 0xff))
+
+ #define CFG_IEEE80211_RESERVE_FCS (1<<0)
+ #define CFG_IEEE80211_COMPUTE_FCS (1<<1)
+@@ -1177,48 +1171,8 @@
+ #define IEEE_G            (1<<2)
+ #define IEEE_MODE_MASK    (IEEE_A|IEEE_B|IEEE_G)
+
+-extern __inline int ieee80211_is_empty_essid(const char *essid, int essid_len)
+-{
+-	/* Single white space is for Linksys APs */
+-	if (essid_len == 1 && essid[0] == ' ')
+-		return 1;
+-
+-	/* Otherwise, if the entire essid is 0, we assume it is hidden */
+-	while (essid_len) {
+-		essid_len--;
+-		if (essid[essid_len] != '\0')
+-			return 0;
+-	}
+-
+-	return 1;
+-}
+-
+-extern __inline int ieee80211_get_hdrlen(u16 fc)
+-{
+-	int hdrlen = 24;
+-
+-	switch (WLAN_FC_GET_TYPE(fc)) {
+-	case IEEE80211_FTYPE_DATA:
+-		if (fc & IEEE80211_QOS_DATAGRP)
+-			hdrlen += 2;
+-		if ((fc & IEEE80211_FCTL_FROMDS) && (fc & IEEE80211_FCTL_TODS))
+-			hdrlen += 6; /* Addr4 */
+-		break;
+-	case IEEE80211_FTYPE_CTL:
+-		switch (WLAN_FC_GET_STYPE(fc)) {
+-		case IEEE80211_STYPE_CTS:
+-		case IEEE80211_STYPE_ACK:
+-			hdrlen = 10;
+-			break;
+-		default:
+-			hdrlen = 16;
+-			break;
+-		}
+-		break;
+-	}
+-
+-	return hdrlen;
+-}
++extern int ieee80211_is_empty_essid(const char *essid, int essid_len);
++extern int ieee80211_get_hdrlen(u16 fc);
+
+ #if 0
+ /* Action frame categories (IEEE 802.11-2007, 7.3.1.11, Table 7-24) */
