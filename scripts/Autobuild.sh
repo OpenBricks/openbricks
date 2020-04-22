@@ -52,10 +52,10 @@ echo "######################"
 # Build with the maximum speed (maybe we should try too without MAKECFLAGS set)
 DOOZER_CONCURRENCY_MAKE_LEVEL=$(echo $MAKEFLAGS |cut -d, -f2)
 echo "Using DOOZER_CONCURRENCY_MAKE_LEVEL=$DOOZER_CONCURRENCY_MAKE_LEVEL : MAKEFLAGS was $MAKEFLAGS"
-echo DOOZER_CONCURRENCY_MAKE_LEVEL=$DOOZER_CONCURRENCY_MAKE_LEVEL >> build/config/options-doozer
-echo "NO_DEBUG_PKG=yes" >> build/config/options-doozer
-echo "DOOZER_TARGET_CCACHE=/project/.ccache-$1" >> build/config/options-doozer
-echo "DO_NOT_SET_ROOT=yes" >> build/config/options-doozer
+echo DOOZER_CONCURRENCY_MAKE_LEVEL=$DOOZER_CONCURRENCY_MAKE_LEVEL >> build/config/global-settings
+echo "NO_DEBUG_PKG=yes" >> build/config/global-settings
+echo "DOOZER_TARGET_CCACHE=/project/.ccache-$1" >> build/config/global-settings
+echo "DO_NOT_SET_ROOT=yes" >> build/config/global-settings
 
 
 ./scripts/loadcfg $1 || exit 1
