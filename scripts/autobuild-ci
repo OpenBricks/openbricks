@@ -1,0 +1,143 @@
+#!/bin/sh
+
+CONF_NAME=$1
+CI_NAME=$2
+REPO_NAME=$3
+
+if [ -z "$CONF_NAME" ]; then
+  echo "Usage: $0 <targetcfg> [jenkins|doozer]"
+  exit 1
+fi
+
+if [ ! -e ./scripts/loadcfg ]; then
+  echo "Please run this script from Geexbox root directory"
+  exit 1
+fi
+
+[ -z "$REPO_NAME" ] && REPO_NAME=openbricks
+
+case x"$CI_NAME" in
+  x)
+    $0 $CONF_NAME doozer
+    exit
+    ;;
+  xjenkins)
+    STORAGE=$(readlink -m $PWD/../../persistent)
+    OVERLAY_DIRS=".ssh .stamps sources build"
+    ARTEFACT_DIR=$REPO_NAME
+    ;;
+  xdoozer)
+    STORAGE=/project
+    OVERLAY_DIRS=".ssh .stamps sources"
+    CCACHE_DIR=.ccache-$CONF_NAME
+    ARTEFACT_DIR=$REPO_NAME
+    ;;
+  *)
+    echo "Unknown CI system: $CI_NAME"
+    exit 1
+    ;;
+esac
+
+echo "#### Using CI system: $CI_NAME"
+
+
+# create persistent directories
+for d in $OVERLAY_DIRS $CCACHE_DIR $ARTEFACT_DIR; do
+  mkdir -p $STORAGE/$d
+done
+
+# create symlinks to persistent storage
+for d in $OVERLAY_DIRS; do
+  rm -rf ./$d
+  ln -s $STORAGE/$d $d
+done
+
+
+# create a ssh key for our server
+if [ -f .ssh/id_rsa ] ; then
+  echo "[ssh] Not generating a new file, already here"
+else
+  ssh-keygen -q -t rsa -N "" -f .ssh/id_rsa
+fi
+echo "######## Public key #########"
+cat .ssh/id_rsa.pub
+echo "######## Public key #########"
+
+
+# create global settings
+mkdir -p build/config
+echo "" > build/config/global-settings
+case x"$CI_NAME" in
+  xjenkins)
+    echo "NO_DEBUG_PKG=yes" >> build/config/global-settings
+    echo "DO_NOT_SET_ROOT=yes" >> build/config/global-settings
+    ;;
+  xdoozer)
+    # !!! due to disk space restrictions !!!
+    [ -n "$CCACHE_DIR" ] && rm -rf $STORAGE/$CCACHE_DIR/*
+    
+    DOOZER_CONCURRENCY_MAKE_LEVEL=$(echo $MAKEFLAGS | cut -d, -f2)
+    echo "Using DOOZER_CONCURRENCY_MAKE_LEVEL=$DOOZER_CONCURRENCY_MAKE_LEVEL : MAKEFLAGS was $MAKEFLAGS"
+
+    echo "DOOZER_CONCURRENCY_MAKE_LEVEL=$DOOZER_CONCURRENCY_MAKE_LEVEL" >> build/config/global-settings
+    echo "DOOZER_TARGET_CCACHE=$STORAGE/$CCACHE_DIR" >> build/config/global-settings
+    echo "NO_DEBUG_PKG=yes" >> build/config/global-settings
+    echo "DO_NOT_SET_ROOT=yes" >> build/config/global-settings
+    ;;
+esac
+echo "##### Global settings ######"
+cat build/config/global-settings
+echo "##### Global settings ######"
+
+
+# select configuration
+./scripts/loadcfg $CONF_NAME || exit 1
+CONF_FILE=./config/defconfigs/$CONF_NAME.conf
+
+# modify configuration
+dot_config=$(ls -d build/build.host/kconfig-frontends-*)/.config
+
+# enable tarball, disable flat output
+if grep -q 'CONFIG_OPT_TARGET_FLAT=y' $CONF_FILE; then
+  sed $CON_FFILE > $dot_config \
+      -e 's:CONFIG_OPT_TARGET_FLAT=y:# CONFIG_OPT_TARGET_FLAT is not set:' \
+      -e 's:# CONFIG_OPT_TARGET_TARBALL is not set:CONFIG_OPT_TARGET_TARBALL=y:'
+else
+  cp -P $CONF_FILE $dot_config
+fi
+
+# enforce disk space saving options
+sed -i $dot_config \
+    -e 's:.*CONFIG_OPT_SAVE_SPACE.*:CONFIG_OPT_SAVE_SPACE=y:' \
+    -e 's:.*CONFIG_OPT_USE_CCACHE.*:# CONFIG_OPT_USE_CCACHE is not set:'
+
+make silentoldconfig
+
+
+# perform build
+make || exit 1
+
+
+# cleanup packages directory
+echo "#### Deleting debug packages"
+find binaries/binaries.* -name "*-dbg_*.opk" -delete
+./scripts/index
+
+
+# create target directory structure
+DATE=$(date +%Y%m%d)
+echo "#### Moving artefacts to $STORAGE/$ARTEFACT_DIR/$CONF_NAME/$DATE"
+mkdir -p $STORAGE/$ARTEFACT_DIR/$CONF_NAME/$DATE
+rm -rf $STORAGE/$ARTEFACT_DIR/$CONF_NAME/$DATE/*
+mv binaries/binaries.* $STORAGE/$ARTEFACT_DIR/$CONF_NAME/$DATE
+
+
+# upload to our server
+ssh_opt="-o UserKnownHostsFile=.ssh/known_hosts -o StrictHostKeyChecking=no"
+if [ x$CI_NAME == xdoozer ]; then
+  echo "#### Uploading artefacts"
+  scp $ssh_opt -i .ssh/id_rsa -v -r $STORAGE/$ARTEFACT_DIR buildbot@geexbox.org:/data-snapshots/$CI_NAME-buildbot
+  rm -rf $STORAGE/$ARTEFACT_DIR/$CONF_NAME/$DATE
+fi
+
+exit 0
