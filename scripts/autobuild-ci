@@ -14,6 +14,12 @@ if [ ! -e ./scripts/loadcfg ]; then
   exit 1
 fi
 
+CONF_FILE=config/defconfigs/$CONF_NAME.conf
+if [ ! -e $CONF_FILE ]; then
+  echo "$CONF_FILE does not exist"
+  exit 1
+fi
+
 [ -z "$REPO_NAME" ] && REPO_NAME=openbricks
 
 case x"$CI_NAME" in
@@ -66,7 +72,7 @@ echo "######## Public key #########"
 
 # create global settings
 mkdir -p build/config
-echo "" > build/config/global-settings
+rm -f build/config/global-settings
 case x"$CI_NAME" in
   xjenkins)
     echo "NO_DEBUG_PKG=yes" >> build/config/global-settings
@@ -75,7 +81,7 @@ case x"$CI_NAME" in
   xdoozer)
     # !!! due to disk space restrictions !!!
     [ -n "$CCACHE_DIR" ] && rm -rf $STORAGE/$CCACHE_DIR/*
-    
+
     DOOZER_CONCURRENCY_MAKE_LEVEL=$(echo $MAKEFLAGS | cut -d, -f2)
     echo "Using DOOZER_CONCURRENCY_MAKE_LEVEL=$DOOZER_CONCURRENCY_MAKE_LEVEL : MAKEFLAGS was $MAKEFLAGS"
 
@@ -92,18 +98,17 @@ echo "##### Global settings ######"
 
 # select configuration
 ./scripts/loadcfg $CONF_NAME || exit 1
-CONF_FILE=./config/defconfigs/$CONF_NAME.conf
 
 # modify configuration
 dot_config=$(ls -d build/build.host/kconfig-frontends-*)/.config
 
 # enable tarball, disable flat output
 if grep -q 'CONFIG_OPT_TARGET_FLAT=y' $CONF_FILE; then
-  sed $CON_FFILE > $dot_config \
+  sed $CONF_FILE > $dot_config \
       -e 's:CONFIG_OPT_TARGET_FLAT=y:# CONFIG_OPT_TARGET_FLAT is not set:' \
       -e 's:# CONFIG_OPT_TARGET_TARBALL is not set:CONFIG_OPT_TARGET_TARBALL=y:'
 else
-  cp -P $CONF_FILE $dot_config
+  cp $CONF_FILE $dot_config
 fi
 
 # enforce disk space saving options
