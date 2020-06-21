@@ -1,11 +1,12 @@
 #!/bin/sh
 
 CONF_NAME=$1
-CI_NAME=$2
-REPO_NAME=$3
+[ -n "$2" ] && CI_NAME=$2   || CI_NAME="doozer"
+[ -n "$3" ] && REPO_NAME=$3 || REPO_NAME="openbricks"
+[ -n "$4" ] && HOST_SPEC=$4 || HOST_SPEC="buildbot@geexbox.org"
 
 if [ -z "$CONF_NAME" ]; then
-  echo "Usage: $0 <targetcfg> [jenkins|doozer]"
+  echo "Usage: $0 <targetcfg> [[[doozer|jenkins] repository] hostspec]"
   exit 1
 fi
 
@@ -20,23 +21,17 @@ if [ ! -e $CONF_FILE ]; then
   exit 1
 fi
 
-[ -z "$REPO_NAME" ] && REPO_NAME=openbricks
-
-case x"$CI_NAME" in
-  x)
-    $0 $CONF_NAME doozer
-    exit
-    ;;
-  xjenkins)
+case "$CI_NAME" in
+  jenkins)
     STORAGE=$(readlink -m $PWD/../../persistent)
     OVERLAY_DIRS=".ssh .stamps sources build"
-    ARTEFACT_DIR=$REPO_NAME
+    ARTIFACT_DIR=$REPO_NAME
     ;;
-  xdoozer)
+  doozer)
     STORAGE=/project
     OVERLAY_DIRS=".ssh .stamps sources"
     CCACHE_DIR=.ccache-$CONF_NAME
-    ARTEFACT_DIR=$REPO_NAME
+    ARTIFACT_DIR=$REPO_NAME
     ;;
   *)
     echo "Unknown CI system: $CI_NAME"
@@ -48,7 +43,7 @@ echo "#### Using CI system: $CI_NAME"
 
 
 # create persistent directories
-for d in $OVERLAY_DIRS $CCACHE_DIR $ARTEFACT_DIR; do
+for d in $OVERLAY_DIRS $CCACHE_DIR $ARTIFACT_DIR; do
   mkdir -p $STORAGE/$d
 done
 
@@ -73,15 +68,15 @@ echo "######## Public key #########"
 # create global settings
 mkdir -p build/config
 rm -f build/config/global-settings
-case x"$CI_NAME" in
-  xjenkins)
+case "$CI_NAME" in
+  jenkins)
     echo "NO_DEBUG_PKG=yes" >> build/config/global-settings
     echo "DO_NOT_SET_ROOT=yes" >> build/config/global-settings
     ;;
-  xdoozer)
+  doozer)
     # !!! due to disk space restrictions !!!
     [ -n "$CCACHE_DIR" ] && rm -rf $STORAGE/$CCACHE_DIR/*
-    rm -rf $STORAGE/$ARTEFACT_DIR/*
+    rm -rf $STORAGE/$ARTIFACT_DIR/*
 
     DOOZER_CONCURRENCY_MAKE_LEVEL=$(echo $MAKEFLAGS | cut -d, -f2)
     echo "Using DOOZER_CONCURRENCY_MAKE_LEVEL=$DOOZER_CONCURRENCY_MAKE_LEVEL : MAKEFLAGS was $MAKEFLAGS"
@@ -132,18 +127,18 @@ find binaries/binaries.* -name "*-dbg_*.opk" -delete
 
 # create target directory structure
 DATE=$(date +%Y%m%d)
-echo "#### Moving artefacts to $STORAGE/$ARTEFACT_DIR/$CONF_NAME/$DATE"
-mkdir -p $STORAGE/$ARTEFACT_DIR/$CONF_NAME/$DATE
-rm -rf $STORAGE/$ARTEFACT_DIR/$CONF_NAME/$DATE/*
-mv binaries/binaries.* $STORAGE/$ARTEFACT_DIR/$CONF_NAME/$DATE
+echo "#### Moving artefacts to $STORAGE/$ARTIFACT_DIR/$CONF_NAME/$DATE"
+mkdir -p $STORAGE/$ARTIFACT_DIR/$CONF_NAME/$DATE
+rm -rf $STORAGE/$ARTIFACT_DIR/$CONF_NAME/$DATE/*
+mv binaries/binaries.* $STORAGE/$ARTIFACT_DIR/$CONF_NAME/$DATE
 
 
 # upload to our server
 ssh_opt="-i .ssh/id_rsa -o UserKnownHostsFile=.ssh/known_hosts -o StrictHostKeyChecking=no"
 
-echo "#### Uploading artefacts"
-scp $ssh_opt -r $STORAGE/$ARTEFACT_DIR buildbot@geexbox.org:snapshots/$CI_NAME-buildbot
-ssh $ssh_opt buildbot@geexbox.org "touch snapshots/$CI_NAME-buildbot/$REPO_NAME/$CONF_NAME/$DATE/.done"
-rm -rf $STORAGE/$ARTEFACT_DIR/*
+echo "#### Uploading artifacts"
+scp $ssh_opt -v -r $STORAGE/$ARTIFACT_DIR $HOST_SPEC:snapshots/$CI_NAME-buildbot
+ssh $ssh_opt $HOST_SPEC "touch snapshots/$CI_NAME-buildbot/$REPO_NAME/$CONF_NAME/$DATE/.done"
+rm -rf $STORAGE/$ARTIFACT_DIR/*
 
 exit 0
