@@ -7,7 +7,7 @@ export BUILD=$BUILD_NOARCH
 build_package () {
   # rebuild internal libs
   for cmd in clean build; do
-    for i in "m4" "gmp" "mpfr" "mpc"; do 
+    for i in "m4" "gmp" "mpfr" "mpc"; do
       $SCRIPTS/$cmd internal-$i
     done
   done
@@ -23,13 +23,32 @@ build_package () {
 
   get_meta $1
   cd $PKG_BUILD_DIR
-  setup_toolchain host
-
+  rm -rf $1
   mkdir -p $1
   cd $1
 
+  setup_toolchain host
+
+  CFLAGS_COMMON="-Wno-format -Wno-unused -Wno-parentheses -Wno-sign-compare -Wno-enum-compare -Wno-switch -Wno-uninitialized"
+  CXXFLAGS_COMMON="$CFLAGS_COMMON"
+
+  case $($LOCAL_CC -v 2>&1 | grep "gcc version" | cut -f3 -d' ') in
+    5.?.?)
+      ;;
+
+    7.?.?|9.?.?)
+      CFLAGS_EXTRA="-Wno-implicit-fallthrough -Wno-expansion-to-defined -Wno-ignored-qualifiers -Wno-cast-function-type \
+                    -Wno-stringop-truncation -Wno-stringop-overflow -Wno-shift-negative-value -Wno-int-in-bool-context \
+                    -Wno-misleading-indentation -Wno-tautological-compare"
+      CXXFLAGS_EXTRA="$CFLAGS_EXTRA -Wno-class-memaccess -Wno-deprecated -Wno-deprecated-copy -Wno-literal-suffix -Wno-nonnull"
+      ;;
+  esac
+
   CC=$LOCAL_CC \
   CXX=$LOCAL_CXX \
+  CPPFLAGS="$CPPFLAGS -Wcomment" \
+  CXXFLAGS="$CXXFLAGS $CXXFLAGS_COMMON $CXXFLAGS_EXTRA" \
+  CFLAGS="$CFLAGS $CFLAGS_COMMON $CFLAGS_EXTRA -Wno-nonnull" \
   ../configure --with-gmp=$dir_internal_gmp   \
                --with-mpfr=$dir_internal_mpfr \
                --with-mpc=$dir_internal_mpc   \
