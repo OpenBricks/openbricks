@@ -11,18 +11,20 @@ diff --git a/init/main.c b/init/main.c
 index a42fdf4..2007fde 100644
 --- a/init/main.c
 +++ b/init/main.c
-@@ -902,8 +902,12 @@ static int __init kernel_init(void * unused)
- 	do_basic_setup();
+@@ -1576,6 +1576,16 @@
+ {
+ 	struct file *file = filp_open("/dev/console", O_RDWR, 0);
  
- 	/* Open the /dev/console on the rootfs, this should never fail */
--	if (sys_open((const char __user *) "/dev/console", O_RDWR, 0) < 0)
--		pr_err("Warning: unable to open an initial console.\n");
-+	if (sys_open((const char __user *) "/dev/console", O_RDWR, 0) < 0) {
++	static int retry = 0;
++	if (IS_ERR(file) && retry == 0) {
++		++retry;
 +		sys_mknod("/dev/console", S_IFCHR|0600, (TTYAUX_MAJOR<<8)|1);
-+		if (sys_open("/dev/console", O_RDWR, 0) < 0)
-+			pr_err("Warning: unable to open an initial console.\n");
++		console_on_rootfs();
 +		sys_unlink("/dev/console");
++		--retry;
++		return;
 +	}
- 
- 	(void) sys_dup(0);
- 	(void) sys_dup(0);
++
+ 	if (IS_ERR(file)) {
+ 		pr_err("Warning: unable to open an initial console.\n");
+ 		return;
