@@ -55,11 +55,16 @@ fi
 
 echo "Using kernel config from: $KERNEL_CFG_FILE"
 
+
+# Patch Makefile (sufficient for kernels < 5)
 sed -i -e "s|^HOSTCC[[:space:]]*=.*$|HOSTCC = $HOST_CC|" \
        -e "s|^HOSTCXX[[:space:]]*=.*$|HOSTCXX = $HOST_CXX|" \
        -e "s|^ARCH[[:space:]]*?=.*$|ARCH = $TARGET_LINUX_ARCH|" \
        -e "s|^CROSS_COMPILE[[:space:]]*?=.*$|CROSS_COMPILE = $TARGET_PREFIX|" \
        $PKG_BUILD_DIR/Makefile
+
+# Allow initial header build with kernel versions >= 5
+[ -e ${TARGET_PREFIX}gcc ] && export CROSS_COMPILE=$TARGET_PREFIX
 
 $ROOT/$PACKAGES/$PKG_SECTION/$1/scripts/merge_config.sh -m -O $PKG_BUILD_DIR $KERNEL_CFG_FILE
 
@@ -126,4 +131,4 @@ fi
 
 yes "" | make -C $PKG_BUILD_DIR oldconfig
 
-make -C $PKG_BUILD_DIR prepare1
+[ "${v##* }" -lt 5 ] && make -C $PKG_BUILD_DIR prepare1 || true
